@@ -139,6 +139,7 @@ class AutomaticBackupTests(unittest.TestCase):
         )
         (self.directory / "unrelated.txt").write_bytes(b"x")
 
+        (self.directory / ".database-backup-left.tmp").write_bytes(b"x")
         self.backups.write("nightly", datetime(2026, 11, 20, 2, 30, tzinfo=UTC))
         self.backups.before_migration(32)
 
@@ -149,6 +150,8 @@ class AutomaticBackupTests(unittest.TestCase):
         self.assertEqual(len(premigration), 1)
         self.assertIn("-v32-", premigration[0])
         self.assertIn("unrelated.txt", self.names())
+        # The staging file an interrupted copy left behind is gone.
+        self.assertNotIn(".database-backup-left.tmp", self.names())
 
     def test_summary_reports_counts_and_ages_only(self) -> None:
         now = datetime(2026, 11, 20, 6, 0, tzinfo=UTC)

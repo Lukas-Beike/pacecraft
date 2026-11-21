@@ -12,6 +12,7 @@ from backend.app.context import AppContext
 from backend.athlete.profile import DEFAULT_PROFILE
 from backend.backup.automatic import (
     DEFAULT_DIRECTORY,
+    FAILURE_KEY,
     AutomaticBackups,
     backup_directory,
 )
@@ -49,8 +50,10 @@ class BackupServices:
     # None when ``BACKUP_DIR=off`` (#3760).
     automatic_backups: Callable[[], AutomaticBackups | None]
     # Every directory that may hold automatic copies, also when switched off:
-    # the confirmed purge and the startup sweep (#3760).
+    # the confirmed purge (#3760).
     automatic_backup_copies: Callable[[], AutomaticBackups]
+    # The nightly copy when due; the periodic loop runs it (#3760).
+    run_nightly: Callable[[], None]
 
 
 def build_backup(ctx: AppContext) -> BackupServices:
@@ -139,10 +142,23 @@ def build_backup(ctx: AppContext) -> BackupServices:
             earlier=(default,),
         )
 
+    def run_nightly() -> None:
+        automatic = automatic_backups()
+        if automatic is None:
+            return
+        with ctx.database().reader() as db:
+            last_failure = ctx.key_values.get(db, FAILURE_KEY)
+        automatic.run_nightly(ctx.clock.now(), last_failure, record_failure)
+
+    def record_failure(value: dict[str, Any]) -> None:
+        with ctx.database().unit_of_work() as db:
+            ctx.key_values.set(db, FAILURE_KEY, json.dumps(value))
+
     return BackupServices(
         backup_service,
         restore_validation_service,
         restore_service,
         automatic_backups,
         automatic_backup_copies,
+        run_nightly,
     )

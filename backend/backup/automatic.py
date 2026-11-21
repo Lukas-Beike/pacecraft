@@ -14,8 +14,8 @@ import re
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
-from fnmatch import fnmatchcase
 from datetime import time as clock_time
+from fnmatch import fnmatchcase
 from pathlib import Path
 from typing import Any, Final
 
@@ -81,8 +81,13 @@ class AutomaticBackups:
         return sorted(found, key=lambda copy: (copy.made, copy.path.name))
 
     def write(self, label: str, now: datetime) -> Path:
-        """Write one checked copy, then prune its kind; raises when it fails."""
+        """Write one checked copy, then prune its kind; raises when it fails.
+
+        A staging file an interrupted copy left in the directory goes first;
+        copies never run concurrently (the loop and the startup run them).
+        """
         self._directory.mkdir(parents=True, exist_ok=True)
+        RecoveryCopies.remove(self._staged([self._directory]))
         name = f"{self._database_name}.auto-{label}-{now.strftime('%Y%m%d%H%M%S')}"
         target = self._backup(self._directory).write_verified_copy(name)
         kind = NIGHTLY if label == NIGHTLY else PREMIGRATION
@@ -167,14 +172,21 @@ class AutomaticBackups:
     def erase(self) -> RecoveryCopyErasure:
         """Delete every automatic copy and an interrupted copy's staging file
         (the athlete's confirmed purge, #3760)."""
-        staged = [
-            path for path in self._entries() if fnmatchcase(path.name, _STAGING_PATTERN)
-        ]
+        staged = self._staged(self._directories)
         return RecoveryCopies.remove([copy.path for copy in self.copies()] + staged)
 
-    def _entries(self) -> list[Path]:
-        found = []
-        for directory in self._directories:
+    def _staged(self, directories: list[Path] | tuple[Path, ...]) -> list[Path]:
+        return [
+            path
+            for path in self._entries(directories)
+            if fnmatchcase(path.name, _STAGING_PATTERN)
+        ]
+
+    def _entries(
+        self, directories: list[Path] | tuple[Path, ...] | None = None
+    ) -> list[Path]:
+        found: list[Path] = []
+        for directory in self._directories if directories is None else directories:
             try:
                 found.extend(path for path in directory.iterdir() if path.is_file())
             except OSError:

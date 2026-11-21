@@ -13,8 +13,8 @@ from typing import Any
 
 from backend.activities.route_store import clear_routes
 from backend.athlete.profile import DEFAULT_PROFILE, ProfileService
-from backend.backup.database import EXPORT_TIME_LIMIT_SECONDS, MIN_EXPORT_FREE_BYTES
 from backend.backup.automatic import AutomaticBackups
+from backend.backup.database import EXPORT_TIME_LIMIT_SECONDS, MIN_EXPORT_FREE_BYTES
 from backend.backup.export import (
     PrivacyArchiveExportConfig,
     PrivacyArchiveExportService,

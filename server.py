@@ -1022,8 +1022,6 @@ def main() -> None:
         app_config.refuse_wrong_database_key(error, LOGGER)
         raise
     remove_orphaned_staging_files(DATA_DIR, LOGGER)
-    for directory in BACKUP.automatic_backup_copies().directories():
-        remove_orphaned_staging_files(directory, LOGGER)
     server = http_server.CoachHTTPServer(
         ("0.0.0.0", CONFIG_HOLDER.value.port), HTTP_API.request_handler_class()
     )

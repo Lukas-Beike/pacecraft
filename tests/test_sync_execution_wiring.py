@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import unittest
-from contextlib import nullcontext
 from datetime import date
 from unittest.mock import ANY, MagicMock, Mock, patch
 
@@ -346,11 +345,7 @@ class SyncSchedulerBuilderTests(unittest.TestCase):
         ctx.planning.workout_library.return_value.purge_archived.side_effect = lambda: (
             calls.append("purge")
         )
-        ctx.backup.automatic_backups.return_value.run_nightly.side_effect = (
-            lambda *_args: calls.append("nightly backup")
-        )
-        ctx.key_values.get.return_value = None
-        ctx.database.return_value.reader.return_value = nullcontext(Mock())
+        ctx.backup.run_nightly.side_effect = lambda: calls.append("nightly backup")
         with (
             patch.object(scheduler_wiring.scheduler, "DailySyncLoop") as loop,
             patch.object(scheduler_wiring.scheduler, "DailySyncScheduler"),
@@ -365,8 +360,6 @@ class SyncSchedulerBuilderTests(unittest.TestCase):
         self.assertEqual(["nightly backup", "prune", "purge"], calls)
         self.assertEqual(ctx.maintenance.operation.call_count, 2)
         writer.assert_called_once_with()
-        nightly = ctx.backup.automatic_backups.return_value.run_nightly
-        self.assertIs(nightly.call_args.args[0], ctx.clock.now.return_value)
 
 
 if __name__ == "__main__":
