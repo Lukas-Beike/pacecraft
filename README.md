@@ -7,15 +7,15 @@ It is standalone software for a trusted LAN or private VPN (WireGuard, Tailscale
 ## Top 10 features
 
 1. Conversational Coach with durable turns, photos and files, change receipts and undo.
-2. Local training calendar and workout library for running, cycling and strength; adaptive replanning only after you approve a preview.
+2. Local training calendar and workout library for running, cycling and strength, with competitions you add, edit and delete in the calendar and daily check-ins with structured complaints that reach planning as a note; adaptive replanning only after you approve a preview.
 3. Garmin (official Personal API key plus optional unofficial login) and Wahoo as data sources, bundled into one session per workout.
-4. Intervals.icu as an explicit, output-only target for workouts, competitions, nutrition and thresholds.
+4. Intervals.icu as an explicit, output-only target for workouts, competitions (the "Wettkämpfe senden" button), nutrition and thresholds.
 5. Structured strength and run workouts, sent to the Garmin watch on request.
-6. Local performance methods M1-M8 (session load, fitness/fatigue/form, critical power/speed, HRV, sleep) with evidence cards.
-7. Analysis of load, performance, recovery and sessions with full-resolution charts.
+6. Local performance methods M1-M14 (session load, fitness/fatigue/form, critical power/speed, HRV, sleep, thresholds, energy, early infection hint) with evidence cards; a running step test yields LT1 and LT2 from one chest-strap run.
+7. Analysis of running, cycling, strength top sets, load, recovery and all-time records (Rekorde, also readable by the Coach) over one period selector (4 weeks, 3, 6 or 12 months), with the history of each recurring route.
 8. Weather, air quality, pollen and external calendars shape what the Coach plans; the weather during each outdoor session adds a heat note to its analysis.
-9. Nutrition diary with local food databases, saved meals and products, and Garmin energy use; weight and body fat are entered under Ernährung › Körper, not in the profile.
-10. Private by design: SQLCipher encryption, one athlete, installable and offline-capable PWA, privacy export and restorable backups.
+9. Nutrition diary with local food databases, saved meals and products with default times by meal type, and Garmin energy use; weight and body fat are entered under Ernährung › Körper, not in the profile.
+10. Private by design: SQLCipher encryption, one athlete, installable and offline-capable PWA whose meals, weight, body fat and session feedback wait in an outbox until the server is reachable, privacy export and automatic verified backups.
 
 All features in detail: [docs/features.md](docs/features.md).
 
@@ -84,11 +84,11 @@ Provider payloads are stored raw and projected into provider-neutral records: ac
 
 ## Performance methods
 
-Load, fitness/fatigue/form, critical power and speed, session efficiency, HRV and sleep are computed locally by methods M1-M8. Each has an evidence card with its limits, backed by the literature register R1-R53: [docs/performance-methods/README.md](docs/performance-methods/README.md).
+Load, fitness/fatigue/form, critical power and speed, session efficiency, HRV, sleep, thresholds, activity energy, body composition and an early infection hint are computed locally by methods M1-M14. Each has an evidence card with its limits, backed by the literature register R1-R53: [docs/performance-methods/README.md](docs/performance-methods/README.md).
 
 ## Backup, restore and upgrades
 
-Releases keep the athlete's encrypted database. Schema v26 (release 2.0.5, the frozen baseline) is the oldest schema the code still opens; v27 (since 2.1.2), v28 (since 2.1.10), v29 (since 2.1.17), v30 (since 2.1.20), v31 (since 2.1.22) and v32 (since 2.1.28) are accepted by their frozen digests; the current schema is v33; [docs/schema-history.md](docs/schema-history.md) lists the releases of each schema. Release 2.0.5 opens a v21 to v25 database or backup first. Later schemas are upgraded in place from it in one transaction; older, unknown or newer schemas are rejected unchanged. Keep the `/data` mount and `APP_PASSWORD` when recreating the container, and never reset the data directory to fix a rejected schema. Backup download, validated restore with a pre-restore copy, privacy export and local data purge are under **Mehr**. GPS tracks from Garmin and Wahoo files are stored in the encrypted database, backup and export, never shown to the Coach or in diagnostics and logs, and deleted by the local data purge; the weather during an outdoor session is fetched from Open-Meteo with the start position rounded to two decimals (or the saved weather location) and stored without any coordinate; repeated outdoor routes are recognised from the stored tracks and shown only as a label, visit count and the visits' session values ("Hausrunde · 5. von 6 Besuchen") that the athlete can rename in the activity view, and are deleted with the tracks; **Mehr** → privacy section has the "GPS-Spuren speichern" switch (default on) and, once it is off, a confirmed deletion of the stored tracks; details in [docs/operations.md](docs/operations.md) and [docs/schema-history.md](docs/schema-history.md).
+Releases keep the athlete's encrypted database. Schema v26 (release 2.0.5, the frozen baseline) is the oldest schema the code still opens; v27 (since 2.1.2), v28 (since 2.1.10), v29 (since 2.1.17), v30 (since 2.1.20), v31 (since 2.1.22) and v32 (since 2.1.28) are accepted by their frozen digests; the current schema is v33; [docs/schema-history.md](docs/schema-history.md) lists the releases of each schema. Release 2.0.5 opens a v21 to v25 database or backup first. Later schemas are upgraded in place from it in one transaction; older, unknown or newer schemas are rejected unchanged. Keep the `/data` mount and `APP_PASSWORD` when recreating the container, and never reset the data directory to fix a rejected schema. The app writes a verified encrypted backup every night and before each schema migration (`BACKUP_DIR` moves or disables them); a failed pre-migration backup stops the upgrade unchanged. Backup download, validated restore with a pre-restore copy, privacy export and local data purge are under **Mehr**. GPS tracks from Garmin and Wahoo files are stored in the encrypted database, backup and export, never shown to the Coach or in diagnostics and logs, and deleted by the local data purge; the weather during an outdoor session is fetched from Open-Meteo with the start position rounded to two decimals (or the saved weather location) and stored without any coordinate; repeated outdoor routes are recognised from the stored tracks and shown only as a label, visit count and the visits' session values ("Hausrunde · 5. von 6 Besuchen") that the athlete can rename in the activity view, and are deleted with the tracks; **Mehr** → privacy section has the "GPS-Spuren speichern" switch (default on) and, once it is off, a confirmed deletion of the stored tracks; details in [docs/operations.md](docs/operations.md) and [docs/schema-history.md](docs/schema-history.md).
 
 ## Further docs
 
