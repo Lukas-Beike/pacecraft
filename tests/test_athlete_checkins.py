@@ -596,7 +596,7 @@ class AthleteCheckinHistoryTests(unittest.TestCase):
         with change_history.collect_changes() as changes:
             reported = self.service.report_illness(TODAY.isoformat())
         self.assertEqual(reported["change"]["action"], "create")
-        self.assertEqual(reported["checkin"]["illness"], "Krank (Infekt-Hinweis)")
+        self.assertEqual(reported["checkin"]["illness"], "Infekt-Hinweis bestätigt")
         self.assertEqual([change["entity_type"] for change in changes], ["checkin"])
         _undo(self.manager, self.service, changes)
         self.assertEqual(self.service.list(365), [])
@@ -609,7 +609,7 @@ class AthleteCheckinHistoryTests(unittest.TestCase):
     def test_infection_hint_illness_keeps_the_day_answers(self):
         self.service.save({"soreness": 4, "illness": "Halsweh", "notes": "müde"})
         reported = self.service.report_illness(TODAY.isoformat())["checkin"]
-        self.assertEqual(reported["illness"], "Halsweh; Krank (Infekt-Hinweis)")
+        self.assertEqual(reported["illness"], "Halsweh; Infekt-Hinweis bestätigt")
         self.assertEqual((reported["soreness"], reported["notes"]), (4, "müde"))
 
     def test_infection_hint_illness_replaces_a_no_answer(self):

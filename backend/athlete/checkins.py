@@ -19,7 +19,7 @@ COMPLAINTS_KEY = "checkin_complaints:"
 # (#3821); the hint stays hidden on that day only.
 INFECTION_HINT_DISMISSED_KEY = "infection_hint_dismissed"
 # The illness text of the answer "Ich bin krank" to the infection hint (#3821).
-INFECTION_HINT_ILLNESS = "Krank (Infekt-Hinweis)"
+INFECTION_HINT_ILLNESS = "Infekt-Hinweis bestätigt"
 # Structured complaints (athlete decision on #3766): a fixed body-area list, the
 # side and a severity of 0-10, beside the free pain text.
 COMPLAINT_AREAS = (

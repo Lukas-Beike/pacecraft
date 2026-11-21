@@ -1105,7 +1105,8 @@ Errors: none beyond the common ones.
 
 ### `POST /api/infection-hint/ill`
 
-Request: no body is read. Records illness in today's check-in like a
+Request: JSON body `{"date": "YYYY-MM-DD"}`, the day of the answered
+note. Records illness in today's check-in like a
 check-in or Coach turn: other answers stay and an earlier illness text
 is kept, the new text joining it. Planning then pauses as for any
 reported illness, through the adaptive preview and its approval.
@@ -1115,17 +1116,20 @@ Response: 200 `{"status": "ok", "checkin", "change"}`; `checkin` is
 today's stored check-in, `change` the undo reference (`null` when the
 day already carried the text).
 
-Errors: none beyond the common ones.
+Errors: 409 "Der Infekt-Hinweis gilt für einen anderen Tag. Bitte die
+Ansicht neu laden." when `date` is not the athlete's today.
 
 ### `POST /api/infection-hint/well`
 
-Request: no body is read. Hides the hint for today in the calendar, the
+Request: JSON body `{"date": "YYYY-MM-DD"}`, the day of the answered
+note. Hides the hint for today in the calendar, the
 Coach context and the planning brief; a hint on a later day shows again.
 Nothing else changes.
 
 Response: 200 `{"status": "ok", "dismissed": "YYYY-MM-DD"}`.
 
-Errors: none beyond the common ones.
+Errors: 409 "Der Infekt-Hinweis gilt für einen anderen Tag. Bitte die
+Ansicht neu laden." when `date` is not the athlete's today.
 
 ### `GET /api/library`
 
