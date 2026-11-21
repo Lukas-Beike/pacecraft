@@ -455,6 +455,7 @@ ACTIVITY_READS = build_activity_reads(
     unit_thresholds=PLAN_GUARD.planned_unit_estimator,
 )
 HISTORY = build_history(APP)
+BACKUP = build_backup(APP)
 
 
 PRIVACY = build_privacy(
@@ -474,12 +475,15 @@ PRIVACY = build_privacy(
     cancel_coach_turns=lambda: (
         APP.coach_conversation.reset_service().cancel_running_turns()
     ),
-    log_files=lambda: DIAGNOSTICS.recent_log_entries_service(),
+    files_beside_database=lambda: (
+        DIAGNOSTICS.recent_log_entries_service(),
+        BACKUP.automatic_backup_copies(),
+    ),
 )
-BACKUP = build_backup(APP)
 
 
 def initialise_database() -> None:
+    automatic = BACKUP.automatic_backups()
     with database_manager().unit_of_work() as db:
         initialize_application_database(
             db,
@@ -489,6 +493,7 @@ def initialise_database() -> None:
             default_profile_json=json.dumps(DEFAULT_PROFILE),
             settle_interrupted=settle_interrupted_sync_state,
             retention_days=int(getattr(CONFIG_HOLDER.value, "data_retention_days", -1)),
+            before_migration=None if automatic is None else automatic.before_migration,
         )
     PROVIDER_CREDENTIAL_SERVICE.refresh()
 

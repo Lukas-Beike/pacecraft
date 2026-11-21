@@ -1733,7 +1733,7 @@ compared exactly.
 
 Response: 200 with `status` (`"ok"`), `local_data_deleted` (`true`),
 `deleted_categories` (record count per category, as in the preview),
-`recovery_copies_failed` and `log_files_failed` (what could not be
+`recovery_copies_failed`, `automatic_backups_failed` and `log_files_failed` (what could not be
 erased), `remote_delete_attempted` and `remote_conversation_deleted`
 (the OpenAI conversation), `wahoo_revoke_attempted`, `wahoo_revoked` and
 `remote_untouched`. The deletion runs under the maintenance gate and also

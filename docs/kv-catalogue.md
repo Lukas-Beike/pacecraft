@@ -16,7 +16,7 @@ read. A new key needs no entry: it appears here when its write is added.
   `profile` is only set when absent.
 
 <!-- BEGIN GENERATED KEYS -->
-98 keys and 23 key patterns; `<value>` stands for a value the code computes.
+99 keys and 23 key patterns; `<value>` stands for a value the code computes.
 
 | Key | Written by | Deleted by | Export | Reset at start | Purge |
 | --- | --- | --- | --- | --- | --- |
@@ -42,6 +42,7 @@ read. A new key needs no entry: it appears here when its write is added.
 | `coach_plan_constraints:<value>` | backend/coach/training_patch.py:CoachTrainingPatchService._store_constraints<br>backend/planning/replacement_service.py:StructuredTrainingPlanReplacementService._copy_constraints | - | yes | - | - |
 | `competition_tombstone:<value>` | backend/db/repositories.py:CompetitionRepository.add_tombstone | backend/db/repositories.py:CompetitionRepository.clear_tombstone_label | yes | - | - |
 | `competition_weather` | backend/weather/competition_forecast.py:CompetitionWeather.refresh | - | yes | - | - |
+| `database_backup_automatic_failure` | backend/backup/wiring.py:build_backup.record_failure | - | yes | - | - |
 | `database_backup_last` | backend/backup/database.py:DatabaseBackupService.record_delivered | - | yes | - | - |
 | `diagnostic_capture_entries` | backend/observability.py:DiagnosticCapture.__init__ | - | yes | - | - |
 | `equipment:<value>` | backend/athlete/equipment.py:EquipmentService.save<br>backend/athlete/equipment.py:_insert_initial_garmin_item<br>backend/athlete/equipment.py:_refresh_garmin_distances<br>backend/athlete/equipment_history.py:_EquipmentRecordHistory._write | backend/athlete/equipment_history.py:_EquipmentRecordHistory._delete | yes | - | - |

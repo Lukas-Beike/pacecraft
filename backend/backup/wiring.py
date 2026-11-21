@@ -5,10 +5,17 @@ from __future__ import annotations
 import json
 from collections.abc import Callable
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any
 
 from backend.app.context import AppContext
 from backend.athlete.profile import DEFAULT_PROFILE
+from backend.backup.automatic import (
+    DEFAULT_DIRECTORY,
+    FAILURE_KEY,
+    AutomaticBackups,
+    backup_directory,
+)
 from backend.backup.database import (
     EXPORT_TIME_LIMIT_SECONDS,
     MAX_BACKUP_BYTES,
@@ -40,17 +47,24 @@ class BackupServices:
     backup_service: Callable[[], DatabaseBackupService]
     restore_validation_service: Callable[[], DatabaseRestoreValidationService]
     restore_service: Callable[[], DatabaseRestoreService]
+    # None when ``BACKUP_DIR=off`` (#3760).
+    automatic_backups: Callable[[], AutomaticBackups | None]
+    # Every directory that may hold automatic copies, also when switched off:
+    # the confirmed purge (#3760).
+    automatic_backup_copies: Callable[[], AutomaticBackups]
+    # The nightly copy when due; the periodic loop runs it (#3760).
+    run_nightly: Callable[[], None]
 
 
 def build_backup(ctx: AppContext) -> BackupServices:
     """Backup and restore over the live database; each call builds a fresh service."""
 
-    def backup_service() -> DatabaseBackupService:
+    def backup_service(directory: Path | None = None) -> DatabaseBackupService:
         return DatabaseBackupService(
             ctx.database(),
             DatabaseBackupConfig(
                 database_path=ctx.database_path(),
-                data_dir=ctx.data_dir(),
+                data_dir=directory or ctx.data_dir(),
                 maximum_bytes=MAX_BACKUP_BYTES,
                 minimum_free_bytes=MIN_EXPORT_FREE_BYTES,
                 time_limit_seconds=EXPORT_TIME_LIMIT_SECONDS,
@@ -109,4 +123,42 @@ def build_backup(ctx: AppContext) -> BackupServices:
             )
         )
 
-    return BackupServices(backup_service, restore_validation_service, restore_service)
+    def automatic_backups() -> AutomaticBackups | None:
+        directory = backup_directory(ctx.config().backup_dir, ctx.data_dir())
+        if directory is None:
+            return None
+        return AutomaticBackups(
+            directory, ctx.database_path().name, backup_service, ctx.logger
+        )
+
+    def automatic_backup_copies() -> AutomaticBackups:
+        default = ctx.data_dir() / DEFAULT_DIRECTORY
+        directory = backup_directory(ctx.config().backup_dir, ctx.data_dir())
+        return AutomaticBackups(
+            directory or default,
+            ctx.database_path().name,
+            backup_service,
+            ctx.logger,
+            earlier=(default,),
+        )
+
+    def run_nightly() -> None:
+        automatic = automatic_backups()
+        if automatic is None:
+            return
+        with ctx.database().reader() as db:
+            last_failure = ctx.key_values.get(db, FAILURE_KEY)
+        automatic.run_nightly(ctx.clock.now(), last_failure, record_failure)
+
+    def record_failure(value: dict[str, Any]) -> None:
+        with ctx.database().unit_of_work() as db:
+            ctx.key_values.set(db, FAILURE_KEY, json.dumps(value))
+
+    return BackupServices(
+        backup_service,
+        restore_validation_service,
+        restore_service,
+        automatic_backups,
+        automatic_backup_copies,
+        run_nightly,
+    )

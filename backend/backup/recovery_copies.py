@@ -80,7 +80,7 @@ class RecoveryCopies:
         }
 
     def erase(self) -> RecoveryCopyErasure:
-        return self._remove(self.paths())
+        return RecoveryCopies.remove(self.paths())
 
     def prune_restore_copies(self, keep: str) -> RecoveryCopyErasure:
         """Delete the restore copies older than ``keep`` (athlete, 2026-11-14).
@@ -98,12 +98,12 @@ class RecoveryCopies:
         }
         if keep not in made:
             return RecoveryCopyErasure(removed=0, failed=0)
-        return self._remove(
+        return RecoveryCopies.remove(
             [self._data_dir / name for name, when in made.items() if when < made[keep]]
         )
 
     @staticmethod
-    def _remove(paths: list[Path]) -> RecoveryCopyErasure:
+    def remove(paths: list[Path]) -> RecoveryCopyErasure:
         removed = failed = 0
         for path in paths:
             try:

@@ -30,7 +30,8 @@ Use [README.md](README.md) for the overview and [docs/setup.md](docs/setup.md) a
   Preserve restart, backup/restore, provider sync, and editing existing records.
   Reject unknown/newer schemas without deletion, reset, or partial modification.
   Named exception: the athlete's confirmed local data purge also deletes the
-  recovery copies and marker files that earlier releases left beside the database.
+  recovery copies and marker files that earlier releases left beside the database,
+  and the automatic backup copies (athlete, 2026-11-20, #3760).
 
 ## Important boundaries
 
@@ -48,7 +49,8 @@ Use [README.md](README.md) for the overview and [docs/setup.md](docs/setup.md) a
   live database except through the implemented, validated restore workflow.
   Named exception (athlete, 2026-11-14, #2914): after a completed restore whose
   new recovery copy is verified, the older restore copies are deleted so only
-  the newest remains.
+  the newest remains. Automatic backups keep 7 nightly copies and the newest
+  pre-migration copy; older ones go only after a newer copy is verified (#3760).
 - A new database is created directly as SQLCipher when `APP_PASSWORD` is
   configured. Existing SQLCipher databases are upgraded in place through
   validated, data-preserving migrations; encryption must remain enabled.

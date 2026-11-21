@@ -13,6 +13,7 @@ from typing import Any
 
 from backend.activities.route_store import clear_routes
 from backend.athlete.profile import DEFAULT_PROFILE, ProfileService
+from backend.backup.automatic import AutomaticBackups
 from backend.backup.database import EXPORT_TIME_LIMIT_SECONDS, MIN_EXPORT_FREE_BYTES
 from backend.backup.export import (
     PrivacyArchiveExportConfig,
@@ -148,6 +149,9 @@ RECOVERY_COPIES_CATEGORY = "recovery_copies"
 RECOVERY_COPIES_LABEL = (
     "Wiederherstellungskopien der Datenbank und Bereinigungsmarkierung"
 )
+# The automatic nightly and pre-migration copies (athlete, 2026-11-20, #3760).
+AUTOMATIC_BACKUPS_CATEGORY = "automatic_backups"
+AUTOMATIC_BACKUPS_LABEL = "Automatische Datenbanksicherungen"
 # The server log files beside the database, erased last (#2137, G-209).
 LOG_FILES_CATEGORY = "server_logs"
 LOG_FILES_LABEL = "Server-Protokolldateien"
@@ -186,6 +190,8 @@ class PrivacyDeleteDependencies:
     # Copies saved by a restore or by the Intervals.icu purge of an earlier
     # release; erased with the data.
     recovery_copies: RecoveryCopies | None = None
+    # The automatic database copies; erased with the data (#3760).
+    automatic_backups: AutomaticBackups | None = None
     # Stops a running Coach turn so the maintenance drain does not wait for it.
     cancel_coach_turns: Callable[[], None] | None = None
     # The server log files; erased after everything else, so no later warning
@@ -237,6 +243,14 @@ class PrivacyDeleteService:
                     "id": RECOVERY_COPIES_CATEGORY,
                     "label": RECOVERY_COPIES_LABEL,
                     "records": dependencies.recovery_copies.count(),
+                }
+            )
+        if dependencies.automatic_backups is not None:
+            categories.append(
+                {
+                    "id": AUTOMATIC_BACKUPS_CATEGORY,
+                    "label": AUTOMATIC_BACKUPS_LABEL,
+                    "records": len(dependencies.automatic_backups.copies()),
                 }
             )
         if dependencies.log_files is not None:
@@ -325,6 +339,33 @@ class PrivacyDeleteService:
                 extra={"event": "privacy_space_reclaim_incomplete"},
             )
 
+    def _erase_copies(self, deleted_counts: dict[str, int]) -> tuple[int, int]:
+        """Erase the recovery copies and the automatic backups (#3760).
+
+        Returns how many of each could not be removed; a failure is logged,
+        never raised.
+        """
+        failed = {RECOVERY_COPIES_CATEGORY: 0, AUTOMATIC_BACKUPS_CATEGORY: 0}
+        owners = (
+            (RECOVERY_COPIES_CATEGORY, self._dependencies.recovery_copies),
+            (AUTOMATIC_BACKUPS_CATEGORY, self._dependencies.automatic_backups),
+        )
+        for category, owner in owners:
+            if owner is None:
+                continue
+            erased = owner.erase()
+            deleted_counts[category] = erased.removed
+            failed[category] = erased.failed
+            if erased.failed:
+                self._dependencies.logger.warning(
+                    "Recovery copies could not be deleted",
+                    extra={
+                        "event": "privacy_recovery_copy_delete_failed",
+                        "context": {"category": category, "failed": erased.failed},
+                    },
+                )
+        return failed[RECOVERY_COPIES_CATEGORY], failed[AUTOMATIC_BACKUPS_CATEGORY]
+
     def _erase_log_files(self, deleted_counts: dict[str, int]) -> bool:
         """Erase the server log files last; report a failure, never raise it."""
         log_files = self._dependencies.log_files
@@ -363,7 +404,6 @@ class PrivacyDeleteService:
                 )
             remote_delete_attempted = bool(conversation_id)
             remote_deleted = False
-            recovery_copies_failed = 0
             if conversation_id:
                 try:
                     remote_deleted = dependencies.openai_client.delete_conversation(
@@ -425,19 +465,10 @@ class PrivacyDeleteService:
                     )
                 dependencies.planning_revision_service.mark_reset_pending()
             self._reclaim_after_commit()
-            if dependencies.recovery_copies is not None:
-                # After the commit: a failed erase never leaves a half-wiped database.
-                erased = dependencies.recovery_copies.erase()
-                deleted_counts[RECOVERY_COPIES_CATEGORY] = erased.removed
-                recovery_copies_failed = erased.failed
-                if erased.failed:
-                    dependencies.logger.warning(
-                        "Recovery copies could not be deleted",
-                        extra={
-                            "event": "privacy_recovery_copy_delete_failed",
-                            "context": {"failed": erased.failed},
-                        },
-                    )
+            # After the commit: a failed erase never leaves a half-wiped database.
+            recovery_copies_failed, automatic_backups_failed = self._erase_copies(
+                deleted_counts
+            )
             if dependencies.refresh_credentials is not None:
                 dependencies.refresh_credentials()
             log_files_failed = self._erase_log_files(deleted_counts)
@@ -446,6 +477,7 @@ class PrivacyDeleteService:
                 "local_data_deleted": True,
                 "deleted_categories": deleted_counts,
                 "recovery_copies_failed": recovery_copies_failed,
+                "automatic_backups_failed": automatic_backups_failed,
                 "log_files_failed": log_files_failed,
                 "remote_delete_attempted": remote_delete_attempted,
                 "remote_conversation_deleted": remote_deleted,
@@ -475,7 +507,9 @@ def build_privacy(
     cancel_garmin_login: Callable[[], None],
     disconnect_wahoo: Callable[[], dict[str, Any]],
     cancel_coach_turns: Callable[[], None],
-    log_files: Callable[[], RecentLogEntriesService],
+    files_beside_database: Callable[
+        [], tuple[RecentLogEntriesService, AutomaticBackups | None]
+    ],
 ) -> PrivacyServices:
     """The privacy export and the maintenance-gated local data purge.
 
@@ -497,6 +531,7 @@ def build_privacy(
         return database_path().parent
 
     def delete_service() -> PrivacyDeleteService:
+        log_files, automatic_backups = files_beside_database()
         return PrivacyDeleteService(
             PrivacyDeleteDependencies(
                 database_manager=database_manager(),
@@ -512,7 +547,8 @@ def build_privacy(
                 disconnect_wahoo=disconnect_wahoo,
                 cancel_coach_turns=cancel_coach_turns,
                 recovery_copies=RecoveryCopies(data_dir(), database_path().name),
-                log_files=log_files(),
+                automatic_backups=automatic_backups,
+                log_files=log_files,
                 utc_now=runtime_clock.utc_now,
             )
         )
