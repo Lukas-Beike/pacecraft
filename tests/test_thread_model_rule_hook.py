@@ -49,11 +49,12 @@ OPUS_LOW = rule_json({"opus": "low"})
 
 
 class ThreadModelRuleHookTests(unittest.TestCase):
-    def test_repository_rule_is_opus_and_fable_up_to_high(self):
+    def test_repository_rule_is_opus_fable_and_sonnet_up_to_high(self):
+        # Mechanical lanes run Sonnet at high (athlete decision 2026-11-16, #3753).
         self.assertEqual(
             json.loads(RULE.read_text(encoding="utf-8")),
             {
-                "allowed": {"opus": "high", "fable": "high"},
+                "allowed": {"opus": "high", "fable": "high", "sonnet": "high"},
                 "runtimeMode": "full-access",
             },
         )
@@ -61,7 +62,9 @@ class ThreadModelRuleHookTests(unittest.TestCase):
         for payload, code in (
             (launch("claude-fable-5-2", "high"), 0),
             (launch("claude-fable-5-2", "xhigh"), 2),
-            (launch("claude-sonnet-5-5", "high"), 2),
+            (launch("claude-sonnet-5-5", "high"), 0),
+            (launch("claude-sonnet-5-5", "xhigh"), 2),
+            (launch("claude-haiku-5-5", "low"), 2),
         ):
             with self.subTest(payload=payload):
                 self.assertEqual(run_hook(payload, rule).returncode, code)
