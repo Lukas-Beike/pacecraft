@@ -6,7 +6,7 @@ import logging
 import time
 import uuid
 from collections.abc import Callable, Iterator
-from contextlib import nullcontext
+from contextlib import contextmanager, nullcontext
 from dataclasses import dataclass, field
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler
@@ -329,7 +329,10 @@ class RequestHandler(BaseHTTPRequestHandler):
             self.auth_service.require_csrf(self, current)
             if route is None:
                 raise AppError(404, NOT_FOUND_ERROR)
-            self._handle(route, self._request(path, params, current))
+            request = self._request(path, params, current)
+            with self._replayable(route, request) as answered:
+                if not answered:
+                    route.handle(self, request)
 
     def _put(self, path: str) -> None:
         # The maintenance gate answers before authentication.
@@ -340,28 +343,35 @@ class RequestHandler(BaseHTTPRequestHandler):
             if found is None:
                 raise AppError(404, NOT_FOUND_ERROR)
             route, params = found
-            self._handle(route, self._request(path, params, session))
+            request = self._request(path, params, session)
+            with self._replayable(route, request) as answered:
+                if not answered:
+                    route.handle(self, request)
 
-    def _handle(self, route: Route, request: RouteRequest) -> None:
-        """Run a route; a replayable one with a valid ``Idempotency-Key`` is kept.
+    @contextmanager
+    def _replayable(self, route: Route, request: RouteRequest) -> Iterator[bool]:
+        """Around a route's handler: True when a kept answer was already sent.
 
-        A stored result is answered without running the handler. Otherwise the
-        handler runs and ``send_json`` stores its 2xx answer just before it is
-        sent (#3761). An absent or invalid key is today's behaviour.
+        For a replayable route with a valid ``Idempotency-Key`` a stored result is
+        answered and the caller skips the handler; otherwise ``send_json`` keeps the
+        handler's 2xx answer just before it is sent (#3761). An absent or invalid
+        key is today's behaviour. The handler stays in the caller, after the
+        authentication, CSRF and maintenance checks.
         """
         store = self.dependencies.idempotency if route.replayable else None
         key = valid_key(self.headers.get("Idempotency-Key")) if store else None
         if store is None or key is None:
-            route.handle(self, request)
+            yield False
             return
         with store.lock:
             stored = store.lookup(key, request.path)
             if stored is not None:
                 self.send_json(*stored)
+                yield True
                 return
             self._idempotent_request = (store, key, request.path)
             try:
-                route.handle(self, request)
+                yield False
             finally:
                 self._idempotent_request = None
 
