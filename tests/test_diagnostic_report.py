@@ -230,6 +230,7 @@ class DiagnosticReportServiceTests(unittest.TestCase):
                 "garmin_body_push",
                 "garmin_history_refetch",
                 "wahoo_weight_push",
+                "competition_sync",
                 "garmin_strength_push",
                 "recovery_copies",
                 "backup",
@@ -407,8 +408,9 @@ class DiagnosticReportServiceTests(unittest.TestCase):
         # entered weights add one (#3252), the entered body fats one (#3402); the
         # Garmin body push adds its counts and its links (#3403); the Wahoo
         # weight push adds its state (#3559); the Garmin history re-read reads
-        # the Garmin state (#3729).
-        self.assertEqual(len(self.db.queries), 48)
+        # the Garmin state (#3729); the competition sync reads its failure
+        # record and last success (#3838).
+        self.assertEqual(len(self.db.queries), 50)
         self.assertEqual(
             [query.rsplit("FROM ", 1)[1] for query in count_queries],
             [
@@ -424,6 +426,9 @@ class DiagnosticReportServiceTests(unittest.TestCase):
                 "kv WHERE key = ?",
                 "kv WHERE key = ?",
                 # The Garmin body push counts (#3403).
+                "kv WHERE key = ?",
+                # The competition sync failure and last success (#3838).
+                "kv WHERE key = ?",
                 "kv WHERE key = ?",
                 # The Wahoo weight push state (#3559).
                 "kv WHERE key = ?",

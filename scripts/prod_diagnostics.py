@@ -215,6 +215,11 @@ SECTION_FIELDS = {
     # The Wahoo profile-weight write, counts only (#3559), and why the last push
     # ended as it did, an enum (#3677).
     "wahoo_weight_push": re.compile(r"status|sent|failed|retried|pending|last_outcome"),
+    # The competition sync's current failure: its step and kind as a count (#3838).
+    "competition_sync": re.compile(
+        r"status|failures|failed_hours|last_success_hours"
+        r"|failure_kinds\.[a-z_]+\.[A-Za-z0-9_]+"
+    ),
     # The re-projection pass after a mapper bump: its state, batches and the
     # per-provider counters (#3595).
     "canonical_backfill": re.compile(

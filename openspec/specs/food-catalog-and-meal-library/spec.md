@@ -195,13 +195,13 @@ The system SHALL create a new diary entry when a saved meal is consumed, scale i
 
 #### Scenario: No consumption time given
 - **WHEN** a saved meal is logged without a time
-- **THEN** it retains the template's meal type, records time as unknown, and does not invent a clock-time observation.
+- **THEN** it retains the template's meal type and records the time as unknown when that type was only guessed at saving; an explicitly typed template follows the diary's time rules (a breakfast, lunch or dinner takes its default time, another type the current time today and an unknown time on another day).
 
 #### Scenario: Template changes later
 - **WHEN** the saved meal is edited or deleted after logging
 - **THEN** previously consumed entries and their nutrient provenance remain unchanged.
 
-Evidence: `backend/nutrition/diary.py::NutritionDiaryService.log_template`, `backend/nutrition/diary.py::NutritionDiaryService._scale_composite_basis`; `tests/test_nutrition.py::NutritionRepositoryAndServiceTests.test_template_without_meal_time_stores_unknown_time_and_keeps_meal_type`, `tests/test_nutrition_composition.py::NutritionCompositionTests.test_component_replacement_metadata_and_template_portion_snapshots`, `tests/test_nutrition_composition.py::NutritionCompositionTests.test_restart_and_database_backup_keep_composite_entries_and_templates`.
+Evidence: `backend/nutrition/diary.py::NutritionDiaryService.log_template`, `backend/nutrition/diary.py::NutritionDiaryService._scale_composite_basis`; `tests/test_nutrition.py::NutritionRepositoryAndServiceTests.test_template_without_meal_time_takes_type_default_and_keeps_meal_type`, `tests/test_nutrition_composition.py::NutritionCompositionTests.test_component_replacement_metadata_and_template_portion_snapshots`, `tests/test_nutrition_composition.py::NutritionCompositionTests.test_restart_and_database_backup_keep_composite_entries_and_templates`.
 
 ### Requirement: Product UI separates review from recording consumption
 The client SHALL present product and label candidates for review and explicit local save, and prepare editable Coach drafts for consumption. The athlete SHALL be able to mark any product as favorite, and to add a product with a quantity directly to a logged meal of the selected day without a Coach turn. Browsing, candidate review, and draft preparation SHALL not automatically send a Coach turn or export nutrition.
