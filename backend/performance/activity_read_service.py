@@ -95,13 +95,18 @@ class ActivityAnalysisReadService(ActivityReadService):
         self._unit_thresholds = unit_thresholds
         self._step_test_templates = step_test_templates
 
-    def planned_adherence(self, document: Mapping[str, Any]) -> dict[str, Any] | None:
+    def planned_adherence(
+        self,
+        document: Mapping[str, Any],
+        paired: Callable[[], dict[str, Any] | None] | None = None,
+    ) -> dict[str, Any] | None:
         """A run's or ride's steps against its local planned unit (#2830).
 
         The unit is the one the calendar pairs with the session on its day
         (``match_planned_workouts``), so "Details" of an extra session shows
         nothing. ``None`` also without an execution or a workout text; the
-        Coach reads the laps' comparison instead.
+        Coach reads the laps' comparison instead. ``paired`` reads that unit
+        when the caller shares one pairing.
         """
         session = document.get("session")
         analysis = document.get("analysis")
@@ -115,7 +120,7 @@ class ActivityAnalysisReadService(ActivityReadService):
             or execution.get("status") != "ok"
         ):
             return None
-        unit = self.paired_planned_unit(session)
+        unit = paired() if paired is not None else self.paired_planned_unit(session)
         if unit is None:
             return None
         steps = unit_steps(unit)
@@ -151,15 +156,19 @@ class ActivityAnalysisReadService(ActivityReadService):
     ) -> dict[str, Any] | None:
         """LT1 and LT2 of a run paired with a step-test unit (#3833), else None.
 
-        The unit is a step test when its library template is one; the result
-        comes from the run's stored DFA-a1 window series and its stage laps.
+        The unit is a step test by its own stamp, or (units planned before the
+        stamp) when its library template is one; the result comes from the
+        run's stored DFA-a1 window series and its stage laps.
         """
         session = document.get("session")
         if (
             unit is None
             or not isinstance(session, Mapping)
             or session.get("sport") != Sport.RUN.value
-            or str(unit.get(TEMPLATE_ID) or "") not in self._step_test_templates()
+            or (
+                unit.get("test_protocol") != step_test.PROTOCOL
+                and str(unit.get(TEMPLATE_ID) or "") not in self._step_test_templates()
+            )
         ):
             return None
         try:
@@ -191,7 +200,7 @@ class ActivityAnalysisReadService(ActivityReadService):
             validation=False,
         )
         session = document.get("session")
-        if not isinstance(session, Mapping):
+        if not isinstance(session, Mapping) or session.get("sport") != Sport.RUN.value:
             return None
         return self.step_test(document, self.paired_planned_unit(session))
 

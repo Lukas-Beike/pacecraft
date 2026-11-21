@@ -47,7 +47,7 @@ MIN_GOOD_STAGES: Final = 6
 # The warm-up and cool-down range lies this far below stage 1 (km/h).
 EASY_RANGE_KMH: Final = (1.5, 0.5)
 # Plausible run paces (s/km); another value counts as unknown.
-PACE_BOUNDS_S: Final = (150.0, 900.0)
+PACE_BOUNDS_S: Final = (150.0, 540.0)
 # A recorded lap of this length (s) is one stage; a shorter last one was not held.
 STAGE_LAP_S: Final = (150.0, 210.0)
 END_NOTE: Final = (

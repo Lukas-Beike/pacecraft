@@ -1589,6 +1589,8 @@ async function adoptStepTestValue(activityId, row, button) {
   button.disabled = true;
   try {
     const result = await api("/api/profile/first-threshold/adopt", { method: "POST", body: JSON.stringify({ step_test: activityId, heart_rate_bpm: row.adopt.heart_rate_bpm, ...(replacesMeasured ? { replace_measured: true } : {}) }) });
+    applyAdoptedFirstThreshold(result);
+    invalidateContextPreview();
     toast(result.adopted === false ? "Wert aus dem Stufentest ist bereits übernommen" : "Erste Schwelle übernommen");
     await load();
   } catch (error) { toast(error.message, true); }

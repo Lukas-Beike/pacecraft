@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+import functools
 import logging
 from collections.abc import Callable, Mapping
 from datetime import date
 from typing import Any
 from urllib.parse import unquote
 
+from backend.canonical.vocabulary import Sport
 from backend.http_api.route_table import Access, Route, RouteRequest
 from backend.performance.activity_read_service import ActivityAnalysisReadService
 from backend.performance.freshness import NO_GARMIN_SYNC_STATUS
@@ -105,8 +107,11 @@ class SyncGetRoutes:
             today=self._local_today(),
             validation=False,
         )
+        session: Mapping[str, Any] = payload.get("session") or {}
+        # One pairing for the comparison and the step test, only when needed (#3017).
+        paired = functools.cache(lambda: service.paired_planned_unit(session))
         try:
-            adherence = service.planned_adherence(payload)
+            adherence = service.planned_adherence(payload, paired)
         except Exception as exc:  # noqa: BLE001 - the comparison is optional; never fail the details
             _LOGGER.warning(
                 "planned step adherence unavailable: %s", type(exc).__name__
@@ -115,10 +120,9 @@ class SyncGetRoutes:
         if adherence is not None:
             payload["planned_adherence"] = adherence
         try:
-            session = payload.get("session")
             tested = (
-                service.step_test(payload, service.paired_planned_unit(session))
-                if isinstance(session, dict)
+                service.step_test(payload, paired())
+                if isinstance(session, dict) and session.get("sport") == Sport.RUN.value
                 else None
             )
         except Exception as exc:  # noqa: BLE001 - the step test is optional; never fail the details

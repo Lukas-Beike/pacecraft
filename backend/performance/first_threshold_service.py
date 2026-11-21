@@ -34,8 +34,6 @@ from backend.performance.first_threshold_estimate import (
 )
 
 type LthrResolver = Callable[[date | None], float | None]
-# A session id -> its step-test result (#3833), or None.
-type StepTestReader = Callable[[str], Mapping[str, Any] | None]
 
 
 class FirstThresholdService:
@@ -80,12 +78,13 @@ class FirstThresholdService:
         return estimate_view(estimate, resolver(None))
 
     def adopt(
-        self, payload: object, step_test: StepTestReader | None = None
+        self, payload: object, step_test: Mapping[str, Any] | None = None
     ) -> dict[str, Any]:
         """Store the shown estimate as the first threshold, with the origin estimated.
 
         With ``step_test`` (a session id) the value is that step test's good LT1
-        (#3833), read by ``step_test``; ``heart_rate_bpm`` is the shown value.
+        (#3833), passed in already read as ``step_test`` so the detail read stays
+        outside the writer lease; ``heart_rate_bpm`` is the shown value.
         """
         if not isinstance(payload, dict):
             raise AppError(400, "Die Anfrage muss ein Objekt sein.")
@@ -129,11 +128,10 @@ class FirstThresholdService:
 
 def _step_test_percent(
     payload: Mapping[str, Any],
-    step_test: StepTestReader | None,
+    tested: Mapping[str, Any] | None,
     run_lthr: float | None,
 ) -> float:
     """The step test's good LT1 as percent of today's run threshold HR (#3833)."""
-    tested = None if step_test is None else step_test(str(payload["step_test"]))
     value = (tested or {}).get("lt1") or {}
     if value.get("status") != "ok" or value.get("quality") != DfaQuality.GOOD.value:
         raise AppError(

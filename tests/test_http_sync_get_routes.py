@@ -7,7 +7,7 @@ import unittest
 from datetime import date
 from types import SimpleNamespace
 from typing import Any, cast
-from unittest.mock import Mock
+from unittest.mock import ANY, Mock
 
 from activity_row_support import ServedActivityReads
 from canonical_detail_support import add_session_record, open_manager
@@ -195,7 +195,7 @@ class SyncGetRoutesTests(unittest.TestCase):
         self.activities.planned_adherence.return_value = adherence
         self.assertTrue(dispatch_route(self.routes, self.handler, "/api/activities/a1"))
         self.activities.planned_adherence.assert_called_once_with(
-            {**document, "planned_adherence": adherence}
+            {**document, "planned_adherence": adherence}, ANY
         )
 
         self.assertEqual(
@@ -218,6 +218,28 @@ class SyncGetRoutesTests(unittest.TestCase):
             ],
             self.handler.responses,
         )
+
+    def test_one_pairing_serves_the_comparison_and_only_a_run_step_test(
+        self,
+    ) -> None:
+        # The details read stays cheap (#3017): the step test (#3833) reuses the
+        # comparison's pairing, and a ride never asks for a step test.
+        self.activities.planned_adherence.side_effect = lambda _doc, paired: (
+            paired() and None
+        )
+        self.activities.step_test.return_value = None
+        for sport, step_tests in (("ride", 0), ("run", 1)):
+            with self.subTest(sport=sport):
+                self.activities.paired_planned_unit.reset_mock()
+                self.activities.step_test.reset_mock()
+                self.activities.detail.return_value = {
+                    "session": {"activity_id": "a1", "sport": sport}
+                }
+                dispatch_route(self.routes, FakeHandler(), "/api/activities/a1")
+                self.activities.paired_planned_unit.assert_called_once_with(
+                    {"activity_id": "a1", "sport": sport}
+                )
+                self.assertEqual(self.activities.step_test.call_count, step_tests)
 
 
 class _Snapshots:

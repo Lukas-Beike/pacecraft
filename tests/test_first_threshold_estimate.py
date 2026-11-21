@@ -732,11 +732,11 @@ class AdoptFlowTests(unittest.TestCase):
             {"step_test": "unknown", "heart_rate_bpm": 153},
         ):
             with self.subTest(payload=payload), self.assertRaises(AppError) as raised:
-                self.service.adopt(payload, lambda key: tests.get(key))
+                self.service.adopt(payload, tests.get(str(payload["step_test"])))
             self.assertEqual(raised.exception.status, 409)
         self.assertEqual(history(self), [])
         outcome = self.service.adopt(
-            {"step_test": "good", "heart_rate_bpm": 153}, lambda key: tests.get(key)
+            {"step_test": "good", "heart_rate_bpm": 153}, tests["good"]
         )
         self.assertTrue(outcome["adopted"])
         stored = self.profile.get()
@@ -837,12 +837,30 @@ class RouteTests(unittest.TestCase):
         handler = Mock()
         handler.read_json.return_value = {"percent_lthr": 90.0}
         self.assertTrue(dispatch_route(routes, handler, ADOPT_PATH, method="POST"))
-        # The step test reader goes with the request (#3833); the service reads it.
-        service.adopt.assert_called_once_with({"percent_lthr": 90.0}, step_test)
+        service.adopt.assert_called_once_with({"percent_lthr": 90.0}, None)
         step_test.assert_not_called()
         handler.send_json.assert_called_once_with(
             200, {"profile": {}, "first_threshold_estimate": None}
         )
+        # A step test's detail read (#3833) runs before the profile lock is taken.
+        events: list[str] = []
+        profile.mutation_coordinator = MagicMock()
+        profile.mutation_coordinator.__enter__.side_effect = lambda: events.append(
+            "lock"
+        )
+
+        def read(activity_id: str) -> dict[str, str]:
+            events.append("read")
+            return {"read": activity_id}
+
+        step_test.side_effect = read
+        handler.read_json.return_value = {"step_test": "act_1", "heart_rate_bpm": 152}
+        service.adopt.reset_mock()
+        dispatch_route(routes, handler, ADOPT_PATH, method="POST")
+        service.adopt.assert_called_once_with(
+            {"step_test": "act_1", "heart_rate_bpm": 152}, {"read": "act_1"}
+        )
+        self.assertEqual(events, ["read", "lock"])
         self.assertFalse(dispatch_route(routes, handler, "/api/profile", method="POST"))
 
 

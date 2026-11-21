@@ -14,11 +14,13 @@ individual error of the 0.5 crossing (Rogers et al. 2021b).
 import random
 import unittest
 from datetime import date
+from unittest.mock import MagicMock, Mock, patch
 
 from backend.canonical import dfa_alpha1 as dfa
 from backend.canonical.activity_detail import ActivityDfaAlpha1, DfaWindow
 from backend.canonical.vocabulary import DfaQuality
-from backend.performance import step_test
+from backend.performance import activity_read_service, step_test
+from backend.performance.activity_read_service import ActivityAnalysisReadService
 from backend.planning.session_focus import is_hard
 from backend.planning.workouts import validate_workout_description
 
@@ -102,7 +104,8 @@ class ProtocolTests(unittest.TestCase):
         # LT1 5:20 /km starts at 9.75 km/h; LT2 4:25 /km needs stage 9, plus two is 11.
         self.assertEqual(len(step_test.stage_speeds(320, 265)), 10)
         self.assertEqual(step_test.stage_speeds(320, 265)[0], 9.8)
-        for paces in ((None, None), (20, None), ("5:00", True), (5000, 0)):
+        # A 15:00 /km LT1 would start the stages at walking speed.
+        for paces in ((None, None), (20, None), ("5:00", True), (5000, 0), (900, None)):
             with self.subTest(paces=paces):
                 self.assertEqual(step_test.stage_speeds(*paces)[0], 9.5)
                 self.assertEqual(len(step_test.stage_speeds(*paces)), 10)
@@ -204,6 +207,51 @@ class EvaluationTests(unittest.TestCase):
         self.assertIsNone(
             step_test.evaluate(result, laps, DAY)["lt1"]["pace_seconds_per_km"]
         )
+
+    def test_a_stamped_unit_is_a_step_test_after_its_template_is_gone(self) -> None:
+        # The result and its adoption read the unit's own stamp; a unit planned
+        # before the stamp still counts through its live template.
+        service = ActivityAnalysisReadService(
+            Mock(),
+            Mock(),
+            Mock(),
+            canonical=MagicMock(),
+            step_test_templates=lambda: frozenset({"live"}),
+        )
+        document = {
+            "session": {
+                "activity_id": "act_1",
+                "sport": "run",
+                "started_at_local": "2026-11-20T07:00:00",
+            }
+        }
+        stamped = {"id": "u1", "template_id": "gone", "test_protocol": "run_step_test"}
+        with patch.object(
+            activity_read_service.activity_detail_store,
+            "dfa_series_results",
+            return_value=[],
+        ):
+            for unit, recognised in (
+                (stamped, True),
+                ({"id": "u2", "template_id": "live"}, True),
+                ({"id": "u3", "template_id": "gone"}, False),
+                (None, False),
+            ):
+                with self.subTest(unit=unit):
+                    result = service.step_test(document, unit)
+                    self.assertEqual(result is not None, recognised)
+            service.detail = Mock(return_value=document)  # type: ignore[method-assign]
+            service.paired_planned_unit = Mock(return_value=stamped)  # type: ignore[method-assign]
+            tested = service.step_test_for("act_1", DAY)
+            assert tested is not None
+            self.assertEqual(
+                (tested["status"], tested["activity_id"]), ("no_rr", "act_1")
+            )
+            # A ride is never paired for an adoption.
+            document["session"]["sport"] = "ride"
+            service.paired_planned_unit.reset_mock()
+            self.assertIsNone(service.step_test_for("act_1", DAY))
+            service.paired_planned_unit.assert_not_called()
 
     def test_only_step_test_templates_are_recognised(self) -> None:
         templates = [

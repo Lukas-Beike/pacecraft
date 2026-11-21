@@ -56,9 +56,16 @@ class FirstThresholdPostRoutes:
         speichern."; 404 for an unknown session.
         """
         payload = handler.read_json()
+        # The step test's detail read happens before the writer lease (#3833).
+        key = payload.get("step_test") if isinstance(payload, dict) else None
+        tested = (
+            None
+            if key is None or self._step_test is None
+            else self._step_test(str(key))
+        )
         with (
             self._profile_service().mutation_coordinator,
             self._database_manager().unit_of_work(),
         ):
-            result = self._first_threshold_service().adopt(payload, self._step_test)
+            result = self._first_threshold_service().adopt(payload, tested)
         handler.send_json(200, result)

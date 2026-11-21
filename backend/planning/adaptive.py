@@ -47,6 +47,7 @@ ADAPTIVE_REPLACEMENT_KEYS = (
     # "adaptive" marks a generic replacement that has no template (#2379).
     "source",
     TEMPLATE_ID,
+    "test_protocol",
     # Re-derived for the easier content; None removes a field that no longer fits.
     SESSION_FOCUS,
     STRENGTH_INTENSITY,
@@ -139,6 +140,7 @@ def adaptive_recovery_replacement(
         # The generic replacement is not one of the athlete's templates.
         "source": "adaptive",
         TEMPLATE_ID: None,
+        "test_protocol": None,
     }
 
 

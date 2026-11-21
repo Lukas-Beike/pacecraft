@@ -247,8 +247,11 @@ class TrainingTemplateToolTests(unittest.TestCase):
         updated: list[tuple[str, dict]] = []
 
         class Library:
-            def list(self, limit):
-                return []
+            def list(self, limit, include_archived=False):
+                return [
+                    {"id": "old", "test_protocol": "run_step_test"},
+                    {"id": "plain"},
+                ]
 
             def create_template(self, values):
                 created.append(values)
@@ -261,7 +264,11 @@ class TrainingTemplateToolTests(unittest.TestCase):
         service = TrainingTemplateToolService(lambda: manager, Library)
         intent = {
             "operation": "manage_training_templates",
-            "authorization_scope": ["local_template", "library_workout:old"],
+            "authorization_scope": [
+                "local_template",
+                "library_workout:old",
+                "library_workout:plain",
+            ],
         }
         service.execute(
             {
@@ -307,6 +314,32 @@ class TrainingTemplateToolTests(unittest.TestCase):
                 intent,
             )
         self.assertEqual(refused.exception.reason, "invalid_template_action")
+        # Only a step-test template is renewed as one; another is never rewritten.
+        for local_id in ("plain", "missing"):
+            with (
+                self.subTest(local_id=local_id),
+                self.assertRaises(AppError) as refused,
+            ):
+                service.execute(
+                    {
+                        "templates": [
+                            {
+                                "action": "update",
+                                "local_id": local_id,
+                                "step_test": {
+                                    "lt1_pace_seconds_per_km": None,
+                                    "lt2_pace_seconds_per_km": None,
+                                },
+                            }
+                        ]
+                    },
+                    intent,
+                )
+            self.assertEqual(
+                (refused.exception.status, refused.exception.reason),
+                (400, "invalid_template_action"),
+            )
+        self.assertEqual(len(updated), 1)
 
 
 if __name__ == "__main__":

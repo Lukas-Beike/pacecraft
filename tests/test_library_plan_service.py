@@ -269,6 +269,7 @@ class LibraryPlanServiceTests(unittest.TestCase):
                 duration_minutes=None,
                 planned_duration_s=600,
                 target=None,
+                test_protocol="run_step_test",
             ),
         ]
         for local_id, source in zip(ids, sources):
@@ -323,6 +324,8 @@ class LibraryPlanServiceTests(unittest.TestCase):
                     "description": "- 10m 60%",
                     "duration_minutes": 10,
                     "target": "AUTO",
+                    # The step-test unit outlives its template (#3833).
+                    "test_protocol": "run_step_test",
                     "source": "library",
                     "template_id": ids[1],
                     "rationale": "Aus der lokalen Trainingsbibliothek übernommen.",
@@ -341,6 +344,10 @@ class LibraryPlanServiceTests(unittest.TestCase):
         )
         rows, history, revision = self.state()
         self.assertEqual(len(rows), 2)
+        self.assertEqual(
+            [json.loads(row["payload"]).get("test_protocol") for row in rows],
+            [None, "run_step_test"],
+        )
         self.assertEqual(len(history), 2)
         self.assertEqual([row["source"] for row in history], ["local", "local"])
         self.assertEqual(revision, 2)

@@ -11,8 +11,9 @@ const { pathToFileURL } = require("node:url");
 const FIXTURE_SKIPS = { "Kalender: Laufdynamik": /^skip \(none of [1-9]\d* has it\)$/, "Kalender: Streckenhistorie": /^skip \(none of [1-9]\d* has it\)$/, "Analyse: Kraft": /^skip \(none of 1 has it\)$/ };
 
 test("@responsive every UI walk step passes on the fixture app", async ({ page, request }) => {
-  // Every step of every view runs in one test; with the step test steps (#3833) it outgrew 60 s.
-  test.setTimeout(180_000);
+  // Every step of every view runs in one test; with the step test steps (#3833) it took 52 to 61 s in
+  // six local desktop and mobile runs, so 60 s no longer fits: 90 s is the slowest run plus half again.
+  test.setTimeout(90_000);
   const { VIEWS, STEPS, runStep } = await import(pathToFileURL(path.join(__dirname, "..", "scripts", "ui_walk.mjs")).href);
   // One test walks every step, so its time grows with STEPS: the 35 steps at #3866 took 55-59 s
   // of the default 60 s on a Windows Docker host. A budget per step keeps the margin as steps are added.
@@ -31,13 +32,9 @@ test("@responsive every UI walk step passes on the fixture app", async ({ page, 
     const stored = calendar.find((entry) => entry.local_id && !entry.is_completed_activity && !entry.compliance?.actual_activity && entry.date > today && /ride|run/i.test(`${entry.type} ${entry.sport}`));
     const moved = (entry) => ({ ...entry, date: today, starts_at_local: entry.starts_at_local && `${today}${entry.starts_at_local.slice(10)}`, duration_minutes: 150, planned_duration_s: 9000 });
     // Completed units are not moved: on a Monday the walk's completed-unit steps page back themselves (`seek`).
-    // The fixture plans no running step test (#3833): today's moved unit and the completed runs act as one.
-    const stepTest = (entry) => ({ ...entry, test_protocol: "run_step_test" });
-    const completedRun = (entry) => (entry.is_completed_activity || entry.compliance?.actual_activity) && /run/i.test(`${entry.type} ${entry.sport}`);
-    data.training_calendar = calendar.map((entry) => {
-      if (entry === stored) return stepTest(moved(entry));
-      return completedRun(entry) ? stepTest(entry) : entry;
-    });
+    // The fixture plans no running step test (#3833): every planned and completed run acts as one.
+    const stepTest = (entry) => (/run/i.test(`${entry.type} ${entry.sport}`) ? { ...entry, test_protocol: "run_step_test" } : entry);
+    data.training_calendar = calendar.map((entry) => stepTest(entry === stored ? moved(entry) : entry));
     // The fixture's nights are ordinary, so today carries a synthetic infection hint (M14, #3762).
     const signal = (label, value, unit, lower, upper) => ({ label, value, unit, lower, upper, source: "Garmin Connect", unusual: true });
     const hint = { method: "infection-hint-v1", status: "hint", signals: [signal("Atemfrequenz", 17, "brpm", 14, 15), signal("Ruhepuls", 56, "bpm", 48, 51)], limits: "Keine Diagnose." };

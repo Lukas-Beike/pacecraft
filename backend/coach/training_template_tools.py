@@ -49,7 +49,10 @@ class TrainingTemplateToolService:
             )
 
         # A step test is built by the server from the paces the Coach read (#3833).
-        templates = [_with_protocol(template) for template in templates]
+        templates = [
+            _with_protocol(template, self._workout_library_service)
+            for template in templates
+        ]
         actions: list[tuple[str, str]] = []
         for template in templates:
             action = str(template.get("action") or "create").strip().casefold()
@@ -92,23 +95,40 @@ class TrainingTemplateToolService:
         }
 
 
-def _with_protocol(template: dict[str, Any]) -> dict[str, Any]:
+def _with_protocol(
+    template: dict[str, Any], library: Callable[[], Any]
+) -> dict[str, Any]:
     """A create or update with ``step_test`` takes the server-built running step test.
 
-    An update renews the stages of an existing step-test template from today's paces.
+    An update renews the stages of an existing step-test template from today's
+    paces; another template is refused.
     """
     paces = template.get("step_test")
     if not isinstance(paces, dict):
         return template
-    if str(template.get("action") or "create").strip().casefold() not in (
-        "create",
-        "update",
-    ):
+    action = str(template.get("action") or "create").strip().casefold()
+    if action not in ("create", "update"):
         raise AppError(
             400,
             "Den Stufentest nur anlegen oder erneuern.",
             reason="invalid_template_action",
         )
+    if action == "update":
+        local_id = str(template.get("local_id") or "").strip()
+        target = next(
+            (
+                item
+                for item in library().list(1000, include_archived=True)
+                if str(item.get("id")) == local_id
+            ),
+            None,
+        )
+        if target is None or target.get("test_protocol") != step_test.PROTOCOL:
+            raise AppError(
+                400,
+                "Nur eine Stufentest-Vorlage lässt sich als Stufentest erneuern.",
+                reason="invalid_template_action",
+            )
     return {
         key: value
         for key, value in template.items()

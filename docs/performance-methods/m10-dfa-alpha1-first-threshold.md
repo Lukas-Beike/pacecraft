@@ -117,7 +117,7 @@ sends its steps, nothing else writes remotely):
 1. Warm-up 10 min from 1.5 to 0.5 km/h slower than stage 1 (slower than LT1).
 2. Stages of 3 min with pace targets, each 0.5 km/h faster. Stage 1 lies
    1.5 km/h below the current run LT1 pace (rounded to 0.1 km/h); without a
-   plausible LT1 pace (2:30 to 15:00 /km) it is 9.5 km/h (6:19 /km).
+   plausible LT1 pace (2:30 to 9:00 /km) it is 9.5 km/h (6:19 /km).
 3. The stages run to the second stage beyond the first one at or above the
    current LT2 (threshold) pace, at most 10 and at least 6 stages; without an
    LT2 pace all 10.
@@ -311,7 +311,7 @@ comparable.
 | Step test warm-up and cool-down | 10 min each, 1.5 to 0.5 km/h below stage 1 | product assumption | Athlete decision P1. `WARMUP_MIN`, `COOLDOWN_MIN`, `EASY_RANGE_KMH`. |
 | Step test stage laps | 150 to 210 s | product assumption | A 3-minute step lap; a shorter last stage was not held. `STAGE_LAP_S`. |
 | Step test `good` | at least 6 analysable stages | product assumption | Athlete decision (#3833), on top of the recording rules. `MIN_GOOD_STAGES`. |
-| Step test plausible paces | 2:30 to 15:00 /km | product assumption | Another LT1 or LT2 pace counts as unknown. `PACE_BOUNDS_S`. |
+| Step test plausible paces | 2:30 to 9:00 /km | product assumption | Another LT1 or LT2 pace counts as unknown. `PACE_BOUNDS_S`. |
 
 ## Allowed statements
 
@@ -397,7 +397,7 @@ comparable.
 | `MAX_STAGES` | `10` | `backend/performance/step_test.py` |  |
 | `MIN_GOOD_STAGES` | `6` | `backend/performance/step_test.py` |  |
 | `EASY_RANGE_KMH` | `(1.5, 0.5)` | `backend/performance/step_test.py` | The warm-up and cool-down range lies this far below stage 1 (km/h). |
-| `PACE_BOUNDS_S` | `(150.0, 900.0)` | `backend/performance/step_test.py` | Plausible run paces (s/km); another value counts as unknown. |
+| `PACE_BOUNDS_S` | `(150.0, 540.0)` | `backend/performance/step_test.py` | Plausible run paces (s/km); another value counts as unknown. |
 | `STAGE_LAP_S` | `(150.0, 210.0)` | `backend/performance/step_test.py` | A recorded lap of this length (s) is one stage; a shorter last one was not held. |
 | `END_NOTE` | `'Ende: wenn die Stufe nicht mehr zu halten ist, spätestens nach Stufe {last}.'` | `backend/performance/step_test.py` |  |
 | `SOURCE` | `'abgeleitet'` | `backend/performance/step_test.py` |  |
