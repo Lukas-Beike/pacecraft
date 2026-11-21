@@ -155,6 +155,46 @@ class PlanningCompetitionTests(unittest.TestCase):
                 {"planned_duration_s": "bad"}
             )
 
+    def test_the_goal_travels_as_the_last_description_line(self) -> None:
+        # #3908, athlete decision: "Ziel: <goal>" in the description, never `target`.
+        base = {"id": "r", "event_date": "2026-10-04", "sport": "Running"}
+        cases = (
+            (
+                {"description": "Hinweis", "target": "unter 45"},
+                "Hinweis\n\nZiel: unter 45",
+            ),
+            ({"target": "unter 45"}, "Ziel: unter 45"),
+            ({"description": "Hinweis"}, "Hinweis"),
+        )
+        for extra, expected in cases:
+            with self.subTest(extra=extra):
+                payload = competitions.competition_event_payload({**base, **extra})
+                self.assertEqual(expected, payload["description"])
+                self.assertNotIn("target", payload)
+        long = competitions.competition_event_payload(
+            {**base, "description": "D" * 12010, "target": "unter 45"}
+        )["description"]
+        self.assertLessEqual(len(long), 12000)
+        self.assertTrue(long.endswith("\n\nZiel: unter 45"))
+        # Read back, the app's own last line neither duplicates nor becomes the goal.
+        remote = competitions.remote_competition_data(
+            {
+                "date": "2026-10-04",
+                "name": "Race",
+                "type": "Run",
+                "description": "Hinweis\n\nZiel: unter 45",
+            }
+        )
+        assert remote is not None
+        self.assertEqual(
+            ("Hinweis", "Hinweis"), (remote["description"], remote["notes"])
+        )
+        self.assertNotIn("target", remote)
+        self.assertEqual(
+            "Ziel: früh starten\nRest",
+            competitions.remote_description_without_goal("Ziel: früh starten\nRest"),
+        )
+
     def test_event_payload_fallbacks_limits_and_input_immutability(self) -> None:
         source = {
             "id": "race-id",
@@ -175,7 +215,10 @@ class PlanningCompetitionTests(unittest.TestCase):
         self.assertEqual(payload["start_date_local"], "2026-10-04T00:00:00")
         self.assertEqual(payload["type"], "Run")
         self.assertEqual(payload["name"], "N" * 200)
-        self.assertEqual(payload["description"], "D" * 12000)
+        # The long description gives way to the goal line, within the 12000 limit (#3908).
+        self.assertLessEqual(len(payload["description"]), 12000)
+        self.assertTrue(payload["description"].startswith("D" * 11000))
+        self.assertTrue(payload["description"].endswith('\n\nZiel: ["finish"]'))
         self.assertEqual(payload["external_id"], "intervals-coach-competition-race-id")
         self.assertEqual(payload["distance"], 10.5)
         self.assertNotIn("target", payload)

@@ -116,6 +116,32 @@ def competition_event_optional_payload(competition: dict[str, Any]) -> dict[str,
     return payload
 
 
+# The goal travels as the description's last line (athlete decision, #3908);
+# Intervals.icu's `target` is the workout target type, never the goal.
+COMPETITION_GOAL_PREFIX = "Ziel: "
+
+
+def competition_description_with_goal(competition: dict[str, Any]) -> str:
+    """The sent description: the local text plus a "Ziel: <goal>" line when set."""
+    limit = COMPETITION_TEXT_LIMITS["description"]
+    text = str(competition.get("description") or competition.get("notes") or "")
+    goal = competition_target(competition.get("target"))
+    if not goal:
+        return text[:limit]
+    line = f"{COMPETITION_GOAL_PREFIX}{goal}"
+    # A long description gives way, so the goal line is always the last line.
+    body = text.rstrip()[: max(0, limit - len(line) - 2)].rstrip()
+    return f"{body}\n\n{line}" if body else line
+
+
+def remote_description_without_goal(value: Any) -> str:
+    """A remote description without the app's own trailing "Ziel:" line."""
+    lines = str(value or "").rstrip().split("\n")
+    if lines and lines[-1].startswith(COMPETITION_GOAL_PREFIX):
+        lines.pop()
+    return "\n".join(lines).strip()
+
+
 def competition_event_payload(competition: dict[str, Any]) -> dict[str, Any]:
     category = str(competition.get("category") or "").upper()
     if category not in {"RACE_A", "RACE_B", "RACE_C"}:
@@ -132,9 +158,7 @@ def competition_event_payload(competition: dict[str, Any]) -> dict[str, Any]:
         ),
         "type": competition_provider_type(competition),
         "name": str(competition.get("name") or "Zielwettkampf")[:200],
-        "description": str(
-            competition.get("description") or competition.get("notes") or ""
-        )[:12000],
+        "description": competition_description_with_goal(competition),
         "external_id": str(
             competition.get("external_id")
             or competition_external_id(str(competition["id"]))
@@ -194,7 +218,7 @@ def remote_competition_data(event: dict[str, Any]) -> dict[str, Any] | None:
     )[:19]
     planned_duration_s = remote_competition_moving_time(event.get("planned_duration_s"))
     distance = remote_competition_distance(event.get("distance"))
-    description = str(event.get("description") or "").strip()[
+    description = remote_description_without_goal(event.get("description"))[
         : COMPETITION_TEXT_LIMITS["description"]
     ]
     return {

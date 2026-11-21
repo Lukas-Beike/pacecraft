@@ -90,7 +90,7 @@ The system SHALL keep remote pushes explicit and output-only (Intervals.icu rece
 
 #### Scenario: Named approved push
 - **WHEN** the athlete explicitly requests competition synchronization, and the manifest is frozen when the request runs
-- **THEN** outbound writes use stable identity and supported sport payloads, with concurrent local edits checked before marking captured records synced. The competition goal (`target`) is never sent: Intervals.icu's event `target` is the workout target type (AUTO, POWER, HR, PACE), so the goal stays local (#3908).
+- **THEN** outbound writes use stable identity and supported sport payloads, with concurrent local edits checked before marking captured records synced. The competition goal (`target`) is never sent as the event `target` (Intervals.icu's workout target type: AUTO, POWER, HR, PACE); it travels as the description's last line "Ziel: <goal>", and on read-back that line is dropped so it neither duplicates nor overwrites the local goal (#3908).
 
 #### Scenario: Conflict choice
 - **WHEN** a stored conflict is resolved as keep_local or adopt_remote

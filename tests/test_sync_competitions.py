@@ -912,6 +912,9 @@ class CompetitionSyncReconcilerTests(unittest.TestCase):
             manifest = competition_push_manifest(db)
         service.sync(expected_manifest=manifest)
         self.assertNotIn("target", client.upsert_calls[0][0])
+        self.assertTrue(
+            client.upsert_calls[0][0]["description"].endswith("Ziel: unter 45 Minuten")
+        )
         # A rejection that names a field is recorded with that name only.
         rejected = AppError(
             502,
