@@ -288,7 +288,7 @@ The app SHALL keep verified encrypted copies of the database without athlete act
 
 #### Scenario: Nightly copy
 - **WHEN** the periodic loop runs at or after 03:30 local time and the backup directory holds no nightly copy from that local day
-- **THEN** it writes the backup download's snapshot (same key, integrity and foreign key checks) into that directory and renames it to `<database name>.auto-nightly-<14 digits>` only after the checks passed; a failure is logged with its error class, recorded for the diagnostics, retried on the next pass and never blocks the app
+- **THEN** it writes the backup download's snapshot (same key, integrity and foreign key checks) into that directory and renames it to `<database name>.auto-nightly-<14 digits>` only after the checks passed; a failure is logged with its error class, recorded for the diagnostics, retried an hour later and never blocks the app
 
 #### Scenario: Before a migration
 - **WHEN** startup finds a supported older schema that will be upgraded
