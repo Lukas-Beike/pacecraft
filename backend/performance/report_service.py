@@ -423,7 +423,7 @@ class TrainingProfileSelectionService:
         """
         return {
             "all_time": self._all_time_window(self._today()),
-            "scope": "Rekorde aller gespeicherten Einheiten wie in Analyse › Rekorde: beste Leistung je Dauer (outdoor und indoor getrennt), beste Laufzeiten je Strecke und activity_records (weiteste, längste und höchste Einzelfahrt ohne Indoor-Fahrten und Einzellauf). status pending oder failed heißt unbekannt, nicht kein Rekord; stale heißt, ein neuerer Stand wird gerade berechnet.",
+            "scope": "Rekorde aller gespeicherten Einheiten wie in Analyse › Rekorde: beste Leistung je Dauer (outdoor und indoor getrennt), beste Laufzeiten je Strecke und activity_records (weiteste, längste und höchste Einzelfahrt (ohne Indoor-Fahrten) sowie Einzellauf, je Distanz, Bewegungszeit und Höhenmeter). status pending oder failed heißt unbekannt, nicht kein Rekord; stale heißt, ein neuerer Stand wird gerade berechnet.",
         }
 
     def _power_meter_changes(self) -> list[dict[str, Any]]:
