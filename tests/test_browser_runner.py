@@ -734,6 +734,8 @@ class BrowserRunnerTests(unittest.TestCase):
             f"docker build -t {runner.worktree_image_tag(runner.ROOT)} .",
             value["error"],
         )
+        # #3737: the stale-image error names --build too.
+        self.assertIn("or pass --build", value["error"])
         self.assertFalse(fake.ids)
         # The manifest still names the rejected image and never reached the browser.
         self.assertIs(False, value["images"]["application_matches_source"])
@@ -776,6 +778,7 @@ class BrowserRunnerTests(unittest.TestCase):
         self.assertNotEqual(code, 0)
         self.assertIn(build, fake.commands)
         self.assertIn("does not match", value["error"])
+        self.assertNotIn("pass --build", value["error"])  # #3737: already passed
         self.assertFalse(fake.ids)
         # A current image is never rebuilt.
         fake = FakeProcesses()
