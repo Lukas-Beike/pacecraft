@@ -1068,7 +1068,7 @@ function renderNutritionProducts(products, { local = true, targetId = "#nutritio
   if (!target) return;
   // A section opened just before this render keeps its state even before its toggle event ran (#3735).
   if (targetId === "#nutritionProducts") {
-    for (const node of [...target.children]) if (Object.hasOwn(nutritionProductSectionsOpen, node.dataset?.section ?? "")) nutritionProductSectionsOpen[node.dataset.section] = node.open;
+    for (const node of target.children) if (Object.hasOwn(nutritionProductSectionsOpen, node.dataset?.section ?? "")) nutritionProductSectionsOpen[node.dataset.section] = node.open;
   }
   target.replaceChildren();
   if (!products?.length) { target.textContent = "Keine Produkte gefunden."; return; }
