@@ -167,8 +167,9 @@ Before auto-merge is armed, watch with the host's PR watcher when available
 (`watch_pull_request`), and yield; otherwise poll about every 30 seconds. Once
 it is armed, do not yield: the watcher does not reliably wake on the merge
 itself (#2795). Wait with [pr-merge](../pacecraft-pr-merge/SKILL.md) `--wait`
-in the same turn; after the merge run the develop-run check at once; on its
-exit 1 handle the cause as below. On each wake:
+in the same turn; after the merge run the develop-run check at once, with
+`--wait <minutes>` while runs are pending (#3721); on its exit 1 handle the
+cause as below. On each wake:
 
 - Read the current head, checks, threads and comments with
   [pr-state](../pacecraft-pr-state/SKILL.md). For each open item: fix it if
