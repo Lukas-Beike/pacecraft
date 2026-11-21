@@ -15,8 +15,13 @@ NOTICE_BASELINE_PATH = "/api/zones/lt2/notice-baseline"
 class SecondThresholdPostRoutes:
     """Store one shown LT2 estimate value as the threshold on the athlete's request."""
 
-    def __init__(self, service: Callable[[], SecondThresholdService]) -> None:
+    def __init__(
+        self,
+        service: Callable[[], SecondThresholdService],
+        step_test: Callable[[str], Any] | None = None,
+    ) -> None:
         self._service = service
+        self._step_test = step_test
 
     def routes(self) -> list[Route]:
         return [
@@ -30,10 +35,13 @@ class SecondThresholdPostRoutes:
         """Adopt one value of a local LT2 estimate as the threshold in effect.
 
         Request: JSON body `{"sport": "run" | "ride", "source": "dfa_alpha1" |
-        "critical_speed" | "critical_power", "value": "heart_rate" | "pace" |
-        "power", "shown": number, "confirm_deviation": boolean, "replace_local":
-        boolean}`. `shown` is the number `GET /api/profile` showed in
-        `lt2_estimates` (bpm, s/km or W).
+        "critical_speed" | "critical_power" | "step_test", "value": "heart_rate" |
+        "pace" | "power", "shown": number, "confirm_deviation": boolean,
+        "replace_local": boolean, "activity_id": string}`. `shown` is the number
+        `GET /api/profile` showed in `lt2_estimates` (bpm, s/km or W); for
+        `step_test` (runs, #3833) it is `step_test.lt2` of `GET
+        /api/activities/{activity_id}`, adopted only when good, with the origin
+        `dfa_alpha1`.
 
         Response: 200 `{"configuration": object, "change": object | null}`, the
         receipt of the local zone configuration saved from today with the zone
@@ -47,7 +55,7 @@ class SecondThresholdPostRoutes:
         `confirm_deviation: true`) or `lt2_zone_limits` (the absolute zone limits
         do not fit the new threshold).
         """
-        result = self._service().adopt(handler.read_json())
+        result = self._service().adopt(handler.read_json(), self._step_test)
         handler.send_json(200, result)
 
     def _notice_baseline(self, handler: Any, _request: RouteRequest) -> None:

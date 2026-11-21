@@ -373,7 +373,9 @@ def last_tests(
     """Day of the last test or race per sport before today, else None.
 
     A planned test counts only when a completed activity of its sport exists
-    on its day; local units carry no completion state of their own.
+    on its day; local units carry no completion state of their own. A protocol
+    test such as the running step test keeps its own rhythm and does not count
+    (athlete decision, #3833).
     """
     first = (today - timedelta(days=LAST_TEST_DAYS)).isoformat()
     done = {
@@ -389,6 +391,7 @@ def last_tests(
             and first <= day < today.isoformat()
             and (sport, day) in done
             and session_focus(unit).value == "test"
+            and not unit.get("test_protocol")
         ):
             days[sport].append(day)
     for row in competitions:

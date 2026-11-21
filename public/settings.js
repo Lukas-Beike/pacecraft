@@ -706,7 +706,8 @@ function chooseLt2Values(row) {
   const dialog = $("#lt2AdoptDialog");
   if (!dialog) return Promise.resolve([]);
   $("#lt2AdoptTitle").textContent = `${row.name} übernehmen`;
-  $("#lt2AdoptMessage").textContent = `Als ${zoneSport === "ride" ? "Anaerob (LT2) / FTP" : "Anaerob (LT2)"} ${zoneSport === "ride" ? "Radfahren" : "Laufen"}, gilt ab heute.`;
+  const ride = (row.sport || zoneSport) === "ride";
+  $("#lt2AdoptMessage").textContent = `Als ${ride ? "Anaerob (LT2) / FTP" : "Anaerob (LT2)"} ${ride ? "Radfahren" : "Laufen"}, gilt ab heute.`;
   const boxes = row.adopt.map((item) => h("input", { type: "checkbox", checked: true, value: item.value }));
   $("#lt2AdoptValues").replaceChildren(...row.adopt.map((item, index) => h("label", "chip", boxes[index], h("span", null, item.label))));
   return new Promise((resolve) => {
@@ -733,8 +734,10 @@ async function adoptLt2(sport, row, button) {
 // One value; the server asks for the second step above 5 % (F9) or before replacing an entered value.
 async function adoptLt2Value(sport, row, item, flags) {
   try {
-    const result = await api("/api/zones/lt2/adopt", { method: "POST", body: JSON.stringify({ sport, source: row.source, value: item.value, shown: item.shown, ...flags }) });
+    const result = await api("/api/zones/lt2/adopt", { method: "POST", body: JSON.stringify({ sport, source: row.source, value: item.value, shown: item.shown, ...(row.activity_id ? { activity_id: row.activity_id } : {}), ...flags }) });
     showZoneReceipt(`${row.name}: ${item.label} übernommen`, result.change);
+    // From the calendar's step test (#3833) the zone receipt is out of view; undo stays in the zones.
+    if (row.activity_id) toast(`${row.name}: ${item.label} übernommen`);
     await reloadZonesAndThresholds();
     return true;
   } catch (error) {

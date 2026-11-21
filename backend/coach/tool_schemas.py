@@ -813,6 +813,23 @@ def build_structured_tool_schemas(
                             "strength_intensity": STRENGTH_INTENSITY_SCHEMA,
                             "strength_structure": STRENGTH_STRUCTURE_SCHEMA,
                             "hr_cap": HR_CAP_SCHEMA,
+                            "step_test": {
+                                "type": ["object", "null"],
+                                "additionalProperties": False,
+                                "required": [
+                                    "lt1_pace_seconds_per_km",
+                                    "lt2_pace_seconds_per_km",
+                                ],
+                                "description": "Running step test for LT1 and LT2 (DFA-α1, chest strap): the server builds name, steps, duration and focus; leave the other fields out. lt1 from current_performance.thresholds.first_thresholds.run.pace_seconds_per_km, lt2 from current_performance.metrics.run_threshold_pace_seconds_per_km (s/km); null when unknown. update renews an existing step-test template's stages.",
+                                "properties": {
+                                    "lt1_pace_seconds_per_km": {
+                                        "type": ["number", "null"]
+                                    },
+                                    "lt2_pace_seconds_per_km": {
+                                        "type": ["number", "null"]
+                                    },
+                                },
+                            },
                             "new_because": {
                                 "type": "string",
                                 "minLength": 3,

@@ -1,5 +1,6 @@
 """Server integration tests for frontend."""
 
+import html
 import json
 import re
 import shutil
@@ -531,6 +532,48 @@ class ServerFrontendTests(ServerTestCase):
         app_source = frontend_source()
         self.assertNotIn("window.confirm", app_source)
         self.assertNotIn("window.prompt", app_source)
+
+    def test_page_wide_label_queries_name_one_label_of_the_page(self):
+        # #3864: Playwright label queries also match fields in closed dialogs, so a
+        # page-wide `page.getByLabel` that a second label of index.html also answers
+        # breaks in strict mode when a dialog adds that label (#3856's "Name").
+        # Scope such a query to its form or dialog instead.
+        markup = (server.PUBLIC_DIR / "index.html").read_text(encoding="utf-8")
+
+        def text(value: str) -> str:
+            # Playwright's label text: the label's own text, whitespace collapsed.
+            bare = " ".join(part.split(">", 1)[-1] for part in value.split("<"))
+            return " ".join(html.unescape(bare).split())
+
+        controls = r"<(select|textarea)\b.*?</\1>|<input\b[^>]*>"
+        labels = [
+            text(re.sub(controls, " ", inner, flags=re.DOTALL))
+            for inner in re.findall(r"<label\b[^>]*>(.*?)</label>", markup, re.DOTALL)
+        ]
+        query = re.compile(
+            r"page\.getByLabel\(\s*([\"'])(.+?)\1(\s*,\s*\{[^}]*exact:\s*true)?"
+        )
+        shared = []
+        for spec in sorted((server.PUBLIC_DIR.parent / "e2e").rglob("*.js")):
+            source = spec.read_text(encoding="utf-8")
+            matches = list(query.finditer(source))
+            # A call shape the pattern does not read must fail, not pass unseen.
+            self.assertEqual(source.count("page.getByLabel("), len(matches), spec.name)
+            for match in matches:
+                name, exact = text(match.group(2)), bool(match.group(3))
+                hits = [
+                    label
+                    for label in labels
+                    if (label == name if exact else name.lower() in label.lower())
+                ]
+                if len(hits) > 1:
+                    shared.append(f"{spec.name}: {name!r} matches {hits}")
+        self.assertEqual(
+            [],
+            shared,
+            "scope the query to its form or dialog: "
+            "page.locator('#form').getByLabel(...)",
+        )
 
     def test_browser_regression_contract_covers_routes_and_responsive_guards(
         self,

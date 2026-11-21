@@ -727,11 +727,23 @@ class CoachActivityReadToolService:
             strength = _strength_plan(detail, session, result.get("focus"), paired)
             if strength is not None:
                 result["strength_plan"] = strength
+            result.update(self._step_test(detail, paired, calendar))
             # Code judges every deterministic check; the Coach explains (#3084).
             result["session_report"] = self._session_report(
                 result, session, paired, nearby
             )
         return result
+
+    def _step_test(
+        self,
+        detail: Mapping[str, Any],
+        paired: list[dict[str, Any]] | None,
+        calendar: bool,
+    ) -> dict[str, Any]:
+        """The run step test result (#3833) of the unit the calendar pairs, if one."""
+        unit = paired[0] if calendar and paired else None
+        tested = self._activity_read.step_test(detail, unit)
+        return {} if tested is None else {"step_test": tested}
 
     def _session_report(
         self,

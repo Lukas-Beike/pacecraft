@@ -21,6 +21,8 @@ References (only author and year appear in the model text):
   laboratory lactate threshold (27 runners).
 - Buchheit 2014, Front Physiol 5:73, monitoring training status with
   submaximal heart-rate measures.
+- Rogers et al. 2021, Front Physiol 11:596567 and J Funct Morphol Kinesiol
+  6:38, DFA-a1 thresholds in incremental running (step test, card M10).
 """
 
 from __future__ import annotations
@@ -48,7 +50,8 @@ _SEASON_PHASE = "- Phase per planned week from planning_brief.season_phase (base
 
 _TESTS = """Tests (session_focus test):
 - When planning_brief.last_tests is 6 to 8 weeks old or null for a sport, plan its test, run and ride in different weeks, after a lighter week or at a block start: a run critical-speed test (3600, 2400, 1200 m on a track or measured flat route, about 30 min easy between; Galbraith 2014), without either a 30-min time trial (McGehee 2005); a Zwift FTP ramp test. None in the last 2 weeks before an A race or with illness or poor recovery; a race counts as a test.
-- Every 2 to 4 weeks an easy run may be a control run at a fixed heart rate on one route (Buchheit 2014): session_focus easy, named in the description."""
+- Every 2 to 4 weeks an easy run may be a control run at a fixed heart rate on one route (Buchheit 2014): session_focus easy, named in the description.
+- Run step test (LT1 and LT2 from DFA-α1, chest strap; Rogers 2021): when the athlete asks, via manage_training_templates step_test; only rested, never the day after a hard day or with illness."""
 
 _THRESHOLDS = "- Watt, pace and heart-rate targets use current_performance.thresholds, the values plans use. If ftp_conflict, name the ftp_alternatives value once."
 _PRECEDENCE = "- Precedence: illness, competitions, calendar markers; science defaults; the athlete's availability (8b). Justify deviations."

@@ -116,8 +116,10 @@ def _planned_segment(
     step: dict[str, Any], axis: str, settings: ZoneSettings
 ) -> tuple[dict[str, Any], str, bool] | None:
     target = step["target"]
+    if ":" in target:
+        return _absolute_pace_segment(step, axis, settings)
     numbers = re.findall(r"\d+(?:\.\d+)?", target)
-    if not numbers or ":" in target:
+    if not numbers:
         return None
     low, high = float(numbers[0]), float(numbers[-1])
     value = (low + high) / 2
@@ -147,6 +149,45 @@ def _planned_segment(
     if target_range := _target_range(step["kind"], target, zone, (low, high), settings):
         segment["range"] = target_range
     return segment, unit, estimated
+
+
+_PACE_VALUE = re.compile(r"(\d{1,2}):([0-5]\d)")
+# Paces per mile, 100 m and the other non-km lengths have no km range.
+_OTHER_PACE = re.compile(r"/(?!KM\b)", re.IGNORECASE)
+
+
+def _absolute_pace_segment(
+    step: dict[str, Any], axis: str, settings: ZoneSettings
+) -> tuple[dict[str, Any], str, bool] | None:
+    """A ``m:ss/km`` pace step (#3833): its speed (m/s) and its pace range.
+
+    The zone is colored from the threshold pace in effect, so it is estimated.
+    """
+    target = step["target"]
+    paces = [int(m) * 60 + int(s) for m, s in _PACE_VALUE.findall(target)]
+    if (
+        step["kind"] != "pace"
+        or not paces
+        or min(paces) <= 0
+        or _OTHER_PACE.search(target)
+    ):
+        return None
+    speed = sum(1000 / pace for pace in paces) / len(paces)
+    zone = (
+        settings.pace_zone(speed / settings.threshold_pace * 100)
+        if settings.threshold_pace
+        else None
+    )
+    segment = {
+        axis: step[axis],
+        "value": speed,
+        "end_value": speed,
+        "zone": zone,
+        "label": target,
+        # Faster is more intense: the slower end comes first.
+        "range": {"unit": "s/km", "min": max(paces), "max": min(paces)},
+    }
+    return segment, "m/s", zone is not None
 
 
 # The unit of each step kind's range, and its zone limits and reference on a day.

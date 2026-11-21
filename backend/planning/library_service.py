@@ -322,6 +322,11 @@ class WorkoutLibraryService:
                     for key in FOCUS_KEYS
                     if workout.get(key) is not None
                 },
+                **(
+                    {"test_protocol": workout["test_protocol"]}
+                    if workout.get("test_protocol")
+                    else {}
+                ),
                 "source": "coach",
             }
         )

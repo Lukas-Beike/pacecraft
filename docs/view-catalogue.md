@@ -150,6 +150,7 @@ texts.
 | `public/diagnostics.js` `deleteDiagnostics` | Diagnose löschen? | Diagnosedaten wirklich löschen? | Bestätigen |
 | `public/nutrition.js` `deleteNutritionEntry` | Mahlzeit löschen? | (computed) `` `Mahlzeit „${item.description}“ wirklich löschen?` `` | Löschen |
 | `public/nutrition.js` `deleteNutritionProduct` | Aktion bestätigen | (computed) ` question ` | Bestätigen |
+| `public/plan-views.js` `adoptStepTestValue` | Gemessenen Wert ersetzen? | Der gemessene Wert wird durch den Wert aus dem Stufentest ersetzt. | Ersetzen |
 | `public/provider-connections.js` `changeMetricExportField` | Intervals.icu-Abgleich | (computed) ` message ` | Bestätigen |
 | `public/provider-connections.js` `configureAutomaticMetricExport` | (computed) ` enabled ? "Automatischen Abgleich aktivieren?" : "Automatischen Abgleich deaktivieren?" ` | (computed) ` message ` | Bestätigen |
 | `public/provider-connections.js` `clearProviderCredential` | (computed) `` `${label} entfernen?` `` | (computed) `` `${label} aus der App entfernen? Danach gilt wieder der Wert aus der Serverumgebung, falls dort einer gesetzt ist.` `` | Bestätigen |

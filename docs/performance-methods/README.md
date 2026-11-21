@@ -244,6 +244,8 @@ accessible text, not a declared absence.
 | R73 | Cunningham 1991, "Body composition as a determinant of energy expenditure: a synthetic review and a proposed general prediction equation", Am J Clin Nutr 54(6):963-969 | abstract (record) | General equation REE = 370 + 21.6 FFM, explaining 65-90 % of the variation; the formula known as Katch-McArdle. |
 | R74 | American College of Sports Medicine, "ACSM's Guidelines for Exercise Testing and Prescription", metabolic equations | secondary sources | Walking: VO2 = 0.1 x S + 1.8 x S x G + 3.5 mL/kg/min (S in m/min, G as a fraction); the horizontal term is 0.1 mL O2/kg/m, valid for about 50-100 m/min. Reproduced identically by several secondary sources citing the 6th and 7th editions; the current edition's text was not checked. |
 | R75 | Schmidt-Nielsen 1984, "Scaling: Why is animal size so important?", Cambridge University Press | secondary source (BioNumbers 110782) | Conventional energy equivalent of oxygen: 20.1 kJ per litre O2 for a mixed diet; it varies about 19.5-21.1 kJ/L with the fuel mix. |
+| R76 | Rogers, Giles, Draper, Mourot & Gronwald 2021, "Detection of the Anaerobic Threshold in Endurance Sports: Validation of a New Method Using Correlation Properties of Heart Rate Variability", J Funct Morphol Kinesiol 6(2):38, DOI `10.3390/jfmk6020038` | abstract | 15 recreational male runners, Bruce treadmill protocol with 3-minute stages, ECG RR series. HR at DFA-α1 0.5 against gas-exchange VT2: bias −4 ± 10 bpm, limits of agreement −24 to +16 bpm. Treadmill, men only. |
+| R77 | Van Hooren, Mennen, Gronwald, Bongers & Rogers 2025, "Correlation properties of heart rate variability to assess the first ventilatory threshold and fatigue in runners", J Sports Sci 43(2):125-134, DOI `10.1080/02640414.2023.2277034` | abstract | 14 runners, consumer chest belt, two incremental treadmill ramps. DFA-α1 0.75 close to VT1 when rested, with individual variability similar to gas-exchange methods; the relationship shifts with fatigue, so it holds only in a non-fatigued state. |
 | L1 | Phillips & Steven 2026, "Perspective: sleep regularity—where do we go from here?", Sleep 49(8), PMID 42023690, DOI `10.1093/sleep/zsag114` | full text | Perspective without new data, formula, threshold or wearable/athlete content. Background only; not decision evidence. |
 
 ### Vendor documentation (not peer-reviewed)
@@ -295,6 +297,10 @@ the others by abstract. Searches: `DFA alpha1 first ventilatory threshold`,
 correction or retraction for R56 to R62. No independent field validation of a
 DFA-α1 threshold from uncontrolled outdoor sessions and no study of optical
 heart-rate RR was found in this targeted search.
+R76 and R77 were added on 2026-11-21 (#3833) for the M10 running step test
+from bibliographic records (Crossref, publisher abstracts); their correction
+status was not checked. No study comparing stage lengths of a running step
+test for DFA-α1 was found.
 R52 was added on 2026-11-08 (#1773) from a PubMed search
 (`Manzi individualized training impulse`); its correction status was not
 checked.

@@ -130,6 +130,18 @@ class LocalTrainingPlanCreationService:
             stored = self._planned_workout_for_storage(
                 workout, templates, plan_id, plan_name
             )
+            # The unit names its template's test protocol itself, so it outlives
+            # the template (#3833); a matched template is one of ``templates``.
+            protocol = next(
+                (
+                    t.get("test_protocol")
+                    for t in templates
+                    if str(t.get("id")) == stored.get(TEMPLATE_ID)
+                ),
+                None,
+            )
+            if protocol:
+                stored["test_protocol"] = protocol
             entry = self._planned_unit_service.create(
                 stored, db=db, bump_planning_revision=False
             )

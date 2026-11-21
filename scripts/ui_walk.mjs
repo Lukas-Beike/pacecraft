@@ -264,6 +264,8 @@ export const STEPS = [
   // Read-only: the walk checks that "Löschen" is there, it never presses it (#3027).
   { view: "plan", name: "Kalender: Löschen", covers: "#3027 calendar delete", each: PLANNED, ...LATER, ready: ".planned-entry[open] .planned-activity-actions .danger-button", kind: "text", optional: true },
   { view: "plan", name: "Kalender: Verpflegung", covers: "#2921 fuelling", each: PLANNED, ...LATER, ready: ".planned-entry[open] .planned-fuelling", kind: "numbers", optional: true },
+  // Only a planned running step test carries its precondition note, so the step is optional (#3833).
+  { view: "plan", name: "Kalender: Stufentest geplant", covers: "#3833 running step test", each: ".planned-entry:is(.is-planned, .is-today)[data-sport='Laufen'] > summary", ...LATER, ready: ".planned-entry[open] [data-step-test-note]", kind: "text", optional: true },
   // Choosing a past day narrows the month's range, so the planned day comes first.
   { view: "plan", name: "Monat: geplante Einheit", covers: "#2189 month", pre: [MONTH], each: ".planned-month-day:not([disabled]):has(.planned-month-mark.is-planned)", opens: [PLANNED], ready: ".planned-entry[open] .planned-entry-details", kind: "text", optional: true },
   { view: "plan", name: "Monat: absolvierte Einheit", covers: "#2189 month", pre: [MONTH], each: ".planned-month-day:not([disabled]):has(.planned-month-mark.is-completed)", opens: [DONE], ready: ".planned-entry[open] .planned-entry-details", kind: "text" },
@@ -281,6 +283,8 @@ export const STEPS = [
   detail("Kalender: Zonenbalken", "#2258 time in zones", ".planned-entry[open] .activity-analysis-zones", "numbers", { optional: true }),
   // The chip shows "…" until its read; once loaded its label names the choice ("Rad: …").
   { view: "plan", name: "Kalender: Schuh/Rad", covers: "#3011 equipment chip", each: DONE, ...EARLIER, ready: '.planned-entry[open] .planned-equipment-chip[aria-label*=": "]', kind: "text", optional: true },
+  // The result block of a completed running step test: LT1 and LT2 with heart rate and pace (#3833).
+  { view: "plan", name: "Kalender: Stufentest-Ergebnis", covers: "#3833 step test result", each: ".planned-entry.is-completed[data-sport='Laufen'] > summary", ...EARLIER, ready: ".planned-entry[open] .planned-step-test tbody td:nth-child(2)", kind: "numbers", optional: true },
   // A week with a run that shows running dynamics may lie further back.
   // A recognised route needs a repeated outdoor track, so the walk may find none (#3763).
   detail("Kalender: Streckenhistorie", "#3763 route history", ".planned-entry[open] .activity-route .route-visits tbody tr", "text", { optional: true, each: ".planned-entry.is-completed[data-sport='Laufen'] > summary" }),

@@ -1,11 +1,11 @@
 # M10 — First threshold heart rate from chest-strap RR intervals (DFA-α1)
 
 - **Card:** M10
-- **Card version:** 3
-- **Method ID:** dfa-alpha1-first-threshold v3 (`backend/canonical/dfa_alpha1.py:METHOD_VERSION`), athlete-level value in `backend/performance/first_threshold_estimate.py` (#2131, C-008)
+- **Card version:** 4
+- **Method ID:** dfa-alpha1-first-threshold v3 (`backend/canonical/dfa_alpha1.py:METHOD_VERSION`), athlete-level value in `backend/performance/first_threshold_estimate.py` (#2131, C-008), running step test in `backend/performance/step_test.py` (#3833)
 - **Status:** implemented (`backend/providers/fit_rr_mapping.py` reads the RR intervals); per-session result stored with the stream set, athlete-level estimate shown in the profile and the Coach context, adopted only by the athlete
 - **Classification:** model estimate
-- **Literature checked:** 2026-11-13
+- **Literature checked:** 2026-11-21
 - **Review:** blocked
 
 ## Target construct
@@ -28,6 +28,12 @@ also gives a second threshold, the heart rate where alpha1 crosses 0.5 (the
 VT2 analogue, Rogers et al. 2021), shown as a local LT2 estimate beside Garmin's
 for runs only. The athlete may adopt it with an explicit action; it is stored
 with its origin and never adopted automatically.
+
+Athlete decisions (2026-11-21, #3833): a running step test yields both
+thresholds from one chest-strap run, with protocol P1 (3-minute stages), a
+result block on the completed test with "Übernehmen" per value through the
+existing adoption paths, and the evaluation as above plus at least 6
+analysable stages for `good` (section "Running step test").
 
 ## Formula and units
 
@@ -99,11 +105,81 @@ most 5 % of the median (F2, as for the first threshold, without a per-run
 window rule). It must lie above the stored first threshold. The pace beside it
 is the athlete's own steady-run pace at that heart rate (card M9).
 
+## Running step test (protocol P1, #3833)
+
+One rested chest-strap run that yields both thresholds: LT1 where alpha1
+crosses 0.75 and LT2 where it crosses 0.5. Nothing is adopted automatically.
+
+Protocol (`step_test.protocol_template`, a local library template the Coach
+creates with `manage_training_templates` `step_test`; the explicit Garmin sync
+sends its steps, nothing else writes remotely):
+
+1. Warm-up 10 min from 1.5 to 0.5 km/h slower than stage 1 (slower than LT1).
+2. Stages of 3 min with pace targets, each 0.5 km/h faster and held as a
+   band of ±3 % around the stage pace (6:08–6:30 /km for 6:19; athlete
+   decision), so the watch alerts only when clearly off. Stage 1 lies
+   1.5 km/h below the current run LT1 pace (rounded to 0.1 km/h); without a
+   plausible LT1 pace (2:30 to 9:00 /km) it is 9.5 km/h (6:19 /km).
+3. The stages run to the second stage beyond the first one at or above the
+   current LT2 (threshold) pace, at most 10 and at least 6 stages; without an
+   LT2 pace all 10.
+4. The run ends when a stage can no longer be held, at the latest after the
+   last stage, then 10 min cool-down at the warm-up pace.
+5. The unit names the preconditions: a chest strap that records RR intervals,
+   HRV recording switched on in the watch, rested, not after a hard day, not
+   ill. The Coach plans it only on the athlete's request and under the same
+   preconditions; as a `test` unit it is hard for the plan checks. It does
+   not reset the reminder for the run critical-speed test; each test keeps its
+   own rhythm (athlete decision).
+
+Why 3 minutes and +0.5 km/h: the VT2 validation of the 0.5 crossing (R76) used
+3-minute treadmill stages. With the 120 s windows every 30 s and at most 8 bpm
+between window halves, a small step keeps the heart-rate jump per stage near or
+below 8 bpm, so windows across a stage change still count, and 30 min of
+stages give about 50 windows (`good` needs 20). No study compared stage
+lengths for running; the choice is a design decision.
+
+Evaluation (`step_test.evaluate`), when the run is paired with a unit from the
+step-test template:
+
+1. Input: the run's stored window series (method 3). Without one there is no
+   value ("Keine RR-Intervalle").
+2. Stages: recorded laps of 150 to 210 s with heart rate and speed, warm-up,
+   cool-down and recovery laps left out. A stage is analysable when an analysed
+   window's midpoint (start + 60 s on the beat clock, dropouts left out) lies
+   in it; the beat clock and the lap clock are taken as equal.
+3. LT1: the run's stored 0.75 crossing and quality. "Nicht erreicht" when no
+   window's alpha1 lies below 0.75; "nicht bestimmbar" when a window does but
+   the stop rules give no crossing.
+4. LT2: the 0.5 crossing of the second threshold per run, without its
+   late-drift rule (a step test is hard at its end by design). "Nicht erreicht"
+   when no window reaches alpha1 0.5; "nicht bestimmbar" otherwise without a
+   crossing.
+5. Pace: the speed at the value's heart rate, linear between the two stage laps
+   around it (none outside them), as s/km.
+6. Quality: `good` when the crossing is `good` by the rules above and at least
+   6 stages are analysable, else `low`. Only a `good` value is offered for
+   adoption: LT1 as percent of today's run threshold HR with the origin
+   `estimated` (the first threshold adoption), LT2 heart rate and pace as the
+   run zone thresholds from today with the origin `dfa_alpha1` (the LT2
+   adoption). The result, labelled `abgeleitet`, is shown on the completed
+   test in the calendar and given to the Coach with the session details.
+
+Limits: the individual error of the 0.5 crossing is about ±10 bpm (R76), so
+LT2 especially is an estimate to review, not a lab value; LT1 holds only when
+rested (R77); the studies used treadmills, and outdoor wind, slope and pace
+control add error. Place (decision for #3833): a treadmill at 1 % incline
+first, else a 400 m track with the watch's track run mode, a flat loop only as
+a fallback, and the same place for every repeat test, so tests stay
+comparable.
+
 ## Sources
 
 - **Threshold definition and agreement with VT1:** R56 (laboratory, running,
   gas exchange), R57 and R58 (perspective and update by the same group), R59
   (systematic review of DFA-α1 in endurance exercise).
+- **Anaerobic threshold (alpha1 0.5) and the step test:** R76 (treadmill, 3-min
+  stages, VT2); R77 (consumer chest belt, valid only when rested).
 - **DFA method:** R60. **Smoothness-priors detrending:** R61.
 - **Chest-strap RR quality:** R62.
 - **Target construct (LT1 and VT1):** R54, R55.
@@ -232,6 +308,14 @@ is the athlete's own steady-run pace at that heart rate (card M9).
 | Athlete-level aggregate | median of percent of the run threshold HR on each day | product assumption | Robust to one bad session; unaffected by later threshold changes. |
 | Athlete-level `good` | at least 5 sessions, spread at most 5 percentage points | product assumption | `GOOD_MIN_SESSIONS`, `GOOD_MAX_SPREAD_PCT`. |
 | Stored percent bounds | 40 to 100 % LSHF | product assumption | `FIRST_THRESHOLD_PERCENT_BOUNDS` of the profile value. |
+| Step test stage length | 3 min | source | R76 validated the 0.5 crossing with 3-minute stages; athlete decision P1 (#3833). `step_test.py:STAGE_MIN`. |
+| Step test speed step | 0.5 km/h | product assumption | Keeps the heart-rate jump per stage near the 8 bpm window rule. `STEP_KMH`. |
+| Step test start | 1.5 km/h below LT1, else 9.5 km/h | product assumption | Athlete decision P1. `BELOW_LT1_KMH`, `FALLBACK_START_KMH`. |
+| Step test stages | 2 beyond LT2, 6 to 10 | product assumption | Athlete decision P1; 6 is the analysable minimum of `good`. `STAGES_BEYOND_LT2`, `MAX_STAGES`, `MIN_GOOD_STAGES`. |
+| Step test warm-up and cool-down | 10 min each, 1.5 to 0.5 km/h below stage 1 | product assumption | Athlete decision P1. `WARMUP_MIN`, `COOLDOWN_MIN`, `EASY_RANGE_KMH`. |
+| Step test stage laps | 150 to 210 s | product assumption | A 3-minute step lap; a shorter last stage was not held. `STAGE_LAP_S`. |
+| Step test `good` | at least 6 analysable stages | product assumption | Athlete decision (#3833), on top of the recording rules. `MIN_GOOD_STAGES`. |
+| Step test plausible paces | 2:30 to 9:00 /km | product assumption | Another LT1 or LT2 pace counts as unknown. `PACE_BOUNDS_S`. |
 
 ## Allowed statements
 
@@ -269,6 +353,9 @@ is the athlete's own steady-run pace at that heart rate (card M9).
   untested thresholds; real coverage from the athlete's recordings is not yet
   counted.
 - Cycling results are stored but unused: no decision yet on a ride estimate.
+- The step test's stage length, speed step and analysable-stage minimum are
+  untested for running; no study compared stage lengths, and the lap and beat
+  clocks are taken as equal.
 
 <!-- BEGIN GENERATED CONSTANTS -->
 ## Code constants
@@ -302,4 +389,24 @@ is the athlete's own steady-run pace at that heart rate (card M9).
 | `GOOD_MIN_SESSIONS` | `5` | `backend/performance/first_threshold_estimate.py` | The estimate is good with this many sessions that agree within this spread (percentage points of the threshold HR); otherwise it is low. |
 | `GOOD_MAX_SPREAD_PCT` | `5.0` | `backend/performance/first_threshold_estimate.py` |  |
 | `SOURCE_LABEL` | `'Schätzung aus Brustgurt-RR-Intervallen (DFA-α1, Forschungsstand), kein Laborwert'` | `backend/performance/first_threshold_estimate.py` |  |
+| `PROTOCOL` | `'run_step_test'` | `backend/performance/step_test.py` |  |
+| `NAME` | `'Stufentest Laufen (LT1 und LT2)'` | `backend/performance/step_test.py` |  |
+| `WARMUP_MIN` | `10` | `backend/performance/step_test.py` |  |
+| `COOLDOWN_MIN` | `10` | `backend/performance/step_test.py` |  |
+| `STAGE_MIN` | `3` | `backend/performance/step_test.py` |  |
+| `STEP_KMH` | `0.5` | `backend/performance/step_test.py` |  |
+| `BELOW_LT1_KMH` | `1.5` | `backend/performance/step_test.py` |  |
+| `FALLBACK_START_KMH` | `9.5` | `backend/performance/step_test.py` |  |
+| `STAGES_BEYOND_LT2` | `2` | `backend/performance/step_test.py` |  |
+| `MAX_STAGES` | `10` | `backend/performance/step_test.py` |  |
+| `MIN_GOOD_STAGES` | `6` | `backend/performance/step_test.py` |  |
+| `EASY_RANGE_KMH` | `(1.5, 0.5)` | `backend/performance/step_test.py` | The warm-up and cool-down range lies this far below stage 1 (km/h). |
+| `STAGE_PACE_BAND` | `0.03` | `backend/performance/step_test.py` | Each stage's pace band, ±3 % around its pace (athlete decision, #3833). |
+| `PACE_BOUNDS_S` | `(150.0, 540.0)` | `backend/performance/step_test.py` | Plausible run paces (s/km); another value counts as unknown. |
+| `STAGE_LAP_S` | `(150.0, 210.0)` | `backend/performance/step_test.py` | A recorded lap of this length (s) is one stage; a shorter last one was not held. |
+| `END_NOTE` | `'Ende: wenn die Stufe nicht mehr zu halten ist, spätestens nach Stufe {last}.'` | `backend/performance/step_test.py` |  |
+| `SOURCE` | `'abgeleitet'` | `backend/performance/step_test.py` |  |
+| `LT1_NOT_REACHED` | `'α1 blieb über 0,75. Die Stufen waren nicht schnell genug.'` | `backend/performance/step_test.py` |  |
+| `LT2_NOT_REACHED` | `'α1 blieb über 0,5. Die letzten Stufen waren nicht schnell genug oder wurden abgebrochen.'` | `backend/performance/step_test.py` |  |
+| `NO_CROSSING` | `'keine klare Kreuzung'` | `backend/performance/step_test.py` |  |
 <!-- END GENERATED CONSTANTS -->

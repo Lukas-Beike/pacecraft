@@ -51,6 +51,8 @@ NOTICE_VALUES: dict[str, tuple[str, ...]] = {
     "run": ("provider_hr", "provider_pace", "dfa_hr", "dfa_pace", "cs_pace"),
     "ride": ("provider_power", "provider_hr", "cp_power"),
 }
+# The run step test's LT2 (#3833), adopted with the DFA-a1 origin.
+STEP_TEST_SOURCE = "step_test"
 _SOURCES = {
     "run": ("dfa_alpha1", "critical_speed"),
     "ride": ("critical_power",),
@@ -150,35 +152,38 @@ class SecondThresholdService:
             return None
         return float(percent * lthr / 100)
 
-    def adopt(self, payload: Mapping[str, Any]) -> dict[str, Any]:
+    def adopt(
+        self,
+        payload: Mapping[str, Any],
+        step_test: Callable[[str], Mapping[str, Any] | None] | None = None,
+    ) -> dict[str, Any]:
         """Adopt one shown value of a local estimate as the LT2 threshold in effect.
 
-        ``payload``: ``sport``, ``source`` (``dfa_alpha1``, ``critical_speed`` or
-        ``critical_power``), ``value`` (``heart_rate``, ``pace`` or ``power``) and
-        ``shown`` (the number displayed, so a changed estimate is refused). A
-        value more than 5 % from the one in effect needs ``confirm_deviation``;
-        a value the athlete entered needs ``replace_local``.
+        ``payload``: ``sport``, ``source`` (``dfa_alpha1``, ``critical_speed``,
+        ``critical_power`` or ``step_test``), ``value`` (``heart_rate``, ``pace`` or
+        ``power``) and ``shown`` (the number displayed, so a changed estimate is
+        refused). A value more than 5 % from the one in effect needs
+        ``confirm_deviation``; a value the athlete entered needs ``replace_local``.
+        ``step_test`` takes the good LT2 of the run step test ``activity_id``
+        (#3833), read by ``step_test``; it is stored with the origin ``dfa_alpha1``.
         """
         if self._zones is None:
             raise AppError(503, "Die Zonen sind nicht verfügbar.")
         sport, source, value = (
             str(payload.get(key) or "") for key in ("sport", "source", "value")
         )
-        if source not in _SOURCES.get(sport, ()) or value not in _VALUES:
+        tested = source == STEP_TEST_SOURCE and sport == "run" and value != "power"
+        if (
+            source not in _SOURCES.get(sport, ()) and not tested
+        ) or value not in _VALUES:
             raise AppError(400, "Unbekannte Schätzung oder unbekannter Wert.")
         field, metric, label, unit = _VALUES[value]
-        estimate = self.estimates()[sport][source]
-        number = estimate.get(field) if estimate.get("status") == "ok" else None
-        if number is None:
-            raise AppError(
-                409, "Diese Schätzung liegt nicht vor.", reason="lt2_unknown"
-            )
-        if payload.get("shown") != number:
-            raise AppError(
-                409,
-                "Die Schätzung hat sich geändert. Bitte die Anzeige aktualisieren.",
-                reason="lt2_changed",
-            )
+        estimate = (
+            _step_test_value(payload, step_test)
+            if tested
+            else self.estimates()[sport][source]
+        )
+        number = _shown_number(payload, estimate, field)
         zones = self._zones()
         current = effective_zone_configuration(
             zones.configurations(), metric, Sport(sport), day=self._today()
@@ -194,7 +199,13 @@ class SecondThresholdService:
         _check_deviation(current, threshold, payload, label, number, unit)
         try:
             receipt: dict[str, Any] = zones.save_adopted(
-                _adopted(current, sport, metric, threshold, source)
+                _adopted(
+                    current,
+                    sport,
+                    metric,
+                    threshold,
+                    "dfa_alpha1" if tested else source,
+                )
             )
         except AppError as exc:
             if exc.status != 400:
@@ -205,6 +216,33 @@ class SecondThresholdService:
                 reason="lt2_zone_limits",
             ) from exc
         return receipt
+
+
+def _shown_number(
+    payload: Mapping[str, Any], estimate: Mapping[str, Any], field: str
+) -> Any:
+    """The estimate's value as shown; refused when unknown or changed since."""
+    number = estimate.get(field) if estimate.get("status") == "ok" else None
+    if number is None:
+        raise AppError(409, "Diese Schätzung liegt nicht vor.", reason="lt2_unknown")
+    if payload.get("shown") != number:
+        raise AppError(
+            409,
+            "Die Schätzung hat sich geändert. Bitte die Anzeige aktualisieren.",
+            reason="lt2_changed",
+        )
+    return number
+
+
+def _step_test_value(
+    payload: Mapping[str, Any],
+    step_test: Callable[[str], Mapping[str, Any] | None] | None,
+) -> Mapping[str, Any]:
+    """The step test's LT2 when it is good, else an unknown value (#3833)."""
+    activity_id = str(payload.get("activity_id") or "")
+    tested = None if step_test is None or not activity_id else step_test(activity_id)
+    value = (tested or {}).get("lt2") or {}
+    return value if value.get("quality") == "good" else {"status": "unknown"}
 
 
 def _check_replace(

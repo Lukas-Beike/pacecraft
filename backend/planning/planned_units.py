@@ -32,9 +32,14 @@ from backend.providers.intervals_workouts import (
 _ISO_MIDNIGHT_SUFFIX = "T00:00:00"
 
 
-# The focus keys and the template reference no provider receives; the heart-rate
-# cap reaches the watch, so a change of it is a change of the exported unit.
-LOCAL_ONLY_KEYS = (*(key for key in FOCUS_KEYS if key != HR_CAP), TEMPLATE_ID)
+# The focus keys, the template reference and the test protocol (#3833) no provider
+# receives; the heart-rate cap reaches the watch, so a change of it is a change of
+# the exported unit.
+LOCAL_ONLY_KEYS = (
+    *(key for key in FOCUS_KEYS if key != HR_CAP),
+    TEMPLATE_ID,
+    "test_protocol",
+)
 
 
 def planned_unit_payload_hash(payload: Any) -> str:

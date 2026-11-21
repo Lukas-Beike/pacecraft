@@ -26,6 +26,7 @@ from backend.canonical.activity_summary import ActivitySummary
 from backend.canonical.vocabulary import ProviderId
 from backend.db.manager import kept_until_change
 from backend.db.repositories import CheckinRepository, ProfileRepository
+from backend.performance import step_test
 from backend.performance.activity_read_service import ActivityAnalysisReadService
 from backend.performance.canonical_inputs import CanonicalPerformanceSource
 from backend.performance.first_threshold_service import FirstThresholdService
@@ -388,6 +389,9 @@ def build_activity_reads(
             refreshable=refreshable,
             planned_units=planned_units,
             unit_thresholds=unit_thresholds,
+            step_test_templates=lambda: step_test.template_ids(
+                ctx.planning.workout_library().list(1000, include_archived=True)
+            ),
         )
 
     return ActivityReadServices(activity_read)

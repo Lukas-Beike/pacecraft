@@ -238,6 +238,7 @@ class LocalPlanCreationServiceTests(unittest.TestCase):
                         "duration_minutes": 35,
                         "planned_duration_s": 2100,
                         "target": "HR",
+                        "test_protocol": "run_step_test",
                     }
                 ),
                 NOW,
@@ -260,6 +261,8 @@ class LocalPlanCreationServiceTests(unittest.TestCase):
         self.assertEqual(created[0]["name"], "Easy ride")
         self.assertEqual(created[0]["duration_minutes"], 35)
         self.assertEqual(created[0]["target"], "HR")
+        # The unit keeps the template's test protocol itself (#3833).
+        self.assertEqual(created[0]["test_protocol"], "run_step_test")
         self.assertTrue(self.service._logger.info.called)
 
     def test_no_template_match_keeps_coach_payload(self) -> None:

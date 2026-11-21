@@ -86,6 +86,24 @@ class WorkoutProfileTests(unittest.TestCase):
         )
         self.assertIsNone(only_lthr["segments"][0]["zone"])
         self.assertNotIn("estimated", only_lthr)
+        # Absolute paces (the step test, #3833): at a 4:00 /km threshold (4.17 m/s)
+        # 7:30 to 6:40 /km is about 57 % (Z1) and 4:00 /km 100 % (Z4).
+        description = "- 10m 6:40-7:30/km Pace\n- 3m 4:00/km Pace"
+        pace = planned_profile(
+            {"description": description}, ZoneSettings(threshold_pace=1000 / 240)
+        )
+        self.assertEqual([1, 4], [row["zone"] for row in pace["segments"]])
+        self.assertEqual(
+            [
+                {"unit": "s/km", "min": 450, "max": 400},
+                {"unit": "s/km", "min": 240, "max": 240},
+            ],
+            [row["range"] for row in pace["segments"]],
+        )
+        self.assertTrue(pace["estimated"])
+        uncolored = planned_profile({"description": description})
+        self.assertEqual([None, None], [row["zone"] for row in uncolored["segments"]])
+        self.assertIsNone(planned_profile({"description": "- 3m 6:00/mi Pace"}))
 
     def test_relative_targets_are_not_marked_estimated(self):
         profile = planned_profile(

@@ -292,6 +292,13 @@ class WorkoutProfileAttachmentTests(unittest.TestCase):
                 {"id": "u3", "template_id": "gone"},
             ],
         )
+        # A unit from a step-test template names its protocol (#3833).
+        self.assertEqual(
+            _with_template_names(names, units[:2], frozenset({"T1"}))[0][
+                "test_protocol"
+            ],
+            "run_step_test",
+        )
 
     def test_profile_attaches_by_session_id(self):
         result = PublicPlanStateService._with_profile(
