@@ -1081,9 +1081,25 @@ function renderNutritionProducts(products, { local = true, targetId = "#nutritio
   target.append(...NUTRITION_PRODUCT_SECTIONS.map(([key, title]) => nutritionProductSection(key, title, key === "favorites" ? items.filter((product) => product.favorite) : items, newSearch)));
 }
 
-async function useNutritionProduct(product) {
+// The queued meal the open dialog replaces (an edit from the outbox, #3817), else null.
+let nutritionOutboxEdit = null;
+
+// A rejected queued meal opens in the product dialog with its product and amount.
+async function editQueuedMeal(edit) {
+  try {
+    const { products } = await api("/api/nutrition/products?scope=all");
+    const product = products.map(normalizeNutritionProduct).find((item) => item.id === edit.payload.product_id);
+    if (!product) throw new Error("Das Produkt ist nicht mehr vorhanden.");
+    await useNutritionProduct(product, edit);
+  } catch (error) {
+    toast(`Eintrag nicht bearbeitbar: ${error.message}`, true);
+  }
+}
+
+async function useNutritionProduct(product, edit = null) {
   const unit = nutritionProductUnit(product);
   nutritionProductForUse = product;
+  nutritionOutboxEdit = edit;
   const useSequence = ++nutritionProductUseSequence;
   const dialog = document.querySelector("#nutritionProductUseDialog");
   document.querySelector("#nutritionProductUseName").textContent = product.name || "Lokales Produkt";
@@ -1094,6 +1110,16 @@ async function useNutritionProduct(product) {
   const addButton = document.querySelector("#nutritionProductUseAdd");
   const status = document.querySelector("#nutritionProductUseStatus");
   select.replaceChildren(h("option", { value: "" }, "Neuer Snack")); addButton.disabled = true; status.textContent = "";
+  // A queued meal stays a new snack: no choice of an existing meal, no Coach draft.
+  select.closest("label").hidden = Boolean(edit);
+  document.querySelector("#nutritionProductUseCoach").hidden = Boolean(edit);
+  if (edit) {
+    amount.value = edit.payload.amount;
+    for (const chip of document.querySelectorAll("#nutritionProductUseSizes input")) chip.checked = Number(chip.value) === Number(amount.value);
+    addButton.disabled = false;
+    dialog.showModal();
+    return;
+  }
   dialog.showModal();
   const generation = state.sessionGeneration;
   try {
@@ -1183,7 +1209,8 @@ function queuedMealPayload(body) {
 
 async function addNutritionProductToMeal() {
   const use = nutritionProductUseAmount();
-  const mealId = document.querySelector("#nutritionProductUseMeal").value;
+  const edit = nutritionOutboxEdit;
+  const mealId = edit ? "" : document.querySelector("#nutritionProductUseMeal").value;
   if (!use) return;
   const generation = state.sessionGeneration;
   const addButton = document.querySelector("#nutritionProductUseAdd");
@@ -1191,11 +1218,13 @@ async function addNutritionProductToMeal() {
   try {
     const body = mealId
       ? { id: mealId, product_id: use.product.id, amount: Number(use.amount), unit: use.unit }
-      : { product_id: use.product.id, amount: Number(use.amount), unit: use.unit, meal_type: "snack", meal_date: document.querySelector("#nutritionDate").value || todayIso(), source: "manual" };
+      : { product_id: use.product.id, amount: Number(use.amount), unit: use.unit, meal_type: "snack", meal_date: edit?.payload.meal_date || document.querySelector("#nutritionDate").value || todayIso(), source: "manual" };
+    // An edited meal keeps the day and time it was entered.
+    const queued = edit?.payload.meal_time ? { ...body, meal_time: edit.payload.meal_time } : queuedMealPayload(body);
     // A new meal waits in the outbox when the server cannot be reached; adding to a meal does not.
     const result = mealId
       ? await api("/api/nutrition/entry/add-product", { method: "POST", body: JSON.stringify(body) })
-      : await saveOwnEntry({ kind: "meal", method: "POST", path: "/api/nutrition/entry", payload: body, queuedPayload: queuedMealPayload(body), label: `„${use.product.name}“ als Snack` });
+      : await saveOwnEntry({ kind: "meal", method: "POST", path: "/api/nutrition/entry", payload: body, queuedPayload: queued, label: `„${use.product.name}“ als Snack`, replaces: edit });
     if (generation !== state.sessionGeneration) return;
     closeNutritionProductUse();
     if (result.outboxEntry) {
@@ -1209,6 +1238,8 @@ async function addNutritionProductToMeal() {
     showNutritionReceipt(document.querySelector("#nutritionProductStatus"), `„${use.product.name}“ ${mealId ? "zur Mahlzeit ergänzt" : "als Snack erfasst"}.`, result.change, () => reloadNutritionProducts());
   } catch (error) {
     if (generation !== state.sessionGeneration) return;
+    // The queued entry is gone meanwhile: the next save goes out as a new snack (Gitar on #3830).
+    if (error?.reason === "outbox_entry_gone") nutritionOutboxEdit = null;
     document.querySelector("#nutritionProductUseStatus").textContent = `Produkt konnte nicht erfasst werden: ${error.message}`;
     addButton.disabled = false;
   }
@@ -1371,7 +1402,7 @@ document.querySelector("#nutritionBarcodeCancel")?.addEventListener("click", () 
 document.querySelector("#nutritionBarcodeDialog")?.addEventListener("close", stopNutritionBarcode);
 document.querySelector("#nutritionBarcodeForm")?.addEventListener("submit", (event) => { event.preventDefault(); void lookupNutritionProduct(document.querySelector("#nutritionBarcodeManual").value); });
 document.querySelector("#nutritionProductUseCancel")?.addEventListener("click", () => document.querySelector("#nutritionProductUseDialog")?.close());
-document.querySelector("#nutritionProductUseDialog")?.addEventListener("close", () => { nutritionProductForUse = null; ++nutritionProductUseSequence; });
+document.querySelector("#nutritionProductUseDialog")?.addEventListener("close", () => { nutritionProductForUse = null; nutritionOutboxEdit = null; ++nutritionProductUseSequence; });
 document.querySelector("#nutritionProductUseForm")?.addEventListener("submit", (event) => { event.preventDefault(); void addNutritionProductToMeal(); });
 document.querySelector("#nutritionProductUseForm")?.addEventListener("input", selectNutritionProductUseSize);
 document.querySelector("#nutritionProductUseCoach")?.addEventListener("click", addNutritionProductToCoachDraft);

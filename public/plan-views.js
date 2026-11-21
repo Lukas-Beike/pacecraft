@@ -550,7 +550,18 @@ function plannedDayNotes(dayContext, competitions, dateKey) {
       complaintText || (pain ? `Verletzung/Beschwerden: ${pain}` : ""),
     ].filter(Boolean).join(" · ")));
   }
+  const hint = infectionHintText(dayContext.infection_hint);
+  if (hint) notes.append(h("p", { className: "planned-day-context planned-day-health", dataset: { infectionHint: "" } }, hint));
   return notes;
+}
+
+// M14 (#3762): last night's values that left the usual range; never a block or a diagnosis.
+// Only the values (athlete decision): the limits and the source stay with the card and the Coach.
+function infectionHintText(hint) {
+  if (hint?.status !== "hint" || !Array.isArray(hint.signals)) return "";
+  const unit = (value) => (value === "brpm" ? "/min" : ` ${value}`);
+  const values = hint.signals.filter((signal) => signal.unusual).map((signal) => `${signal.label} ${calendarMetricNumber(signal.value)}${unit(signal.unit)} (üblich ${calendarMetricNumber(signal.lower)}–${calendarMetricNumber(signal.upper)})`);
+  return values.length ? `Infekt-Hinweis: ${values.join(" · ")}` : "";
 }
 
 function plannedEntryDurationLabel(actual, entry) {

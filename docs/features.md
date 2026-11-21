@@ -287,6 +287,7 @@
   The status strip counts them ("n Einträge warten", "n abgelehnt") and opens a list with "Erneut senden" and "Verwerfen".
   They are sent one at a time in creation order, with the normal session and CSRF, when the app starts, the browser comes back online or the status polling reaches the server; a lost connection leaves them and the next trigger retries. Every request carries an `Idempotency-Key` header, so the server answers a repeat from its stored result and writes nothing twice.
   A refused entry (a 4xx answer such as a weight outside 30 to 300 kg) is kept as "abgelehnt" with the server's message while the later ones go on.
+  "Bearbeiten" on a refused entry opens its own dialog (Gewicht, Körperfett in Prozent, the product dialog of the meal, the session's feedback) filled with the queued values; "Speichern" there replaces the entry at the same place in the order under a new `Idempotency-Key`, as waiting with the error cleared, and starts a send pass. "Erneut senden" keeps the key and the values. An entry discarded or cleared meanwhile is not brought back.
   Coach messages, syncs, refreshes, deletions, product changes and undo are never queued. Logout and the local data purge clear the outbox; a 401 does not, so the entries are sent after the next login. The Garmin and Wahoo weight writes still run on the server after the entry arrives.
 - **One Status Strip**: A single strip above every screen shows the most severe notice and counts the rest as "+N Hinweise" (tap to list them).
   The start loading notice shows alone.

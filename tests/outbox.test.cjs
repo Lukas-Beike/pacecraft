@@ -214,3 +214,70 @@ test("an entry failing with server errors is set aside after five tries and the 
   assert.equal(left[0].state, "rejected");
   assert.equal(left[0].attempts, 5);
 });
+
+// #3817: the first entry is refused by the server, the second still waits behind the network.
+async function rejectedFirst() {
+  let mode = "offline";
+  const created = outbox(async (_path, options) => {
+    const n = JSON.parse(options.body).n;
+    if (mode === "offline" || n === 2 && mode !== "accept") throw networkError();
+    if (n === 1) throw serverError(400, "abgelehnt");
+    return { ok: true };
+  });
+  await save(created.context, "weight", { n: 1 });
+  await save(created.context, "weight", { n: 2 });
+  mode = "refuse";
+  await created.context.replayOutbox();
+  const entries = [...created.stored.values()].sort((a, b) => a.created_at.localeCompare(b.created_at));
+  assert.deepEqual(entries.map((entry) => entry.state), ["rejected", "waiting"]);
+  created.requests.length = 0;
+  return { ...created, entries, accept: () => { mode = "accept"; } };
+}
+
+const edited = (context, replaces, n) => context.saveOwnEntry({ kind: "weight", method: "PUT", path: "/api/weight", payload: { n }, label: `weight ${n}`, replaces });
+
+test("an edit replaces a rejected entry in place: new key, same place, cleared error, new payload", async () => {
+  const { context, stored, requests, entries, accept } = await rejectedFirst();
+  const [rejected, waiting] = entries;
+  const result = await edited(context, context.outboxEditToken(rejected.key), 9);
+  const replaced = result.outboxEntry;
+  assert.notEqual(replaced.key, rejected.key);
+  assert.equal(replaced.created_at, rejected.created_at);
+  assert.equal(replaced.attempts, 0);
+  assert.equal(replaced.last_error, "");
+  assert.equal(replaced.state, "waiting");
+  assert.equal(replaced.label, "weight 9");
+  assert.equal(stored.has(rejected.key), false);
+  assert.equal(stored.size, 2);
+  // The edit started a pass; with the server answering again, both go out in the old order.
+  accept();
+  requests.length = 0;
+  await context.replayOutbox();
+  assert.deepEqual(requests.map((request) => JSON.parse(request.body).n), [9, 2]);
+  assert.equal(requests[0].headers["Idempotency-Key"], replaced.key);
+  assert.equal(requests[1].headers["Idempotency-Key"], waiting.key);
+  assert.equal(stored.size, 0);
+});
+
+test("an unchanged resend keeps its key; a waiting entry has no edit", async () => {
+  const { context, requests, entries } = await rejectedFirst();
+  assert.equal(context.outboxEditToken(entries[1].key), null);
+  await context.outboxResend(entries[0].key);
+  assert.equal(requests[0].headers["Idempotency-Key"], entries[0].key);
+});
+
+test("an edit of a discarded or cleared entry does nothing and brings nothing back", async () => {
+  const discarded = await rejectedFirst();
+  const token = discarded.context.outboxEditToken(discarded.entries[0].key);
+  await discarded.context.outboxDiscard(discarded.entries[0].key);
+  assert.equal(await discarded.context.outboxReplace(token, { payload: { n: 5 }, label: "x" }), null);
+  await assert.rejects(edited(discarded.context, token, 5), /verworfen/);
+  assert.deepEqual([...discarded.stored.values()].map((entry) => entry.payload.n), [2]);
+
+  const cleared = await rejectedFirst();
+  const clearedToken = cleared.context.outboxEditToken(cleared.entries[0].key);
+  await cleared.context.clearOutbox();
+  await assert.rejects(edited(cleared.context, clearedToken, 5));
+  assert.equal(cleared.stored.size, 0);
+  assert.equal(cleared.requests.length, 0);
+});

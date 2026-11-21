@@ -388,6 +388,8 @@ class PlanGuardBuilderTests(unittest.TestCase):
             {"1": {"id": 1, "date": ""}}, guard.with_templates.call_args.args[0]()
         )
         library.list.assert_called_once_with(1000)
+        # The brief shows today's infection hint (M14, #3762).
+        guard.with_templates.return_value.with_infection_hint.assert_called_once()
 
     def test_progress_lessons_and_strength_read_the_training_reports(self) -> None:
         _service, kwargs = self.build()

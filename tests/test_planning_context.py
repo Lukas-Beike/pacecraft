@@ -195,10 +195,13 @@ class PlanningContextTests(unittest.TestCase):
             ],
             today=date(2026, 9, 7),
             calendar_window_days=30,
+            infection_hint={"status": "hint"},
         )
 
         self.assertEqual(len(result), 1)
         context = result[0]
+        # A shown infection hint (M14) belongs to today's day.
+        self.assertEqual({"status": "hint"}, context["infection_hint"])
         self.assertEqual([item["id"] for item in context["planned"]], ["early", "late"])
         self.assertEqual(
             [item["activity_id"] for item in context["activity_feedback"]],
