@@ -16,7 +16,11 @@ from typing import Any, Final
 
 from backend.activities.activity_summary import summary_local_date
 from backend.activities.session_purpose import summary_is_race
-from backend.athlete.checkins import CHECKIN_SCORE_FIELDS, reports_complaint
+from backend.athlete.checkins import (
+    CHECKIN_SCORE_FIELDS,
+    complaint_trends,
+    reports_complaint,
+)
 from backend.athlete.local_date import iso_date_prefix
 from backend.athlete.measurements import finite_float as number
 from backend.errors import AppError
@@ -310,8 +314,16 @@ def _checkins(
         "pain_days": sum(
             reports_complaint(row.get("pain")) for row in rows if row.get("pain")
         ),
+        # Pain days told only in words, without a structured complaint (#3766).
+        "pain_text_days": sum(
+            reports_complaint(row.get("pain"))
+            for row in rows
+            if row.get("pain") and not row.get("complaints")
+        ),
         "illness_days": sum(
             reports_complaint(row.get("illness")) for row in rows if row.get("illness")
         ),
+        # Structured complaints by body area and side with their trend (#3766).
+        "complaints": complaint_trends(rows, first, last),
         "scores": scores,
     }

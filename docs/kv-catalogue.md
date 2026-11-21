@@ -16,7 +16,7 @@ read. A new key needs no entry: it appears here when its write is added.
   `profile` is only set when absent.
 
 <!-- BEGIN GENERATED KEYS -->
-99 keys and 23 key patterns; `<value>` stands for a value the code computes.
+99 keys and 24 key patterns; `<value>` stands for a value the code computes.
 
 | Key | Written by | Deleted by | Export | Reset at start | Purge |
 | --- | --- | --- | --- | --- | --- |
@@ -35,6 +35,7 @@ read. A new key needs no entry: it appears here when its write is added.
 | `canonical_backfill_state` | backend/sync/canonical_backfill.py:CanonicalBackfill._save | - | yes | - | - |
 | `canonical_coverage:<value>` | backend/sync/canonical_coverage_store.py:CanonicalCoverageStore.persist | - | yes | - | - |
 | `chat_generation` | backend/coach/conversation.py:CoachConversationResetService._reset_local | - | yes | - | - |
+| `checkin_complaints:<value>` | backend/athlete/checkins.py:CheckinService._write<br>backend/athlete/checkins.py:CheckinService.restore_in_transaction | backend/athlete/checkins.py:CheckinService._write<br>backend/athlete/checkins.py:CheckinService.restore_in_transaction | yes | - | - |
 | `checkin_day_status:<value>` | backend/athlete/checkins.py:CheckinService._write<br>backend/athlete/checkins.py:CheckinService.restore_in_transaction | backend/athlete/checkins.py:CheckinService._write<br>backend/athlete/checkins.py:CheckinService.restore_in_transaction | yes | - | - |
 | `checkin_tags:<value>` | backend/athlete/checkins.py:CheckinService._write<br>backend/athlete/checkins.py:CheckinService.restore_in_transaction | backend/athlete/checkins.py:CheckinService._write<br>backend/athlete/checkins.py:CheckinService.restore_in_transaction | yes | - | - |
 | `claude_models` | backend/providers/model_wiring.py:build_model_transport | - | yes | - | - |

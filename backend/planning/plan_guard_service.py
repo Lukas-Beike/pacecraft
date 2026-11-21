@@ -300,6 +300,7 @@ def build_planning_brief(
     all_day_events: Mapping[str, Sequence[Mapping[str, Any]]] | None = None,
     lessons: Sequence[Mapping[str, Any]] = (),
     last_tests: Mapping[str, Any] | None = None,
+    complaints: Sequence[Mapping[str, Any]] = (),
 ) -> dict[str, Any]:
     """Compact deterministic brief for plan_week, plan_block and adjust_week turns."""
     weeks = [
@@ -343,9 +344,17 @@ def build_planning_brief(
             "plan_checks": plan_checks.RULE_SUMMARY,
             "lessons": brief_lessons(lessons),
             "last_tests": dict(last_tests or {}),
+            "complaints": [dict(item) for item in complaints],
+            "complaints_source": COMPLAINTS_SOURCE,
         }
     )
 
+
+COMPLAINTS_SOURCE = (
+    "Athlete check-ins (#3766): body areas and sides reported on 3+ of the last "
+    "14 days or 2+ severity points worse there; a non-blocking note to name, "
+    "never a diagnosis or a reason to block a plan (only illness blocks)"
+)
 
 # Tests are planned every 6 to 8 weeks, so a longer look-back finds the last one.
 LAST_TEST_DAYS = 120
@@ -453,6 +462,7 @@ class PlanGuardService:
         self._completed = completed_activities
         self._competitions = competitions
         self._illness = illness
+        self._complaints: Callable[[], Sequence[Mapping[str, Any]]] = lambda: ()
         self._progress = progress
         self._training_model = training_model
         self._today = today
@@ -495,6 +505,7 @@ class PlanGuardService:
                 competitions=self._competitions(),
                 illness=self._reported_illness(),
                 return_stage=self._current_return_stage(),
+                complaints=self._complaints(),
                 thresholds=self._load_thresholds(),
                 expects_strength=self._expects_strength(),
                 calendar_events=self._events(),
@@ -525,6 +536,13 @@ class PlanGuardService:
         if self._illness_cache is None:
             self._illness_cache = (self._illness(),)
         return self._illness_cache[0]
+
+    def with_complaints(
+        self, complaints: Callable[[], Sequence[Mapping[str, Any]]]
+    ) -> PlanGuardService:
+        """Name recurring or worsening complaints in the checks and the brief (#3766)."""
+        self._complaints = complaints
+        return self
 
     def with_templates(
         self, templates: Callable[[], Mapping[str, Mapping[str, Any]]]
@@ -576,7 +594,9 @@ class PlanGuardService:
         it had still blocks.
 
         Notes are the new non-blocking findings plus accepted blocking ones; the
-        Coach names and justifies them in its answer.
+        Coach names and justifies them in its answer. A standing note, such as a
+        recurring complaint (#3766), comes from the athlete's check-ins rather than
+        the write, so it is named on every plan write while it holds.
         """
         gaps = {
             (item["code"], local_id)
@@ -584,9 +604,10 @@ class PlanGuardService:
             if item["code"] in inherited
             for local_id in item.get("local_ids") or ()
         }
+        after = self.findings()
         new = [
             item
-            for item in plan_checks.new_findings(before, self.findings())
+            for item in plan_checks.new_findings(before, after)
             if item["code"] not in waived
             and not (
                 item.get("local_ids")
@@ -605,6 +626,13 @@ class PlanGuardService:
         if blocking:
             raise PlanCheckError(blocking)
         self._require_illness_confirmation(new, accepted)
+        known = {plan_checks.finding_key(item) for item in new}
+        new += [
+            item
+            for item in after
+            if item["code"] in plan_checks.STANDING_NOTE_CODES
+            and plan_checks.finding_key(item) not in known
+        ]
         return [
             {
                 key: item[key]
@@ -657,4 +685,5 @@ class PlanGuardService:
                 self._history.recent_completed(),
                 today,
             ),
+            complaints=self._complaints(),
         )

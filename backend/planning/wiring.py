@@ -10,7 +10,11 @@ from functools import partial
 from typing import Any
 
 from backend.app.context import AppContext
-from backend.athlete.checkins import CHECKIN_TEXT_LIMITS
+from backend.athlete.checkins import (
+    CHECKIN_TEXT_LIMITS,
+    RECURRING_WINDOW_DAYS,
+    recurring_complaints,
+)
 from backend.db.repositories import (
     CompetitionRepository,
     PlanAdjustmentRepository,
@@ -375,6 +379,12 @@ def build_plan_guard(ctx: AppContext) -> PlanGuardServices:
         ).with_return_stage(
             lambda: (
                 ctx.planning_workflows.adaptive_replan_preview_service().enforced_return_stage()
+            )
+        )
+        # Recurring or worsening complaints become non-blocking notes (#3766).
+        guard.with_complaints(
+            lambda: recurring_complaints(
+                ctx.athlete.checkin().list(RECURRING_WINDOW_DAYS), local_date()
             )
         )
         # Units come only from the athlete's library templates (#2379).

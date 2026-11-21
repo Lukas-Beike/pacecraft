@@ -1,7 +1,7 @@
 import sqlite3
 import threading
 import unittest
-from datetime import date
+from datetime import date, timedelta
 
 from backend import change_history
 from backend.athlete.checkins import (
@@ -11,6 +11,7 @@ from backend.athlete.checkins import (
     bounded_minutes,
     bounded_score,
     normalize_checkin,
+    recurring_complaints,
 )
 from backend.coach.change_receipts import change_summary, turn_changes
 from backend.db.repositories import CheckinRepository
@@ -516,6 +517,61 @@ class AthleteCheckinHistoryTests(unittest.TestCase):
         self.assertNotIn("day_status", restored)
         self.assertNotIn("tag_answers", restored)
 
+    def test_coach_complaints_are_stored_kept_cleared_and_undone(self):
+        # #3766: area, side and severity beside the free pain text.
+        self.service.save({"pain": "zieht beim Anlaufen"})
+        before = self.saved()
+        knee = {"area": "knee", "side": "left", "severity": 2}
+        achilles = {"area": "achilles", "side": "right", "severity": 5}
+        with change_history.collect_changes() as changes:
+            saved = self.service.save_coach({"complaints": [knee, achilles]})
+        self.assertEqual(saved["change"]["action"], "update")
+        # Sorted by area and side; the free text stays.
+        self.assertEqual(self.saved()["complaints"], [achilles, knee])
+        self.assertEqual(self.saved()["pain"], "zieht beim Anlaufen")
+        # Omitted complaints keep their value; an empty list removes them.
+        self.service.save_coach({"soreness": 3})
+        self.assertEqual(self.saved()["complaints"], [achilles, knee])
+        # Undoing a removal brings the day's complaints back.
+        with change_history.collect_changes() as removal:
+            self.service.save_coach({"complaints": []})
+        self.assertNotIn("complaints", self.saved())
+        _undo(self.manager, self.service, removal)
+        self.assertEqual(self.saved()["complaints"], [achilles, knee])
+        self.service.save_coach({"complaints": []})
+        self.assertNotIn("complaints", self.saved())
+        with self.manager.unit_of_work() as db:
+            self.assertIsNone(
+                db.execute(
+                    "SELECT value FROM kv WHERE key='checkin_complaints:2026-08-31'"
+                ).fetchone()
+            )
+        self.service.save_coach({"complaints": [knee]})
+        with change_history.collect_changes() as changes:
+            self.service.save_coach({"complaints": [achilles]})
+        _undo(self.manager, self.service, changes)
+        self.assertEqual(self.saved()["complaints"], [knee])
+        self.assertEqual(before["pain"], self.saved()["pain"])
+
+    def test_complaints_are_validated(self):
+        for complaints in (
+            [{"area": "elbow", "side": "left", "severity": 3}],
+            [{"area": "knee", "side": "middle", "severity": 3}],
+            [{"area": "knee", "side": "left", "severity": 11}],
+            [{"area": "knee", "side": "left", "severity": 2.5}],
+            [{"area": "knee", "side": "left"}],
+            [{"area": "knee", "side": "left", "severity": 2}] * 2,
+            [
+                {"area": "knee", "side": side, "severity": 1}
+                for side in ("left", "right", "both", "none")
+            ]
+            * 3,
+            {"area": "knee"},
+        ):
+            with self.subTest(complaints), self.assertRaises(AppError):
+                self.service.save_coach({"complaints": complaints})
+        self.assertEqual(self.service.list(365), [])
+
     def test_undo_is_rejected_when_the_day_changed_since(self):
         self.service.save({"soreness": 3})
         with change_history.collect_changes() as changes:
@@ -533,6 +589,49 @@ class AthleteCheckinHistoryTests(unittest.TestCase):
         summary = change_summary([receipt])
         self.assertTrue(summary["undoable"])
         self.assertEqual(turn_changes([receipt]), changes)
+
+
+class RecurringComplaintTests(unittest.TestCase):
+    """#3766 (athlete): 3 of the last 14 days, or 2+ severity points worse there."""
+
+    @staticmethod
+    def day(offset, *complaints):
+        return {
+            "checkin_date": (TODAY - timedelta(days=offset)).isoformat(),
+            "complaints": [
+                {"area": area, "side": side, "severity": severity}
+                for area, side, severity in complaints
+            ],
+        }
+
+    def test_three_days_or_two_points_make_a_note_and_older_days_do_not(self):
+        rows = [
+            self.day(0, ("achilles", "right", 3), ("knee", "left", 4)),
+            self.day(5, ("achilles", "right", 3)),
+            self.day(13, ("achilles", "right", 2), ("knee", "left", 2)),
+            # Outside the 14 days, today included: not counted.
+            self.day(14, ("knee", "left", 1), ("calf", "both", 6)),
+            self.day(2, ("shin", "none", 3)),
+        ]
+        found = {
+            (item["area"], item["side"]): item
+            for item in recurring_complaints(rows, TODAY)
+        }
+        self.assertEqual(set(found), {("achilles", "right"), ("knee", "left")})
+        achilles = found[("achilles", "right")]
+        self.assertEqual(
+            (achilles["days"], achilles["first_severity"], achilles["last_severity"]),
+            (3, 2, 3),
+        )
+        # Two days, but 2 -> 4 is two points worse.
+        knee = found[("knee", "left")]
+        self.assertEqual(
+            (knee["days"], knee["first_severity"], knee["last_severity"]), (2, 2, 4)
+        )
+
+    def test_one_point_worse_on_two_days_is_no_note(self):
+        rows = [self.day(0, ("knee", "left", 3)), self.day(3, ("knee", "left", 2))]
+        self.assertEqual(recurring_complaints(rows, TODAY), [])
 
 
 if __name__ == "__main__":

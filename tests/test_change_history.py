@@ -735,6 +735,22 @@ class ChangeHistoryTests(unittest.TestCase):
             change_history.accepted_audit_hashes("profile", value),
         )
 
+    def test_a_checkin_recorded_before_complaints_stays_undoable(self):
+        # #3766: check-in rows recorded before the structured complaints carry no
+        # complaints field; the current projection with complaints still accepts them.
+        before = {"checkin_date": "2026-11-17", "soreness": 3, "pain": "Knie"}
+        complaint = [{"area": "knee", "side": "left", "severity": 3}]
+        value = change_history.audit_projection(
+            "checkin", {**before, "complaints": complaint}
+        )
+        self.assertIn("complaints", change_history.audit_projection_fields("checkin"))
+        self.assertIn(
+            change_history.audit_hash(
+                change_history.audit_projection("checkin", before)
+            ),
+            change_history.accepted_audit_hashes("checkin", value),
+        )
+
     def test_a_diary_row_recorded_before_schema_v32_stays_undoable(self):
         # #3234: rows before v32 carry no volume and no session; the current
         # projection adds both, empty.

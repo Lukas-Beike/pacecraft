@@ -158,6 +158,35 @@ class PlanGuardWriteTests(unittest.TestCase):
         )
         self.assertEqual(0, self.stored())
 
+    def test_recurring_complaints_reach_the_checks_and_the_brief(self) -> None:
+        # #3766: the guard names them in its notes and its brief; they never block.
+        complaint = {
+            "area": "knee",
+            "side": "left",
+            "days": 3,
+            "dates": ["2026-10-25", "2026-10-29", "2026-11-02"],
+            "first_severity": 2,
+            "last_severity": 4,
+        }
+        self.illness = ""
+        self.guard.with_complaints(lambda: [complaint])
+        notes = [
+            item
+            for item in self.guard.findings()
+            if item["code"] == "complaint_recurring"
+        ]
+        self.assertEqual(1, len(notes))
+        self.assertFalse(notes[0]["blocking"])
+        self.assertEqual([complaint], self.guard.brief()["complaints"])
+        # It comes from the check-ins, not the write, so a write that changed nothing
+        # about it still names it in its notes and is never blocked by it.
+        before = self.guard.findings()
+        written = self.guard.verify(before, [])
+        self.assertEqual(
+            ["complaint_recurring"],
+            [item["code"] for item in written if item["code"] == "complaint_recurring"],
+        )
+
     def test_rolled_back_write_publishes_nothing_and_committed_write_does(self) -> None:
         with self.assertRaises(PlanCheckError):
             self.run_tool("replace_training_plan", workouts=[{}])
@@ -688,6 +717,9 @@ class PlanBriefTests(unittest.TestCase):
         self.assertEqual("Race", brief["next_competitions"][0]["name"])
         self.assertEqual(set(plan_checks.FINDING_CODES), set(brief["plan_checks"]))
         self.assertIn("source", brief)
+        # Without recurring complaints the brief says so (#3766).
+        self.assertEqual([], brief["complaints"])
+        self.assertIn("never a diagnosis", brief["complaints_source"])
         phase = brief["season_phase"]
         self.assertEqual(("peak", 4), (phase["phase"], phase["weeks_to_race"]))
         self.assertEqual("2026-12-01", phase["race"]["date"])
