@@ -1199,10 +1199,10 @@ def selected_day(text: str | None, today: date) -> date | None:
 
 # Verlauf's periods; the own estimate needs the rules' spans, so a period shorter
 # than a window takes it from the latest window (orchestrator, #3397).
-# Verlauf's three periods: 4 weeks, 3 and 6 months (athlete decision, #3704).
-FIT_PERIODS: Final = {"28d": 28, "91d": 91, "182d": 182}
-# The one period past the 12-week read, asked for by Verlauf (#3711).
-LONG_PERIOD: Final = "182d"
+# Verlauf's four periods: 4 weeks, 3, 6 and 12 months (athlete decisions, #3704, #3839).
+FIT_PERIODS: Final = {"28d": 28, "91d": 91, "182d": 182, "365d": 365}
+# The periods past the 12-week read, each asked for by Verlauf alone (#3711).
+LONG_PERIODS: Final = frozenset({"182d", "365d"})
 
 
 def _period_inputs(

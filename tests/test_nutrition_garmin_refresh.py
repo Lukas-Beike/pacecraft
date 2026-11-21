@@ -130,7 +130,7 @@ class GarminNutritionRefreshTests(unittest.TestCase):
             canonical=garmin_body_from_payload(garmin, today),
             garmin_ftp={},
         )
-        metrics = projection["windows"]["14d"]["metrics"]
+        metrics = projection["windows"]["28d"]["metrics"]
         weight_point = next(
             row
             for row in metrics["weight_kg"][0]["points"]

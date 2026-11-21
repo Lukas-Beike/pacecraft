@@ -928,7 +928,7 @@ class BodyFatFallbackTests(unittest.TestCase):
 
     def test_the_six_months_are_read_only_when_asked_for(self) -> None:
         # #3711: the 182-day read doubled every energy read on prod; it runs
-        # only when Verlauf asks for 6 Monate, and 4 Wochen and 3 Monate lie
+        # only when Verlauf asks for 6 or 12 Monate, and 4 Wochen and 3 Monate lie
         # inside the 12-week read. Everything else in the view is the same.
         src = skinfold_sources([folds_on(DAY1)])
         calls: list[int] = []
@@ -940,7 +940,7 @@ class BodyFatFallbackTests(unittest.TestCase):
         plain = read_energy_view(None, src, DAY3)
         asked = read_energy_view(None, src, DAY3, None, long)
         self.assertEqual(["28d", "91d"], sorted(plain["fit_scale"]))
-        self.assertEqual(["182d", "28d", "91d"], sorted(asked["fit_scale"]))
+        self.assertEqual(["182d", "28d", "365d", "91d"], sorted(asked["fit_scale"]))
         self.assertEqual(1, len(calls))
         self.assertEqual(
             {k: v for k, v in asked.items() if k != "fit_scale"},

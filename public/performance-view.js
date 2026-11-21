@@ -125,7 +125,7 @@ function renderGarmin(garmin) {
 function currentPerformanceValues(metrics, history) {
   const values = { ...metrics };
   const preferred = history?.body?.preferred_providers?.cycling_w_per_kg;
-  const points = (history?.body?.windows?.["12w"]?.metrics?.cycling_w_per_kg || []).flatMap((item) => (item.points || []).filter(analysisValidPoint).map((point) => ({ ...point, source: item.source, ..."source_provider" in item ? { source_provider: item.source_provider } : {}, unit: "W/kg" }))).sort((a, b) => b.date.localeCompare(a.date) || Number(isPreferredSource(b, preferred)) - Number(isPreferredSource(a, preferred)));
+  const points = (history?.body?.windows?.["91d"]?.metrics?.cycling_w_per_kg || []).flatMap((item) => (item.points || []).filter(analysisValidPoint).map((point) => ({ ...point, source: item.source, ..."source_provider" in item ? { source_provider: item.source_provider } : {}, unit: "W/kg" }))).sort((a, b) => b.date.localeCompare(a.date) || Number(isPreferredSource(b, preferred)) - Number(isPreferredSource(a, preferred)));
   // The preferred provider's newest point wins even when another provider is newer; others only fill in when it has none.
   values.cycling_w_per_kg = (preferred === undefined ? undefined : points.find((point) => isPreferredSource(point, preferred))) || points[0];
   return values;
@@ -227,7 +227,7 @@ function renderPerformance(performance, { refreshCharts = true } = {}) {
     renderPersonalRecovery(performance?.personal_recovery);
     renderAnalysisHistory(performance?.history);
     void renderCyclingPowerProfile();
-    renderTrainingFocus(performance?.training_focus_periods?.[analysisHistoryPeriod] || performance?.training_focus);
+    renderTrainingFocus(analysisTrainingFocus(performance));
   }
   const root = $("#performancePredictions");
   root.replaceChildren();

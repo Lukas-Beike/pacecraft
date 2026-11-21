@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import math
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from datetime import date, timedelta
 from typing import Any
 
@@ -16,6 +16,8 @@ from backend.performance.freshness import GarminSyncStatus
 from backend.providers.source_labels import SourceView, provider_label
 
 GARMIN_SOURCE = provider_label(ProviderId.GARMIN, SourceView.BODY_HISTORY)
+# The periods of the base read; a longer one is read on demand with its own span.
+BODY_PERIODS = (28, 91)
 # None: the weights the athlete entered by hand (#3252).
 _MEASUREMENT_SOURCES = {ProviderId.GARMIN: GARMIN_SOURCE, None: "Lokal"}
 
@@ -230,8 +232,9 @@ def body_history(
     *,
     canonical: CanonicalBodyInputs,
     garmin_ftp: Mapping[date, float],
+    periods: Sequence[int] = BODY_PERIODS,
 ) -> dict[str, Any]:
-    """Return API-ready 14d/12w charts under performance.history.body.
+    """Return API-ready charts per period (``28d``, ``91d``) under performance.history.body.
 
     Daily points include observed_at and synced_at when measured. Derived power-
     to-weight points also retain separate FTP and weight dates, sync times, and
@@ -253,7 +256,8 @@ def body_history(
     entered_fat = _stamped(canonical.entered_body_fat_pct, None)
     ftp = _garmin_ftp(garmin, today, garmin_ftp)
     windows: dict[str, Any] = {}
-    for key, days in (("14d", 14), ("12w", 84)):
+    for days in periods:
+        key = f"{days}d"
         start = today - timedelta(days=days - 1)
         windows[key] = {
             "start": start.isoformat(),
@@ -278,7 +282,7 @@ def body_history(
         }
     return {
         "version": 1,
-        "default_window": "12w",
+        "default_window": f"{periods[-1]}d",
         "windows": windows,
         "preferred_providers": preferred_providers(),
     }

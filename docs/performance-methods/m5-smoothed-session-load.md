@@ -54,7 +54,7 @@ measured recovery times.
 
 Daily M1 AU of all sports, athlete-local days, from the first recorded session
 in the history window through the period end. The window starts 168 days (4τ)
-before the period, but never later than 251 days before today, so Coach and
+before the period, but never later than 258 days before today, so Coach and
 load tab seed the same day and agree for the same date.
 Local RPE first, a labelled provider RPE only without it (card M1).
 
@@ -96,7 +96,7 @@ when treated as zero, which this method does not do.
 | Warm-up | 2τ days | product assumption | Leaves about 14 % of the start error. |
 | Rest day | 0 AU for a past day without a session | product assumption | Needed for the decay; a missed sync is indistinguishable from a rest day. |
 | Gap day | unrated or invalid session: state held, no value | product assumption | A missing rating is unknown, not zero (card M1). |
-| History window | 168 days before the period, at the latest 251 days before today | product assumption | Warm-up of 84 days plus 84 days again: an established athlete has values from the first day, start error below 2 %. |
+| History window | 168 days before the period, at the latest 258 days before today | product assumption | Warm-up of 84 days plus 84 days again: an established athlete has values from the first day, start error below 2 %. |
 | Model form | `E_t = exp(−1/τ) E_(t−1) + (1 − exp(−1/τ)) L_t` | source | R17 exponential response. |
 
 ## Allowed statements

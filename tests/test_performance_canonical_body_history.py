@@ -244,8 +244,8 @@ class CanonicalBodyInputTests(unittest.TestCase):
         # Weight looks back 7 extra days for the quotient; body fat covers the chart.
         self.assertEqual(
             [
-                (MetricKind.WEIGHT, TODAY - timedelta(days=90), TODAY),
-                (MetricKind.BODY_FAT, TODAY - timedelta(days=83), TODAY),
+                (MetricKind.WEIGHT, TODAY - timedelta(days=97), TODAY),
+                (MetricKind.BODY_FAT, TODAY - timedelta(days=90), TODAY),
             ],
             reader.calls,
         )
@@ -416,7 +416,7 @@ class CanonicalBodyInputTests(unittest.TestCase):
                     _measure(kind, 34.0, differs, provider=ProviderId.GARMIN),
                 )
                 inputs = read_body_inputs(BodyReader(observations), "db", TODAY)
-                series = _body({}, None, inputs)["windows"]["14d"]["metrics"][metric]
+                series = _body({}, None, inputs)["windows"]["28d"]["metrics"][metric]
                 self.assertEqual(
                     ["garmin"], [item["source_provider"] for item in series]
                 )
@@ -438,7 +438,7 @@ class CanonicalBodyInputTests(unittest.TestCase):
         alone = read_body_inputs(
             BodyReader((entered(MetricKind.WEIGHT, 72.5, DAY),)), "db", TODAY
         )
-        series = _body({}, None, alone)["windows"]["14d"]["metrics"]["weight_kg"]
+        series = _body({}, None, alone)["windows"]["28d"]["metrics"]["weight_kg"]
         self.assertEqual(
             [("Lokal", None)], [(i["source"], i["source_provider"]) for i in series]
         )
@@ -469,7 +469,7 @@ class CanonicalBodyInputTests(unittest.TestCase):
         ):
             inputs = read_body_inputs(BodyReader(observations), db, TODAY)
         self.assertEqual({fold: 16.0}, dict(inputs.skinfold_body_fat_pct))
-        series = _body({}, None, inputs)["windows"]["14d"]["metrics"]["body_fat_pct"]
+        series = _body({}, None, inputs)["windows"]["28d"]["metrics"]["body_fat_pct"]
         self.assertEqual(1, len(series))
         shown = {
             point["date"]: (point["value"], point["source_label"])
@@ -516,8 +516,8 @@ class CanonicalBodyInputTests(unittest.TestCase):
 
 # The body-history windows. Current-metric reads also read WEIGHT (U5) over other
 # windows, so the window assertions check these exact body windows.
-BODY_WEIGHT_WINDOW = (MetricKind.WEIGHT, TODAY - timedelta(days=90), TODAY)
-BODY_FAT_WINDOW = (MetricKind.BODY_FAT, TODAY - timedelta(days=83), TODAY)
+BODY_WEIGHT_WINDOW = (MetricKind.WEIGHT, TODAY - timedelta(days=97), TODAY)
+BODY_FAT_WINDOW = (MetricKind.BODY_FAT, TODAY - timedelta(days=90), TODAY)
 
 
 class CanonicalBodyPublicStateTests(unittest.TestCase):
@@ -526,7 +526,7 @@ class CanonicalBodyPublicStateTests(unittest.TestCase):
     ) -> None:
         def weight_series(result):
             body = result["performance"]["history"]["body"]
-            return body["windows"]["14d"]["metrics"]["weight_kg"]
+            return body["windows"]["28d"]["metrics"]["weight_kg"]
 
         def garmin_values(result):
             return [
@@ -612,7 +612,7 @@ class CanonicalBodyPublicStateTests(unittest.TestCase):
         state = _service(case.garmin, None).from_inputs(None)
         body = state["performance"]["history"]["body"]
         for metric in ("weight_kg", "body_fat_pct"):
-            for series in body["windows"]["12w"]["metrics"][metric]:
+            for series in body["windows"]["91d"]["metrics"][metric]:
                 if series["source"] == "Garmin Connect":
                     self.assertTrue(
                         all(point["value"] is None for point in series["points"])
@@ -624,7 +624,7 @@ class CanonicalBodyFallbackTests(unittest.TestCase):
 
     @staticmethod
     def _values(output: dict[str, Any], metric: str) -> list[Any]:
-        series = output["windows"]["14d"]["metrics"][metric]
+        series = output["windows"]["28d"]["metrics"][metric]
         return [point.get("value") for entry in series for point in entry["points"]]
 
     def test_snapshot_garmin_values_are_ignored_without_canonical_values(self) -> None:

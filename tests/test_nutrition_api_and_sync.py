@@ -68,7 +68,7 @@ class NutritionHttpApiTests(unittest.TestCase):
 
     def test_history_period_is_forwarded(self) -> None:
         self.diary_service.sync_status.get_week_summary.return_value = {"days": []}
-        for count in (7, 28, 91, 182):
+        for count in (7, 28, 91, 182, 365):
             self.handler.path = f"/api/nutrition/week?days={count}"
             self.assertTrue(
                 dispatch_route(self.get_routes, self.handler, "/api/nutrition/week")
@@ -353,10 +353,11 @@ class NutritionHttpApiTests(unittest.TestCase):
         )
 
     def test_nutrition_refresh_rejects_invalid_range(self) -> None:
-        # The week takes Verlauf's 28, 91 or 182 days (#3704), the body 14 or 84.
+        # The week takes Verlauf's 28, 91, 182 or 365 days (#3704, #3839), the body 14 or 84.
         for payload in (
             {"area": "week", "days": 15},
             {"area": "week", "days": 84},
+            {"area": "week", "days": 364},
             {"area": "body", "days": 28},
         ):
             self.handler.read_json.return_value = payload

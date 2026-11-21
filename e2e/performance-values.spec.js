@@ -22,7 +22,7 @@ test("@responsive performance keeps Garmin measurements and one cycling best per
     history.metrics.cycling_ftp_watts = [{ source: "Garmin Connect", source_provider: "garmin", points: [
       { date: "2026-10-01", value: 270 }, { date: "2026-10-02", value: 272 }, { date: "2026-10-03", value: 275 },
     ] }];
-    history.body.windows["12w"].metrics.cycling_w_per_kg = [
+    history.body.windows["91d"].metrics.cycling_w_per_kg = [
       { source: "Garmin Connect", source_provider: "garmin", points: [{ date: "2026-10-03", value: 3.8 }] },
     ];
     state.data.performance = { ...state.data.performance, history, metrics: {

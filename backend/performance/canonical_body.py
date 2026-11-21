@@ -24,10 +24,10 @@ from backend.canonical.records import Observation
 from backend.canonical.vocabulary import MetricKind, ProviderId
 from backend.runtime.ports import ObservationReader
 
-WINDOW_DAYS = 84
-BODY_FAT_READ_DAYS = WINDOW_DAYS - 1
+# The base read serves 4 Wochen and 3 Monate; a longer period reads its own span.
+WINDOW_DAYS = 91
 # The weight quotient looks back 7 days before the chart window.
-WEIGHT_READ_DAYS = BODY_FAT_READ_DAYS + 7
+WEIGHT_LOOKBACK_DAYS = 7
 WEIGHT_BOUNDS = (30.0, 300.0)
 BODY_FAT_BOUNDS = (2.0, 70.0)
 
@@ -54,25 +54,26 @@ EMPTY_BODY_INPUTS = CanonicalBodyInputs(
 
 
 def read_body_inputs(
-    reader: ObservationReader, db: Any, today: date
+    reader: ObservationReader, db: Any, today: date, days: int = WINDOW_DAYS
 ) -> CanonicalBodyInputs:
-    """Read the Garmin weight and body fat of the chart window up to ``today``."""
+    """Read the Garmin weight and body fat of the last ``days`` days up to ``today``."""
+    fat_days = days - 1
     weights = reader.observations(
         db,
         MetricKind.WEIGHT,
-        start=today - timedelta(days=WEIGHT_READ_DAYS),
+        start=today - timedelta(days=fat_days + WEIGHT_LOOKBACK_DAYS),
         end=today,
     )
     body_fat = reader.observations(
         db,
         MetricKind.BODY_FAT,
-        start=today - timedelta(days=BODY_FAT_READ_DAYS),
+        start=today - timedelta(days=fat_days),
         end=today,
     )
     # Earlier profile values are dated skinfolds; an entry of that day wins
     # (athlete decisions, #3477, #3557). Only a database holds the change history.
     profile = (
-        profile_body_fat_history(db, today - timedelta(days=BODY_FAT_READ_DAYS))
+        profile_body_fat_history(db, today - timedelta(days=fat_days))
         if hasattr(db, "execute")
         else {}
     )

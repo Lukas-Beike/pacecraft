@@ -34,10 +34,10 @@ class AnalysisRefreshTests(unittest.TestCase):
             "sources": {"sleep": True, "hrv": False},
         }
 
-        result = service.refresh("recovery", days=84)
+        result = service.refresh("recovery", days=91)
 
         garmin.refresh_analysis.assert_called_once_with(
-            "recovery", date(2026, 7, 29), date(2026, 10, 20)
+            "recovery", date(2026, 7, 22), date(2026, 10, 20)
         )
         self.assertEqual("partial", result["status"])
         self.assertEqual(["Garmin-Erholungswerte"], result["incomplete_sources"])

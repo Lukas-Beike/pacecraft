@@ -494,6 +494,7 @@ def _read_routes(
                 lambda: _local_today(ctx),
                 ctx.wahoo.sync_service,
             ),
+            lambda days: public.performance_state_service().trend_history(days),
         ),
     )
 

@@ -42,15 +42,18 @@ every named number the code fixes. A test fails when it is out of date.
 | `STEP_ERROR_SHARE` | `0.15` | `backend/performance/activity_energy.py` | Everyday energy from steps carries the step length's +-10-15 %. |
 | `TEF_ERROR_KCAL` | `80.0` | `backend/performance/activity_energy.py` | Thermic effect of food: +-30-80 kcal per day, the upper end. |
 | `ACTIVITY_RECORD_FIELDS` | `('distance_m', 'moving_duration_s', 'elevation_gain_m')` | `backend/performance/activity_records.py` | The canonical summary fields a single session can set a record with. |
+| `BODY_PERIODS` | `(28, 91)` | `backend/performance/body.py` | The periods of the base read; a longer one is read on demand with its own span. |
 | `ENTERED_LABEL` | `'eingetragen'` | `backend/performance/body.py` | The source of one day's value in the merged body series (#3464). |
 | `SKINFOLD_LABEL` | `'Hautfalten'` | `backend/performance/body.py` | The profile's earlier body fat values are 3-site skinfolds (#3557, #3569). |
-| `WINDOW_DAYS` | `84` | `backend/performance/canonical_body.py` |  |
+| `WINDOW_DAYS` | `91` | `backend/performance/canonical_body.py` | The base read serves 4 Wochen and 3 Monate; a longer period reads its own span. |
+| `WEIGHT_LOOKBACK_DAYS` | `7` | `backend/performance/canonical_body.py` | The weight quotient looks back 7 days before the chart window. |
 | `WEIGHT_BOUNDS` | `(30.0, 300.0)` | `backend/performance/canonical_body.py` |  |
 | `BODY_FAT_BOUNDS` | `(2.0, 70.0)` | `backend/performance/canonical_body.py` |  |
 | `ACTIVITY_HISTORY_DAYS` | `365` | `backend/performance/canonical_inputs.py` | Activities older than this are not read for the performance inputs. |
 | `DAILY_HEALTH_DAYS` | `7` | `backend/performance/canonical_inputs.py` | Daily totals of the days before as_of that the 7-day averages read. |
 | `ANALYSIS_VERSION` | `3` | `backend/performance/canonical_session_analysis.py` | Stored activity_detail_analysis.analysis_version of canonical analyses. |
 | `METHOD_VERSION` | `9` | `backend/performance/canonical_session_analysis.py` | Bump when the computation below changes, so the stage recomputes every row. v3: grade-adjusted Pa:HR of outdoor runs (#1770). v4: the heart rate and power source, and the optical heart rate warning (#1869). v5: the running form drift of long runs (#1870). v6: the calendar profile uses the thresholds of the zone times (#1892). v7: samples use the adaptive gap rule of the zone times (#1950). v8: the calendar profile uses the session's configured zone limits (#2136). v9: the aerobic decoupling's steady-output rule reads 60 s rolling means (#1832). The stored heart-rate histogram has its own version in the fingerprint. |
+| `ANALYSIS_DAYS` | `91` | `backend/performance/chart_history.py` | The base read: Belastung and Entwicklung serve 4 Wochen and 3 Monate from it. |
 | `METRIC_KEYS` | `('cycling_ftp_watts', 'run_threshold_pace_seconds_per_km', 'cycling_vo2max_ml_kg_min', 'running_v... (sha256 fffe8d45)` | `backend/performance/chart_history.py` |  |
 | `METHOD` | `'comparable-sessions-v1'` | `backend/performance/comparable_sessions.py` |  |
 | `COMPARE_DAYS` | `84` | `backend/performance/comparable_sessions.py` |  |
@@ -219,8 +222,6 @@ every named number the code fixes. A test fails when it is out of date.
 | `ANALYSIS_TREND_DAYS` | `84` | `backend/performance/report_service.py` | Analyse shows the trends of the 12-week progress review (#2802). |
 | `PROGRESS_DAYS` | `frozenset({7, 28, 42, 56, 84})` | `backend/performance/report_service.py` |  |
 | `STRENGTH_WEEKS` | `12` | `backend/performance/report_service.py` | Analyse › Kraft shows twelve calendar weeks like the endurance development (#3764). |
-| `TREND_DAYS` | `frozenset({14, 84, 182, 364})` | `backend/performance/report_service.py` | Analyse's trend periods (#3765): 14 Tage, 12 Wochen, 6 Monate (26 weeks) and 12 Monate (52 weeks); the previous year's same weeks lie 52 weeks back. |
-| `PREVIOUS_YEAR_DAYS` | `364` | `backend/performance/report_service.py` |  |
 | `METHOD` | `'rolling-lnrmssd-v1'` | `backend/performance/rolling_hrv.py` |  |
 | `WINDOW_DAYS` | `7` | `backend/performance/rolling_hrv.py` |  |
 | `BASELINE_DAYS` | `42` | `backend/performance/rolling_hrv.py` |  |

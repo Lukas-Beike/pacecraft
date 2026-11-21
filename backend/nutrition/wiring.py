@@ -39,7 +39,7 @@ from backend.nutrition.energy_inputs import (
     session_streams,
 )
 from backend.nutrition.energy_view import (
-    LONG_PERIOD,
+    LONG_PERIODS,
     OwnHistory,
     own_history,
     read_energy_view,
@@ -280,8 +280,8 @@ def build_nutrition(ctx: AppContext) -> NutritionServices:
             kept_end, inputs = kept_periods()
             return inputs if kept_end == end else yesterdays_periods()[1]
 
-        # Only Verlauf's 6 Monate needs the longer read (#3711).
-        long = periods if period == LONG_PERIOD else None
+        # Only Verlauf's 6 and 12 Monate need the longer read (#3711).
+        long = periods if period in LONG_PERIODS else None
         with ctx.database().reader() as db:
             return read_energy_view(db, energy_sources(), end, day, long)
 

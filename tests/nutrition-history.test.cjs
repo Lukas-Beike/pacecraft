@@ -93,7 +93,7 @@ test("the Bilanz and Makros cards: hero by goal distance, three tiles, no empty 
   const markValueMissing = (node, text = "nicht erfasst") => { node.textContent = text; node.missing = true; return node; };
   const setValueWithUnit = (node, text) => { node.textContent = text; };
   const { h } = extractFunctions("components.js", ["h", "SVG_NS", "svgNode"], { document: fakeDocument() });
-  const verlauf = extractFunctions("analysis.js", ["VERLAUF_PERIODS", "verlaufPeriod", "verlaufHead", "verlaufGoalDistance"], { h, nutritionHistoryPeriod: "28d" });
+  const verlauf = extractFunctions("analysis.js", ["ANALYSIS_PERIODS", "analysisPeriod", "verlaufPeriod", "verlaufHead", "verlaufGoalDistance"], { h, nutritionHistoryPeriod: "28d" });
   const ctx = extractFunctions("nutrition.js", BALANCE, {
     h, markValueMissing, setValueWithUnit, nutritionExpenditureDate: (date) => date.split("-").reverse().join("."),
     AppFormat: { number: (value) => Math.round(value).toLocaleString("de-DE") }, formatWhole: (value) => String(value),

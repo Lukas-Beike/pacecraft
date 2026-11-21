@@ -25,9 +25,9 @@ PRODUCT_ENTITY = "nutrition_product"
 INVALID_BODY = "Ungültiger Anfrageinhalt."
 # The lengths a refresh takes per area: Verlauf's periods for `week` (#3704), the
 # weight's for `body`; the first is the default.
-REFRESH_PERIODS = {"week": (28, 91, 182), "body": (84, 14)}
+REFRESH_PERIODS = {"week": (28, 91, 182, 365), "body": (84, 14)}
 REFRESH_PERIOD_ERRORS = {
-    "week": "Der Zeitraum muss 28, 91 oder 182 Tage umfassen.",
+    "week": "Der Zeitraum muss 28, 91, 182 oder 365 Tage umfassen.",
     "body": "Der Zeitraum muss 14 oder 84 Tage umfassen.",
 }
 
@@ -166,7 +166,7 @@ class NutritionGetRoutes:
     def _week(self, handler: Any, request: RouteRequest) -> None:
         """Nutrition week summary of the closed days before today.
 
-        Request: query `days` (integer, default `7`; `7`, `28`, `91` or `182`).
+        Request: query `days` (integer, default `7`; `7`, `28`, `91`, `182` or `365`).
 
         Response: 200 `{"ok": true, "start_date", "end_date", "days", "averages",
         "balance_kcal", "balance_days", "expenditure_source"}`. Each item of `days`
@@ -177,7 +177,7 @@ class NutritionGetRoutes:
         field.
 
         Errors: 400 "Ungültiger Zeitraum." for a non-integer `days`; 400 "Zeitraum muss
-        7, 28, 91 oder 182 Tage umfassen." for another number.
+        7, 28, 91, 182 oder 365 Tage umfassen." for another number.
         """
         try:
             days = int(request.query.get("days", ["7"])[0])
@@ -540,7 +540,7 @@ class NutritionPostRoutes:
         Request: JSON body `{"area": string, "date": "YYYY-MM-DD", "days": integer}` and
         no other key. `area` is `diary`, `week`, `body` or `products`. `date` is
         optional: today for `diary` and `body`, yesterday for `week`; for `week` and
-        `body` it must not lie in the future. `days` is `28`, `91` or `182` for `week`
+        `body` it must not lie in the future. `days` is `28`, `91`, `182` or `365` for `week`
         (default `28`) and `14` or `84` for `body` (default `84`), and ends at `date`. `diary` refreshes the Garmin energy
         expenditure of that day, `week` the Garmin daily totals, `body` the Garmin
         weight; `products` only reads the local products and ignores `date` and `days`.
@@ -555,8 +555,8 @@ class NutritionPostRoutes:
 
         Errors: 400 "Ungültiger Ernährungsbereich." for another `area`; 400 "Ungültiger
         Anfrageinhalt." for another key; 400 "Ungültiges Datumsformat '{value}'.
-        Erwartet wird YYYY-MM-DD." for an invalid `date`; 400 "Der Zeitraum muss 28, 91
-        oder 182 Tage umfassen." (`week`) or "... 14 oder 84 Tage ..." (`body`); 400 "Das Datum darf nicht in der Zukunft liegen."; 503
+        Erwartet wird YYYY-MM-DD." for an invalid `date`; 400 "Der Zeitraum muss 28, 91, 182
+        oder 365 Tage umfassen." (`week`) or "... 14 oder 84 Tage ..." (`body`); 400 "Das Datum darf nicht in der Zukunft liegen."; 503
         `provider_busy` "Garmin wird bereits aktualisiert."
         """
         payload = _read_object(handler)

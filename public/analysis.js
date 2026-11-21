@@ -342,7 +342,6 @@ function appendAnalysisPointMark(svg, item, point, index, unit, scales, obstacle
     return;
   }
   const dot = svgNode("circle", { cx: x(point.date), cy: y(point.value), r: 2.5, "data-series": index, "data-color": item.color ?? index });
-  if (item.line === "faint") dot.dataset.line = "faint";
   dot.append(svgNode("title", {}, `${item.label} · ${dateLabel(point.date)}: ${analysisPointValue(item, point, unit)}`));
   svg.append(dot);
   obstacles.push({ left: x(point.date) - 3, right: x(point.date) + 3, top: y(point.value) - 3, bottom: y(point.value) + 3 });
@@ -351,8 +350,7 @@ function appendAnalysisPointMark(svg, item, point, index, unit, scales, obstacle
 // Only the latest, highest, lowest and first reading carry a value label (#1782); the tap readout shows the rest.
 function analysisLabelledPoints(item) {
   const readings = item.points.filter(analysisValidPoint);
-  // The previous year's line carries no value labels; its readout names its values.
-  if (!readings.length || item.line === "faint") return [];
+  if (!readings.length) return [];
   const byValue = [...readings].sort((a, b) => Number(a.value) - Number(b.value));
   return [...new Set([readings.at(-1), byValue.at(-1), byValue[0], readings[0]])];
 }
@@ -630,30 +628,51 @@ function analysisChartGroup(title, charts, series, note) {
   return group;
 }
 
-function analysisPeriodControls(label, value, change, periods = [["fortnight", "Letzte 14 Tage"], ["twelveWeeks", "12 Wochen"]]) {
-  const controls = h("div", { className: "analysis-period-controls", "aria-label": label });
-  controls.setAttribute("role", "group");
-  for (const [period, text] of periods) {
-    const button = h("button", { className: "secondary-button", type: "button", "aria-pressed": String(period === value) }, text);
-    button.addEventListener("click", () => change(period)); controls.append(button);
-  }
-  return controls;
+// The one period table of Analyse and Ernährung (athlete decision, #3839): the key of the energy
+// read's fit_scale, the days, the calendar weeks a weekly view draws, the label of every button and
+// the span the cards name. 4 Wochen draw days; every longer period draws calendar weeks.
+const ANALYSIS_PERIODS = [
+  { key: "28d", days: 28, weeks: 4, label: "4 Wochen", span: "den letzten 4 Wochen" },
+  { key: "91d", days: 91, weeks: 13, label: "3 Monate", span: "den letzten 3 Monaten" },
+  { key: "182d", days: 182, weeks: 26, label: "6 Monate", span: "den letzten 6 Monaten" },
+  { key: "365d", days: 365, weeks: 52, label: "12 Monate", span: "den letzten 12 Monaten" },
+];
+// The performance state serves up to 3 Monate; a longer period reads /api/analysis/trend-history on demand.
+const BASE_PERIOD_DAYS = 91;
+
+function analysisPeriod(key) {
+  return ANALYSIS_PERIODS.find((item) => item.key === key) || ANALYSIS_PERIODS[0];
 }
 
-let analysisHistoryPeriod = "twelveWeeks";
-let recoveryHistoryPeriod = "fortnight";
-// Longer trend periods and the previous year's same weeks (#3765, athlete: a "Vorjahr" switch, off by
-// default). Only a longer period or the switch reads /api/analysis/trend-history; the default view keeps its read.
-let developmentPeriod = "twelveWeeks";
-let previousYearShown = false;
-const TREND_PERIOD_DAYS = { fortnight: 14, twelveWeeks: 84, sixMonths: 182, twelveMonths: 364 };
-const TREND_PERIOD_LABELS = { fortnight: "Letzte 14 Tage", twelveWeeks: "Letzte 12 Wochen", sixMonths: "Letzte 6 Monate", twelveMonths: "Letzte 12 Monate" };
-const PREVIOUS_YEAR_DAYS = 364;
+function analysisPeriodWeekly(key) {
+  return analysisPeriod(key).days > 28;
+}
+
+// `trend` adds the line under the buttons that names a failed longer read.
+function analysisPeriodControls(label, value, change, { trend = false } = {}) {
+  const controls = h("div", { className: "analysis-period-controls", "aria-label": label });
+  controls.setAttribute("role", "group");
+  for (const { key, label: text } of ANALYSIS_PERIODS) {
+    const button = h("button", { className: "secondary-button", type: "button", "aria-pressed": String(key === value) }, text);
+    button.addEventListener("click", () => {
+      // A choice retries a failed longer read.
+      for (const [days, entry] of trendHistories) if (entry.failed) trendHistories.delete(days);
+      change(key);
+    });
+    controls.append(button);
+  }
+  return trend ? h("div", "analysis-trend-controls", controls, trendHistoryNote(value)) : controls;
+}
+
+let analysisHistoryPeriod = "91d";
+let recoveryHistoryPeriod = "28d";
+// Only a period past the base read reads /api/analysis/trend-history; the default view keeps its read.
+let developmentPeriod = "91d";
 const trendHistories = new Map();
 
 // The stored long read of `days`, or null while it loads; `rerender` runs once it arrives.
 // A newer data version reloads it in the background while the older read stays drawn; a failed read is
-// kept as failed (no automatic retry) until the athlete picks a period or the switch again.
+// kept as failed (no automatic retry) until the athlete picks a period again.
 function trendHistory(days, rerender) {
   const cached = trendHistories.get(days);
   const version = analysisReportVersionKey();
@@ -665,43 +684,29 @@ function trendHistory(days, rerender) {
   return cached?.report || null;
 }
 
+// The long read of a period longer than the view's own `base` days, else null.
+function trendHistoryFor(period, base, rerender) {
+  const { days } = analysisPeriod(period);
+  return days > base ? trendHistory(days, rerender) : null;
+}
+
 // A short line under the selector when the longer read failed.
 function trendHistoryNote(period) {
-  return trendHistories.get(TREND_PERIOD_DAYS[period])?.failed ? h("p", "muted", "Der längere Zeitraum konnte nicht geladen werden.") : null;
+  return trendHistories.get(analysisPeriod(period).days)?.failed ? h("p", "muted", "Der längere Zeitraum konnte nicht geladen werden.") : null;
 }
 
 // The new groups start visible; the shown tab hides the other sport's again (#3824).
-function rerenderDevelopment() {
+function rerenderAnalysisTrend() {
   renderAnalysisHistory(state.data?.performance?.history);
-  renderAnalysisSegmentsIfActive();
+  renderTrainingFocus(analysisTrainingFocus());
 }
 
-function trendHistoryNeeded(period) {
-  return period !== "fortnight" && period !== "twelveWeeks" ? true : previousYearShown;
+// The training focus of the load tab's period: from the state, else from its long read.
+function analysisTrainingFocus(performance = state.data?.performance) {
+  const periods = performance?.training_focus_periods;
+  return periods?.[analysisHistoryPeriod] || trendHistories.get(analysisPeriod(analysisHistoryPeriod).days)?.report?.training_focus || periods?.["91d"] || performance?.training_focus;
 }
 
-// The same dated values one year (52 weeks) earlier, moved onto this period's dates.
-function previousYearPoints(points, start, end) {
-  const from = addDateKey(start, -PREVIOUS_YEAR_DAYS), to = addDateKey(end, -PREVIOUS_YEAR_DAYS);
-  return points.filter((point) => point.date >= from && point.date <= to).map((point) => ({ ...point, date: addDateKey(point.date, PREVIOUS_YEAR_DAYS) }));
-}
-
-const TREND_PERIOD_BUTTONS = { fortnight: "Letzte 14 Tage", twelveWeeks: "12 Wochen", sixMonths: "6 Monate", twelveMonths: "12 Monate" };
-
-// The period buttons with the "Vorjahr" switch under them.
-function trendPeriodControls(label, value, periods, change) {
-  // A choice retries a failed longer read.
-  const choose = (period) => {
-    for (const [days, entry] of trendHistories) if (entry.failed) trendHistories.delete(days);
-    change(period);
-  };
-  const controls = analysisPeriodControls(label, value, choose, periods.map((period) => [period, TREND_PERIOD_BUTTONS[period]]));
-  const toggle = h("button", { className: "secondary-button", type: "button", "aria-pressed": String(previousYearShown) }, "Vorjahr");
-  toggle.addEventListener("click", () => { previousYearShown = !previousYearShown; choose(value); });
-  const comparison = h("div", { className: "analysis-period-controls", "aria-label": "Vergleich mit dem Vorjahr" }, toggle);
-  comparison.setAttribute("role", "group");
-  return h("div", "analysis-trend-controls", controls, comparison, trendHistoryNeeded(value) ? trendHistoryNote(value) : null);
-}
 // Report responses are reused per content version (state_versions) and in-flight requests are shared.
 const analysisReportCache = new Map();
 
@@ -1135,42 +1140,43 @@ function renderAnalysisHistory(history) { // NOSONAR
   }
   const end = history.end;
   const weekStart = addDateKey(end, -((new Date(`${end}T12:00:00Z`).getUTCDay() + 6) % 7));
-  const start = analysisHistoryPeriod === "fortnight" ? addDateKey(end, -13) : addDateKey(weekStart, -77);
+  const loadPeriod = analysisPeriod(analysisHistoryPeriod);
+  const weekly = analysisPeriodWeekly(analysisHistoryPeriod);
+  const start = weekly ? addDateKey(weekStart, -7 * (loadPeriod.weeks - 1)) : addDateKey(end, -(loadPeriod.days - 1));
+  // 6 and 12 Monate read their own history once (#3839); until it arrives the charts keep the base read.
+  const loadHistory = trendHistoryFor(analysisHistoryPeriod, BASE_PERIOD_DAYS, rerenderAnalysisTrend)?.history || history;
   periodRoot.append(analysisPeriodControls("Zeitraum für Belastung", analysisHistoryPeriod, (period) => {
     analysisHistoryPeriod = period;
     renderAnalysisHistory(history);
-    renderTrainingFocus(state.data?.performance?.training_focus_periods?.[period] || state.data?.performance?.training_focus);
-  }));
-  const developmentWeeks = { twelveWeeks: 12, sixMonths: 26, twelveMonths: 52 }[developmentPeriod];
+    renderTrainingFocus(analysisTrainingFocus());
+  }, { trend: true }));
+  const developmentWeeks = analysisPeriod(developmentPeriod).weeks;
   const performanceStart = addDateKey(weekStart, -7 * (developmentWeeks - 1));
-  // A longer period or the "Vorjahr" switch reads the long history once (#3765); until it arrives the
-  // charts keep the default read.
-  const trend = trendHistoryNeeded(developmentPeriod) ? trendHistory(TREND_PERIOD_DAYS[developmentPeriod], rerenderDevelopment) : null;
-  const developmentMetrics = trend?.metrics || history.metrics;
-  const load = history.load || { points: [] };
+  const development = trendHistoryFor(developmentPeriod, BASE_PERIOD_DAYS, rerenderAnalysisTrend)?.history || history;
+  const developmentMetrics = development.metrics;
+  const load = loadHistory.load || { points: [] };
   const loadSeries = [{ label: "Akute Belastung", legendLabel: "Akute Belastung", source: load.source, unit: "", color: 0,
-    cadenceDays: analysisHistoryPeriod === "twelveWeeks" ? 7 : 1, average: true, averageInHeading: true,
-    points: analysisHistoryPeriod === "twelveWeeks" ? analysisWeeklyLastPoints(load.points.filter((point) => point.date >= start && point.date <= end).map((point) => ({ date: point.date, value: point.value })), start, end) : load.points.filter((point) => point.date >= start && point.date <= end).map((point) => ({ date: point.date, value: point.value })),
+    cadenceDays: weekly ? 7 : 1, average: true, averageInHeading: true,
+    points: weekly ? analysisWeeklyLastPoints(load.points.filter((point) => point.date >= start && point.date <= end).map((point) => ({ date: point.date, value: point.value })), start, end) : load.points.filter((point) => point.date >= start && point.date <= end).map((point) => ({ date: point.date, value: point.value })),
     currentPoint: load.points.filter((point) => point.date >= start && point.date <= end).map((point) => ({ date: point.date, value: point.value })).findLast(analysisValidPoint) }];
   const loadValues = loadSeries[0].points.filter(analysisValidPoint).map((point) => Number(point.value));
   const loadAverage = loadValues.length ? loadValues.reduce((sum, value) => sum + value, 0) / loadValues.length : null;
   const loadTitle = loadAverage == null ? "Akute Belastung" : `Akute Belastung \u00b7 \u00d8 ${analysisValue(loadAverage, "")}`;
   const sourcePrefix = (source) => (source ? `${source}: ` : "");
   const loadMissing = [];
-  const loadChart = collectAnalysisChart(loadMissing, loadTitle, loadSeries, "", start, end, `${sourcePrefix(load.source)}gemessene akute Trainingsbelastung. Gestrichelte Linie: Durchschnitt der angezeigten Werte. Fehlende Messungen bleiben L\u00fccken.`, { calendarWeeks: analysisHistoryPeriod === "twelveWeeks", caption: analysisBasisCaption("Belastungspunkte", analysisHistoryPeriod === "twelveWeeks", "state") });
+  const loadChart = collectAnalysisChart(loadMissing, loadTitle, loadSeries, "", start, end, `${sourcePrefix(load.source)}gemessene akute Trainingsbelastung. Gestrichelte Linie: Durchschnitt der angezeigten Werte. Fehlende Messungen bleiben L\u00fccken.`, { calendarWeeks: weekly, caption: analysisBasisCaption("Belastungspunkte", weekly, "state") });
   if (loadChart) {
     loadChart.querySelector(".analysis-chart-legend")?.remove();
     loadRoot.append(loadChart);
   }
-  const timePoints = (history.training_time?.points || []).filter((point) => point.date >= start && point.date <= end).map((point) => ({ date: point.date, value: point.value }));
+  const timePoints = (loadHistory.training_time?.points || []).filter((point) => point.date >= start && point.date <= end).map((point) => ({ date: point.date, value: point.value }));
   if (timePoints.some(analysisValidPoint)) {
-    const weekly = analysisHistoryPeriod === "twelveWeeks";
-    const timeSeries = [{ label: weekly ? "Trainingszeit pro Woche" : "Trainingszeit pro Tag", legendLabel: "Trainingszeit", source: history.training_time.source, unit: "h", color: 1, bars: true, connected: true, cadenceDays: weekly ? 7 : 1, average: true, averageInHeading: true, points: weekly ? analysisWeeklySumPoints(timePoints, start, end) : timePoints }];
+    const timeSeries = [{ label: weekly ? "Trainingszeit pro Woche" : "Trainingszeit pro Tag", legendLabel: "Trainingszeit", source: loadHistory.training_time.source, unit: "h", color: 1, bars: true, connected: true, cadenceDays: weekly ? 7 : 1, average: true, averageInHeading: true, points: weekly ? analysisWeeklySumPoints(timePoints, start, end) : timePoints }];
     const timeValues = timeSeries[0].points.filter(analysisValidPoint).map((point) => Number(point.value));
     const timeAverage = timeValues.reduce((sum, value) => sum + value, 0) / timeValues.length;
     const timeCadence = weekly ? " pro Woche" : " pro Tag";
     const timeTitle = timeValues.length ? `Trainingszeit \u00b7 \u00d8 ${analysisValue(timeAverage, "h")}${timeCadence}` : "Trainingszeit";
-    const timeChart = collectAnalysisChart(loadMissing, timeTitle, timeSeries, "h", start, end, `${sourcePrefix(history.training_time.source)}Summe der Bewegungszeit erfasster Aktivit\u00e4ten (Kraft: Gesamtzeit), jede Aktivit\u00e4t einmal. Tage und Wochen ohne erfasste Dauer bleiben L\u00fccken.`, { calendarWeeks: weekly, caption: analysisBasisCaption("h", weekly, "sum") });
+    const timeChart = collectAnalysisChart(loadMissing, timeTitle, timeSeries, "h", start, end, `${sourcePrefix(loadHistory.training_time.source)}Summe der Bewegungszeit erfasster Aktivit\u00e4ten (Kraft: Gesamtzeit), jede Aktivit\u00e4t einmal. Tage und Wochen ohne erfasste Dauer bleiben L\u00fccken.`, { calendarWeeks: weekly, caption: analysisBasisCaption("h", weekly, "sum") });
     if (timeChart) {
       timeChart.querySelector(".analysis-chart-legend")?.remove();
       loadRoot.append(timeChart);
@@ -1178,10 +1184,10 @@ function renderAnalysisHistory(history) { // NOSONAR
   } else {
     loadMissing.push("Trainingszeit");
   }
-  appendSessionRpeLoadChart(history.session_rpe_load, loadRoot, loadMissing, start, end);
-  appendSmoothedLoadChart(history.smoothed_session_load, history.session_rpe_load, loadRoot, loadMissing, start, end);
-  appendLocalFitnessChart(history.local_fitness_fatigue, loadRoot, loadMissing, start, end);
-  appendDailyActivityGroup(history.daily_activity, loadRoot, loadMissing, start, end);
+  appendSessionRpeLoadChart(loadHistory.session_rpe_load, loadRoot, loadMissing, start, end);
+  appendSmoothedLoadChart(loadHistory.smoothed_session_load, loadHistory.session_rpe_load, loadRoot, loadMissing, start, end);
+  appendLocalFitnessChart(loadHistory.local_fitness_fatigue, loadRoot, loadMissing, start, end);
+  appendDailyActivityGroup(loadHistory.daily_activity, loadRoot, loadMissing, start, end);
   const performanceSeries = [
     ["cycling_ftp_watts", "Rad · FTP", "W", 0],
     ["run_threshold_pace_seconds_per_km", "Lauf · Schwellenpace", "s/km", 2],
@@ -1189,25 +1195,21 @@ function renderAnalysisHistory(history) { // NOSONAR
     ["running_vo2max_ml_kg_min", "Lauf · VO₂max", "ml/kg/min", 4],
   ].flatMap(([key, label, unit, color]) => (developmentMetrics?.[key] || []).filter((item) => isPreferredSource(item, history.preferred_providers?.[key])).flatMap((item) => {
     const periodPoints = (points) => (key === "cycling_ftp_watts" ? points.filter((point) => point.date >= performanceStart && point.date <= end) : analysisWeeklyPerformancePoints(points, performanceStart, end, key.includes("vo2max")));
-    const current = {
+    return [{
       label: `${label} · ${item.source}`, legendLabel: label.replace(/^Rad · /, ""), source: item.source, unit, color,
       line: key.includes("vo2max") ? "dashed" : "solid",
       cadenceDays: key === "cycling_ftp_watts" ? 1 : 7,
       explanation: performanceSeriesExplanation(key),
       currentPoint: item.points.filter((point) => point.date <= end).findLast(analysisValidPoint),
       points: periodPoints(item.points),
-    };
-    const previous = previousYearShown && trend ? periodPoints(previousYearPoints(item.points, performanceStart, end)) : [];
-    // The previous year only where stored values exist (#3765).
-    if (!previous.some(analysisValidPoint)) return [current];
-    return [current, { ...current, label: `${label} · Vorjahr · ${item.source}`, legendLabel: "Vorjahr", line: "faint", currentPoint: null, explanation: "Dieselben Kalenderwochen ein Jahr (52 Wochen) früher; nur gespeicherte Werte.", points: previous }];
+    }];
   }));
   performanceSeries.push(...firstThresholdSeries(history.first_thresholds, performanceStart, end));
   scheduleFirstThresholdRefresh(history.first_thresholds?.status);
-  root.append(trendPeriodControls("Zeitraum für Entwicklung", developmentPeriod, ["twelveWeeks", "sixMonths", "twelveMonths"], (period) => {
+  root.append(analysisPeriodControls("Zeitraum für Entwicklung", developmentPeriod, (period) => {
     developmentPeriod = period;
-    rerenderDevelopment();
-  }));
+    rerenderAnalysisTrend();
+  }, { trend: true }));
   // Each sport's development sits in its own segment, so the group is only "Entwicklung" (#2265).
   for (const [sport, primaryUnit, analysisSport] of [["Lauf", "s/km", "run"], ["Rad", "W", "ride"]]) {
     const sportSeries = performanceSeries.filter((item) => item.label.startsWith(sport));
@@ -1215,11 +1217,11 @@ function renderAnalysisHistory(history) { // NOSONAR
     const charts = [[primaryUnit, primaryUnit === "W" ? "Leistungsschwelle · FTP" : "Schwellenpace"], ["ml/kg/min", "VO₂max"]].map(([unit, metric]) => collectAnalysisChart(missing, metric, sportSeries.filter((item) => item.unit === unit), unit, performanceStart, end, "", { compactInfo: true, sparse: true, includeCoverage: false, showLegend: unit === "W" || sportSeries.filter((item) => item.unit === unit).length > 1, calendarWeeks: true })).filter(Boolean);
     if (sport === "Lauf") {
       const extra = document.createDocumentFragment();
-      renderProviderMetrics({ running_tolerance: history.provider_metrics?.running_tolerance }, extra, performanceStart, end, missing);
+      renderProviderMetrics({ running_tolerance: development.provider_metrics?.running_tolerance }, extra, performanceStart, end, missing);
       charts.push(...extra.children);
     }
     root.dataset[analysisSport === "run" ? "analysisEmptyRunning" : "analysisEmptyCycling"] = String(!charts.length);
-    const group = analysisChartGroup("Entwicklung", charts, sportSeries, `${{ twelveWeeks: "Letzte 12", sixMonths: "Letzte 26", twelveMonths: "Letzte 52" }[developmentPeriod]} Kalenderwochen einschließlich der laufenden Woche: alle datierten Garmin-FTP-Werte, letzter gültiger Wochenwert für Schwellenpace, Wochenmedian für VO₂max. Fehlende Messungen bleiben Lücken. Garmin. Quellen und Messdatum bleiben sichtbar.`);
+    const group = analysisChartGroup("Entwicklung", charts, sportSeries, `Letzte ${developmentWeeks} Kalenderwochen einschließlich der laufenden Woche: alle datierten Garmin-FTP-Werte, letzter gültiger Wochenwert für Schwellenpace, Wochenmedian für VO₂max. Fehlende Messungen bleiben Lücken. Garmin. Quellen und Messdatum bleiben sichtbar.`);
     makeAnalysisSectionCollapsible(group, `development-${sport}`);
     group.dataset.analysisSport = analysisSport;
     if (sport === "Lauf") group.querySelector(".analysis-section-content").append(predictions, runningBest);
@@ -1229,7 +1231,7 @@ function renderAnalysisHistory(history) { // NOSONAR
   // The endurance score rates all sports' long-term training, so it sits in Belastung (#2265);
   // readiness is charted in Erholung and the weekly training status only repeats the acute load.
   const extra = document.createDocumentFragment();
-  renderProviderMetrics({ endurance_score: history.provider_metrics?.endurance_score }, extra, start, end, []);
+  renderProviderMetrics({ endurance_score: loadHistory.provider_metrics?.endurance_score }, extra, start, end, []);
   while (extra.firstElementChild) enduranceRoot.append(makeAnalysisSectionCollapsible(extra.firstElementChild, "endurance-score"));
   root.dataset.analysisEmpty = String(root.dataset.analysisEmptyRunning === "true" && root.dataset.analysisEmptyCycling === "true");
   loadRoot.dataset.analysisEmpty = String(!loadRoot.childElementCount);
@@ -1252,7 +1254,7 @@ function appendSessionRpeLoadChart(report, loadRoot, loadMissing, start, end) {
   if (!rated) { loadMissing.push("Session-RPE-Last"); return; }
   const total = days.reduce((sum, day) => sum + day.total_sessions, 0);
   const source = sessionRpeSourceLabel(days, rated);
-  const weekly = analysisHistoryPeriod === "twelveWeeks";
+  const weekly = analysisPeriodWeekly(analysisHistoryPeriod);
   const points = days.map((day) => ({ date: day.date, value: day.value }));
   const series = [{ label: weekly ? "Session-RPE-Last pro Woche" : "Session-RPE-Last pro Tag", legendLabel: "Session-RPE-Last", source, unit: "AU", color: 2, bars: true, connected: true, cadenceDays: weekly ? 7 : 1, points: weekly ? analysisWeeklySumPoints(points, start, end) : points }];
   const chart = analysisChart(`Session-RPE-Last · ${rated}/${total} bewertet`, series, "AU", start, end, `${source}: RPE × Gesamtdauer je Einheit.`, { calendarWeeks: weekly, caption: analysisBasisCaption("AU", weekly, "sum") });
@@ -1265,7 +1267,7 @@ function appendSessionRpeLoadChart(report, loadRoot, loadMissing, start, end) {
 function appendSmoothedLoadChart(report, rpeReport, loadRoot, loadMissing, start, end) {
   const days = (report?.days || []).filter((day) => day.date >= start && day.date <= end);
   if (!days.some((day) => day.short != null || day.long != null)) { loadMissing.push("Kurz-/Langzeitbelastung"); return; }
-  const weekly = analysisHistoryPeriod === "twelveWeeks";
+  const weekly = analysisPeriodWeekly(analysisHistoryPeriod);
   // The curves carry load from before the window, so their label reads every reported day.
   const rpeDays = (rpeReport?.days || []).filter((day) => day.date <= end);
   const source = sessionRpeSourceLabel(rpeDays, rpeDays.reduce((sum, day) => sum + day.rated_sessions, 0));
@@ -1283,7 +1285,7 @@ function appendLocalFitnessChart(report, loadRoot, loadMissing, start, end) {
   const title = "Fitness, Ermüdung, Form";
   const days = (report?.days || []).filter((day) => day.date >= start && day.date <= end);
   if (!days.some((day) => day.fitness != null || day.fatigue != null)) { loadMissing.push(title); return; }
-  const weekly = analysisHistoryPeriod === "twelveWeeks";
+  const weekly = analysisPeriodWeekly(analysisHistoryPeriod);
   const series = [["fitness", "Fitness", 0], ["fatigue", "Ermüdung", 1], ["form", "Form", 3]].map(([key, label, color]) => {
     const points = days.map((day) => ({ date: day.date, value: day[key] }));
     return { label, legendLabel: label, source: "Lokal berechnet", unit: "TSS/Tag", color, connected: true, cadenceDays: weekly ? 7 : 1,
@@ -1327,7 +1329,7 @@ function dailyActivityTitle(label, unit, daily) {
 
 function appendDailyActivityGroup(activity, loadRoot, loadMissing, start, end) {
   if (!activity) return;
-  const weekly = analysisHistoryPeriod === "twelveWeeks";
+  const weekly = analysisPeriodWeekly(analysisHistoryPeriod);
   const charts = []; const allSeries = [];
   for (const { key, label, unit, color } of dailyActivityMetrics()) {
     const daily = (activity[key] || []).filter((point) => point.date >= start && point.date <= end).map((point) => ({ date: point.date, value: point.value }));
@@ -1377,7 +1379,7 @@ function renderProviderMetrics(metrics, root, start, end, missing) {
   });
 }
 
-let bodyHistoryPeriod = "twelveWeeks";
+let bodyHistoryPeriod = "91d";
 
 // The athlete's own weigh-ins (no provider, "Lokal") show beside the preferred source (#3252).
 function bodySourceShown(item, preferredProvider) {
@@ -1391,14 +1393,23 @@ function bodyWeeklyPoints(points, start, end) {
   }, { weekReadings: 0 });
 }
 
+// A weekly view draws whole weeks: the window starts at the period's last 13, 26 or 52 weeks.
+function bodyWindowStart(window, period) {
+  const weeks = analysisPeriodWeekly(period) ? analysisPeriod(period).weeks : 0;
+  const first = weeks ? addDateKey(window.end, -(weeks * 7 - 1)) : window.start;
+  return first > window.start ? first : window.start;
+}
+
 function bodySeriesPoints(item, window, period = bodyHistoryPeriod) {
-  const points = (item.points || []).filter((point) => point.date >= window.start && point.date <= window.end)
+  const start = bodyWindowStart(window, period);
+  const points = (item.points || []).filter((point) => point.date >= start && point.date <= window.end)
     .map((point) => ({ ...point, power_method: item.power_method, observedDate: point.observed_at || point.date }));
-  return period === "twelveWeeks" ? bodyWeeklyPoints(points, window.start, window.end) : points;
+  return analysisPeriodWeekly(period) ? bodyWeeklyPoints(points, start, window.end) : points;
 }
 
 function bodyMetricChart(metric, title, unit, window, period, preferred = {}) {
   const power = metric === "cycling_w_per_kg";
+  const weekly = analysisPeriodWeekly(period);
   const entries = (window.metrics?.[metric] || []).filter((item) => power || bodySourceShown(item, preferred[metric]));
   const series = entries.map((item, index) => ({
     label: power ? [item.power_method, item.source].filter(Boolean).join(" \u00b7 ") : [title, entries.length > 1 && item.source].filter(Boolean).join(" \u00b7 "),
@@ -1409,23 +1420,23 @@ function bodyMetricChart(metric, title, unit, window, period, preferred = {}) {
     noCurrentLine: true,
     sparse: true,
     // A single measured week is still drawn as a point.
-    minPoints: period === "twelveWeeks" ? 1 : 2,
-    cadenceDays: period === "twelveWeeks" ? 7 : 1,
+    minPoints: weekly ? 1 : 2,
+    cadenceDays: weekly ? 7 : 1,
     explanation: metric === "cycling_w_per_kg"
       ? "Tageswert aus FTP geteilt durch das letzte Körpergewicht der vorherigen sieben Tage."
       : "Nur gemessene Tageswerte; fehlende Tage bleiben Lücken.",
     points: bodySeriesPoints(item, window, period),
   }));
-  const chart = analysisChart(title, series, unit, window.start, window.end,
+  const chart = analysisChart(title, series, unit, bodyWindowStart(window, period), window.end,
     metric === "cycling_w_per_kg"
       ? "W/kg verwendet FTP (Garmin Connect) und ein höchstens sieben Tage altes gemessenes Gewicht."
       : "Gemessene Verlaufswerte. Fehlende Messungen werden nicht ergänzt.",
     // A weekly reading sits on its rolling week's start, so the axis reads in weeks (#3450).
-    { sparse: true, calendarWeeks: period === "twelveWeeks" });
+    { sparse: true, calendarWeeks: weekly });
   if (!chart) return null;
   chart.dataset.bodyMetric = metric;
-  if (period === "twelveWeeks") chart.querySelectorAll(".analysis-info-tooltip").forEach((info) => {
-    info.append(h("p", "analysis-reference-note", "12 rollierende Wochen: letzter Messwert je Woche."));
+  if (weekly) chart.querySelectorAll(".analysis-info-tooltip").forEach((info) => {
+    info.append(h("p", "analysis-reference-note", `${analysisPeriod(period).weeks} rollierende Wochen: letzter Messwert je Woche.`));
   });
   if (metric === "cycling_w_per_kg") chart.querySelectorAll(".analysis-info-tooltip").forEach((info, index) => {
     const item = entries[index];
@@ -1926,7 +1937,7 @@ function resetEnergy() {
   energyGeneration += 1;
 }
 
-// Only Verlauf's 6 Monate ask for `period=182d`, whose own read no other request pays for (#3711).
+// Only Verlauf's 6 and 12 Monate ask for `period=182d` or `period=365d`, whose own read no other request pays for (#3711).
 function loadEnergy(day = energyDay(), period = null) {
   if (energyRequest) return;
   const generation = energyGeneration;
@@ -2171,16 +2182,10 @@ function energyFatShareRule(share) {
   return share.measured_pct > 0 ? `${prior}, zu ${share.measured_pct} % gemessen` : prior;
 }
 
-// Verlauf's three periods (athlete decision, #3704): the key of the energy read's fit_scale, the
-// days of the week read, and the label of the button and of every card's title row.
-const VERLAUF_PERIODS = [
-  { key: "28d", days: 28, label: "4 Wochen", span: "den letzten 4 Wochen" },
-  { key: "91d", days: 91, label: "3 Monate", span: "den letzten 3 Monaten" },
-  { key: "182d", days: 182, label: "6 Monate", span: "den letzten 6 Monaten" },
-];
-
+// Verlauf's period (athlete decisions, #3704, #3839) is a row of the shared table: the label of the button
+// and of every card's title row, the days of the week read.
 function verlaufPeriod(key = nutritionHistoryPeriod) {
-  return VERLAUF_PERIODS.find((item) => item.key === key) || VERLAUF_PERIODS[0];
+  return analysisPeriod(key);
 }
 
 // The one title row of every Verlauf card: the title (and its "i") left, the period small and muted right.
@@ -2361,10 +2366,10 @@ function energyFlaggedText(flagged) {
 // The read's loading or failure card, or null once it is there; the first call starts the read.
 // The diary asks for its day (#3395); Körper's fit does not depend on the day (`null`), so it takes
 // any read there is and never shows a diary day's note (Gitar #3423).
-// While Verlauf shows 6 Monate, every read asks for them, so a diary day's read serves both and
+// While Verlauf shows 6 or 12 Monate, every read asks for them, so a diary day's read serves both and
 // neither resets the other's (Gitar, #3712).
 function longPeriodShown() {
-  return document.querySelector("#nutritionFitScale") && verlaufPeriod().key === "182d" ? "182d" : null;
+  return document.querySelector("#nutritionFitScale") && verlaufPeriod().days > BASE_PERIOD_DAYS ? verlaufPeriod().key : null;
 }
 
 function energyPending(day = null, period = null) {
@@ -2413,7 +2418,7 @@ function energyFitSigned(diff) {
 // The weigh-ins' span the sources average over (#3613), else the period the own value covers.
 function energyFitSpan(scale) {
   if (scale.span_start && scale.span_end) return `Vom ${deficitDay(scale.span_start)} bis ${deficitDay(scale.span_end)}`;
-  const period = VERLAUF_PERIODS.find((item) => item.days === scale.own_days);
+  const period = ANALYSIS_PERIODS.find((item) => item.days === scale.own_days);
   return `In ${period?.span ?? "den letzten " + scale.own_days + " Tagen"}`;
 }
 
@@ -2578,12 +2583,14 @@ function renderBodyAnalysis(body) {
   if (weight.value != null && fat.value != null) rows.push(bodyOverviewRow("lean_mass_kg", "Fettfreie Masse", "kg", { value: weight.value * (1 - fat.value / 100) }, null));
   rows.push(energyGoalRow());
   root.append(h("section", "analysis-chart-card", h("table", { className: "current-performance-table", dataset: { bodyOverview: "" } }, h("caption", null, "Körperwerte"), h("tbody", null, rows))));
-  const key = bodyHistoryPeriod === "fortnight" ? "14d" : "12w";
-  const window = body?.windows?.[key];
+  const key = analysisPeriod(bodyHistoryPeriod).key;
+  // 6 and 12 Monate read their own body window once; until it arrives the 3 Monate stay drawn.
+  const long = trendHistoryFor(bodyHistoryPeriod, BASE_PERIOD_DAYS, () => renderBodyAnalysis(body))?.history?.body;
+  const window = long?.windows?.[key] || body?.windows?.[key] || body?.windows?.["91d"];
   root.append(analysisPeriodControls("Zeitraum für Körper", bodyHistoryPeriod, (period) => {
     bodyHistoryPeriod = period;
     renderBodyAnalysis(body);
-  }));
+  }, { trend: true }));
   if (!window?.start || !window?.end) {
     root.append(h("p", "empty", "Noch keine Körper-Historie verfügbar."));
     return;
@@ -2740,13 +2747,13 @@ function analysisEmptyCard(segment) {
   let action;
   let cause;
   const connected = analysisDataSourceConnected();
-  if (connected && analysisSegmentPeriod(segment) === "fortnight") {
+  if (connected && analysisSegmentPeriod(segment) === "28d") {
     // Data may exist outside the short window, so the one action widens the period.
-    cause = "Keine Daten in den letzten 14 Tagen.";
-    action = h("button", { className: "push-button", type: "button" }, "12 Wochen anzeigen");
+    cause = "Keine Daten in den letzten 4 Wochen.";
+    action = h("button", { className: "push-button", type: "button" }, "3 Monate anzeigen");
     action.addEventListener("click", () => {
       const controls = document.querySelectorAll(segment === "load" ? "#analysisLoadPeriod button" : "#personalRecovery .analysis-period-controls button");
-      [...controls].find((button) => button.textContent === "12 Wochen")?.click();
+      [...controls].find((button) => button.textContent === "3 Monate")?.click();
     });
   } else if (connected) {
     cause = "Noch keine Daten abgeglichen.";
@@ -2822,7 +2829,7 @@ const analysisRefresh = AppViewRefresh.create({
     else if (route === "analysis/strength") void renderStrengthAnalysis();
     else {
       renderAnalysisHistory(performance.history);
-      if (route === "analysis/load") renderTrainingFocus(performance.training_focus_periods?.[analysisHistoryPeriod] || performance.training_focus);
+      if (route === "analysis/load") renderTrainingFocus(analysisTrainingFocus(performance));
       else {
         renderPerformance(performance, { refreshCharts: false });
         // The cleared report cache is read again for the power profile and the running best efforts.
@@ -2835,8 +2842,9 @@ const analysisRefresh = AppViewRefresh.create({
 });
 
 function analysisRefreshDays(area) {
-  if (area === "load") return analysisHistoryPeriod === "fortnight" ? 14 : 84;
-  if (area === "recovery") return recoveryHistoryPeriod === "fortnight" ? 14 : 84;
+  // The provider read covers 4 Wochen or 3 Monate; a longer period refreshes the 3 Monate.
+  if (area === "load") return analysisPeriodWeekly(analysisHistoryPeriod) ? 91 : 28;
+  if (area === "recovery") return analysisPeriodWeekly(recoveryHistoryPeriod) ? 91 : 28;
   return null;
 }
 
@@ -2889,29 +2897,23 @@ function recoveryPeriodPoints(history, dates, today, weekly) {
   });
 }
 
-// The previous year's same days of a recovery series, or null without stored values (#3765).
-function recoveryPreviousYear(item, title, unit, color, { dates, today, weekly }) {
-  const points = recoveryPeriodPoints(previousYearPoints(item.history, dates[0], today), dates, today, weekly);
-  if (!points.some(analysisValidPoint)) return null;
-  return { label: `${title} · Vorjahr · ${item.source}`, legendLabel: "Vorjahr", source: item.source, unit, color, line: "faint", cadenceDays: weekly ? 7 : 1, explanation: "Dieselben Tage ein Jahr (52 Wochen) früher; nur gespeicherte Werte.", points };
-}
-
 function renderRecoveryCharts(report, root) {
   const metrics = [["sleep", "Schlafdauer", "h", 0], ["hrv", "HRV", "ms", 2], ["resting_hr", "Ruhepuls", "bpm", 3]];
-  // A longer period or the "Vorjahr" switch reads the long history once (#3765); until it arrives the
-  // charts keep the default read.
-  const long = trendHistoryNeeded(recoveryHistoryPeriod) ? trendHistory(TREND_PERIOD_DAYS[recoveryHistoryPeriod], () => renderPersonalRecovery(report))?.personal_recovery : null;
+  // The base read's baselines hold 84 days: 3 Monate and more read their own history once (#3839);
+  // until it arrives the charts keep the base read.
+  const long = trendHistoryFor(recoveryHistoryPeriod, 28, () => renderPersonalRecovery(report))?.personal_recovery;
   const baselines = selectedRecoveryBaselines(long || report);
   const today = report?.as_of || timezoneDateKey(state.data?.profile?.timezone, new Date());
-  const dayCount = TREND_PERIOD_DAYS[recoveryHistoryPeriod];
-  const weekly = dayCount > 14;
+  const period = analysisPeriod(recoveryHistoryPeriod);
+  const weekly = analysisPeriodWeekly(recoveryHistoryPeriod);
+  // Whole weeks of 7 days each, so 12 Monate end on 52 weeks.
+  const dayCount = weekly ? period.weeks * 7 : period.days;
   const dates = Array.from({ length: dayCount }, (_, index) => addDateKey(today, index - dayCount + 1));
   const start = dates[0], end = today;
   const series = metrics.map(([metric, title, unit, color]) => {
     const item = baselines.find((candidate) => candidate.metric === metric);
     if (!item) return { label: title, legendLabel: title, unit, color, points: dates.map((date) => ({ date, value: null })) };
     const points = recoveryPeriodPoints(item.history, dates, today, weekly);
-    const previous = previousYearShown && long ? recoveryPreviousYear(item, title, unit, color, { dates, today, weekly }) : null;
     const readings = item.history.filter((point) => point.date >= start && point.date <= today);
     const expectedDays = Math.max(0, Math.round((Date.parse(today) - Date.parse(start)) / 86400000) + 1);
     const range = metric !== "sleep" && ["ok", "provisional"].includes(item.status) && Number.isFinite(item.lower) && Number.isFinite(item.upper) ? { lower: item.lower, upper: item.upper, status: item.status } : null;
@@ -2923,7 +2925,7 @@ function renderRecoveryCharts(report, root) {
     const continuity = `${changed}${item.continuity === "unknown" ? " Messkontext unbekannt." : ""}`;
     const rolling = item.rolling ? ` ${recoveryRollingNote(item.rolling)}.` : "";
     return { label: `${title} · ${item.source}${measurement}`, legendLabel: title, source: item.source, unit, color,
-      bars: metric === "sleep", average: true, averageInHeading: true, cadenceDays: weekly ? 7 : 1, range, target, previous,
+      bars: metric === "sleep", average: true, averageInHeading: true, cadenceDays: weekly ? 7 : 1, range, target,
       currentPoint: points.some(analysisValidPoint) ? null : item.history.findLast((point) => point.date <= today && analysisValidPoint(point)),
       referenceLabel: metric === "sleep" ? "Durchschnitt der angezeigten Werte" : recoveryReferenceLabel(item, range, target, unit, position),
       coverageShort: analysisCoverageText(readings.length, expectedDays, "Tagen"),
@@ -2934,7 +2936,7 @@ function renderRecoveryCharts(report, root) {
     const values = item.points.filter(analysisValidPoint).map((point) => Number(point.value));
     const average = values.length ? values.reduce((sum, value) => sum + value, 0) / values.length : null;
     const title = average == null ? item.legendLabel : `${item.legendLabel} · Ø ${analysisValue(average, item.unit)}`;
-    return collectAnalysisChart(missing, title, [item, item.previous].filter(Boolean), item.unit, start, end, "", { compactInfo: true, includeCoverage: false, showLegend: Boolean(item.previous) });
+    return collectAnalysisChart(missing, title, [item], item.unit, start, end, "", { compactInfo: true, includeCoverage: false, showLegend: false });
   }).filter(Boolean);
   const readiness = state.data?.performance?.history?.provider_metrics?.training_readiness_history;
   if (readiness) {
@@ -2942,10 +2944,10 @@ function renderRecoveryCharts(report, root) {
     renderProviderMetrics({ training_readiness_history: readiness }, readinessCharts, start, end, missing);
     charts.unshift(...readinessCharts.children);
   }
-  root.append(trendPeriodControls("Zeitraum für Erholung", recoveryHistoryPeriod, ["fortnight", "twelveWeeks", "sixMonths", "twelveMonths"], (period) => { recoveryHistoryPeriod = period; renderPersonalRecovery(report); }));
+  root.append(analysisPeriodControls("Zeitraum für Erholung", recoveryHistoryPeriod, (choice) => { recoveryHistoryPeriod = choice; renderPersonalRecovery(report); }, { trend: true }));
   root.dataset.analysisEmpty = String(!charts.length);
   if (!charts.length) return;
-  const group = analysisChartGroup(`Erholung · ${TREND_PERIOD_LABELS[recoveryHistoryPeriod]}`, charts, series);
+  const group = analysisChartGroup(`Erholung · Letzte ${period.label}`, charts, series);
   root.append(group);
 }
 
@@ -2962,7 +2964,8 @@ function renderPersonalRecovery(report) {
 
 function trainingFocusPeriodLabel(report) {
   const days = Math.round((Date.parse(report.end) - Date.parse(report.start)) / 86400000) + 1;
-  return { 14: "Letzte 14 Tage", 84: "Letzte 12 Wochen" }[days] || `Letzte ${days} Tage`;
+  const period = ANALYSIS_PERIODS.find((item) => item.days === days);
+  return period ? `Letzte ${period.label}` : `Letzte ${days} Tage`;
 }
 
 function renderTrainingFocus(report) {

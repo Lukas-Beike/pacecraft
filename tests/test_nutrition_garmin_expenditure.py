@@ -305,7 +305,7 @@ class NutritionGarminExpenditureTests(unittest.TestCase):
         self.assertEqual(2000, open_day["energy_expenditure"]["total_kcal"])
 
     def test_history_periods_keep_closed_days_and_missing_values(self) -> None:
-        for count in (28, 91, 182):
+        for count in (28, 91, 182, 365):
             with self.subTest(days=count):
                 summary = self.service.sync_status.get_week_summary(count)
                 self.assertEqual(len(summary["days"]), count)
