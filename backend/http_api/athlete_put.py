@@ -61,7 +61,16 @@ class AthletePutRoutes:
         if self._weight_service is not None:
             routes += [
                 Route("GET", WEIGHT_PATH, Access.SESSION, self._weights),
-                Route("PUT", WEIGHT_PATH, Access.SESSION_CSRF, self._save_weight),
+                Route(
+                    "PUT",
+                    WEIGHT_PATH,
+                    Access.SESSION_CSRF,
+                    self._save_weight,
+                    replayable=True,
+                    # The local save is followed by the Garmin push in this
+                    # request; one value per day, so a repeat sets the same value.
+                    replay_with_write=False,
+                ),
                 Route(
                     "PUT",
                     f"{WEIGHT_PATH}/remove",
@@ -72,7 +81,16 @@ class AthletePutRoutes:
         if self._body_fat_service is not None:
             routes += [
                 Route("GET", BODY_FAT_PATH, Access.SESSION, self._body_fats),
-                Route("PUT", BODY_FAT_PATH, Access.SESSION_CSRF, self._save_body_fat),
+                Route(
+                    "PUT",
+                    BODY_FAT_PATH,
+                    Access.SESSION_CSRF,
+                    self._save_body_fat,
+                    replayable=True,
+                    # The local save is followed by the Garmin push in this
+                    # request; one value per day, so a repeat sets the same value.
+                    replay_with_write=False,
+                ),
                 Route(
                     "PUT",
                     f"{BODY_FAT_PATH}/remove",
@@ -97,7 +115,9 @@ class AthletePutRoutes:
         """Save one body fat percentage; one of the same day is replaced.
 
         Request: JSON body `{"date": "YYYY-MM-DD", "pct": number}`, 2 to 70 %
-        (comma decimals allowed). The date must not be in the future.
+        (comma decimals allowed). The date must not be in the future. A repeated
+        `Idempotency-Key` header (UUID) answers the stored result and writes
+        nothing; the same key on another path answers 409.
 
         Response: 200 as `GET /api/body/body-fat`.
 
@@ -136,7 +156,9 @@ class AthletePutRoutes:
         """Save one weight the athlete entered; one of the same day is replaced.
 
         Request: JSON body `{"date": "YYYY-MM-DD", "kg": number}`, 30 to 300 kg
-        (comma decimals allowed). The date must not be in the future.
+        (comma decimals allowed). The date must not be in the future. A repeated
+        `Idempotency-Key` header (UUID) answers the stored result and writes
+        nothing; the same key on another path answers 409.
 
         Response: 200 as `GET /api/body/weight`.
 

@@ -6,7 +6,7 @@ import logging
 import time
 import uuid
 from collections.abc import Callable, Iterator
-from contextlib import nullcontext
+from contextlib import contextmanager, nullcontext
 from dataclasses import dataclass, field
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler
@@ -22,6 +22,7 @@ from backend.errors import (
     public_error_contract,
     public_error_payload,
 )
+from backend.http_api.idempotency import IdempotencyStore, valid_key
 from backend.http_api.requests import (
     read_body as read_request_body,
 )
@@ -31,7 +32,7 @@ from backend.http_api.requests import (
 from backend.http_api.requests import (
     read_json as read_request_json,
 )
-from backend.http_api.route_table import Access, RouteRequest, RouteTable
+from backend.http_api.route_table import Access, Route, RouteRequest, RouteTable
 from backend.http_api.static_assets import StaticAssetService
 from backend.observability import (
     RouteTimings,
@@ -78,6 +79,8 @@ class HttpRequestHandlerDependencies:
     static_asset_service: StaticAssetService
     route_timings: RouteTimings = field(default_factory=RouteTimings)
     heavy_read_gate: HeavyReadGate = field(default_factory=HeavyReadGate)
+    # Answers a repeated ``Idempotency-Key`` of a replayable route (#3761).
+    idempotency: IdempotencyStore | None = None
 
 
 class RequestHandler(BaseHTTPRequestHandler):
@@ -88,6 +91,12 @@ class RequestHandler(BaseHTTPRequestHandler):
     _dispatch_started_at: float | None = None
     # Ends the current heavy read before its response is sent (#3125).
     _release_heavy_read: Callable[[], None] | None = None
+    # The store, key and path of the keyed request whose 2xx answer is stored when sent.
+    _idempotent_request: tuple[IdempotencyStore, str, str] | None = None
+    # Answers held until the keyed request's transaction commits (#3761).
+    _held_answers: list[tuple[int, Any, Any]] | None = None
+    # The keyed request's body, read before its transaction takes the writer.
+    _read_body_json: dict[str, Any] | None = None
     server_version: str
     client_disconnect_errors = (
         BrokenPipeError,
@@ -324,7 +333,10 @@ class RequestHandler(BaseHTTPRequestHandler):
             self.auth_service.require_csrf(self, current)
             if route is None:
                 raise AppError(404, NOT_FOUND_ERROR)
-            route.handle(self, self._request(path, params, current))
+            request = self._request(path, params, current)
+            with self._replayable(route, request) as answered:
+                if not answered:
+                    route.handle(self, request)
 
     def _put(self, path: str) -> None:
         # The maintenance gate answers before authentication.
@@ -335,7 +347,56 @@ class RequestHandler(BaseHTTPRequestHandler):
             if found is None:
                 raise AppError(404, NOT_FOUND_ERROR)
             route, params = found
-            route.handle(self, self._request(path, params, session))
+            request = self._request(path, params, session)
+            with self._replayable(route, request) as answered:
+                if not answered:
+                    route.handle(self, request)
+
+    @contextmanager
+    def _replayable(self, route: Route, request: RouteRequest) -> Iterator[bool]:
+        """Around a route's handler: True when a kept answer was already sent.
+
+        For a replayable route with a valid ``Idempotency-Key`` a stored result is
+        answered and the caller skips the handler (#3761). Otherwise the handler
+        runs inside one transaction that also keeps its 2xx answer, so a crash
+        leaves both the write and its key or neither; the answer is sent once that
+        transaction committed. A route whose write is followed by a remote push
+        (``replay_with_write=False``: weight and body fat, one value per day) keeps
+        its answer after its own commit instead. An absent or invalid key is
+        today's behaviour. The handler stays in the caller, after the
+        authentication, CSRF and maintenance checks.
+        """
+        store = self.dependencies.idempotency if route.replayable else None
+        key = valid_key(self.headers.get("Idempotency-Key")) if store else None
+        if store is None or key is None:
+            yield False
+            return
+        with store.lock:
+            stored = store.lookup(key, request.path)
+            if stored is not None:
+                self.send_json(*stored)
+                yield True
+                return
+            self._idempotent_request = (store, key, request.path)
+            if not route.replay_with_write:
+                try:
+                    yield False
+                finally:
+                    self._idempotent_request = None
+                return
+            # Read the body first, so a slow client never holds the writer (Gitar on #3816).
+            self._read_body_json = self.read_json()
+            self._held_answers = []
+            try:
+                with store.transaction():
+                    yield False
+                held = self._held_answers
+            finally:
+                self._idempotent_request = None
+                self._held_answers = None
+                self._read_body_json = None
+            for answer in held:
+                self.dependencies.response_transport.send_json(self, *answer)
 
     def send_sse_headers(self, *, persistent: bool = True) -> None:
         self.dependencies.response_transport.send_sse_headers(
@@ -373,6 +434,9 @@ class RequestHandler(BaseHTTPRequestHandler):
         )
 
     def read_json(self, max_bytes: int | None = None) -> dict[str, Any]:
+        if self._read_body_json is not None:
+            body, self._read_body_json = self._read_body_json, None
+            return body
         if max_bytes is None:
             max_bytes = self.dependencies.max_body_bytes
         return read_request_json(
@@ -391,6 +455,25 @@ class RequestHandler(BaseHTTPRequestHandler):
     ) -> None:
         if self._release_heavy_read:  # the read is done; the send runs outside
             self._release_heavy_read()
+        if self._held_answers is not None:
+            # Inside the keyed request's transaction: keep a 2xx answer with the
+            # write; a failure rolls both back. Sent after the commit.
+            if self._idempotent_request and 200 <= status < 300:
+                store, key, path = self._idempotent_request
+                self._idempotent_request = None
+                store.store(key, path, status, payload)
+            self._held_answers.append((status, payload, headers))
+            return
+        if self._idempotent_request and 200 <= status < 300:
+            store, key, path = self._idempotent_request
+            self._idempotent_request = None
+            try:
+                store.store(key, path, status, payload)
+            except Exception:
+                self.dependencies.logger.exception(
+                    "Idempotency result not stored",
+                    extra={"event": "idempotency_store_failed"},
+                )
         self.dependencies.response_transport.send_json(self, status, payload, headers)
 
     def _send_app_error(self, error: AppError, method: str) -> None:

@@ -12,6 +12,7 @@ const ASSETS = [
   "/components.js",
   "/connection-status.js",
   "/status-strip.js",
+  "/outbox.js",
   "/coach.js",
   "/shared.js",
   "/auth.js",

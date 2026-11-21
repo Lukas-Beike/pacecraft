@@ -41,6 +41,7 @@ class FeedbackPostRoutes:
                     "/api/activities/{id}/feedback",
                     Access.SESSION_CSRF,
                     self._feedback,
+                    replayable=True,
                 )
             )
         return routes
@@ -87,7 +88,9 @@ class FeedbackPostRoutes:
         to 10 or `null`), `deviation_reason` (string, cut to 500 characters),
         `purpose` (`training`, `race`, `commute`, `warmup`, `cooldown`, or `null`
         or `""` to clear), `activity_name` (cut to 200) and `activity_date` (cut
-        to 40). Clearing every content field removes the feedback.
+        to 40). Clearing every content field removes the feedback. A repeated
+        `Idempotency-Key` header (UUID) answers the stored result and writes
+        nothing; the same key on another path answers 409.
 
         Response: 200 `{"status": "ok", "activity_feedback", "change",
         "session_rpe_load"}`. `activity_feedback` is the effective feedback

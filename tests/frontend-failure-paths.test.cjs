@@ -13,11 +13,13 @@ function httpError(status, message = "Fehler") {
 // ---- F3: logout keeps the app open unless the server confirmed the logout ----
 
 function logoutHarness(api) {
-  const counts = { showLogin: 0 };
+  const counts = { showLogin: 0, clearOutbox: 0 };
   const toasts = [];
   const context = extractFunctions("auth.js", ["logout"], {
     confirmDiscardChanges: async () => true,
     requestConfirmation: async () => true,
+    outboxLossNote: () => "",
+    clearOutbox: async () => { counts.clearOutbox += 1; },
     api,
     showLogin() { counts.showLogin += 1; },
     toast(message, error = false) { toasts.push({ message, error }); },
@@ -31,6 +33,7 @@ test("logout shows the login screen after the server confirmed the logout", asyn
   await context.logout();
   assert.deepEqual(calls, ["/api/logout"]);
   assert.equal(counts.showLogin, 1);
+  assert.equal(counts.clearOutbox, 1);
   assert.deepEqual(toasts, []);
 });
 
@@ -38,6 +41,7 @@ test("a failed logout request keeps the app open, reports the error and allows a
   const { context, counts, toasts } = logoutHarness(async () => { throw httpError(500, "Serverfehler"); });
   await context.logout();
   assert.equal(counts.showLogin, 0);
+  assert.equal(counts.clearOutbox, 0, "an unconfirmed logout keeps the outbox");
   assert.deepEqual(toasts, [{ message: "Abmelden fehlgeschlagen. Bitte erneut versuchen.", error: true }]);
 });
 

@@ -761,6 +761,13 @@
       <div class="dialog-actions"><button type="button" id="weightDialogCancel" class="secondary-button">Abbrechen</button><button type="button" id="weightDialogRemove" class="secondary-button" hidden>Löschen</button><button type="submit" id="weightDialogSave" class="adaptive-planning-button">Speichern</button></div>
     </form>
   </dialog>
+  <dialog id="outboxDialog" aria-labelledby="outboxDialogTitle">
+    <div class="confirmation-dialog">
+      <h2 id="outboxDialogTitle">Nicht gesendet</h2>
+      <ul id="outboxList" class="outbox-list"></ul>
+      <div class="dialog-actions"><button type="button" id="outboxDialogClose" class="secondary-button">Schließen</button></div>
+    </div>
+  </dialog>
   <dialog id="energyGoalDialog" aria-labelledby="energyGoalDialogTitle">
     <form id="energyGoalDialogForm" class="confirmation-dialog">
       <h2 id="energyGoalDialogTitle">Energieziel</h2>
@@ -796,6 +803,7 @@
   <script src="/components.js" defer></script>
   <script src="/connection-status.js" defer></script>
   <script src="/status-strip.js" defer></script>
+  <script src="/outbox.js" defer></script>
   <script src="/coach.js" defer></script>
   <script src="/shared.js" defer></script>
   <script src="/auth.js" defer></script>

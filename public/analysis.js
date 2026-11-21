@@ -1658,18 +1658,32 @@ async function bodyEntryChanged() {
   }
 }
 
+// The weight and the body fat save wait in the outbox when the server cannot be reached (#3761);
+// a removal, a skinfold measurement and an undo do not.
+const OUTBOX_BODY_ENTRIES = {
+  "/api/body/weight": { kind: "weight", label: (payload) => `Gewicht ${payload.kg} kg` },
+  "/api/body/body-fat": { kind: "body-fat", label: (payload) => `Körperfett ${payload.pct} %` },
+};
+
 async function sendBodyEntry(dialog, path, payload, button, receipt) {
   const status = document.querySelector(`#${dialog}Status`);
   button.disabled = true;
   let read;
   try {
-    read = await api(path, { method: "PUT", body: JSON.stringify(payload) });
+    const own = OUTBOX_BODY_ENTRIES[path];
+    read = own
+      ? await saveOwnEntry({ kind: own.kind, method: "PUT", path, payload, label: `${own.label(payload)} · ${dateLabel(payload.date)}` })
+      : await api(path, { method: "PUT", body: JSON.stringify(payload) });
   } catch (error) {
     status.textContent = error.message;
     button.disabled = false;
     return false;
   }
   document.querySelector(`#${dialog}`).close();
+  if (read?.outboxEntry) {
+    toast(`${read.outboxEntry.label} wartet, noch nicht gesendet.`);
+    return true;
+  }
   await bodyEntryChanged();
   showBodyReceipt(receipt(read?.remote));
   return true;

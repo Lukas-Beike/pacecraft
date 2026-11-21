@@ -141,7 +141,7 @@ texts.
 | `public/analysis.js` `bindBodyFatDialog` | (computed) `` `${name} löschen?` `` | (computed) `` `${name} vom ${dateLabel(day)} löschen?` `` | Löschen |
 | `public/analysis.js` `bindWeightDialog` | Gewicht löschen? | (computed) `` `Gewicht vom ${dateLabel(day)} löschen?` `` | Löschen |
 | `public/analysis.js` `retireEquipment` | Ausrüstung ausmustern? | (computed) `` `${item.name} ausmustern?` `` | Ausmustern |
-| `public/auth.js` `logout` | Abmelden? | Du wirst auf diesem Gerät abgemeldet. Deine Daten bleiben verschlüsselt gespeichert. | Bestätigen |
+| `public/auth.js` `logout` | Abmelden? | (computed) `` `Du wirst auf diesem Gerät abgemeldet. Deine Daten bleiben verschlüsselt gespeichert.${outboxLossNote()}` `` | Bestätigen |
 | `public/coach.js` `resetCoachChat` | Coach-Chat zurücksetzen? | Coach-Chat wirklich zurücksetzen und eine neue Unterhaltung beginnen? | Bestätigen |
 | `public/coach.js` `undoCoachTurn` | Änderungen zurücknehmen? | Alle lokalen Änderungen dieser Coach-Antwort zurücknehmen? Intervals.icu bleibt unverändert. | Zurücknehmen |
 | `public/diagnostics.js` `deleteServerLogs` | Server-Logs löschen? | Server-Logs wirklich löschen? | Bestätigen |

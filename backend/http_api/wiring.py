@@ -48,6 +48,7 @@ from backend.http_api.handler import (
     create_request_handler,
 )
 from backend.http_api.history_undo_post import HistoryUndoPostRoutes
+from backend.http_api.idempotency import IdempotencyStore
 from backend.http_api.library_page import LibraryPageService
 from backend.http_api.library_post import LibraryPostRoutes
 from backend.http_api.metric_export_post import MetricExportPostRoutes
@@ -748,6 +749,7 @@ def build_http_api(
         for route in owner.routes()
     )
     response_transport = HttpResponseTransport()
+    idempotency = IdempotencyStore(ctx.database, ctx.key_values)
 
     def request_handler_class() -> type[BaseHTTPRequestHandler]:
         return create_request_handler(
@@ -764,6 +766,7 @@ def build_http_api(
                 static_asset_service=StaticAssetService(public_dir),
                 route_timings=ctx.route_timings,
                 heavy_read_gate=ctx.heavy_read_gate,
+                idempotency=idempotency,
             )
         )
 
