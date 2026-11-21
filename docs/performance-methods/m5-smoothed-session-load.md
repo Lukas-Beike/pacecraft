@@ -1,7 +1,7 @@
 # M5 — Short- and long-term session-RPE load
 
 - **Card:** M5
-- **Card version:** 1
+- **Card version:** 2
 - **Method ID:** smoothed-session-load v1 (`backend/performance/smoothed_load.py`, #1432)
 - **Status:** implemented as an estimate on the M1 daily load
 - **Classification:** model estimate
@@ -133,7 +133,7 @@ when treated as zero, which this method does not do.
 | --- | --- | --- | --- |
 | `METRIC_ID` | `'smoothed_session_load'` | `backend/performance/smoothed_load.py` |  |
 | `METHOD_ID` | `'smoothed-session-load'` | `backend/performance/smoothed_load.py` |  |
-| `METHOD_VERSION` | `1` | `backend/performance/smoothed_load.py` |  |
+| `METHOD_VERSION` | `2` | `backend/performance/smoothed_load.py` |  |
 | `UNIT` | `'AU'` | `backend/performance/smoothed_load.py` |  |
 | `EVIDENCE_CARD` | `'docs/performance-methods/m5-smoothed-session-load.md'` | `backend/performance/smoothed_load.py` |  |
 | `SHORT_TAU_DAYS` | `7` | `backend/performance/smoothed_load.py` |  |

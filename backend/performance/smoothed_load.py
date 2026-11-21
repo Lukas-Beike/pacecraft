@@ -29,7 +29,7 @@ from backend.performance.session_rpe_load import session_load
 
 METRIC_ID: Final = "smoothed_session_load"
 METHOD_ID: Final = "smoothed-session-load"
-METHOD_VERSION: Final = 1
+METHOD_VERSION: Final = 2
 UNIT: Final = "AU"
 EVIDENCE_CARD: Final = "docs/performance-methods/m5-smoothed-session-load.md"
 SHORT_TAU_DAYS: Final = 7

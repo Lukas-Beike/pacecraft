@@ -379,7 +379,7 @@ every named number the code fixes. A test fails when it is out of date.
 | `INTERRUPTION_LIMIT_SHARE` | `0.2` | `backend/performance/session_rpe_load.py` |  |
 | `METRIC_ID` | `'smoothed_session_load'` | `backend/performance/smoothed_load.py` |  |
 | `METHOD_ID` | `'smoothed-session-load'` | `backend/performance/smoothed_load.py` |  |
-| `METHOD_VERSION` | `1` | `backend/performance/smoothed_load.py` |  |
+| `METHOD_VERSION` | `2` | `backend/performance/smoothed_load.py` |  |
 | `UNIT` | `'AU'` | `backend/performance/smoothed_load.py` |  |
 | `EVIDENCE_CARD` | `'docs/performance-methods/m5-smoothed-session-load.md'` | `backend/performance/smoothed_load.py` |  |
 | `SHORT_TAU_DAYS` | `7` | `backend/performance/smoothed_load.py` |  |
