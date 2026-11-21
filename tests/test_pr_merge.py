@@ -415,6 +415,68 @@ class PrMergeTests(unittest.TestCase):
             (code, writes[-1]), (1, ["pr", "merge", "7", "--disable-auto"])
         )
 
+    def test_a_behind_pr_is_rebased_after_arming_and_once_after_the_first_ci_round(
+        self,
+    ):
+        # #3872: the develop push's auto-rebase ran before arming and GitHub runs the
+        # scheduled fallback only every few hours, so an armed BEHIND PR would wait.
+        update = [
+            "api", "-X", "PUT", "repos/{owner}/{repo}/pulls/7/update-branch",
+            "-f", "update_method=rebase", "-f", "expected_head_sha=feedc0de",
+        ]  # fmt: skip
+
+        def updates(calls):
+            return [call for call in calls if "update-branch" in " ".join(call)]
+
+        calls = []
+        code, out, writes, _ = run(
+            self, 7, views=[view(mergeStateStatus="BEHIND")], calls=calls
+        )
+        self.assertEqual((code, writes), (0, [["pr", "merge", "7", "--auto", *PIN]]))
+        self.assertEqual(updates(calls), [update])
+        self.assertIn("PR #7 was behind develop: rebase of feedc0de requested", out)
+        # A PR that is not behind is not touched.
+        for state in ("CLEAN", "BLOCKED", None):
+            with self.subTest(state=state):
+                calls = []
+                run(self, 7, views=[view(mergeStateStatus=state)], calls=calls)
+                self.assertEqual(updates(calls), [])
+        # With --wait: not while checks run, once after the first finished round, not again.
+        pending = {**GREEN, "status": "IN_PROGRESS", "conclusion": None}
+        armed = {"autoMergeRequest": {"mergeMethod": "SQUASH"}}
+        calls = []
+        code, _, _, _ = run(
+            self, 7, "--wait", 5, calls=calls, views=[
+                view(mergeStateStatus="CLEAN"),
+                view(checks=(pending,), mergeStateStatus="BEHIND", **armed),
+                view(mergeStateStatus="BEHIND", **armed),
+                view(mergeStateStatus="BEHIND", **armed),
+                view(state="MERGED"),
+            ],
+        )  # fmt: skip
+        self.assertEqual(code, 0)
+        self.assertEqual(updates(calls), [update])
+        # Never a merge-style update.
+        self.assertFalse(any("update_method=merge" in " ".join(c) for c in calls))
+
+    def test_a_refused_rebase_is_reported_and_arming_stands(self):
+        calls = []
+        with mock.patch.object(pr_merge, "gh", wraps=pr_merge.gh) as wrapped:
+
+            def refuse_update(*argv):
+                if "update_method=rebase" in argv:
+                    raise gh_cli.CliError(
+                        "HTTP 422: merge conflict between base and head"
+                    )
+                return gh_cli.gh(*argv)
+
+            wrapped.side_effect = refuse_update
+            code, out, writes, _ = run(
+                self, 7, views=[view(mergeStateStatus="BEHIND")], calls=calls
+            )
+        self.assertEqual((code, writes), (0, [["pr", "merge", "7", "--auto", *PIN]]))
+        self.assertIn("could not rebase #7 onto develop: HTTP 422", out)
+
 
 if __name__ == "__main__":
     unittest.main()

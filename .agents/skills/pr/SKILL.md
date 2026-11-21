@@ -163,7 +163,9 @@ confirmation. List every unfixed finding with its reason in the PR body.
   branched off (#2901): rebase, let CI and Gitar see the new head, rerun. It
   also refuses and disarms while a review thread is unresolved, and disarms
   when new feedback arrives during `--wait` (#2947); a thread left for the
-  user blocks the merge until the user resolves it.
+  user blocks the merge until the user resolves it. A PR left BEHIND develop
+  is rebased right after arming and once after its first CI round (#3872);
+  arm through pr-merge, never with a bare `gh pr merge --auto`.
 
 ## 4. Monitor to merge
 
