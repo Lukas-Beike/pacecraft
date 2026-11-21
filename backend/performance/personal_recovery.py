@@ -71,10 +71,15 @@ def personal_recovery(
     today: date,
     *,
     canonical: CanonicalRecoveryInputs | None = None,
+    history_days: int = 84,
 ) -> dict[str, Any]:
-    """Return comparisons, shortfalls and timing variability from ``canonical``."""
+    """Return comparisons, shortfalls and timing variability from ``canonical``.
+
+    Each baseline's ``history`` covers ``history_days``; a longer Analyse period
+    (#3765) asks for more. The comparison ranges keep their 42 days.
+    """
     cutoff = (today - timedelta(days=42)).isoformat()
-    history_start = (today - timedelta(days=83)).isoformat()
+    history_start = (today - timedelta(days=history_days - 1)).isoformat()
     current_day = today.isoformat()
     groups: dict[tuple[ProviderId, str, str], dict[str, float]] = {}
     contexts: dict[tuple[ProviderId, str, str], dict[str, Observation]] = {}

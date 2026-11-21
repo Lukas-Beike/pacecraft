@@ -41,6 +41,7 @@ handler's docstring. Regenerate it with
 | GET | `/api/analysis/running-dynamics` | Session | no | Running dynamics against the athlete's own runs at the same pace (#2829). |
 | GET | `/api/analysis/strength` | Session | no | Analyse › Kraft: top sets per exercise over twelve weeks (#3764). |
 | GET | `/api/analysis/training-records` | Session | no | Analysis projection: power profiles or training records. |
+| GET | `/api/analysis/trend-history` | Session | no | A longer trend period with the previous year's same weeks (#3765). |
 | GET | `/api/analysis/trends` | Session | no | Pace at equal heart rate and recurring sessions, as the Coach reads them (#2802). |
 | GET | `/api/analysis/week-review` | Session | no | The local review of one ISO week against the week before (#2805). |
 | GET | `/api/auth/status` | Public | no | Current login status. |
@@ -317,6 +318,19 @@ sessions, 0 without one) and `exercises` (`exercise`, `category`,
 only: no strength load, no estimated 1RM.
 
 Errors: none beyond the common ones.
+
+### `GET /api/analysis/trend-history`
+
+Request: query `days`: `14`, `84`, `182` or `364`; no body. Read only
+when the athlete picks a longer period or switches on "Vorjahr".
+
+Response: 200 with `start`, `end`, `days`, `previous_year_days` (364),
+`metrics` (the development metrics' dated Garmin values from
+`start` minus 364 days to `end`, shaped like the performance history's)
+and `personal_recovery` (its baselines' `history` over the same span).
+Stored values only; no provider request.
+
+Errors: 400 "Ungültiger Analysezeitraum." for another `days`.
 
 ### `GET /api/analysis/trends`
 

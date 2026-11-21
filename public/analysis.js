@@ -342,6 +342,7 @@ function appendAnalysisPointMark(svg, item, point, index, unit, scales, obstacle
     return;
   }
   const dot = svgNode("circle", { cx: x(point.date), cy: y(point.value), r: 2.5, "data-series": index, "data-color": item.color ?? index });
+  if (item.line === "faint") dot.setAttribute("data-line", "faint");
   dot.append(svgNode("title", {}, `${item.label} · ${dateLabel(point.date)}: ${analysisPointValue(item, point, unit)}`));
   svg.append(dot);
   obstacles.push({ left: x(point.date) - 3, right: x(point.date) + 3, top: y(point.value) - 3, bottom: y(point.value) + 3 });
@@ -350,7 +351,8 @@ function appendAnalysisPointMark(svg, item, point, index, unit, scales, obstacle
 // Only the latest, highest, lowest and first reading carry a value label (#1782); the tap readout shows the rest.
 function analysisLabelledPoints(item) {
   const readings = item.points.filter(analysisValidPoint);
-  if (!readings.length) return [];
+  // The previous year's line carries no value labels; its readout names its values.
+  if (!readings.length || item.line === "faint") return [];
   const byValue = [...readings].sort((a, b) => Number(a.value) - Number(b.value));
   return [...new Set([readings.at(-1), byValue.at(-1), byValue[0], readings[0]])];
 }
@@ -640,6 +642,49 @@ function analysisPeriodControls(label, value, change, periods = [["fortnight", "
 
 let analysisHistoryPeriod = "twelveWeeks";
 let recoveryHistoryPeriod = "fortnight";
+// Longer trend periods and the previous year's same weeks (#3765, athlete: a "Vorjahr" switch, off by
+// default). Only a longer period or the switch reads /api/analysis/trend-history; the default view keeps its read.
+let developmentPeriod = "twelveWeeks";
+let previousYearShown = false;
+const TREND_PERIOD_DAYS = { fortnight: 14, twelveWeeks: 84, sixMonths: 182, twelveMonths: 364 };
+const TREND_PERIOD_LABELS = { fortnight: "Letzte 14 Tage", twelveWeeks: "Letzte 12 Wochen", sixMonths: "Letzte 6 Monate", twelveMonths: "Letzte 12 Monate" };
+const PREVIOUS_YEAR_DAYS = 364;
+const trendHistories = new Map();
+
+// The stored long read of `days`, or null while it loads; `rerender` runs once it arrives.
+function trendHistory(days, rerender) {
+  const cached = trendHistories.get(days);
+  if (cached?.version === analysisReportVersionKey()) return cached.report;
+  if (!cached?.loading) {
+    trendHistories.set(days, { loading: true });
+    requestAnalysisReport(`/api/analysis/trend-history?days=${days}`)
+      .then((report) => { trendHistories.set(days, { report, version: analysisReportVersionKey() }); rerender(); })
+      .catch(() => { trendHistories.delete(days); });
+  }
+  return null;
+}
+
+function trendHistoryNeeded(period) {
+  return period !== "fortnight" && period !== "twelveWeeks" ? true : previousYearShown;
+}
+
+// The same dated values one year (52 weeks) earlier, moved onto this period's dates.
+function previousYearPoints(points, start, end) {
+  const from = addDateKey(start, -PREVIOUS_YEAR_DAYS), to = addDateKey(end, -PREVIOUS_YEAR_DAYS);
+  return points.filter((point) => point.date >= from && point.date <= to).map((point) => ({ ...point, date: addDateKey(point.date, PREVIOUS_YEAR_DAYS) }));
+}
+
+const TREND_PERIOD_BUTTONS = { fortnight: "Letzte 14 Tage", twelveWeeks: "12 Wochen", sixMonths: "6 Monate", twelveMonths: "12 Monate" };
+
+// The period buttons with the "Vorjahr" switch under them.
+function trendPeriodControls(label, value, periods, change) {
+  const controls = analysisPeriodControls(label, value, change, periods.map((period) => [period, TREND_PERIOD_BUTTONS[period]]));
+  const toggle = h("button", { className: "secondary-button", type: "button", "aria-pressed": String(previousYearShown) }, "Vorjahr");
+  toggle.addEventListener("click", () => { previousYearShown = !previousYearShown; change(value); });
+  const comparison = h("div", { className: "analysis-period-controls", "aria-label": "Vergleich mit dem Vorjahr" }, toggle);
+  comparison.setAttribute("role", "group");
+  return h("div", "analysis-trend-controls", controls, comparison);
+}
 // Report responses are reused per content version (state_versions) and in-flight requests are shared.
 const analysisReportCache = new Map();
 
@@ -1021,7 +1066,12 @@ function renderAnalysisHistory(history) { // NOSONAR
     renderAnalysisHistory(history);
     renderTrainingFocus(state.data?.performance?.training_focus_periods?.[period] || state.data?.performance?.training_focus);
   }));
-  const performanceStart = addDateKey(weekStart, -77);
+  const developmentWeeks = { twelveWeeks: 12, sixMonths: 26, twelveMonths: 52 }[developmentPeriod];
+  const performanceStart = addDateKey(weekStart, -7 * (developmentWeeks - 1));
+  // A longer period or the "Vorjahr" switch reads the long history once (#3765); until it arrives the
+  // charts keep the default read.
+  const trend = trendHistoryNeeded(developmentPeriod) ? trendHistory(TREND_PERIOD_DAYS[developmentPeriod], () => renderAnalysisHistory(state.data?.performance?.history)) : null;
+  const developmentMetrics = trend?.metrics || history.metrics;
   const load = history.load || { points: [] };
   const loadSeries = [{ label: "Akute Belastung", legendLabel: "Akute Belastung", source: load.source, unit: "", color: 0,
     cadenceDays: analysisHistoryPeriod === "twelveWeeks" ? 7 : 1, average: true, averageInHeading: true,
@@ -1062,16 +1112,27 @@ function renderAnalysisHistory(history) { // NOSONAR
     ["run_threshold_pace_seconds_per_km", "Lauf · Schwellenpace", "s/km", 2],
     ["cycling_vo2max_ml_kg_min", "Rad · VO₂max", "ml/kg/min", 3],
     ["running_vo2max_ml_kg_min", "Lauf · VO₂max", "ml/kg/min", 4],
-  ].flatMap(([key, label, unit, color]) => (history.metrics?.[key] || []).filter((item) => isPreferredSource(item, history.preferred_providers?.[key])).map((item) => ({
-    label: `${label} · ${item.source}`, legendLabel: label.replace(/^Rad \u00b7 /, ""), source: item.source, unit, color,
-    line: key.includes("vo2max") ? "dashed" : "solid",
-    cadenceDays: key === "cycling_ftp_watts" ? 1 : 7,
-    explanation: performanceSeriesExplanation(key),
-    currentPoint: item.points.filter((point) => point.date <= end).findLast(analysisValidPoint),
-    points: key === "cycling_ftp_watts" ? item.points.filter((point) => point.date >= performanceStart && point.date <= end) : analysisWeeklyPerformancePoints(item.points, performanceStart, end, key.includes("vo2max")),
-  })));
+  ].flatMap(([key, label, unit, color]) => (developmentMetrics?.[key] || []).filter((item) => isPreferredSource(item, history.preferred_providers?.[key])).flatMap((item) => {
+    const periodPoints = (points) => (key === "cycling_ftp_watts" ? points.filter((point) => point.date >= performanceStart && point.date <= end) : analysisWeeklyPerformancePoints(points, performanceStart, end, key.includes("vo2max")));
+    const current = {
+      label: `${label} · ${item.source}`, legendLabel: label.replace(/^Rad · /, ""), source: item.source, unit, color,
+      line: key.includes("vo2max") ? "dashed" : "solid",
+      cadenceDays: key === "cycling_ftp_watts" ? 1 : 7,
+      explanation: performanceSeriesExplanation(key),
+      currentPoint: item.points.filter((point) => point.date <= end).findLast(analysisValidPoint),
+      points: periodPoints(item.points),
+    };
+    const previous = previousYearShown && trend ? periodPoints(previousYearPoints(item.points, performanceStart, end)) : [];
+    // The previous year only where stored values exist (#3765).
+    if (!previous.some(analysisValidPoint)) return [current];
+    return [current, { ...current, label: `${label} · Vorjahr · ${item.source}`, legendLabel: "Vorjahr", line: "faint", currentPoint: null, explanation: "Dieselben Kalenderwochen ein Jahr (52 Wochen) früher; nur gespeicherte Werte.", points: previous }];
+  }));
   performanceSeries.push(...firstThresholdSeries(history.first_thresholds, performanceStart, end));
   scheduleFirstThresholdRefresh(history.first_thresholds?.status);
+  root.append(trendPeriodControls("Zeitraum für Entwicklung", developmentPeriod, ["twelveWeeks", "sixMonths", "twelveMonths"], (period) => {
+    developmentPeriod = period;
+    renderAnalysisHistory(history);
+  }));
   // Each sport's development sits in its own segment, so the group is only "Entwicklung" (#2265).
   for (const [sport, primaryUnit, analysisSport] of [["Lauf", "s/km", "run"], ["Rad", "W", "ride"]]) {
     const sportSeries = performanceSeries.filter((item) => item.label.startsWith(sport));
@@ -1083,7 +1144,7 @@ function renderAnalysisHistory(history) { // NOSONAR
       charts.push(...extra.children);
     }
     root.dataset[analysisSport === "run" ? "analysisEmptyRunning" : "analysisEmptyCycling"] = String(!charts.length);
-    const group = analysisChartGroup("Entwicklung", charts, sportSeries, "Letzte 12 Kalenderwochen einschließlich der laufenden Woche: alle datierten Garmin-FTP-Werte, letzter gültiger Wochenwert für Schwellenpace, Wochenmedian für VO₂max. Fehlende Messungen bleiben Lücken. Garmin. Quellen und Messdatum bleiben sichtbar.");
+    const group = analysisChartGroup("Entwicklung", charts, sportSeries, `${{ twelveWeeks: "Letzte 12", sixMonths: "Letzte 26", twelveMonths: "Letzte 52" }[developmentPeriod]} Kalenderwochen einschließlich der laufenden Woche: alle datierten Garmin-FTP-Werte, letzter gültiger Wochenwert für Schwellenpace, Wochenmedian für VO₂max. Fehlende Messungen bleiben Lücken. Garmin. Quellen und Messdatum bleiben sichtbar.`);
     makeAnalysisSectionCollapsible(group, `development-${sport}`);
     group.dataset.analysisSport = analysisSport;
     if (sport === "Lauf") group.querySelector(".analysis-section-content").append(predictions, runningBest);
@@ -2698,25 +2759,40 @@ function recoveryRollingNote(rolling) {
   return `7-Tage-Mittel ${analysisValue(rolling.mean_ms, "ms")} (${rolling.window_nights} Nächte) · ${position} deinem Bereich ${range}${spread}${provisional}`;
 }
 
+// Daily values on `dates`, or the weekly mean of each 7-day block when `weekly`; missing values stay gaps.
+function recoveryPeriodPoints(history, dates, today, weekly) {
+  const values = new Map(history.filter((point) => point.date <= today).map((point) => [point.date, point.value]));
+  if (!weekly) return dates.map((date) => ({ date, value: values.get(date) ?? null }));
+  return Array.from({ length: dates.length / 7 }, (_, weekIndex) => {
+    const weekDates = dates.slice(weekIndex * 7, weekIndex * 7 + 7);
+    const weekValues = weekDates.map((date) => values.get(date)).filter((value) => Number.isFinite(Number(value))).map(Number);
+    return { date: weekDates.at(-1), value: weekValues.length ? weekValues.reduce((sum, value) => sum + value, 0) / weekValues.length : null };
+  });
+}
+
+// The previous year's same days of a recovery series, or null without stored values (#3765).
+function recoveryPreviousYear(item, title, unit, color, { dates, today, weekly }) {
+  const points = recoveryPeriodPoints(previousYearPoints(item.history, dates[0], today), dates, today, weekly);
+  if (!points.some(analysisValidPoint)) return null;
+  return { label: `${title} · Vorjahr · ${item.source}`, legendLabel: "Vorjahr", source: item.source, unit, color, line: "faint", cadenceDays: weekly ? 7 : 1, explanation: "Dieselben Tage ein Jahr (52 Wochen) früher; nur gespeicherte Werte.", points };
+}
+
 function renderRecoveryCharts(report, root) {
   const metrics = [["sleep", "Schlafdauer", "h", 0], ["hrv", "HRV", "ms", 2], ["resting_hr", "Ruhepuls", "bpm", 3]];
-  const baselines = selectedRecoveryBaselines(report);
+  // A longer period or the "Vorjahr" switch reads the long history once (#3765); until it arrives the
+  // charts keep the default read.
+  const long = trendHistoryNeeded(recoveryHistoryPeriod) ? trendHistory(TREND_PERIOD_DAYS[recoveryHistoryPeriod], () => renderPersonalRecovery(report))?.personal_recovery : null;
+  const baselines = selectedRecoveryBaselines(long || report);
   const today = report?.as_of || timezoneDateKey(state.data?.profile?.timezone, new Date());
-  const dayCount = recoveryHistoryPeriod === "twelveWeeks" ? 84 : 14;
+  const dayCount = TREND_PERIOD_DAYS[recoveryHistoryPeriod];
+  const weekly = dayCount > 14;
   const dates = Array.from({ length: dayCount }, (_, index) => addDateKey(today, index - dayCount + 1));
   const start = dates[0], end = today;
   const series = metrics.map(([metric, title, unit, color]) => {
     const item = baselines.find((candidate) => candidate.metric === metric);
     if (!item) return { label: title, legendLabel: title, unit, color, points: dates.map((date) => ({ date, value: null })) };
-    const values = new Map(item.history.filter((point) => point.date <= today).map((point) => [point.date, point.value]));
-    const points = recoveryHistoryPeriod === "twelveWeeks"
-      ? Array.from({ length: 12 }, (_, weekIndex) => {
-        const offset = weekIndex * 7;
-        const weekDates = dates.slice(offset, offset + 7);
-        const weekValues = weekDates.map((date) => values.get(date)).filter((value) => Number.isFinite(Number(value))).map(Number);
-        return { date: weekDates.at(-1), value: weekValues.length ? weekValues.reduce((sum, value) => sum + value, 0) / weekValues.length : null };
-      })
-      : dates.map((date) => ({ date, value: values.get(date) ?? null }));
+    const points = recoveryPeriodPoints(item.history, dates, today, weekly);
+    const previous = previousYearShown && long ? recoveryPreviousYear(item, title, unit, color, { dates, today, weekly }) : null;
     const readings = item.history.filter((point) => point.date >= start && point.date <= today);
     const expectedDays = Math.max(0, Math.round((Date.parse(today) - Date.parse(start)) / 86400000) + 1);
     const range = metric !== "sleep" && ["ok", "provisional"].includes(item.status) && Number.isFinite(item.lower) && Number.isFinite(item.upper) ? { lower: item.lower, upper: item.upper, status: item.status } : null;
@@ -2728,7 +2804,7 @@ function renderRecoveryCharts(report, root) {
     const continuity = `${changed}${item.continuity === "unknown" ? " Messkontext unbekannt." : ""}`;
     const rolling = item.rolling ? ` ${recoveryRollingNote(item.rolling)}.` : "";
     return { label: `${title} · ${item.source}${measurement}`, legendLabel: title, source: item.source, unit, color,
-      bars: metric === "sleep", average: true, averageInHeading: true, cadenceDays: recoveryHistoryPeriod === "twelveWeeks" ? 7 : 1, range, target,
+      bars: metric === "sleep", average: true, averageInHeading: true, cadenceDays: weekly ? 7 : 1, range, target, previous,
       currentPoint: points.some(analysisValidPoint) ? null : item.history.findLast((point) => point.date <= today && analysisValidPoint(point)),
       referenceLabel: metric === "sleep" ? "Durchschnitt der angezeigten Werte" : recoveryReferenceLabel(item, range, target, unit, position),
       coverageShort: analysisCoverageText(readings.length, expectedDays, "Tagen"),
@@ -2739,7 +2815,7 @@ function renderRecoveryCharts(report, root) {
     const values = item.points.filter(analysisValidPoint).map((point) => Number(point.value));
     const average = values.length ? values.reduce((sum, value) => sum + value, 0) / values.length : null;
     const title = average == null ? item.legendLabel : `${item.legendLabel} · Ø ${analysisValue(average, item.unit)}`;
-    return collectAnalysisChart(missing, title, [item], item.unit, start, end, "", { compactInfo: true, includeCoverage: false, showLegend: false });
+    return collectAnalysisChart(missing, title, [item, item.previous].filter(Boolean), item.unit, start, end, "", { compactInfo: true, includeCoverage: false, showLegend: Boolean(item.previous) });
   }).filter(Boolean);
   const readiness = state.data?.performance?.history?.provider_metrics?.training_readiness_history;
   if (readiness) {
@@ -2747,10 +2823,10 @@ function renderRecoveryCharts(report, root) {
     renderProviderMetrics({ training_readiness_history: readiness }, readinessCharts, start, end, missing);
     charts.unshift(...readinessCharts.children);
   }
-  root.append(analysisPeriodControls("Zeitraum für Erholung", recoveryHistoryPeriod, (period) => { recoveryHistoryPeriod = period; renderPersonalRecovery(report); }));
+  root.append(trendPeriodControls("Zeitraum für Erholung", recoveryHistoryPeriod, ["fortnight", "twelveWeeks", "sixMonths", "twelveMonths"], (period) => { recoveryHistoryPeriod = period; renderPersonalRecovery(report); }));
   root.dataset.analysisEmpty = String(!charts.length);
   if (!charts.length) return;
-  const group = analysisChartGroup(`Erholung · ${recoveryHistoryPeriod === "twelveWeeks" ? "Letzte 12 Wochen" : "Letzte 14 Tage"}`, charts, series);
+  const group = analysisChartGroup(`Erholung · ${TREND_PERIOD_LABELS[recoveryHistoryPeriod]}`, charts, series);
   root.append(group);
 }
 
