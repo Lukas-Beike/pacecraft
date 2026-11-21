@@ -7,6 +7,7 @@ import unittest
 from datetime import date
 from types import SimpleNamespace
 from unittest.mock import patch
+from urllib.error import URLError
 
 from remote_link_fixtures import create_remote_links_table
 from support import temp_database
@@ -19,7 +20,12 @@ from backend.planning import competitions as planning_competitions
 from backend.planning.competition_service import CompetitionService
 from backend.providers.intervals_workouts import planning_fields_from_intervals
 from backend.sync.authority import competition_push_manifest
-from backend.sync.competitions import CompetitionSyncReconciler, CompetitionSyncService
+from backend.sync.competitions import (
+    CompetitionSyncReconciler,
+    CompetitionSyncService,
+    failure_kind,
+    summarize_competition_sync,
+)
 
 NOW = "2026-09-20T12:00:00+00:00"
 TODAY = date(2026, 9, 20)
@@ -861,6 +867,27 @@ class CompetitionSyncReconcilerTests(unittest.TestCase):
         self.assertEqual(
             logger.exceptions[0][1]["extra"]["context"], {"reason": "manual"}
         )
+        record = self.stored_kv("intervals_competition_sync_failure")
+        self.assertNotIn("secret", record)
+        with self.database_manager.manager.reader() as db:
+            summary = summarize_competition_sync(db)
+        self.assertEqual(summary["status"], "failed")
+        self.assertEqual(summary["failures"], 1)
+        self.assertEqual(summary["failure_kinds"], {"fetch.local_RuntimeError": 1})
+
+    def test_failure_kind_names_the_status_reason_or_class_without_text(self):
+        cases = (
+            (AppError(502, "secret text", upstream_status=422), "http_422"),
+            (AppError(502, "secret text", reason="upstream_rejected"), "app_502_upstream_rejected"),
+            (AppError(502, "secret text"), "app_502_none"),
+            (AppError(502, "secret text", reason="Has Text!"), "app_502_none"),
+            (TimeoutError("secret text"), "network"),
+            (URLError("secret text"), "network"),
+            (KeyError("secret text"), "local_KeyError"),
+        )  # fmt: skip
+        for error, kind in cases:
+            with self.subTest(kind=kind):
+                self.assertEqual(failure_kind(error), kind)
 
     def test_reconcile_failure_is_recorded_and_releases_lock(self):
         client = FakeCompetitionClient()
@@ -879,9 +906,25 @@ class CompetitionSyncReconcilerTests(unittest.TestCase):
         self.assertEqual(
             self.stored_kv("last_competition_sync_error"), "reconciliation failed"
         )
+        with (
+            patch.object(self.reconciler, "reconcile", side_effect=error),
+            self.assertRaises(RuntimeError),
+        ):
+            service.sync()
+        with self.database_manager.manager.reader() as db:
+            summary = summarize_competition_sync(db)
+        self.assertEqual(summary["failures"], 2)
+        self.assertEqual(summary["failure_kinds"], {"reconcile.local_RuntimeError": 1})
+        service.sync()
+        with self.database_manager.manager.reader() as db:
+            summary = summarize_competition_sync(db)
+        self.assertEqual(
+            (summary["status"], summary["failures"], summary["failure_kinds"]),
+            ("ok", 0, {}),
+        )
         self.assertEqual(logger.exceptions[0][0], "Competition synchronization failed")
         self.assertEqual(logger.exceptions[0][1]["exc_info"], True)
-        self.assertEqual(lock.release_calls, 1)
+        self.assertEqual(lock.release_calls, 3)
 
 
 if __name__ == "__main__":

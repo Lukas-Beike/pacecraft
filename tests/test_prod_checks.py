@@ -670,6 +670,14 @@ class ProdChecksTests(unittest.TestCase):
                 "unlinked_uploads": 0,
                 "day": "2026-11-15 never printed",
             },
+            "competition_sync": {
+                "status": "ok",
+                "failures": 3,
+                "failed_at": RECENT,
+                "last_success_at": None,
+                "failure_kinds": {"fetch.http_422": 1},
+                "error": "provider text never printed",
+            },
             "wahoo_weight_push": {
                 "sent": 2,
                 "failed": 1,
@@ -754,6 +762,10 @@ class ProdChecksTests(unittest.TestCase):
             ],
             "wahoo_weight_push": [
                 "failed 1", "pending 0", "retried 1", "sent 2",
+            ],
+            "competition_sync": [
+                "failed_hours 2.0", "failure_kinds.fetch.http_422 1", "failures 3",
+                "last_success_hours null", 'status "ok"',
             ],
             "garmin_strength_push": [
                 "garmin.several_exercises 1", "garmin.units 2", "garmin.with_kg 1",

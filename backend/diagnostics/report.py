@@ -61,6 +61,7 @@ from backend.runtime.ports import ProviderCoverageReader
 from backend.settings import SettingsService
 from backend.sync.activity_routes import summarize_activity_routes
 from backend.sync.activity_weather import summarize_activity_weather
+from backend.sync.competitions import summarize_competition_sync
 from backend.sync.external_calendar import ExternalCalendarSyncService
 from backend.sync.freshness import ProviderFreshnessService
 from backend.sync.garmin import (
@@ -456,6 +457,10 @@ class DiagnosticReportService:
                 # The one-off Garmin history re-reads, counts only (#3729).
                 "garmin_history_refetch": section(
                     "garmin_history_refetch", lambda: summarize_history_refetch(db)
+                ),
+                # The competition sync's failed step and kind, no text (#3838).
+                "competition_sync": section(
+                    "competition_sync", lambda: summarize_competition_sync(db)
                 ),
                 # The Wahoo profile-weight write, counts only (#3559).
                 "wahoo_weight_push": section(
