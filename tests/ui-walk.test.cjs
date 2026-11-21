@@ -136,12 +136,18 @@ test("ui walk steps press only opening controls and name the feature they cover 
 test("ui walk skips a step whose since is newer than the running release", async () => {
   const walk = await load();
   const step = { name: "Neu", since: "2.2.12" };
-  assert.deepEqual(walk.releaseSkip(step, "2.2.11"), { status: "skip", ms: 0, why: "not in 2.2.11" });
-  assert.deepEqual(walk.releaseSkip(step, "1.9.20"), { status: "skip", ms: 0, why: "not in 1.9.20" });
+  assert.deepEqual(walk.releaseSkip(step, "2.2.11"), { status: "skip", ms: 0, why: "not in 2.2.11", release: true });
+  assert.deepEqual(walk.releaseSkip(step, "1.9.20"), { status: "skip", ms: 0, why: "not in 1.9.20", release: true });
   for (const running of ["2.2.12", "2.10.0", null]) assert.equal(walk.releaseSkip(step, running), null, running);
   assert.equal(walk.releaseSkip({ name: "Alt" }, "2.2.11"), null);
   const lines = walk.reportLines({ loadMs: {}, errors: {}, calendar: {}, marks: null, steps: { "phone Neu": { status: "skip", ms: 0, why: "not in 2.2.11", covers: "#1" } } });
   assert.ok(lines.includes("info phone Neu skipped: not in 2.2.11"));
+  // A walk against an older release (a rollback) neither waits to retry nor reports a FAIL.
+  let waited = 0;
+  const skipped = await walk.retriedStep(async () => walk.releaseSkip(step, "2.2.11"), { status: "ok" }, async () => { waited += 1; });
+  assert.equal(waited, 0);
+  const compared = walk.compareLines({ marks: { cache: "a" }, measure: walk.LOAD_MEASURE, loadMs: {}, steps: { "phone Neu": skipped } }, { marks: { cache: "a" }, measure: walk.LOAD_MEASURE, loadMs: {}, steps: { "phone Neu": { status: "ok", ms: 10 } } });
+  assert.ok(!compared.some((line) => line.startsWith("FAIL")), compared.join("\n"));
   for (const item of walk.STEPS.filter((entry) => entry.since)) assert.match(item.since, /^\d+\.\d+\.\d+$/, item.name);
 });
 

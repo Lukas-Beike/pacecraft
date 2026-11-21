@@ -117,7 +117,8 @@ export function compareLines(current, previous) {
   // A step that passed before and is skipped now lost its data or its function: a finding, whatever the reason.
   for (const [key, step] of Object.entries(current.steps || {})) {
     const before = previous.steps?.[key];
-    if (before?.status === "ok" && step.status === "skip") lines.push(`FAIL step ${key} passed in the previous walk, skipped now (${step.why})`);
+    // A release skip (an older release, e.g. after a rollback) lost nothing (#3886).
+    if (before?.status === "ok" && step.status === "skip" && !step.release) lines.push(`FAIL step ${key} passed in the previous walk, skipped now (${step.why})`);
     else if (before?.status === "ok" && step.status === "ok") lines.push(`info step ${key} ${step.ms} ms (was ${before.ms} ms)`);
   }
   if (previous.measure !== current.measure) {
@@ -447,7 +448,7 @@ export function releaseSkip(step, running) {
   const [have, need] = [parts(running), parts(step.since)];
   for (let index = 0; index < Math.max(have.length, need.length); index += 1) {
     const diff = (have[index] || 0) - (need[index] || 0);
-    if (diff) return diff > 0 ? null : { status: "skip", ms: 0, why: `not in ${running}` };
+    if (diff) return diff > 0 ? null : { status: "skip", ms: 0, why: `not in ${running}`, release: true };
   }
   return null;
 }
@@ -463,7 +464,7 @@ async function runningVersion(page) {
 export const RETRY_WAIT_MS = 20000;
 export async function retriedStep(run, before, wait) {
   const first = await run();
-  if (first.status !== "skip" || before?.status !== "ok") return first;
+  if (first.status !== "skip" || first.release || before?.status !== "ok") return first;
   await wait(RETRY_WAIT_MS);
   return { ...(await run()), retried: first.why };
 }
