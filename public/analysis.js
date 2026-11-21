@@ -1761,6 +1761,11 @@ async function sendBodyEntry(dialog, path, payload, button, receipt, replaces = 
       ? await saveOwnEntry({ kind: own.kind, method: "PUT", path, payload, label: `${own.label(payload)} · ${dateLabel(payload.date)}`, replaces })
       : await api(path, { method: "PUT", body: JSON.stringify(payload) });
   } catch (error) {
+    // The queued entry is gone meanwhile: the next save goes out as a new one (Gitar on #3830).
+    if (error?.reason === "outbox_entry_gone") {
+      if (dialog === "weightDialog") weightOutboxEdit = null;
+      if (dialog === "bodyFatDialog") bodyFatOutboxEdit = null;
+    }
     status.textContent = error.message;
     button.disabled = false;
     return false;

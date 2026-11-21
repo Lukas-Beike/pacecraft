@@ -1238,6 +1238,8 @@ async function addNutritionProductToMeal() {
     showNutritionReceipt(document.querySelector("#nutritionProductStatus"), `„${use.product.name}“ ${mealId ? "zur Mahlzeit ergänzt" : "als Snack erfasst"}.`, result.change, () => reloadNutritionProducts());
   } catch (error) {
     if (generation !== state.sessionGeneration) return;
+    // The queued entry is gone meanwhile: the next save goes out as a new snack (Gitar on #3830).
+    if (error?.reason === "outbox_entry_gone") nutritionOutboxEdit = null;
     document.querySelector("#nutritionProductUseStatus").textContent = `Produkt konnte nicht erfasst werden: ${error.message}`;
     addButton.disabled = false;
   }
