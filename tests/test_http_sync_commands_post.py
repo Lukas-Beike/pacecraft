@@ -7,6 +7,7 @@ from unittest.mock import Mock
 
 from support import dispatch_route
 
+from backend.http_api.route_table import Access
 from backend.http_api.sync_commands_post import SyncCommandPostRoute
 
 
@@ -42,6 +43,20 @@ class SyncCommandPostRouteTests(unittest.TestCase):
         handler.read_json.assert_not_called()
         endpoint.execute.assert_called_once_with("/api/weather/sync", None)
         handler.send_json.assert_called_once_with(202, {"id": "job-3"})
+
+    def test_competition_send_is_a_csrf_session_route_without_a_body(self) -> None:
+        endpoint = Mock()
+        endpoint.send_competitions.return_value = (202, {"id": "job-5"})
+        handler = Mock()
+        post_route = SyncCommandPostRoute(lambda: endpoint)
+        path = "/api/intervals/competitions/send"
+        route = next(r for r in post_route.routes() if r.path == path)
+
+        dispatch_route(post_route, handler, path, method="POST")
+
+        self.assertEqual(Access.SESSION_CSRF, route.access)
+        handler.read_json.assert_not_called()
+        handler.send_json.assert_called_once_with(202, {"id": "job-5"})
 
     def test_body_command_reads_json_before_constructing_endpoint(self) -> None:
         order: list[str] = []

@@ -6,7 +6,11 @@ from collections.abc import Callable
 from typing import Any
 
 from backend.http_api.route_table import Access, Route, RouteRequest
-from backend.http_api.sync_commands import SYNC_ROUTE_SURFACE, SyncCommandEndpoint
+from backend.http_api.sync_commands import (
+    COMPETITION_SEND_PATH,
+    SYNC_ROUTE_SURFACE,
+    SyncCommandEndpoint,
+)
 
 
 class SyncCommandPostRoute:
@@ -26,7 +30,35 @@ class SyncCommandPostRoute:
             else:
                 handle = self._execute
             routes.append(Route("POST", path, Access.SESSION_CSRF, handle))
+        routes.append(
+            Route(
+                "POST",
+                COMPETITION_SEND_PATH,
+                Access.SESSION_CSRF,
+                self._send_competitions,
+            )
+        )
         return routes
+
+    def _send_competitions(self, handler: Any, _request: RouteRequest) -> None:
+        """Queue the Intervals.icu competition sync the athlete pressed, deletions included.
+
+        Request: `POST /api/intervals/competitions/send`, no body. The competition
+        set at the moment of the press is the approval: its manifest is read and
+        sent as the job's `approval_manifest`.
+
+        Response: 202 with the queued `competition_push` job for `intervals` (as
+        `GET /api/sync/jobs/{id}`), requested by `user`, payload `reason`
+        `athlete_send`. A job of that type already queued or running is returned
+        instead of a second one.
+
+        Errors: 409 `not_configured` "Intervals.icu ist nicht eingerichtet.
+        Zugangsdaten unter Mehr → Anbindungen hinterlegen." when Intervals.icu is
+        not set up. The queued job fails with 409 "Der Wettkampfbestand hat sich
+        seit der Freigabe geändert." when competitions changed before it ran.
+        """
+        status, result = self._endpoint().send_competitions()
+        handler.send_json(status, result)
 
     def _full_resync(self, handler: Any, request: RouteRequest) -> None:
         """Start the confirmed full resync in the background (`202` with `operation_id`; `200` `already_running` while one runs).

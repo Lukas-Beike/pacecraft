@@ -20,6 +20,7 @@ from backend.sync.queue import SyncJobQueueService
 from backend.sync.state import SyncStateRepository
 
 SYNC_JOBS_PATH = "/api/sync/jobs"
+COMPETITION_SEND_PATH = "/api/intervals/competitions/send"
 
 
 @dataclass(frozen=True, slots=True)
@@ -145,7 +146,9 @@ class SyncCommandEndpoint:
         all_sync_days: int,
         *,
         provider_configured: Callable[[str], bool],
+        competition_manifest: Callable[[], list[dict[str, str]]] | None = None,
     ) -> None:
+        self._competition_manifest = competition_manifest
         self._queue = queue
         self._state = state
         self._full_resync = full_resync
@@ -210,6 +213,21 @@ class SyncCommandEndpoint:
             envelope,
             requested_by="user",
             item_operations=_plan_push_item_operations(job_type, envelope),
+        )
+
+    def send_competitions(self) -> tuple[int, dict[str, Any]]:
+        """Queue the competition sync the athlete pressed, approving the set it shows now."""
+        if self._competition_manifest is None:
+            raise RuntimeError("The competition manifest reader is not wired.")
+        self._require_provider_configured("intervals")
+        return 202, self._queue.enqueue(
+            "intervals",
+            "competition_push",
+            {
+                "reason": "athlete_send",
+                "approval_manifest": self._competition_manifest(),
+            },
+            requested_by="user",
         )
 
     def _require_provider_configured(self, provider: Any) -> None:

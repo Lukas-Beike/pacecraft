@@ -104,6 +104,7 @@ from backend.runtime import maintenance as runtime_maintenance
 from backend.sync import intervals_state
 from backend.sync.adaptive import AdaptivePreviewFollowupService
 from backend.sync.analysis_refresh import AnalysisRefreshService
+from backend.sync.authority import competition_push_manifest
 from backend.sync.library import workout_library_sync_running
 from backend.sync.provider_registry import DEFAULT_PROVIDER_REGISTRY
 from backend.sync.status import SyncPublicStateService
@@ -394,7 +395,13 @@ def _sync_command_endpoint(
         period_defaults,
         all_sync_days,
         provider_configured=lambda provider_id: provider_configured[provider_id](),
+        competition_manifest=lambda: _competition_manifest(ctx),
     )
+
+
+def _competition_manifest(ctx: Any) -> list[dict[str, str]]:
+    with ctx.database().reader() as db:
+        return competition_push_manifest(db)
 
 
 def _coach_routes(

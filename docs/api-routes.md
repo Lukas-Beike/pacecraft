@@ -92,6 +92,7 @@ handler's docstring. Regenerate it with
 | GET | `/api/health` | Public | no | Liveness and maintenance state. |
 | POST | `/api/infection-hint/ill` | Session + CSRF | after access | Answer today's infection hint with "Ich bin krank" (#3821). |
 | POST | `/api/infection-hint/well` | Session + CSRF | after access | Answer today's infection hint with "Mir geht's gut" (#3821). |
+| POST | `/api/intervals/competitions/send` | Session + CSRF | after access | Queue the Intervals.icu competition sync the athlete pressed, deletions included. |
 | GET | `/api/library` | Session | no | Workout library page. |
 | POST | `/api/library/{id}/archive` | Session + CSRF | after access | Take a library entry out of the library after the athlete confirmed it. |
 | POST | `/api/library/{id}/schedule` | Session + CSRF | after access | Plan a library entry on one day as a local unit, without a remote write. |
@@ -1182,6 +1183,22 @@ Response: 200 `{"status": "ok", "dismissed": "YYYY-MM-DD"}`.
 
 Errors: 409 "Der Infekt-Hinweis gilt für einen anderen Tag. Bitte die
 Ansicht neu laden." when `date` is not the athlete's today.
+
+### `POST /api/intervals/competitions/send`
+
+Request: `POST /api/intervals/competitions/send`, no body. The competition
+set at the moment of the press is the approval: its manifest is read and
+sent as the job's `approval_manifest`.
+
+Response: 202 with the queued `competition_push` job for `intervals` (as
+`GET /api/sync/jobs/{id}`), requested by `user`, payload `reason`
+`athlete_send`. A job of that type already queued or running is returned
+instead of a second one.
+
+Errors: 409 `not_configured` "Intervals.icu ist nicht eingerichtet.
+Zugangsdaten unter Mehr → Anbindungen hinterlegen." when Intervals.icu is
+not set up. The queued job fails with 409 "Der Wettkampfbestand hat sich
+seit der Freigabe geändert." when competitions changed before it ran.
 
 ### `GET /api/library`
 
