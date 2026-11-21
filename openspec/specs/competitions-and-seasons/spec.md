@@ -108,6 +108,10 @@ The system SHALL keep remote pushes explicit and output-only (Intervals.icu rece
 - **WHEN** a sync starts while another holds the lock
 - **THEN** it returns `{"status": "already_running"}` without side effects; otherwise the lock is held during the run and released afterwards, also after a failure, and `last_competition_sync_at` or the redacted `last_competition_sync_error` is stored afterwards.
 
+#### Scenario: Content-free failure record
+- **WHEN** a sync fails
+- **THEN** it stores the failed step and a kind without provider text (`http_<status>`, `app_<status>_<reason>`, `network` or `local_<error class>`) and counts consecutive failures; the diagnostic report's `competition_sync` section shows them until a sync succeeds and clears the record (`tests/test_sync_competitions.py::test_failure_kind_names_the_status_reason_or_class_without_text`).
+
 #### Scenario: Result and tombstones
 - **WHEN** a run succeeds
 - **THEN** it returns `status: ok`, `synced_at`, `pushed`, `skipped`, `skipped_items`, `conflicts`, `deleted_remote`, `skipped_deletions` and `total`; the tombstone of a skipped deletion is removed like that of a deleted one, while a failed delete call keeps all tombstones; a manifest that changed since the approval answers 409 "Der Wettkampfbestand hat sich seit der Freigabe geändert.", and a row edited since it was read is left alone.

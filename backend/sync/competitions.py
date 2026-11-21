@@ -4,11 +4,12 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 import threading
 from collections.abc import Callable
 from datetime import timedelta
 from typing import Any
-from urllib.error import HTTPError
+from urllib.error import HTTPError, URLError
 
 from backend.canonical.stored_sports import activity_type_environment
 from backend.canonical.vocabulary import INTERVALS_ID, RemoteEntityKind
@@ -32,6 +33,10 @@ from backend.sync.state import last_error_key, last_sync_key
 _COMPETITION_SYNC_LOCK = threading.Lock()
 _REMOTE_LINKS = RemoteLinkRepository()
 _COMPETITIONS = CompetitionRepository()
+# The content-free record of the current competition sync failure (#3838).
+FAILURE_KEY = "intervals_competition_sync_failure"
+_SLUG = re.compile(r"[a-z0-9_]{1,60}")
+_KIND = re.compile(r"\w{1,80}", re.ASCII)
 
 
 def _is_not_found(error: AppError) -> bool:
@@ -360,15 +365,19 @@ class CompetitionSyncService:
         if not self._competition_lock.acquire(blocking=False):
             return {"status": "already_running"}
 
+        # The sync step that failed, for the content-free failure record (#3838).
+        step = "local_records"
         try:
             client = self._client_factory()
             tombstones, local_rows = self._reconciler.records(expected_manifest)
+            step = "fetch"
             linked_ids = {
                 str(row["intervals_event_id"])
                 for row in local_rows
                 if row.get("intervals_event_id")
             }
             calendar_events = client.fetch_competition_events()
+            step = "plan"
             remote_events = [
                 planning_fields_from_intervals(event)
                 for event in calendar_events
@@ -378,6 +387,8 @@ class CompetitionSyncService:
                 local_rows, tombstones, remote_events
             )
             outbound = list(plan["outbound"])
+            # The deletion check may read remote events; it belongs to the delete step.
+            step = "delete"
             delete_identifiers, skipped_deletions = self._checked_deletions(
                 client, tombstones, calendar_events
             )
@@ -387,6 +398,7 @@ class CompetitionSyncService:
                     client.bulk_delete_events(delete_identifiers)
                 self._reconciler.clear_tombstones(tombstones)
                 deleted_remote = len(delete_identifiers)
+            step = "upsert"
             pushed = (
                 [
                     planning_fields_from_intervals(event)
@@ -395,12 +407,14 @@ class CompetitionSyncService:
                 if outbound
                 else []
             )
+            step = "reconcile"
             now = self._now()
             reconciled = self._reconciler.reconcile(
                 plan, pushed, local_rows, now=now, fetched=self._fetched_window()
             )
             self._set_kv(last_sync_key(INTERVALS_ID), now)
             self._set_kv(last_error_key(INTERVALS_ID), "")
+            self._set_kv(FAILURE_KEY, "")
             self._publisher.publish("coach", {"status": "changed"})
             return {
                 "status": "ok",
@@ -427,6 +441,13 @@ class CompetitionSyncService:
         except Exception as exc:
             error = self._redactor.redact_text(str(exc))[:1000]
             self._set_kv(last_error_key(INTERVALS_ID), error)
+            try:
+                self._record_failure(step, exc)
+            except Exception:  # noqa: BLE001 - the sync's own error must surface.
+                self._logger.warning(
+                    "Competition sync failure record not stored",
+                    extra={"event": "competition_sync_failure_record_failed"},
+                )
             self._logger.exception(
                 "Competition synchronization failed",
                 extra={
@@ -496,9 +517,58 @@ class CompetitionSyncService:
             raise
         return event if isinstance(event, dict) else None
 
+    def _record_failure(self, step: str, error: BaseException) -> None:
+        """Keep the failed step and kind, never the provider text (#3838)."""
+        with self._database_manager.unit_of_work() as db:
+            earlier = _failure_record(self._key_value_repository.get(db, FAILURE_KEY))
+            record = {
+                "step": step,
+                "kind": failure_kind(error),
+                "failures": int(earlier.get("failures") or 0) + 1,
+                "failed_at": self._now(),
+            }
+            self._key_value_repository.set(db, FAILURE_KEY, json.dumps(record))
+
     def _set_kv(self, key: str, value: str) -> None:
         with self._database_manager.unit_of_work() as db:
             self._key_value_repository.set(db, key, value)
+
+
+def failure_kind(error: BaseException) -> str:
+    """A content-free kind: the HTTP status, the app reason or the error class."""
+    if isinstance(error, AppError):
+        if error.upstream_status is not None:
+            return f"http_{error.upstream_status}"
+        reason = error.reason or ""
+        return f"app_{error.status}_{reason if _SLUG.fullmatch(reason) else 'none'}"
+    if isinstance(error, HTTPError):
+        return f"http_{error.code}"
+    if isinstance(error, TimeoutError | ConnectionError | URLError):
+        return "network"
+    return f"local_{type(error).__name__}"
+
+
+def _failure_record(value: str | None) -> dict[str, Any]:
+    try:
+        record = json.loads(value or "{}")
+    except ValueError:
+        return {}
+    return record if isinstance(record, dict) else {}
+
+
+def summarize_competition_sync(db: Any) -> dict[str, Any]:
+    """The competition sync's current failure: step and kind as counts (#3838)."""
+    values = KeyValueRepository(lambda: "")
+    record = _failure_record(values.get(db, FAILURE_KEY))
+    step, kind = str(record.get("step") or ""), str(record.get("kind") or "")
+    failed = bool(_SLUG.fullmatch(step) and _KIND.fullmatch(kind))
+    return {
+        "status": "failed" if failed else "ok",
+        "failures": int(record.get("failures") or 0) if failed else 0,
+        "failed_at": record.get("failed_at") if failed else None,
+        "last_success_at": values.get(db, last_sync_key(INTERVALS_ID)),
+        "failure_kinds": {f"{step}.{kind}": 1} if failed else {},
+    }
 
 
 def _delete_skip_reason(event: dict[str, Any] | None, today: Any) -> str | None:
