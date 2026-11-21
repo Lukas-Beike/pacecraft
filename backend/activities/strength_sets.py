@@ -183,7 +183,13 @@ def _exercise_entry(group: Mapping[str, Any], *, set_list: bool) -> dict[str, An
     category: ExerciseCategory | None = group["category"]
     sets: list[dict[str, Any]] = group["sets"]
     loaded = [s for s in sets if s["weight_kg"] is not None]
-    top = max(loaded, key=lambda s: s["weight_kg"]) if loaded else None
+    # Without any weight (pull-ups, push-ups) the top set is the one with the most reps (#3764).
+    counted = [s for s in sets if s["reps"] is not None]
+    top = None
+    if loaded:
+        top = max(loaded, key=lambda s: s["weight_kg"])
+    elif counted:
+        top = max(counted, key=lambda s: s["reps"])
     entry: dict[str, Any] = {
         "category": None if category is None else category.value,
         "name": group["name"],

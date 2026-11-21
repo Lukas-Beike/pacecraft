@@ -18,8 +18,11 @@ from backend.activities.activity_summary import (
     summary_local_date,
 )
 from backend.activities.session_purpose import summary_is_not_training, summary_is_race
+from backend.activities.strength_progress import strength_progress
+from backend.athlete.local_date import iso_date_prefix
 from backend.canonical import sensor_registry
 from backend.canonical.stored_sports import resolve_workout_sport
+from backend.canonical.vocabulary import Sport
 from backend.db import activity_detail_store
 from backend.errors import AppError
 from backend.performance.canonical_inputs import (
@@ -66,6 +69,8 @@ PROFILE_WINDOW_DAYS = (28, 90)
 # Analyse shows the trends of the 12-week progress review (#2802).
 ANALYSIS_TREND_DAYS = 84
 PROGRESS_DAYS = frozenset({7, 28, 42, 56, 84})
+# Analyse › Kraft shows twelve calendar weeks like the endurance development (#3764).
+STRENGTH_WEEKS = 12
 
 
 def report_sport(value: Any) -> str | None:
@@ -761,6 +766,41 @@ class TrainingReportReadService:
             checkins=self._read_checkins(),
             timezone=timezone,
         )
+
+    def strength(self) -> dict[str, Any]:
+        """Analyse › Kraft (#3764): top set per exercise and sessions per week.
+
+        The last ``STRENGTH_WEEKS`` calendar weeks including the current one,
+        from the stored sets of completed strength sessions only. No strength
+        load and no estimated 1RM; a week without a session counts 0, an
+        exercise missing from a session is no point.
+        """
+        today = self._today()
+        start = today - timedelta(days=today.weekday(), weeks=STRENGTH_WEEKS - 1)
+        summaries, _ = activity_summaries_with_sync_time(self._canonical)
+        rows = [
+            row
+            for row in summaries
+            if row.get("sport") == Sport.STRENGTH
+            and start.isoformat()
+            <= iso_date_prefix(row.get("started_at_local"))
+            <= today.isoformat()
+        ]
+        counts = {start + timedelta(weeks=week): 0 for week in range(STRENGTH_WEEKS)}
+        for row in rows:
+            day = date.fromisoformat(iso_date_prefix(row.get("started_at_local")))
+            counts[day - timedelta(days=day.weekday())] += 1
+        progress = strength_progress(rows, max_sessions=None, max_exercises=None)
+        return {
+            "start": start.isoformat(),
+            "end": today.isoformat(),
+            "source": progress["source"],
+            "weeks": [
+                {"week_start": week.isoformat(), "sessions": count}
+                for week, count in counts.items()
+            ],
+            "exercises": progress["exercises"],
+        }
 
     def read(self, values: dict[str, Any], timezone: str = "UTC") -> dict[str, Any]:
         today = self._today()

@@ -9,7 +9,7 @@ import sys
 import tempfile
 import threading
 import unittest
-from contextlib import redirect_stdout
+from contextlib import redirect_stderr, redirect_stdout
 from datetime import UTC, datetime, timedelta
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -1002,6 +1002,49 @@ class ProdChecksTests(unittest.TestCase):
         )
         self.assertEqual(code, 1)
         self.assertIn("FAIL no CSRF token -> 200", text)
+
+    def test_check_secret_reads_only_the_file(self):
+        # #3768: checked before a release dispatch, without any request (a
+        # Session would fail the test); run_main checks the secret is not printed.
+        with (
+            mock.patch.object(prod_guards, "Session", side_effect=AssertionError),
+            mock.patch.object(
+                prod_guards, "checkout_current", side_effect=AssertionError
+            ),
+        ):
+            code, text = self.run_main(
+                prod_guards, "--check-secret", "--password-file", str(self.secret)
+            )
+            self.assertEqual((code, text.strip()), (0, "ok secret readable"))
+            empty = Path(self.tmp.name) / "empty-secret"
+            empty.write_text("\n", encoding="utf-8")
+            for path, reason in (
+                (empty, "secret missing, empty or unreadable"),
+                (
+                    Path(self.tmp.name) / "missing",
+                    "secret missing, empty or unreadable",
+                ),
+                # A refused path names itself, not a new secret request.
+                (prod_client.ROOT / "x", "system temp directory or the T3 secret"),
+                ("secret", "must be absolute"),
+            ):
+                with self.subTest(path=path):
+                    code, text = self.run_main(
+                        prod_guards, "--check-secret", "--password-file", str(path)
+                    )
+                    self.assertEqual(code, 1)
+                    self.assertIn(reason, text)
+        # The address and the secret check exclude each other; one is required.
+        for argv in (
+            ["--password-file", str(self.secret)],
+            ["--url", self.url, "--check-secret", "--password-file", str(self.secret)],
+        ):
+            with (
+                self.subTest(argv=argv),
+                redirect_stderr(io.StringIO()),
+                self.assertRaises(SystemExit),
+            ):
+                prod_guards.main(argv)
 
     def test_checks_warn_or_refuse_when_the_checkout_is_behind_develop(self):
         # A checkout one commit behind origin/develop, local state only (#3344).

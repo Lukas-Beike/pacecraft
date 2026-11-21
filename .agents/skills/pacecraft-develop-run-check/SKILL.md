@@ -8,7 +8,14 @@ description: Base skill. Report the develop push workflow runs for a merged PR's
 ```powershell
 python scripts/develop_run_check.py --pr <number>
 python scripts/develop_run_check.py --sha <sha>
+python scripts/develop_run_check.py --pr <number> --wait <minutes>
 ```
+
+- `--wait <minutes>` polls every 30 s while the answer would be exit 3 (a
+  failed `gh` call counts as pending then) and prints only the last poll, plus
+  `still pending after <n> min` when time ran out; use it after a merge
+  instead of a hand-written loop (#3721). Run it as a background command when the wait is longer than
+  the shell timeout, then wait for that task.
 
 - Read-only. Prints one line per workflow: `<name>: green|pending|failed (<result>) <url>`.
 - Exit 0: every run completed green. Exit 1: a run failed, or the PR is not

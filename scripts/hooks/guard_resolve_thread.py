@@ -8,7 +8,10 @@ any `scripts/` module it imports match origin/develop byte for byte, and no
 entry in `scripts/` (tracked, ignored or untracked) can shadow a module the run
 imports (#3072). Other scripts, the hooks and non-Python files may differ.
 The name matches in any case, through quotes, escapes, globs and short names,
-and input without a command string blocks (#3367). Exit code 2 blocks the call;
+and input without a command string blocks (#3367). Globs, variables and short
+names are not read when every simple command starts with a program that runs
+no argument (`git`, `ls`, `gh`, `python -m mypy`, ...; #3759), and a direct
+GraphQL resolve mutation blocks. Exit code 2 blocks the call;
 the message names the word that matched, as the hook read it (#3459).
 """
 
@@ -310,7 +313,9 @@ def matching_word(command: str) -> str | None:
     order, whatever stands between them, count as the name."""
     raw = unicodedata.normalize("NFKC", command).casefold()
     text = unescaped(raw)
-    if any(NAME in unquoted(form) for form in (raw, text)):
+    # An escape can also decode to a capital letter (#3759 review).
+    decoded = unescaped(unicodedata.normalize("NFKC", command)).casefold()
+    if any(NAME in unquoted(form) for form in (raw, text, decoded)):
         return NAME
     # ripgrep's `--pre` and `--hostname-bin` run a program on its files (#3509).
     try:
@@ -320,6 +325,116 @@ def matching_word(command: str) -> str | None:
     forms = (text, bare, unquoted(bare), unquoted(bare, blanks=False))
     if any(RG_RUNS.search(form) for form in forms):
         return RG_BLOCKED
+    if any(
+        GRAPHQL.search(form) and RESOLVE_MUTATION in form
+        for form in (forms[2], unquoted(decoded))
+    ):
+        return GRAPHQL_BLOCKED
+    # Globs, variables and short names in the arguments of programs that never
+    # run an argument cannot reach the script (#3759); any other command is
+    # read word by word as before.
+    if only_inert_programs(raw):
+        return None
+    return reaching_word(text, raw)
+
+
+# The direct resolve mutation through an API call, outside the script (#3759);
+# `resolvereview` also catches a name finished by a variable.
+GRAPHQL = re.compile(
+    r"\b(?:api|curl|wget|irm|iwr|invoke-restmethod|invoke-webrequest)\b.*graphql",
+    re.DOTALL,
+)
+RESOLVE_MUTATION = "resolvereview"
+GRAPHQL_BLOCKED = "the resolve mutation"
+# Programs that never run a file named in their arguments (#3759). A command
+# whose every simple command starts with one of them, or with `python -m` and
+# an inert module, skips the glob, variable and short-name readings.
+INERT_PROGRAMS = frozenset(
+    {"ls", "dir", "cat", "type", "head", "tail", "wc", "grep", "rg", "echo"}
+    | {"printf", "cp", "copy", "mv", "move", "ruff", "jq", "uniq", "cut", "diff"}
+    | {"mkdir", "touch", "cd", "pwd", "true", "false", "get-content", "gc"}
+    | {"select-string", "sls", "get-childitem", "gci", "test-path"}
+    | {"write-output", "write-host"}
+)
+# git and gh only with a subcommand that runs no program of its own.
+INERT_SUBCOMMANDS = {
+    "git": frozenset(
+        {"status", "diff", "log", "show", "ls-files", "ls-tree", "rev-parse"}
+        | {"rev-list", "branch", "blame", "add", "cat-file", "merge-base"}
+    ),
+    "gh": frozenset(
+        {"pr", "issue", "run", "api", "repo", "release", "label", "search"}
+    ),
+}
+PYTHONS = frozenset({"python", "python3", "py"})
+INERT_MODULES = frozenset({"mypy", "ruff", "compileall", "py_compile"})
+# Options by which one of those programs still runs a word, also abbreviated
+# or with an attached value, read with and without quotes (#3759 reviews).
+RUNS_ARGUMENTS = re.compile(
+    r"(?<![\w-])(?:-[cxo]\S*"
+    r"|--(?:exe|ext|upl|rec|open|hostname|shell|pre|python|config)\S*"
+    r"|alias|extension|config|bisect|submodule|foreach)(?![\w-])|[{%]"
+)
+# Text whose words the shells may split differently than this reading:
+# escapes, comments, history and alias marks, ANSI-C, substitutions and
+# typographic quotes PowerShell closes on.
+UNREADABLE = re.compile(r"\\|#|!|`|\r|\$[('\"]|[<>]\(|[‘’“”]")
+QUOTED = re.compile(r"'[^']*'|\"[^\"]*\"")
+# Shell tokens: a quoted run, a separator, blanks, plain characters; a lone
+# quote never closes.
+# Tokens after each quoted run became `@`, which no program name holds, so a
+# word with a glued quoted part (`ls'x'` reads `ls@`) is never a bare program
+# (Gitar on #3781) and a lone quote stays.
+TOKENS = re.compile(r"[^\s'\";&|()<>]+|[;&|()<>\n]|[^\S\n]+|['\"]")
+# A bare program name: no path, variable, glob, short name or quote.
+PROGRAM = re.compile(r"[a-z][a-z0-9_-]*")
+
+
+def inert(words: list[str]) -> bool:
+    """One simple command starts with an inert program."""
+    name, after = words[0], words[1:2]
+    if not PROGRAM.fullmatch(name):
+        return False
+    if name in INERT_SUBCOMMANDS:
+        return bool(after) and after[0] in INERT_SUBCOMMANDS[name]
+    if name in PYTHONS:
+        return after == ["-m"] and words[2:3] != [] and words[2] in INERT_MODULES
+    return name in INERT_PROGRAMS
+
+
+def simple_commands(text: str) -> list[list[str]] | None:
+    """The simple commands of ``text`` as token lists without redirections;
+    None when a quote stays open."""
+    segments: list[list[str]] = [[]]
+    redirect = False
+    for token in (match[0] for match in TOKENS.finditer(QUOTED.sub("@", text))):
+        if token in ("'", '"'):
+            return None
+        if token in ("<", ">") or (redirect and token == "&"):
+            # A redirection's target is a file, not a command (`2>&1` too).
+            redirect = True
+        elif token in ("\n", ";", "&", "|", "(", ")"):
+            segments.append([])
+            redirect = False
+        elif not token.isspace():
+            segments[-1] += [] if redirect else [token]
+            redirect = False
+    return [words for words in segments if words]
+
+
+def only_inert_programs(raw: str) -> bool:
+    """Every simple command of ``raw`` (casefolded, escapes not decoded)
+    starts with an inert program."""
+    if UNREADABLE.search(raw) or any(
+        RUNS_ARGUMENTS.search(form) for form in (QUOTED.sub(" ", raw), unquoted(raw))
+    ):
+        return False
+    commands = simple_commands(raw)
+    return commands is not None and all(inert(words) for words in commands)
+
+
+def reaching_word(text: str, raw: str) -> str | None:
+    """The word of ``text`` that reaches the script in any of its readings."""
     # Also every bash bracket expression as `?`, read with quotes, and without
     # them from the first `[` and from each `[` an earlier bracket swallowed, so
     # no quote, comment, substitution or stray `[` before a class can hide it:
@@ -573,6 +688,14 @@ def decide() -> int:
             "Blocked: ripgrep's --pre, --hostname-bin and RIPGREP_CONFIG_PATH run "
             "a program on the files it searches, which can run the review-thread "
             "resolve script (#3509); search without them.",
+            file=sys.stderr,
+        )
+        return 2
+    if word == GRAPHQL_BLOCKED:
+        print(
+            "Blocked: a review thread is resolved only through "
+            "`python scripts/resolve_review_thread.py <pr> <PRRT_id>`, never by a "
+            "direct GraphQL resolve mutation (#2629, #3759).",
             file=sys.stderr,
         )
         return 2

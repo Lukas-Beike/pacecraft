@@ -9,13 +9,18 @@ Use this skill only when the user explicitly asks to start or carry out a Pacecr
 
 ## Release workflow
 
-1. Confirm the repository is `Lukas-Beike/pacecraft` and GitHub access works.
-   Request the app-password secret now (`request_secret`, file delivery; see
-   [post-release-check](../pacecraft-post-release-check/SKILL.md)) and prove it
-   readable before dispatching: run
-   [prod-guards](../pacecraft-prod-guards/SKILL.md) once. Its `secret missing,
-   empty or unreadable` line means request a new one; any other failure stops
-   the release before dispatch. Run it again right before the Unraid update and
+1. First check the app-password secret with
+   [prod-guards](../pacecraft-prod-guards/SKILL.md) `--check-secret`, which
+   sends no request. On its `secret missing, empty or unreadable` line request
+   a new one at once (`request_secret`, file delivery; see
+   [post-release-check](../pacecraft-post-release-check/SKILL.md)), so it
+   arrives while the build runs; an expired secret found only at a later step
+   held a release for about two hours (#3768). Any other `FAIL` names a wrong
+   path: fix the path. Then confirm the repository is `Lukas-Beike/pacecraft`
+   and GitHub access works. When the secret is readable, run prod-guards once
+   against the app before dispatch; with a new secret still on its way,
+   dispatch and run it as soon as the secret arrives, before the Unraid update.
+   Any failure other than the secret line stops the release. Run it again right before the Unraid update and
    before the post-release check, and request a new secret on that line. A
    secret that vanished overnight held the 2.1.33 deploy for about 7 hours
    (#3354).

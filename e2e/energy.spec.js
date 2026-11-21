@@ -336,8 +336,14 @@ for (const theme of ["light", "dark"]) {
     await page.goto("/#nutrition/diary");
     await expect(page.locator("#nutritionEnergy .energy-source")).toHaveText(/^Quelle: (?!Katch|Cunningham).+/);
     await expect(page.locator("#nutritionEnergy")).not.toContainText("passt am besten");
-    // A late read can still re-render the card mid-capture, so the capture is retried.
-    if (theme === "light") await expect(() => page.locator("#nutritionEnergy [data-energy]").screenshot({ path: test.info().outputPath("Energieverbrauch.png"), timeout: 5_000 })).toPass();
+    // The day's totals render after the card and push it down; a capture taken before shows the
+    // macro cards in its place, without an error to retry on (#3736). So it waits for the day to
+    // render, and retries only a capture whose node a late energy read replaced.
+    if (theme === "light") {
+      await expect(page.locator("#nutritionStatus")).not.toHaveText("Ernährung wird geladen…");
+      await expect(page.locator("#nutritionTotals")).not.toBeEmpty();
+      await expect(() => page.locator("#nutritionEnergy [data-energy]").screenshot({ path: test.info().outputPath("Energieverbrauch.png"), timeout: 5_000 })).toPass();
+    }
   });
 }
 

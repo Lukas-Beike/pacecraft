@@ -1010,7 +1010,8 @@ function nutritionProductSection(key, title, products, searching) {
   // A new search opens the sections with hits once; later toggles are kept.
   if (searching) nutritionProductSectionsOpen[key] = products.length > 0;
   section.open = nutritionProductSectionsOpen[key];
-  section.addEventListener("toggle", () => { nutritionProductSectionsOpen[key] = section.open; });
+  // A replaced section's late toggle must not overwrite the shown one's state (#3735).
+  section.addEventListener("toggle", () => { if (section.isConnected !== false) nutritionProductSectionsOpen[key] = section.open; });
   const incomplete = products.filter((product) => nutritionMissingFields(product).length).length;
   section.append(
     h("summary", null, `${title} (${products.length})`, incomplete ? [" ", nutritionIncompleteMark(`${incomplete} unvollständig`, `⚠ ${incomplete}`)] : null),
@@ -1065,6 +1066,10 @@ let nutritionProductSectionsBeforeSearch = null;
 function renderNutritionProducts(products, { local = true, targetId = "#nutritionProducts", search = "" } = {}) {
   const target = document.querySelector(targetId);
   if (!target) return;
+  // A section opened just before this render keeps its state even before its toggle event ran (#3735).
+  if (targetId === "#nutritionProducts") {
+    for (const node of target.children) if (Object.hasOwn(nutritionProductSectionsOpen, node.dataset?.section ?? "")) nutritionProductSectionsOpen[node.dataset.section] = node.open;
+  }
   target.replaceChildren();
   if (!products?.length) { target.textContent = "Keine Produkte gefunden."; return; }
   const items = products.map(normalizeNutritionProduct);
@@ -1358,6 +1363,8 @@ document.querySelector("#nutritionProductUseCoach")?.addEventListener("click", a
 function handleNutritionRoute(route) {
   if (route === "nutrition/products") return;
   nutritionProductSectionsOpen.favorites = nutritionProductSectionsOpen.all = false;
+  // The kept sections close too, so the next render does not read them back as open (#3735).
+  for (const node of document.querySelector("#nutritionProducts")?.children || []) if (node.dataset?.section) node.open = false;
   nutritionProductSearchShown = "";
   nutritionProductSectionsBeforeSearch = null;
   const query = document.querySelector("#nutritionProductQuery"); if (query) query.value = "";

@@ -346,6 +346,14 @@ class WeekReviewHttpTests(ServerTestCase):
             7,
         )
 
+    def test_the_strength_analysis_route_reads_twelve_weeks_locally(self) -> None:
+        # #3764: Analyse › Kraft; an empty store gives twelve weeks of 0 and no exercise.
+        status, result = self.get("/api/analysis/strength")
+        self.assertEqual(status, 200)
+        self.assertEqual(len(result["weeks"]), 12)
+        self.assertEqual({week["sessions"] for week in result["weeks"]}, {0})
+        self.assertEqual(result["exercises"], [])
+
     def test_a_past_week_is_reviewed_with_its_recovery_range_of_then(self) -> None:
         _status, current = self.get("/api/analysis/week-review")
         today = date.fromisoformat(current["effective_end"])

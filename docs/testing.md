@@ -208,8 +208,8 @@ and final status. Pending or interrupted records are unverified. Keep private
 storage state and traces out of reports; the runner disables traces.
 The runner stops before starting any fixture when the application image's copy
 of `requirements.txt`, `server.py`, `backend/` or `public/` differs from the
-working tree, and names the rebuild command; when it cannot compare them it warns
-and runs (#2644). With `--build` it builds a missing or stale image from the
+working tree, or when it cannot compare them, and names the rebuild command and
+`--build` (#2644, #3243, #3737). With `--build` it builds a missing or stale image from the
 checkout instead, checks it again, and still stops if it differs (#3106). A new `public/` file is served from the
 directory listing (`backend/http_api/static_assets.py`); add it to the
 service-worker `ASSETS` list only if it is cached. A failed child prints a failing test's location and first error
