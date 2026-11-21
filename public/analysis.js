@@ -670,6 +670,12 @@ function trendHistoryNote(period) {
   return trendHistories.get(TREND_PERIOD_DAYS[period])?.failed ? h("p", "muted", "Der längere Zeitraum konnte nicht geladen werden.") : null;
 }
 
+// The new groups start visible; the shown tab hides the other sport's again (#3824).
+function rerenderDevelopment() {
+  renderAnalysisHistory(state.data?.performance?.history);
+  renderAnalysisSegmentsIfActive();
+}
+
 function trendHistoryNeeded(period) {
   return period !== "fortnight" && period !== "twelveWeeks" ? true : previousYearShown;
 }
@@ -1082,7 +1088,7 @@ function renderAnalysisHistory(history) { // NOSONAR
   const performanceStart = addDateKey(weekStart, -7 * (developmentWeeks - 1));
   // A longer period or the "Vorjahr" switch reads the long history once (#3765); until it arrives the
   // charts keep the default read.
-  const trend = trendHistoryNeeded(developmentPeriod) ? trendHistory(TREND_PERIOD_DAYS[developmentPeriod], () => renderAnalysisHistory(state.data?.performance?.history)) : null;
+  const trend = trendHistoryNeeded(developmentPeriod) ? trendHistory(TREND_PERIOD_DAYS[developmentPeriod], rerenderDevelopment) : null;
   const developmentMetrics = trend?.metrics || history.metrics;
   const load = history.load || { points: [] };
   const loadSeries = [{ label: "Akute Belastung", legendLabel: "Akute Belastung", source: load.source, unit: "", color: 0,
@@ -1143,7 +1149,7 @@ function renderAnalysisHistory(history) { // NOSONAR
   scheduleFirstThresholdRefresh(history.first_thresholds?.status);
   root.append(trendPeriodControls("Zeitraum für Entwicklung", developmentPeriod, ["twelveWeeks", "sixMonths", "twelveMonths"], (period) => {
     developmentPeriod = period;
-    renderAnalysisHistory(history);
+    rerenderDevelopment();
   }));
   // Each sport's development sits in its own segment, so the group is only "Entwicklung" (#2265).
   for (const [sport, primaryUnit, analysisSport] of [["Lauf", "s/km", "run"], ["Rad", "W", "ride"]]) {
