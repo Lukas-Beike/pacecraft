@@ -298,8 +298,9 @@ class TrainingTemplateToolTests(unittest.TestCase):
         self.assertEqual(template["name"], "Stufentest Laufen (LT1 und LT2)")
         self.assertEqual(template["test_protocol"], "run_step_test")
         self.assertEqual(template["session_focus"], "test")
-        # Stage 1 at 9.5 km/h is 6:19 /km; the Coach's own description is not kept.
-        self.assertIn("- 3m 6:19/km Pace", template["description"])
+        # Stage 1 at 9.5 km/h is 6:19 /km, held as a ±3 % band; the Coach's own
+        # description is not kept.
+        self.assertIn("- 3m 6:08-6:30/km Pace", template["description"])
         self.assertNotIn("step_test", template)
         ((local_id, values),) = updated
         self.assertEqual(local_id, "old")
