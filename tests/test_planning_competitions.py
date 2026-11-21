@@ -164,6 +164,8 @@ class PlanningCompetitionTests(unittest.TestCase):
                 "Hinweis\n\nZiel: unter 45",
             ),
             ({"target": "unter 45"}, "Ziel: unter 45"),
+            # A multi-line goal (from the Coach) is sent as one line (Gitar on #3910).
+            ({"target": "unter 45\nohne Pause"}, "Ziel: unter 45 ohne Pause"),
             ({"description": "Hinweis"}, "Hinweis"),
         )
         for extra, expected in cases:

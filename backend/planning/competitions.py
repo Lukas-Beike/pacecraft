@@ -128,7 +128,8 @@ def competition_description_with_goal(competition: dict[str, Any]) -> str:
     goal = competition_target(competition.get("target"))
     if not goal:
         return text[:limit]
-    line = f"{COMPETITION_GOAL_PREFIX}{goal}"
+    # One line, so the read-back finds it whole; the local goal keeps its form.
+    line = f"{COMPETITION_GOAL_PREFIX}{' '.join(goal.split())}"
     # A long description gives way, so the goal line is always the last line.
     body = text.rstrip()[: max(0, limit - len(line) - 2)].rstrip()
     return f"{body}\n\n{line}" if body else line
