@@ -103,7 +103,7 @@
         </nav>
         <output id="planListStatus" class="sr-only"></output>
         <section id="seasonPreparation" class="plan-segment" data-plan-segment-panel="season" aria-labelledby="competitionsTitle" hidden>
-          <h3 id="competitionsTitle">Wettkämpfe</h3>
+          <div class="competition-heading"><h3 id="competitionsTitle">Wettkämpfe</h3><button type="button" id="competitionAdd" class="secondary-button">Hinzufügen</button></div>
           <div class="competition-read-state"><output id="competitionReadStatus">Wettkämpfe werden geladen …</output><button id="competitionRetry" type="button" class="secondary-button" hidden>Erneut laden</button></div>
           <div id="competitionList" class="competition-list"></div>
         </section>
@@ -771,6 +771,31 @@
       <output id="weightDialogStatus" class="tab-sync-detail" aria-live="polite"></output>
       <div class="dialog-actions"><button type="button" id="weightDialogCancel" class="secondary-button">Abbrechen</button><button type="button" id="weightDialogRemove" class="secondary-button" hidden>Löschen</button><button type="submit" id="weightDialogSave" class="adaptive-planning-button">Speichern</button></div>
     </form>
+  </dialog>
+  <dialog id="competitionDialog" aria-labelledby="competitionDialogTitle">
+    <form id="competitionDialogForm" class="confirmation-dialog">
+      <h2 id="competitionDialogTitle">Wettkampf</h2>
+      <label for="competitionDialogName">Name<input id="competitionDialogName" name="name" type="text" maxlength="200" autocomplete="off" required></label>
+      <label for="competitionDialogDate">Datum<input id="competitionDialogDate" name="event_date" type="date" required></label>
+      <label for="competitionDialogTime">Startzeit<input id="competitionDialogTime" name="start_time" type="time"></label>
+      <label for="competitionDialogSport">Sportart<select id="competitionDialogSport" name="sport"><option value="Ride">Radfahren</option><option value="VirtualRide">Rad indoor</option><option value="Run">Laufen</option><option value="WeightTraining">Krafttraining</option></select></label>
+      <fieldset class="appearance-control"><legend>Priorität</legend><div class="segmented-control"><label><input type="radio" name="priority" value="A">A</label><label><input type="radio" name="priority" value="B" checked>B</label><label><input type="radio" name="priority" value="C">C</label></div></fieldset>
+      <label for="competitionDialogDistance">Distanz (km)<input id="competitionDialogDistance" name="distance" type="text" maxlength="80" autocomplete="off"></label>
+      <label for="competitionDialogTarget">Ziel<input id="competitionDialogTarget" name="target" type="text" maxlength="1000" autocomplete="off"></label>
+      <label for="competitionDialogDuration">Erwartete Dauer<input id="competitionDialogDuration" name="duration" type="text" placeholder="h:mm:ss" autocomplete="off"></label>
+      <label for="competitionDialogLocation">Ort<input id="competitionDialogLocation" name="location" type="text" maxlength="200" autocomplete="off"></label>
+      <label for="competitionDialogCourse">Streckenprofil<textarea id="competitionDialogCourse" name="course_profile" rows="2" maxlength="2000"></textarea></label>
+      <label for="competitionDialogNotes">Notizen<textarea id="competitionDialogNotes" name="notes" rows="3" maxlength="2000"></textarea></label>
+      <div id="competitionDialogResult" class="competition-card-facts" hidden></div>
+      <output id="competitionDialogStatus" class="tab-sync-detail" aria-live="polite"></output>
+      <div class="dialog-actions"><button type="button" id="competitionDialogCancel" class="secondary-button">Abbrechen</button><button type="button" id="competitionDialogRemove" class="secondary-button danger-button" hidden>Löschen</button><button type="submit" id="competitionDialogSave">Speichern</button></div>
+    </form>
+    <div id="competitionDialogConfirm" class="confirmation-dialog" hidden>
+      <h2 id="competitionDialogConfirmTitle">Wettkampf löschen?</h2>
+      <p id="competitionDialogConfirmText"></p>
+      <output id="competitionDialogConfirmStatus" class="tab-sync-detail" aria-live="polite"></output>
+      <div class="dialog-actions"><button type="button" id="competitionDialogConfirmCancel" class="secondary-button">Abbrechen</button><button type="button" id="competitionDialogConfirmRemove" class="adaptive-planning-button">Löschen</button></div>
+    </div>
   </dialog>
   <dialog id="outboxDialog" aria-labelledby="outboxDialogTitle">
     <div class="confirmation-dialog">

@@ -1,6 +1,8 @@
 """Server integration tests for planning."""
 
+import http.client
 import json
+import threading
 import unittest
 import uuid
 from dataclasses import replace
@@ -10,12 +12,14 @@ from unittest.mock import patch
 import remote_reconcilers
 from server_test_support import ServerTestCase, server
 from support import (
+    create_test_session,
     parsed_workout_fixture,
 )
 
 from backend.coach import context as coach_context
 from backend.coach import limits as coach_limits
 from backend.errors import AppError
+from backend.http_api import server as http_server_module
 from backend.planning import adaptive as planning_adaptive
 from backend.planning import (
     calendar_service,
@@ -1477,6 +1481,118 @@ class ServerPlanningTests(ServerTestCase):
                 }
             )
         self.assertEqual(error.exception.reason, "plan_date_conflict")
+
+
+class CompetitionHttpRoutesTests(ServerTestCase):
+    """The athlete's own competition writes (#3837) through the real routes."""
+
+    def setUp(self):
+        super().setUp()
+        guard = patch.object(
+            server.app_config, "security_configuration_error", return_value=None
+        )
+        guard.start()
+        self.addCleanup(guard.stop)
+        handler_class = server.HTTP_API.request_handler_class()
+        handler_class.protocol_version = "HTTP/1.1"
+        self.httpd = http_server_module.CoachHTTPServer(("127.0.0.1", 0), handler_class)
+        threading.Thread(target=self.httpd.serve_forever, daemon=True).start()
+        self.addCleanup(self.httpd.server_close)
+        self.addCleanup(self.httpd.shutdown)
+        self.session = create_test_session(server)
+        self.day = (server.ATHLETE_CLOCK.now().date() + timedelta(days=40)).isoformat()
+
+    def send(self, path, body, *, csrf="csrf", session=True):
+        headers = {"Content-Type": "application/json"}
+        if session:
+            headers["Cookie"] = f"ic_session={self.session}"
+        if csrf:
+            headers["X-CSRF-Token"] = csrf
+        connection = http.client.HTTPConnection(
+            "127.0.0.1", self.httpd.server_port, timeout=30
+        )
+        connection.request("PUT", path, json.dumps(body), headers)
+        response = connection.getresponse()
+        payload = json.loads(response.read())
+        connection.close()
+        return response.status, payload
+
+    def test_create_update_and_delete_with_undo_references(self):
+        status, created = self.send(
+            "/api/competitions",
+            {
+                "name": "Stadtlauf",
+                "event_date": self.day,
+                "starts_at_local": f"{self.day}T09:30",
+                "sport": "Run",
+                "priority": "B",
+                "planned_duration_s": 3600,
+            },
+        )
+        self.assertEqual((200, "created"), (status, created["status"]))
+        competition = created["competition"]
+        self.assertEqual("run", competition["sport"])
+        self.assertEqual(f"{self.day}T09:30:00", competition["starts_at_local"])
+        self.assertEqual("competition", created["change"]["entity_type"])
+
+        status, updated = self.send(
+            "/api/competitions",
+            {"id": competition["id"], "name": "Stadtlauf 10 km", "target": ""},
+        )
+        self.assertEqual((200, "updated"), (status, updated["status"]))
+        self.assertEqual("Stadtlauf 10 km", updated["competition"]["name"])
+        # Fields the form did not send keep their value.
+        self.assertEqual(3600, updated["competition"]["planned_duration_s"])
+
+        status, deleted = self.send(
+            "/api/competitions/remove", {"id": competition["id"], "confirmed": True}
+        )
+        self.assertEqual((200, "deleted"), (status, deleted["status"]))
+        self.assertFalse(deleted["remote_sync_pending"])
+        self.assertEqual([], server.PLANNING_DATA.competition().list())
+        undone = server.HISTORY.undo_service().apply(
+            {
+                "change_id": deleted["change"]["id"],
+                "expected_current_hash": deleted["change"]["after_hash"],
+            }
+        )
+        self.assertEqual("undone", undone["status"])
+        self.assertEqual(
+            ["Stadtlauf 10 km"],
+            [item["name"] for item in server.PLANNING_DATA.competition().list()],
+        )
+
+    def test_invalid_input_unconfirmed_delete_and_unknown_id_are_refused(self):
+        self.assertEqual(
+            400,
+            self.send("/api/competitions", {"name": " ", "event_date": self.day})[0],
+        )
+        self.assertEqual(
+            400,
+            self.send(
+                "/api/competitions", {"name": "Lauf", "event_date": "kein Datum"}
+            )[0],
+        )
+        self.assertEqual(
+            400,
+            self.send("/api/competitions/remove", {"id": str(uuid.uuid4())})[0],
+        )
+        self.assertEqual(
+            404,
+            self.send(
+                "/api/competitions/remove",
+                {"id": str(uuid.uuid4()), "confirmed": True},
+            )[0],
+        )
+        self.assertEqual([], server.PLANNING_DATA.competition().list())
+
+    def test_the_routes_need_a_session_and_the_csrf_token(self):
+        body = {"name": "Lauf", "event_date": self.day}
+        for path in ("/api/competitions", "/api/competitions/remove"):
+            with self.subTest(path=path):
+                self.assertEqual(401, self.send(path, body, session=False)[0])
+                self.assertEqual(403, self.send(path, body, csrf=None)[0])
+        self.assertEqual([], server.PLANNING_DATA.competition().list())
 
 
 if __name__ == "__main__":

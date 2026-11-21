@@ -524,6 +524,7 @@ def _athlete_write_routes(
             skinfold_service=lambda: athlete.skinfolds(body_changed),
             weight_service=lambda: athlete.weight_entries(weight_changed),
             body_fat_service=lambda: athlete.body_fat_entries(body_changed),
+            competition_service=ctx.planning.competition,
         ),
         AuthPostRoutes(session_auth_service, ctx.maintenance),
         FeedbackPostRoutes(
