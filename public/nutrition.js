@@ -542,7 +542,9 @@ function nutritionIntakeKey(day) {
 function renderNutritionDay(day) {
   document.querySelector("#nutritionDate").value = day.date;
   const intake = nutritionIntakeKey(day);
-  if (energyIntakeKey !== null && energyIntakeKey !== intake) resetEnergy();
+  // Another day is read again by the energy card itself (#3395); only a changed intake of the
+  // same day drops the read here, so a day switch starts one read, not two.
+  if (energyIntakeKey !== null && energyIntakeKey !== intake && JSON.parse(energyIntakeKey)[0] === day.date) resetEnergy();
   energyIntakeKey = intake;
   renderDiaryEnergy();
   document.querySelector("#nutritionStatus").textContent = day.entry_count ? "" : "Noch keine Mahlzeiten erfasst. Das bedeutet nicht, dass du nichts gegessen hast.";
