@@ -17,8 +17,8 @@ python scripts/develop_run_check.py --pr <number> --wait <minutes>
   instead of a hand-written loop (#3721). Run it as a background command when the wait is longer than
   the shell timeout, then wait for that task.
 
-- `--sha` takes a full or an abbreviated SHA of a commit this clone has
-  (fetch first); an unknown one exits 2 (#3796).
+- `--sha` takes a full or an abbreviated hex SHA, which GitHub resolves; a
+  ref name or an unknown SHA exits 2 (#3796).
 - Read-only. Prints one line per workflow: `<name>: green|pending|failed (<result>) <url>`.
 - Exit 0: every run completed green. Exit 1: a run failed, or the PR is not
   merged. Exit 2: bad input or a failed `gh` call. Exit 3: a run is pending or

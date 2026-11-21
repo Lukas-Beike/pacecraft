@@ -2,7 +2,8 @@
 
     python scripts/develop_run_check.py (--pr N | --sha SHA) [--wait MINUTES]
 
-One line per workflow. Exit 0: every run completed green; 1: a run failed, or
+`--sha` takes a full or an abbreviated hex SHA; GitHub resolves a short one
+(#3796). One line per workflow. Exit 0: every run completed green; 1: a run failed, or
 the PR is not merged; 2: bad input or a failed gh call; 3: a run is pending or
 none has started yet. `--wait` polls every 30 s while the answer would be 3
 (or a gh call failed), up to that many minutes, prints the last poll's lines
@@ -23,7 +24,7 @@ import re
 import sys
 from time import monotonic, sleep
 
-from gh_cli import CliError, gh_json, git, positive_int
+from gh_cli import CliError, gh, gh_json, positive_int
 
 FIELDS = "databaseId,workflowName,status,conclusion,url,headSha,createdAt"
 POLL_SECONDS = 30
@@ -125,14 +126,17 @@ def report(runs: dict[str, dict], history: list[dict]) -> list[str]:
 def full_sha(sha: str) -> str:
     """The full commit SHA: `gh run list --commit` matches only all 40
     characters, so an abbreviated one never found a run (#3796)."""
-    if re.fullmatch(r"[0-9a-f]{40}", sha):
+    sha = sha.lower()
+    if not re.fullmatch(r"[0-9a-f]{4,40}", sha):
+        raise CliError(f"not a commit SHA: {sha!r}")
+    if len(sha) == 40:
         return sha
+    # GitHub resolves a unique prefix without a local fetch.
     try:
-        return git("rev-parse", "--verify", "--quiet", f"{sha}^{{commit}}").strip()
-    except CliError:
-        raise CliError(
-            f"unknown commit {sha!r}: fetch origin or pass the full SHA"
-        ) from None
+        full = gh("api", f"repos/{{owner}}/{{repo}}/commits/{sha}", "--jq", ".sha")
+    except CliError as exc:
+        raise CliError(f"unknown commit {sha!r} ({exc})") from exc
+    return full.strip()
 
 
 def main(argv: list[str] | None = None) -> int:
