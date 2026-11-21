@@ -161,7 +161,8 @@ class SyncJobQueueService:
         except SyncJobStaleApprovalError as exc:
             raise AppError(
                 409,
-                "Die Freigabe ist veraltet. Bitte die Wettkämpfe neu senden.",
+                # Competitions and nutrition share the class; the message names neither (#3891).
+                "Die Freigabe ist veraltet. Bitte neu senden.",
                 reason="approval_stale",
             ) from exc
         except SyncJobInvalidStateError as exc:

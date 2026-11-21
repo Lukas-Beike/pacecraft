@@ -18,11 +18,6 @@ _PASSTHROUGH_JOB_REASONS = frozenset(
         "garmin_sdk_required",
         # A changed competition set since the approval: final, sent anew (#3838).
         "approval_stale",
-        # A plan push whose plan changed or awaits a commit: local, resolved by the
-        # athlete, never a provider error to retry (#3891).
-        "plan_commit_required",
-        "plan_changes_required",
-        "planning_revision_conflict",
     }
 )
 # Failures only the athlete resolves: no retry time is recorded for them; a
