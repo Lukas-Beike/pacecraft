@@ -313,8 +313,16 @@ The system SHALL normalize an entry to `meal_date`, `logged_at`, `meal_type`, `d
 - **WHEN** no meal type is given and the time is known
 - **THEN** the type is breakfast from 05:00, lunch from 11:00, snack from 15:00, dinner from 18:00 and snack from 23:00 to 04:59.
 
+#### Scenario: Main meal without a time
+- **WHEN** a breakfast, lunch or dinner names no time and does not declare `logged_time_known=false`
+- **THEN** it is stored at 09:00, 12:00 or 18:00 on the meal date as a known time, today and on any other day.
+
+#### Scenario: Type change of a meal at its default time
+- **WHEN** a change names a new meal type but no time, and the stored time is the old type's default
+- **THEN** the time moves to the new type's default (kept when the new type has none); a named time is never moved.
+
 #### Scenario: Meal for another day without a time
-- **WHEN** an entry for a day other than the athlete's today names no time
+- **WHEN** an entry of another type for a day other than the athlete's today names no time
 - **THEN** it is stored with unknown time (the noon anchor); for today the current local time is used.
 
 #### Scenario: Time with another date
@@ -331,7 +339,7 @@ The system SHALL normalize an entry to `meal_date`, `logged_at`, `meal_type`, `d
 
 Detailed contract: `logged_time_known` must be a boolean; with an unknown time a meal type is required ("Bei unbekannter Uhrzeit ist der Mahlzeittyp erforderlich."). A correction that names a field and its alias with different values is 400 "Widersprüchliche Werte für {feld}."; equal values are accepted. For entries with a database basis the macro aliases are ignored.
 
-Evidence: `backend/nutrition/models.py::normalize_nutrition_entry`, `backend/nutrition/models.py::meal_type_from_hour`, `backend/nutrition/models.py::_normalize_logged_time`, `backend/nutrition/diary.py::_canonical_meal_changes`; `tests/test_nutrition.py::test_meal_type_from_hour`, `tests/test_nutrition.py::test_grouped_thousands_text_is_rejected_instead_of_read_as_a_decimal`, `tests/test_nutrition.py::test_zero_values_are_preserved_and_client_cannot_claim_sync_state`, `tests/test_nutrition.py::test_conflicting_alias_and_field_are_rejected_and_equal_values_accepted`, `tests/test_nutrition_meal_times.py::test_meal_for_another_day_without_a_time_has_no_known_time`, `tests/test_nutrition_meal_times.py::test_dated_time_is_rebased_onto_the_meal_date`, `tests/test_nutrition_meal_times.py::test_unparsable_time_is_rejected_instead_of_a_known_noon`.
+Evidence: `backend/nutrition/models.py::normalize_nutrition_entry`, `backend/nutrition/models.py::meal_type_from_hour`, `backend/nutrition/models.py::_normalize_logged_time`, `backend/nutrition/models.py::default_meal_logged_at`, `backend/nutrition/diary.py::_merged_entry`, `backend/nutrition/diary.py::_canonical_meal_changes`; `tests/test_nutrition.py::test_meal_type_from_hour`, `tests/test_nutrition.py::test_grouped_thousands_text_is_rejected_instead_of_read_as_a_decimal`, `tests/test_nutrition.py::test_zero_values_are_preserved_and_client_cannot_claim_sync_state`, `tests/test_nutrition.py::test_conflicting_alias_and_field_are_rejected_and_equal_values_accepted`, `tests/test_nutrition_meal_times.py::test_meal_for_another_day_without_a_time_has_no_known_time`, `tests/test_nutrition_meal_times.py::test_main_meal_without_a_time_takes_its_type_default`, `tests/test_nutrition_meal_times.py::test_type_change_moves_only_a_default_time`, `tests/test_nutrition_meal_times.py::test_dated_time_is_rebased_onto_the_meal_date`, `tests/test_nutrition_meal_times.py::test_unparsable_time_is_rejected_instead_of_a_known_noon`.
 
 ### Requirement: Energy block of a diary day
 The system SHALL return `energy_expenditure` with every day read, and SHALL keep the diary readable when its inputs fail. Request and response shapes of the day, week and refresh routes are in `docs/api-routes.md`.

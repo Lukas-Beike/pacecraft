@@ -28,6 +28,7 @@ from backend.nutrition.models import (
     SESSION_MEAL_TYPES,
     NutritionDaySummary,
     NutritionEntry,
+    default_meal_logged_at,
     normalize_nutrition_entry,
     nutrition_number,
     validate_iso_date,
@@ -73,6 +74,22 @@ def _canonical_meal_changes(changes: dict[str, Any]) -> dict[str, Any]:
 def _merged_entry(existing: dict[str, Any], changes: dict[str, Any]) -> dict[str, Any]:
     """The stored entry with ``changes``; leaving a session slot clears its session."""
     merged = {**existing, **changes}
+    old_default = default_meal_logged_at(
+        str(existing.get("meal_date") or ""), existing.get("meal_type")
+    )
+    new_default = default_meal_logged_at(
+        str(merged.get("meal_date") or ""), merged.get("meal_type")
+    )
+    # A new type moves only a default time to its own default, never a named one (#3834).
+    if (
+        "meal_type" in changes
+        and not {"logged_at", "meal_time", "logged_time_known"} & set(changes)
+        and existing.get("logged_time_known", True)
+        and old_default is not None
+        and existing.get("logged_at") == old_default
+        and new_default
+    ):
+        merged["logged_at"] = new_default
     if "session_id" not in changes and (
         str(merged.get("meal_type") or "").strip().lower() not in SESSION_MEAL_TYPES
     ):
@@ -190,8 +207,11 @@ class NutritionDiaryService:
                 "description": f"{template['name']} · {amount:g} Portion(en): {template['description']}",
                 "meal_date": meal_date,
                 "meal_time": meal_time,
-                # Without a time from the athlete, the diary must not show an invented one.
-                "logged_time_known": bool(meal_time),
+                # Without a time, an explicit template type takes its default time
+                # (#3834); a type guessed when the template was saved invents none.
+                "logged_time_known": bool(
+                    meal_time or template.get("meal_type_explicit")
+                ),
             }
             payload.pop("id")
             payload.pop("meal_type", None)

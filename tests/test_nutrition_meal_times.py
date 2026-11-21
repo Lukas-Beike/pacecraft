@@ -159,6 +159,68 @@ class NutritionMealTimeTests(unittest.TestCase):
         self.assertEqual(today["logged_at"], "2026-09-24T12:00:00+00:00")
         self.assertEqual(today["meal_type"], "lunch")
 
+    def test_main_meal_without_a_time_takes_its_type_default(self) -> None:
+        for meal_date in ("2026-09-24", "2026-09-20"):
+            for meal_type, clock in (
+                ("breakfast", "09:00:00"),
+                ("lunch", "12:00:00"),
+                ("Dinner", "18:00:00"),
+            ):
+                with self.subTest(meal_date=meal_date, meal_type=meal_type):
+                    entry = self.service.log_meal(
+                        {
+                            "meal_date": meal_date,
+                            "meal_type": meal_type,
+                            "description": "Essen",
+                            "kcal": 300,
+                        }
+                    )
+                    self.assertEqual(entry["logged_at"], f"{meal_date}T{clock}")
+                    self.assertIs(entry["logged_time_known"], True)
+        snack = self.service.log_meal(
+            {
+                "meal_date": "2026-09-24",
+                "meal_type": "snack",
+                "description": "Riegel",
+                "kcal": 200,
+            }
+        )
+        self.assertEqual(snack["logged_at"], "2026-09-24T12:00:00+00:00")
+        named = self.service.log_meal(
+            {
+                "meal_date": "2026-09-20",
+                "meal_type": "dinner",
+                "meal_time": "20:30",
+                "description": "Pasta",
+                "kcal": 700,
+            }
+        )
+        self.assertEqual(named["logged_at"], "2026-09-20T20:30")
+
+    def test_type_change_moves_only_a_default_time(self) -> None:
+        defaulted = self.service.log_meal(
+            {
+                "meal_date": "2026-09-20",
+                "meal_type": "breakfast",
+                "description": "Brot",
+                "kcal": 300,
+            }
+        )
+        moved = self.service.update_meal(defaulted["id"], {"meal_type": "dinner"})
+        self.assertEqual(moved["logged_at"], "2026-09-20T18:00:00")
+        corrected = self.service.correct_meal(defaulted["id"], {"meal_type": "lunch"})
+        self.assertEqual(corrected["logged_at"], "2026-09-20T12:00:00")
+        snack = self.service.update_meal(defaulted["id"], {"meal_type": "snack"})
+        self.assertEqual(snack["logged_at"], "2026-09-20T12:00:00")
+
+        named = self.log_full_macros()
+        kept = self.service.update_meal(named["id"], {"meal_type": "lunch"})
+        self.assertEqual(kept["logged_at"], "2026-09-24T08:15:00")
+        renamed = self.service.correct_meal(
+            named["id"], {"meal_type": "dinner", "meal_time": "19:10"}
+        )
+        self.assertEqual(renamed["logged_at"], "2026-09-24T19:10")
+
     def test_dated_time_is_rebased_onto_the_meal_date(self) -> None:
         entry = self.service.log_meal(
             {
