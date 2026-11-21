@@ -411,7 +411,7 @@ effect `read`.
 - `days` (integer; one of `7`, `28`, `42`, `56`, `84`)
 - `since_last_test` (boolean)
 - `sport` (string; ≤40 chars)
-- `sections` (array of string; ≥1 items; ≤10 items; unique items; each one of `"report"`, `"progress"`, `"block_review"`, `"endurance"`, `"power_profiles"`, `"tag_impact"`, `"season"`, `"comparisons"`, `"body_history"`, `"sleep_timing_variability"`)
+- `sections` (array of string; ≥1 items; ≤10 items; unique items; each one of `"report"`, `"progress"`, `"block_review"`, `"endurance"`, `"power_profiles"`, `"records"`, `"tag_impact"`, `"season"`, `"comparisons"`, `"body_history"`, `"sleep_timing_variability"`)
 
 ### `list_change_history`
 

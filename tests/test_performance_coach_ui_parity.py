@@ -112,6 +112,8 @@ def _curve_records(days: int = 90, *, shared: bool = False) -> list[dict[str, An
             "sport": "ride",
             "environment": "outdoor",
             "fingerprint": activity_id,
+            # The all-time rows' totals feed the single-activity records (#3826).
+            "totals": {"distance_m": {"value": 40000.0, "source": "Garmin"}},
             "power_profile": {
                 "status": "ok",
                 "points": [],
@@ -347,6 +349,21 @@ class CoachUiParityTests(unittest.TestCase):
         # The cards add the all-time bests; the Coach keeps the 90 days (#2694).
         self.assertIn("all_time", ui)
         self.assertEqual(_without(ui, {"all_time"}), coach)
+        # The records section is the Rekorde cards' all-time window (#3831).
+        records = self.coach_report("records")["records"]
+        self.assertEqual(ui["all_time"], records["all_time"])
+        self.assertEqual("ok", records["all_time"]["activity_records"][0]["status"])
+        # Before a usable background build the Coach reads an unknown state, never "no record".
+        profiles = self.reports.profiles
+
+        def failed() -> None:
+            raise RuntimeError("build failed")
+
+        for build, status in ((lambda: None, "pending"), (failed, "failed")):
+            profiles.all_time_records = build  # type: ignore[method-assign]
+            self.assertEqual(
+                {"status": status}, self.coach_report("records")["records"]["all_time"]
+            )
         # The CP/CS model estimate (card M4) travels in the same payload.
         self.assertEqual(
             ("critical-power-speed", "experimental"),
@@ -377,11 +394,22 @@ class CoachUiParityTests(unittest.TestCase):
                     "interval_quality": {
                         "status": "ok",
                         "steps": [
-                            {"target": "4:10 /km", "unit": "m/s", "mean": 4.0,
-                             "status": "ok", "start": 0, "end": 240}
-                        ] * 5,
+                            {
+                                "target": "4:10 /km",
+                                "unit": "m/s",
+                                "mean": 4.0,
+                                "status": "ok",
+                                "start": 0,
+                                "end": 240,
+                            }
+                        ]
+                        * 5,
                         "repeat_groups": [
-                            {"target": "4:10 /km", "repetitions": 5, "fade_percent": 1.5}
+                            {
+                                "target": "4:10 /km",
+                                "repetitions": 5,
+                                "fade_percent": 1.5,
+                            }
                         ],
                     },
                 }

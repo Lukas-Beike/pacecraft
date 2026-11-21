@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "base": "071baa2b1fd2d7ffd696eeae611dc96c14f4e9cd",
+  "base": "15bb2d1b43c14bd8d901be82e1a17c84ae80fc97",
   "versions": {
     "ruff": "0.17.5",
     "mypy": "2.4.1"
@@ -1083,12 +1083,6 @@
     {
       "tool": "format",
       "path": "tests/test_nutrition_fuelling.py",
-      "code": "format",
-      "message_sha256": "f87c4a0ecaf8e40a8d167170353b2aeb564e58f72247b4568c3db29c296f105f"
-    },
-    {
-      "tool": "format",
-      "path": "tests/test_performance_coach_ui_parity.py",
       "code": "format",
       "message_sha256": "f87c4a0ecaf8e40a8d167170353b2aeb564e58f72247b4568c3db29c296f105f"
     },
