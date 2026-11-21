@@ -1583,8 +1583,12 @@ function setBodyFatMode(mode) {
   fillBodyFatDialog();
 }
 
-async function openBodyFatDialog() {
+// The queued entry the open dialog replaces (an edit from the outbox, #3817), else null.
+let bodyFatOutboxEdit = null;
+
+async function openBodyFatDialog(edit = null) {
   bindBodyFatDialog();
+  bodyFatOutboxEdit = edit;
   const form = document.querySelector("#bodyFatDialogForm");
   // The fold fields sit in the dialog's own form grid, after the percentage, for the profile's sex.
   form.querySelectorAll("[data-skinfold-site]").forEach((label) => label.remove());
@@ -1594,12 +1598,18 @@ async function openBodyFatDialog() {
     ...(index ? { "aria-label": `${SKINFOLD_LABELS[site]}, Messung ${index + 1} (mm)` } : {}) });
   form.elements.pct.closest("label").after(...skinfoldDialogSites().map((site) => h("label", { dataset: { skinfoldSite: site } }, `${SKINFOLD_LABELS[site]} (mm)`,
     h("span", "skinfold-readings", Array.from({ length: SKINFOLD_READINGS }, (_, index) => reading(site, index))))));
-  form.elements.date.value = timezoneDateKey(state.data?.profile?.timezone, new Date());
+  form.elements.date.value = edit?.payload.date || timezoneDateKey(state.data?.profile?.timezone, new Date());
   document.querySelector("#bodyFatDialogStatus").textContent = "";
   for (const button of form.querySelectorAll("button")) button.disabled = false;
   // Read before opening, so a late answer never overwrites what the athlete typed.
   try { bodyFatEntries = (await api("/api/body/body-fat")).entries; } catch { bodyFatEntries = []; }
   setBodyFatMode("pct");
+  // A queued percentage is edited as a percentage: no switch to folds, no removal of a stored day.
+  document.querySelector("#bodyFatDialogMode").hidden = Boolean(edit);
+  if (edit) {
+    form.elements.pct.value = edit.payload.pct;
+    document.querySelector("#bodyFatDialogRemove").hidden = true;
+  }
   document.querySelector("#bodyFatDialog").showModal();
 }
 
@@ -1620,7 +1630,7 @@ function bindBodyFatDialog() {
     const [path, payload] = folds
       ? ["/api/body/skinfolds", { date: day, folds_mm: Object.fromEntries(skinfoldDialogSites().map((site) => [site, skinfoldReadings(form, site)])) }]
       : ["/api/body/body-fat", { date: day, pct: form.elements.pct.value }];
-    await sendBodyEntry("bodyFatDialog", path, payload, document.querySelector("#bodyFatDialogSave"), bodyFatReceipt(day, folds, "gespeichert"));
+    await sendBodyEntry("bodyFatDialog", path, payload, document.querySelector("#bodyFatDialogSave"), bodyFatReceipt(day, folds, "gespeichert"), bodyFatOutboxEdit);
   });
   const remove = document.querySelector("#bodyFatDialogRemove");
   remove.addEventListener("click", async () => {
@@ -1643,15 +1653,23 @@ function fillWeightDialog() {
   document.querySelector("#weightDialogRemove").hidden = !entry;
 }
 
-async function openWeightDialog() {
+// The queued entry the open dialog replaces (an edit from the outbox, #3817), else null.
+let weightOutboxEdit = null;
+
+async function openWeightDialog(edit = null) {
   bindWeightDialog();
+  weightOutboxEdit = edit;
   const form = document.querySelector("#weightDialogForm");
-  form.elements.date.value = timezoneDateKey(state.data?.profile?.timezone, new Date());
+  form.elements.date.value = edit?.payload.date || timezoneDateKey(state.data?.profile?.timezone, new Date());
   document.querySelector("#weightDialogStatus").textContent = "";
   for (const button of form.querySelectorAll("button")) button.disabled = false;
   // Read before opening, so a late answer never overwrites what the athlete typed (#3829).
   try { weightRead = await api("/api/body/weight"); } catch { weightRead = { entries: [] }; }
   fillWeightDialog();
+  if (edit) {
+    form.elements.kg.value = edit.payload.kg;
+    document.querySelector("#weightDialogRemove").hidden = true;
+  }
   document.querySelector("#weightDialog").showModal();
 }
 
@@ -1729,14 +1747,14 @@ const OUTBOX_BODY_ENTRIES = {
   "/api/body/body-fat": { kind: "body-fat", label: (payload) => `Körperfett ${payload.pct} %` },
 };
 
-async function sendBodyEntry(dialog, path, payload, button, receipt) {
+async function sendBodyEntry(dialog, path, payload, button, receipt, replaces = null) {
   const status = document.querySelector(`#${dialog}Status`);
   button.disabled = true;
   let read;
   try {
     const own = OUTBOX_BODY_ENTRIES[path];
     read = own
-      ? await saveOwnEntry({ kind: own.kind, method: "PUT", path, payload, label: `${own.label(payload)} · ${dateLabel(payload.date)}` })
+      ? await saveOwnEntry({ kind: own.kind, method: "PUT", path, payload, label: `${own.label(payload)} · ${dateLabel(payload.date)}`, replaces })
       : await api(path, { method: "PUT", body: JSON.stringify(payload) });
   } catch (error) {
     status.textContent = error.message;
@@ -1763,7 +1781,7 @@ function bindWeightDialog() {
   form.addEventListener("submit", async (event) => {
     event.preventDefault();
     const day = form.elements.date.value;
-    await sendBodyEntry("weightDialog", "/api/body/weight", { date: day, kg: form.elements.kg.value }, document.querySelector("#weightDialogSave"), weightReceipt(day, "gespeichert"));
+    await sendBodyEntry("weightDialog", "/api/body/weight", { date: day, kg: form.elements.kg.value }, document.querySelector("#weightDialogSave"), weightReceipt(day, "gespeichert"), weightOutboxEdit);
   });
   const remove = document.querySelector("#weightDialogRemove");
   remove.addEventListener("click", async () => {

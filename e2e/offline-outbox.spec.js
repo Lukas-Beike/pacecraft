@@ -101,3 +101,87 @@ test("@responsive a waiting entry is listed and can be discarded, and nothing is
   await expect(row.locator("td").first()).not.toContainText("81,2");
   expect(sent).toHaveLength(1);
 });
+
+// #3817: a rejected entry opens in its own dialog, filled with the queued values; saving replaces
+// it in place under a new key and sends the changed value once.
+async function rejectQueued(page, url, method) {
+  await page.unroute(url);
+  await page.route(url, (route) => (route.request().method() === method ? route.fulfill({ status: 400, contentType: "application/json", body: JSON.stringify({ error: "Wert abgelehnt." }) }) : route.fallback()));
+  await page.evaluate(() => globalThis.dispatchEvent(new Event("online")));
+  await expect(page.locator("#statusStrip")).toContainText("1 abgelehnt");
+  await page.locator("#statusStrip").getByRole("button", { name: "Anzeigen" }).click();
+  const dialog = page.locator("#outboxDialog");
+  await expect(dialog.locator("li")).toContainText("abgelehnt: Wert abgelehnt.");
+  return dialog;
+}
+
+test("@responsive a rejected weight is edited in the Gewicht dialog and replaces the entry under a new key", async ({ page }) => {
+  const row = await openWeightDialog(page);
+  const sent = [];
+  page.on("request", (request) => {
+    if (request.method() === "PUT" && new URL(request.url()).pathname === "/api/body/weight") sent.push({ key: request.headers()["idempotency-key"], kg: request.postDataJSON().kg });
+  });
+  await saveWeightOffline(page, row, "123.4");
+  const dialog = await rejectQueued(page, WEIGHT, "PUT");
+  await dialog.getByRole("button", { name: "Bearbeiten" }).click();
+  await expect(dialog).toBeHidden();
+  const weightDialog = page.locator("#weightDialog");
+  await expect(weightDialog).toBeVisible();
+  await expect(page.locator("#weightDialogKg")).toHaveValue("123.4");
+  await expect(page.locator("#weightDialogRemove")).toBeHidden();
+  await page.locator("#weightDialogKg").fill("78.6");
+  await page.unroute(WEIGHT);
+  await weightDialog.getByRole("button", { name: "Speichern" }).click();
+  await expect(weightDialog).toBeHidden();
+  await expect(row.locator("td").first()).toContainText("78,6");
+  await expect(page.locator("#statusStrip")).not.toContainText("abgelehnt");
+  const changed = sent.filter((request) => Number(request.kg) === 78.6);
+  expect(changed).toHaveLength(1);
+  expect(changed[0].key).toMatch(UUID);
+  expect(changed[0].key).not.toBe(sent[0].key);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBeTruthy();
+  await removeWeight(page);
+});
+
+test("@responsive a rejected meal is edited in the product dialog and replaces the entry under a new key", async ({ page }) => {
+  const productName = `Outbox Riegel ${Date.now()}`;
+  const ENTRY = "**/api/nutrition/entry";
+  await page.setViewportSize({ width: page.viewportSize().width, height: 800 });
+  await page.goto("/#nutrition/products");
+  await page.locator("#nutritionProductManual").click();
+  const editor = page.locator("#nutritionExtraction");
+  await editor.locator('[name="name"]').fill(productName);
+  await editor.locator('[name="kcal"]').fill("400");
+  await editor.locator('[name="basis_amount"]').fill("100");
+  await editor.locator('[name="basis_unit"]').selectOption("g");
+  await editor.getByRole("button", { name: "Produkt lokal speichern" }).click();
+  await expect.poll(() => page.evaluate(() => Boolean(state.data) && state.loadPromise === null)).toBe(true);
+  const sent = [];
+  page.on("request", (request) => {
+    if (request.method() === "POST" && new URL(request.url()).pathname === "/api/nutrition/entry") sent.push({ key: request.headers()["idempotency-key"], amount: request.postDataJSON().amount });
+  });
+  await page.route(ENTRY, (route) => (route.request().method() === "POST" ? route.abort("internetdisconnected") : route.fallback()));
+  // A newly saved product opens its use dialog.
+  await expect(page.locator("#nutritionProductUseDialog")).toBeVisible();
+  await page.locator("#nutritionProductUseAmount").fill("50");
+  await page.locator("#nutritionProductUseAdd").click();
+  await expect(page.locator("#statusStrip")).toContainText("1 Eintrag wartet");
+  const dialog = await rejectQueued(page, ENTRY, "POST");
+  await dialog.getByRole("button", { name: "Bearbeiten" }).click();
+  await expect(dialog).toBeHidden();
+  const useDialog = page.locator("#nutritionProductUseDialog");
+  await expect(useDialog).toBeVisible();
+  await expect(useDialog).toContainText(productName);
+  await expect(page.locator("#nutritionProductUseAmount")).toHaveValue("50");
+  await page.locator("#nutritionProductUseAmount").fill("60");
+  await page.unroute(ENTRY);
+  await page.locator("#nutritionProductUseAdd").click();
+  await expect(useDialog).toBeHidden();
+  await expect(page.locator("#statusStrip")).not.toContainText("abgelehnt");
+  await expect.poll(() => sent.filter((request) => request.amount === 60).length).toBe(1);
+  const changed = sent.find((request) => request.amount === 60);
+  expect(changed.key).toMatch(UUID);
+  expect(changed.key).not.toBe(sent[0].key);
+  await page.goto("/#nutrition/diary");
+  await expect(page.locator("#nutritionEntries .nutrition-card").filter({ hasText: productName })).toHaveCount(1);
+});
