@@ -93,7 +93,8 @@ class NutritionGetRoutes:
 
         Request: query `id`, the entry id.
 
-        Response: 200 `{"ok": true, "id", "components"}`; each component has `index`
+        Response: 200 `{"ok": true, "id", "revision", "components"}`; `revision` is a
+        fingerprint of the components that an edit must send back; each component has `index`
         (its position), `kind`, `name`, `amount`, `unit`, the nutrients (`kcal`,
         `carbs_g`, `protein_g`, `fat_g`, `sugar_g`, `fiber_g`, `salt_g`, unknown as
         null) and `nutrition_basis` (its origin). A meal without components is one
@@ -103,15 +104,16 @@ class NutritionGetRoutes:
         Errors: 400 "Ungültige Eintrags-ID."; 404 "Ernährungseintrag nicht gefunden."
         """
         entry_id = request.query.get("id", [""])[0]
-        components = self._diary_service().meal_components(entry_id)
+        read = self._diary_service().meal_components(entry_id)
         handler.send_json(
             200,
             {
                 "ok": True,
                 "id": entry_id,
+                "revision": read["revision"],
                 "components": [
                     {"index": index, **component}
-                    for index, component in enumerate(components)
+                    for index, component in enumerate(read["components"])
                 ],
             },
         )
@@ -508,7 +510,8 @@ class NutritionPostRoutes:
     def _edit_components(self, handler: Any, _request: RouteRequest) -> None:
         """Remove, resize or swap components of a logged meal (#3948).
 
-        Request: JSON body `{"id": string, "edits": [...]}`; `id` is the entry id and
+        Request: JSON body `{"id": string, "revision": string, "edits": [...]}`; `id` is the
+        entry id, `revision` the one `GET /api/nutrition/entry/components` returned, and
         each edit names a component by its `index` (see
         `GET /api/nutrition/entry/components`) and is one of `{"index", "remove": true}`,
         `{"index", "amount"}` (above 0 up to 10000, the same unit) or a swap
@@ -524,7 +527,9 @@ class NutritionPostRoutes:
         undo reference.
 
         Errors: 400 "Ungültige Eintrags-ID."; 404 "Ernährungseintrag nicht gefunden.";
-        400 "Ungültige Änderung der Mahlzeitenkomponenten." for a malformed edit; 400
+        409 `meal_changed` "Die Mahlzeit hat sich geändert. Bitte erneut öffnen." when the
+        components differ from the `revision`; 400 "Ungültige Änderung der
+        Mahlzeitenkomponenten." for a malformed edit; 400
         `last_component` when nothing would remain; 400 "Ungültige Komponentenmenge." or
         "Komponentenmenge muss größer als 0 sein."; 404 `food_not_found`, 404
         `nutrition_product_not_found`, 409 `nutrition_product_archived`, 400
@@ -533,7 +538,9 @@ class NutritionPostRoutes:
         payload = _read_object(handler)
         with change_history.collect_changes() as changes:
             entry = self._diary_service().edit_components(
-                str(payload.get("id") or ""), payload.get("edits")
+                str(payload.get("id") or ""),
+                payload.get("edits"),
+                payload.get("revision"),
             )
         handler.send_json(200, {"ok": True, "entry": entry, **_change(changes)})
 

@@ -23,9 +23,10 @@ function nutritionComponentOrigin(component) {
 async function openNutritionMealEdit(item) {
   const status = document.querySelector("#nutritionStatus");
   try {
-    const { components } = await api(`/api/nutrition/entry/components?id=${encodeURIComponent(item.id)}`);
+    const { components, revision } = await api(`/api/nutrition/entry/components?id=${encodeURIComponent(item.id)}`);
     nutritionMealEdit = {
       item,
+      revision,
       generation: state.sessionGeneration,
       rows: components.map((component) => ({ index: component.index, name: component.name, unit: component.unit, originalUnit: component.unit, original: String(component.amount), amount: String(component.amount), kcal: component.kcal, origin: nutritionComponentOrigin(component), removed: false, swap: null })),
       swapRow: null,
@@ -93,7 +94,7 @@ function nutritionMealEditRow(row) {
     item.append(h("div", "edit-controls", h("span", null, "Wird entfernt"), h("div", "push", restore)));
     return item;
   }
-  const amount = h("input", { type: "number", value: row.amount, min: "0.1", max: "10000", step: "any", required: true, inputMode: "decimal", "aria-label": `Menge ${shown}` });
+  const amount = h("input", { type: "number", value: row.amount, min: "0", max: "10000", step: "any", required: true, inputMode: "decimal", "aria-label": `Menge ${shown}` });
   amount.addEventListener("input", () => { row.amount = amount.value; small.textContent = detail(); updateNutritionMealEditSave(); });
   const swap = h("button", { type: "button", className: "secondary-button", "aria-label": `${shown} tauschen` }, "Tauschen");
   swap.addEventListener("click", () => openNutritionMealSwap(row));
@@ -156,7 +157,7 @@ function nutritionMealSwapResult(row, food) {
 
 async function saveNutritionMealEdit() {
   const nodes = nutritionMealEditNodes();
-  const { item, rows, generation } = nutritionMealEdit;
+  const { item, rows, revision, generation } = nutritionMealEdit;
   if (!nodes.form.reportValidity()) return;
   // Without a component the meal goes, after its own confirmation.
   if (rows.every((row) => row.removed)) {
@@ -165,18 +166,21 @@ async function saveNutritionMealEdit() {
   }
   nodes.save.disabled = true;
   nodes.status.textContent = "";
+  let result;
   try {
-    const result = await api("/api/nutrition/entry/components", { method: "POST", body: JSON.stringify({ id: item.id, edits: nutritionMealEditChanges() }) });
-    if (generation !== state.sessionGeneration) return;
-    nodes.root.close();
-    const reload = () => { resetEnergy(); return loadNutrition({ preserve: true }); };
-    await reload();
-    showNutritionReceipt(document.querySelector("#nutritionStatus"), "Mahlzeit geändert.", result.change, reload);
+    result = await api("/api/nutrition/entry/components", { method: "POST", body: JSON.stringify({ id: item.id, revision, edits: nutritionMealEditChanges() }) });
   } catch (error) {
     if (generation !== state.sessionGeneration) return;
     nodes.status.textContent = `Mahlzeit konnte nicht gespeichert werden: ${error.message}`;
     updateNutritionMealEditSave();
+    return;
   }
+  if (generation !== state.sessionGeneration) return;
+  nodes.root.close();
+  // The change is saved; a failed reload still shows its receipt, and the diary reads again on the next refresh.
+  const reload = () => { resetEnergy(); return loadNutrition({ preserve: true }); };
+  await reload().catch(() => {});
+  showNutritionReceipt(document.querySelector("#nutritionStatus"), "Mahlzeit geändert.", result.change, reload);
 }
 
 document.querySelector("#nutritionMealEditCancel")?.addEventListener("click", () => document.querySelector("#nutritionMealEditDialog").close());

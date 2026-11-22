@@ -22,7 +22,7 @@ async function mockDiary(page) {
   let entry = MEAL;
   await page.route("**/api/nutrition/day**", (route) => route.fulfill({ json: { ok: true, date: DAY, entry_count: 1, entries: [entry], total_kcal: entry.kcal, total_carbs_g: 30, total_protein_g: 15, total_fat_g: 3 } }));
   await page.route("**/api/nutrition/products**", (route) => route.fulfill({ json: { ok: true, products: [] } }));
-  await page.route("**/api/nutrition/entry/components?**", (route) => route.fulfill({ json: { ok: true, id: MEAL.id, components: COMPONENTS } }));
+  await page.route("**/api/nutrition/entry/components?**", (route) => route.fulfill({ json: { ok: true, id: MEAL.id, revision: "rev-1", components: COMPONENTS } }));
   await page.route("**/api/nutrition/products/lookup", (route) => route.fulfill({ json: { ok: true, foods: FOODS, local: false } }));
   await page.route("**/api/nutrition/entry/components", (route) => {
     posts.push(route.request().postDataJSON());
@@ -72,7 +72,7 @@ test("@responsive the pencil edits a meal's components: remove, restore, resize 
 
   await dialog.locator("#nutritionMealEditSave").click();
   await expect(dialog).toBeHidden();
-  expect(posts).toEqual([{ id: MEAL.id, edits: [{ index: 0, amount: 300 }, { index: 1, food_id: "bls:tofu-gebacken" }, { index: 2, remove: true }] }]);
+  expect(posts).toEqual([{ id: MEAL.id, revision: "rev-1", edits: [{ index: 0, amount: 300 }, { index: 1, food_id: "bls:tofu-gebacken" }, { index: 2, remove: true }] }]);
   await expect(page.locator("#nutritionStatus")).toContainText("Mahlzeit geändert.");
   await expect(card).toContainText("100 kcal");
   await page.locator("#nutritionStatus").getByRole("button", { name: "Rückgängig" }).click();
@@ -102,4 +102,29 @@ test("@responsive removing every component deletes the meal only after its confi
   await expect(dialog.locator("#nutritionMealEditStatus")).toContainText("Offline");
   await context.setOffline(false);
   await expect(dialog.locator("#nutritionMealEditSave")).toBeEnabled();
+});
+
+test("@responsive a meal that changed meanwhile is refused and a failed reload still shows the receipt", async ({ page }) => {
+  const posts = await mockDiary(page);
+  let refuse = true;
+  await page.route("**/api/nutrition/entry/components", (route) => {
+    if (route.request().method() !== "POST" || !refuse) return route.fallback();
+    refuse = false;
+    return route.fulfill({ status: 409, json: { ok: false, error: "Die Mahlzeit hat sich geändert. Bitte erneut öffnen.", reason: "meal_changed" } });
+  });
+  await page.goto("/#nutrition/diary");
+  const card = page.locator("#nutritionEntries .nutrition-card");
+  await card.getByRole("button", { name: "Mahlzeit bearbeiten: Reis mit Tofu" }).click();
+  const dialog = page.locator("#nutritionMealEditDialog");
+  await dialog.locator(".edit-row").first().getByRole("spinbutton").fill("1");
+  await dialog.locator("#nutritionMealEditSave").click();
+  await expect(dialog.locator("#nutritionMealEditStatus")).toContainText("Die Mahlzeit hat sich geändert.");
+  await expect(dialog).toBeVisible();
+
+  await page.unroute("**/api/nutrition/day**");
+  await page.route("**/api/nutrition/day**", (route) => route.abort());
+  await dialog.locator("#nutritionMealEditSave").click();
+  await expect(dialog).toBeHidden();
+  await expect(page.locator("#nutritionStatus")).toContainText("Mahlzeit geändert.");
+  expect(posts).toHaveLength(1);
 });

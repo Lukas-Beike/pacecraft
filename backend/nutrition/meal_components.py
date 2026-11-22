@@ -8,6 +8,8 @@ or calculates them from the stored snapshot, the food ID and the amount.
 
 from __future__ import annotations
 
+import hashlib
+import json
 from typing import Any
 
 from backend.errors import AppError
@@ -77,19 +79,32 @@ def entry_components(entry: dict[str, Any]) -> list[dict[str, Any]]:
         and basis["ingredients"]
     ):
         return [_database_component(item) for item in basis["ingredients"]]
-    if kind == "local_product" and isinstance(basis.get("product"), dict):
+    amount = basis.get("amount")
+    if (
+        kind == "local_product"
+        and isinstance(basis.get("product"), dict)
+        and isinstance(amount, (int, float))
+        and not isinstance(amount, bool)
+        and amount > 0
+    ):
         product = basis["product"]
         return [
             {
                 "kind": "local_product",
                 "name": product.get("name") or entry.get("description") or "Produkt",
-                "amount": basis["amount"],
+                "amount": amount,
                 "unit": basis.get("unit") or product.get("basis_unit"),
                 **{key: entry.get(key) for key in NUTRIENTS},
                 "nutrition_basis": {"kind": "local_product", "product": product},
             }
         ]
     return [wrapped_component(entry)]
+
+
+def components_revision(components: list[dict[str, Any]]) -> str:
+    """A short fingerprint of the components, so an edit of a changed meal is refused."""
+    text = json.dumps(components, sort_keys=True, default=str)
+    return hashlib.sha256(text.encode()).hexdigest()[:16]
 
 
 def _validated_edits(edits: Any, count: int) -> list[dict[str, Any]]:
@@ -125,7 +140,9 @@ def swap_foods(
     named = [
         edit
         for edit in (edits if isinstance(edits, list) else [])
-        if isinstance(edit, dict) and "food_id" in edit
+        if isinstance(edit, dict)
+        and "food_id" in edit
+        and isinstance(edit.get("index"), int)
     ]
     if not named:
         return {}
@@ -155,12 +172,19 @@ def _scaled(component: dict[str, Any], amount: float) -> dict[str, Any]:
 def edited_components(
     entry: dict[str, Any],
     edits: Any,
+    revision: Any,
     calculator: MealComponentCalculator,
     db: Any,
     foods: dict[Any, dict[str, Any]],
 ) -> list[dict[str, Any]]:
     """The meal's components after the edits; an untouched component stays as stored."""
     components = entry_components(entry)
+    if revision != components_revision(components):
+        raise AppError(
+            409,
+            "Die Mahlzeit hat sich geändert. Bitte erneut öffnen.",
+            reason="meal_changed",
+        )
     edits = _validated_edits(edits, len(components))
     by_index = {edit["index"]: edit for edit in edits}
     result: list[dict[str, Any]] = []

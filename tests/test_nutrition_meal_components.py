@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import unittest
 from datetime import UTC, datetime
 from typing import Any
@@ -78,8 +79,13 @@ class MealComponentEditTests(unittest.TestCase):
     def components(self, entry: dict[str, Any]) -> list[dict[str, Any]]:
         return entry["nutrition_basis"]["components"]
 
+    def edit(self, entry_id: str, edits: Any) -> dict[str, Any]:
+        """The edit as the dialog sends it: with the revision it read."""
+        revision = self.diary.meal_components(entry_id)["revision"]
+        return self.diary.edit_components(entry_id, edits, revision)
+
     def test_the_components_are_addressed_by_position(self) -> None:
-        listed = self.diary.meal_components(self.meal["id"])
+        listed = self.diary.meal_components(self.meal["id"])["components"]
         self.assertEqual(
             [(item["name"], item["amount"]) for item in listed],
             [("Tofu", 150), ("Skyr", 200), ("Creatine", 5)],
@@ -88,9 +94,7 @@ class MealComponentEditTests(unittest.TestCase):
     def test_a_changed_amount_is_recalculated_and_the_others_stay_as_stored(
         self,
     ) -> None:
-        updated = self.diary.edit_components(
-            self.meal["id"], [{"index": 0, "amount": 300}]
-        )
+        updated = self.edit(self.meal["id"], [{"index": 0, "amount": 300}])
 
         tofu, skyr, creatine = self.components(updated)
         self.assertEqual((tofu["amount"], tofu["kcal"]), (300, 345))
@@ -104,7 +108,7 @@ class MealComponentEditTests(unittest.TestCase):
         self.assertEqual(self.diary.get_meal(self.meal["id"]), updated)
 
     def test_a_removed_component_leaves_the_rest_and_the_last_one_stays(self) -> None:
-        updated = self.diary.edit_components(
+        updated = self.edit(
             self.meal["id"],
             [{"index": 0, "remove": True}, {"index": 2, "remove": True}],
         )
@@ -112,14 +116,12 @@ class MealComponentEditTests(unittest.TestCase):
         self.assertEqual(updated["kcal"], 120)
 
         with self.assertRaises(AppError) as last:
-            self.diary.edit_components(self.meal["id"], [{"index": 0, "remove": True}])
+            self.edit(self.meal["id"], [{"index": 0, "remove": True}])
         self.assertEqual(last.exception.reason, "last_component")
         self.assertEqual(self.diary.get_meal(self.meal["id"]), updated)
 
     def test_a_swap_keeps_the_amount_and_takes_the_new_origin(self) -> None:
-        updated = self.diary.edit_components(
-            self.meal["id"], [{"index": 0, "food_id": BAKED_TOFU}]
-        )
+        updated = self.edit(self.meal["id"], [{"index": 0, "food_id": BAKED_TOFU}])
 
         swapped = self.components(updated)[0]
         self.assertEqual(
@@ -129,7 +131,7 @@ class MealComponentEditTests(unittest.TestCase):
         self.assertEqual(swapped["nutrition_basis"]["food"]["id"], BAKED_TOFU)
         self.assertEqual(updated["kcal"], 240 + 120)
 
-        again = self.diary.edit_components(
+        again = self.edit(
             self.meal["id"],
             [{"index": 1, "product_id": self.skyr["id"], "amount": 100}],
         )
@@ -138,9 +140,7 @@ class MealComponentEditTests(unittest.TestCase):
     def test_a_swap_to_another_unit_is_refused_and_changes_nothing(self) -> None:
         before = self.diary.get_meal(self.meal["id"])
         with self.assertRaises(AppError) as mismatch:
-            self.diary.edit_components(
-                self.meal["id"], [{"index": 1, "product_id": self.drink["id"]}]
-            )
+            self.edit(self.meal["id"], [{"index": 1, "product_id": self.drink["id"]}])
         self.assertEqual(mismatch.exception.reason, "food_unit_mismatch")
         self.assertEqual(self.diary.get_meal(self.meal["id"]), before)
 
@@ -168,20 +168,55 @@ class MealComponentEditTests(unittest.TestCase):
         ]
         for edits in invalid:
             with self.subTest(edits=edits), self.assertRaises(AppError):
-                self.diary.edit_components(self.meal["id"], edits)
+                self.edit(self.meal["id"], edits)
         with self.assertRaises(AppError) as unknown:
-            self.diary.edit_components("missing", [{"index": 0, "amount": 1}])
+            self.edit("missing", [{"index": 0, "amount": 1}])
         self.assertEqual(unknown.exception.status, 404)
         with self.assertRaises(AppError):
-            self.diary.edit_components("", [{"index": 0, "amount": 1}])
+            self.edit("", [{"index": 0, "amount": 1}])
         self.assertEqual(self.diary.get_meal(self.meal["id"]), before)
+
+    def test_an_edit_of_a_meal_that_changed_meanwhile_is_refused(self) -> None:
+        stale = self.diary.meal_components(self.meal["id"])["revision"]
+        self.edit(self.meal["id"], [{"index": 0, "remove": True}])
+        before = self.diary.get_meal(self.meal["id"])
+
+        for revision in (stale, None, 7):
+            with (
+                self.subTest(revision=revision),
+                self.assertRaises(AppError) as changed,
+            ):
+                self.diary.edit_components(
+                    self.meal["id"], [{"index": 1, "remove": True}], revision
+                )
+            self.assertEqual(changed.exception.reason, "meal_changed")
+        self.assertEqual(self.diary.get_meal(self.meal["id"]), before)
+
+    def test_a_swap_with_an_unhashable_index_is_a_bad_request(self) -> None:
+        with self.assertRaises(AppError) as invalid:
+            self.edit(self.meal["id"], [{"index": [0], "food_id": TOFU}])
+        self.assertEqual(invalid.exception.status, 400)
+
+    def test_a_product_meal_without_an_amount_still_lists_one_component(self) -> None:
+        entry = self.diary.log_product(self.skyr["id"], 200, "g")
+        with self.manager.unit_of_work() as db:
+            row = db.execute(
+                "SELECT nutrition_basis FROM nutrition_logs WHERE id = ?",
+                (entry["id"],),
+            ).fetchone()
+            basis = json.loads(row["nutrition_basis"])
+            del basis["amount"]
+            db.execute(
+                "UPDATE nutrition_logs SET nutrition_basis = ? WHERE id = ?",
+                (json.dumps(basis), entry["id"]),
+            )
+        listed = self.diary.meal_components(entry["id"])["components"]
+        self.assertEqual([(c["kind"], c["unit"]) for c in listed], [("manual", "g")])
 
     def test_an_archived_product_cannot_replace_a_component(self) -> None:
         self.library.product_catalog.archive_product(self.skyr["id"])
         with self.assertRaises(AppError) as archived:
-            self.diary.edit_components(
-                self.meal["id"], [{"index": 0, "product_id": self.skyr["id"]}]
-            )
+            self.edit(self.meal["id"], [{"index": 0, "product_id": self.skyr["id"]}])
         self.assertEqual(archived.exception.status, 409)
 
     def test_a_single_product_meal_is_edited_as_one_component(self) -> None:
@@ -189,12 +224,12 @@ class MealComponentEditTests(unittest.TestCase):
         self.assertEqual(
             [
                 (c["name"], c["amount"], c["unit"])
-                for c in self.diary.meal_components(entry["id"])
+                for c in self.diary.meal_components(entry["id"])["components"]
             ],
             [("Skyr", 200, "g")],
         )
 
-        updated = self.diary.edit_components(entry["id"], [{"index": 0, "amount": 100}])
+        updated = self.edit(entry["id"], [{"index": 0, "amount": 100}])
 
         self.assertEqual(updated["kcal"], 60)
         self.assertEqual(updated["nutrition_basis"]["kind"], "composite")
@@ -211,12 +246,12 @@ class MealComponentEditTests(unittest.TestCase):
         self.assertEqual(
             [
                 (c["name"], c["amount"], c["kcal"])
-                for c in self.diary.meal_components(entry["id"])
+                for c in self.diary.meal_components(entry["id"])["components"]
             ],
             [("Tofu", 100, 115)],
         )
 
-        updated = self.diary.edit_components(entry["id"], [{"index": 0, "amount": 200}])
+        updated = self.edit(entry["id"], [{"index": 0, "amount": 200}])
 
         self.assertEqual(updated["kcal"], 230)
 
@@ -231,7 +266,7 @@ class MealComponentEditTests(unittest.TestCase):
                 "source": "coach",
             }
         )
-        updated = self.diary.edit_components(entry["id"], [{"index": 0, "amount": 2}])
+        updated = self.edit(entry["id"], [{"index": 0, "amount": 2}])
         self.assertEqual((updated["kcal"], updated["carbs_g"]), (1200, 180))
         self.assertEqual(self.components(updated)[0]["kind"], "estimate")
         self.assertEqual(updated["source"], "coach")
@@ -240,9 +275,7 @@ class MealComponentEditTests(unittest.TestCase):
         self.assertTrue(self.diary.sync_status.mark_date_synced("2026-11-04", 1))
         self.assertEqual(self.diary.get_meal(self.meal["id"])["sync_state"], "synced")
 
-        updated = self.diary.edit_components(
-            self.meal["id"], [{"index": 2, "remove": True}]
-        )
+        updated = self.edit(self.meal["id"], [{"index": 2, "remove": True}])
 
         self.assertEqual(updated["sync_state"], "local")
         with self.manager.read_snapshot() as db:
@@ -251,7 +284,7 @@ class MealComponentEditTests(unittest.TestCase):
 
     def test_the_edit_is_undone_with_its_change_reference(self) -> None:
         with change_history.collect_changes() as changes:
-            self.diary.edit_components(self.meal["id"], [{"index": 0, "remove": True}])
+            self.edit(self.meal["id"], [{"index": 0, "remove": True}])
         self.assertEqual([c["entity_type"] for c in changes], ["nutrition_entry"])
 
 

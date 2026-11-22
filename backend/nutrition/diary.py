@@ -19,6 +19,7 @@ from backend.db.repositories import NutritionRepository, nutrition_macro_totals
 from backend.errors import AppError
 from backend.nutrition.food_database import NUTRIENTS
 from backend.nutrition.meal_components import (
+    components_revision,
     edited_components,
     entry_components,
     swap_foods,
@@ -465,11 +466,14 @@ class NutritionDiaryService:
         suffix = f" + {name}"[:MAX_DESCRIPTION_LEN]
         return str(description)[: MAX_DESCRIPTION_LEN - len(suffix)] + suffix
 
-    def meal_components(self, entry_id: str) -> list[dict[str, Any]]:
-        """The components a meal is edited by (#3948)."""
-        return entry_components(self.get_meal(entry_id))
+    def meal_components(self, entry_id: str) -> dict[str, Any]:
+        """The components a meal is edited by and their `revision` (#3948)."""
+        components = entry_components(self.get_meal(entry_id))
+        return {"components": components, "revision": components_revision(components)}
 
-    def edit_components(self, entry_id: str, edits: Any) -> dict[str, Any]:
+    def edit_components(
+        self, entry_id: str, edits: Any, revision: Any
+    ) -> dict[str, Any]:
         """Remove, resize or swap components of a logged meal (#3948).
 
         Nutrients are scaled from the stored snapshot or calculated from the
@@ -491,7 +495,7 @@ class NutritionDiaryService:
                     "kind": "composite",
                     "version": 1,
                     "components": edited_components(
-                        existing, edits, calculator, db, foods
+                        existing, edits, revision, calculator, db, foods
                     ),
                 },
             }
