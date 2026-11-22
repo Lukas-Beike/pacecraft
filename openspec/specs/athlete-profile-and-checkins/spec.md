@@ -523,7 +523,11 @@ Evidence: `backend/coach/athlete_record_tools.py:CoachAthleteRecordToolService._
 
 ### Requirement: Coach zone changes
 
-The Coach SHALL change Zonen & Schwellen through the same use cases as its routes (athlete decision, #3949): `save_zones` saves a local zone configuration (`action` `save`), adopts the first-threshold estimate or a step test's LT1 (`adopt_first_threshold`) or a local LT2 estimate (`adopt_lt2`); `delete_zones` removes a local configuration by the `key` the Coach reads in `training_zones`. Both run only in a turn started by the athlete's own message, under scope `local_zones` and write-gate domain `profile`.
+The Coach SHALL change Zonen & Schwellen through the same use cases as its routes (#3949): `save_zones` saves zones (`save`) or adopts the LT1 estimate or a step test's LT1 (`adopt_first_threshold`) or an LT2 estimate (`adopt_lt2`); `delete_zones` removes a local configuration by its `training_zones` `key`. Both run only in a turn started by the athlete's own message, under scope `local_zones` and write-gate domain `profile`.
+
+#### Scenario: Ask the Coach to change zones
+- **WHEN** the athlete asks the Coach to save zones, adopt a shown estimate or remove a local configuration
+- **THEN** the Coach calls `save_zones` or `delete_zones` with the values it read, and the change appears in Zonen & Schwellen as a save there would.
 
 #### Scenario: Save or adopt
 - **WHEN** the athlete asks to save zones or to adopt a shown estimate
