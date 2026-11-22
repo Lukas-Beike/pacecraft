@@ -10,6 +10,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import textwrap
 import tomllib
 import unittest
 from decimal import ROUND_DOWN, Decimal
@@ -800,12 +801,15 @@ class CodexReviewWorkflowTests(unittest.TestCase):
             "if: ${{ !cancelled() && steps.branch-app-token.outcome == 'success' }}",
             rebase,
         )
-        # A scheduled run rebases only armed PRs still BEHIND, such as one armed
-        # after the last develop push (#3854); a push rebases every armed PR.
-        self.assertIn("ONLY_BEHIND: ${{ github.event_name == 'schedule' }}", rebase)
+        # Push and schedule rebase one armed PR at a time (#3854, #3979); the
+        # queue itself is run by the test below.
+        self.assertIn("SCHEDULED: ${{ github.event_name != 'push' }}", rebase)
         self.assertIn(
-            '[[ "$ONLY_BEHIND" == "true" && "$merge_state" != "BEHIND" ]]', rebase
+            "workflow_run:\n    workflows: ['Test and publish container image']\n"
+            "    types: [completed]",
+            workflow,
         )
+        self.assertIn("sort_by(.autoMergeRequest.enabledAt)", rebase)
         # Rebase only, never a merge-style update; same-repository squash PRs only.
         self.assertIn(
             'gh pr update-branch "$pull_request_number" \\\n'
@@ -815,10 +819,68 @@ class CodexReviewWorkflowTests(unittest.TestCase):
         )
         self.assertEqual(1, rebase.count("gh pr update-branch"))
         # A scheduled run warns on a failed rebase; a push run fails the job.
-        self.assertIn('if [[ "$ONLY_BEHIND" != "true" ]]; then\n', rebase)
+        self.assertIn('if [[ "$SCHEDULED" != "true" ]]; then\n', rebase)
         self.assertIn("select(.isCrossRepository == false)", rebase)
         self.assertIn('select(.autoMergeRequest.mergeMethod == "SQUASH")', rebase)
         self.assertNotIn("gh pr merge", rebase)
+
+    @unittest.skipUnless(BASH, "bash is not available")
+    def test_auto_rebase_rebases_one_armed_pr_once_its_checks_are_green(self):
+        # #3979: every develop push restarted the browser shards of every armed PR.
+        root = Path(__file__).resolve().parents[1]
+        workflow = (root / ".github/workflows/auto-rebase-squash.yml").read_text(
+            encoding="utf-8"
+        )
+        step = workflow.split("- name: Rebase eligible pull requests", 1)[1]
+        body = step.split("        run: |\n", 1)[1]
+        # The fake gh prints the listed rows (the jq filter is GitHub's part); a
+        # head named b... is one commit behind develop, c... is current, and
+        # comparing e... fails.
+        fake = (
+            "gh() {\n"
+            '  case "$1 $2" in\n'
+            '    "pr list") printf "%b" "$ROWS" ;;\n'
+            '    "pr update-branch") echo "$3" >> "$CALLS"\n'
+            '      [[ " $CONFLICTS " != *" $3 "* ]] || { echo RebaseConflictError; return 1; } ;;\n'
+            '    *) [[ "$2" != *...e* ]] || return 1\n'
+            '      [[ "$2" == *...b* ]] && echo 1 || echo 0 ;;\n'
+            "  esac\n"
+            "}\n"
+        )
+        cases = (
+            # Arming order; only the first green behind PR is rebased.
+            ("1\tx\tb1\tgreen\n2\tx\tb2\tgreen", "", ["1"], 0),
+            # A current PR still running its checks merges first.
+            ("1\tx\tc1\tpending\n2\tx\tb2\tgreen", "", [], 0),
+            # A stuck one does not hold the queue; a behind PR whose checks
+            # still run, stalled or failed waits.
+            (
+                "1\tx\tc1\tstale\n2\tx\tb2\tpending\n3\tx\tb3\tfailing\n4\tx\tb4\tstale\n5\tx\tb5\tgreen",
+                "",
+                ["5"],
+                0,
+            ),
+            # A conflict passes the turn to the next one.
+            ("1\tx\tb1\tgreen\n2\tx\tb2\tgreen", "1", ["1", "2"], 0),
+            ("1\tx\tc1\tgreen\n2\tx\tc2\tfailing", "", [], 0),
+            # A failed compare skips that PR and fails a push run at the end.
+            ("1\tx\te1\tgreen\n2\tx\tb2\tgreen", "", ["2"], 1),
+        )
+        with tempfile.TemporaryDirectory() as folder:
+            script, calls = Path(folder, "step.sh"), Path(folder, "calls")
+            script.write_text(fake + textwrap.dedent(body), encoding="utf-8")
+            for rows, conflicts, rebased, code in cases:
+                with self.subTest(rows=rows, conflicts=conflicts):
+                    calls.write_text("", encoding="utf-8")
+                    done = subprocess.run(
+                        [str(BASH), "--noprofile", "--norc", script.as_posix()],
+                        env={**os.environ, "ROWS": rows, "CONFLICTS": conflicts,
+                             "CALLS": calls.as_posix(), "REPOSITORY": "o/r",
+                             "SCHEDULED": "false"},
+                        capture_output=True, text=True, check=False,
+                    )  # fmt: skip
+                    self.assertEqual(done.returncode, code, done.stdout + done.stderr)
+                    self.assertEqual(calls.read_text(encoding="utf-8").split(), rebased)
 
     def test_native_review_removes_legacy_release_dispatch(self):
         root = Path(__file__).resolve().parents[1]

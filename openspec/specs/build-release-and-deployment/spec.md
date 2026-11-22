@@ -365,7 +365,7 @@ Evidence: `.github/workflows/validate-conventions.yml`; `.github/workflows/workf
 
 ### Requirement: Dependency updates, auto-merge and auto-rebase
 
-Dependabot SHALL propose npm, pip, Docker and GitHub Actions updates against `develop` after a 3-day cooldown. Squash auto-merge SHALL be enabled only for Dependabot pull requests from this repository against `develop`. After each push to `develop`, open same-repository pull requests with squash auto-merge SHALL be rebased onto `develop`, and a scheduled run SHALL rebase those still behind `develop`.
+Dependabot SHALL propose npm, pip, Docker and GitHub Actions updates against `develop` after a 3-day cooldown. Squash auto-merge SHALL be enabled only for Dependabot pull requests from this repository against `develop`. Same-repository pull requests with squash auto-merge SHALL be rebased onto `develop` one at a time (#3979).
 
 #### Scenario: Update cadence
 - **WHEN** Dependabot runs
@@ -377,13 +377,13 @@ Dependabot SHALL propose npm, pip, Docker and GitHub Actions updates against `de
 
 #### Scenario: Rebase after a develop push
 - **WHEN** `develop` receives a push
-- **THEN** every open same-repository pull request to `develop` with squash auto-merge that is not conflicting is rebased; a conflict is reported as a notice and skipped, any other failure fails the job after all pull requests were tried
+- **THEN** among the open same-repository pull requests to `develop` with squash auto-merge that are not conflicting, taken in the order their auto-merge was enabled, nothing is rebased while one is up to date with `develop` and its checks still run (a check started at least 3 hours ago no longer holds the queue); otherwise the first one behind `develop` whose checks all finished green is rebased, and one behind with running or failed checks waits; a conflict is reported as a notice and passes the turn to the next one, and any other failure, also of reading how far a head is behind, fails the job after the remaining ones were tried
 
 #### Scenario: Scheduled run
-- **WHEN** the schedule fires (every 10 minutes)
-- **THEN** the Dependabot quality-baseline alignment runs, and an open same-repository pull request to `develop` with squash auto-merge that is not conflicting is rebased only when it is behind `develop`, such as one whose auto-merge was enabled after the last push (#3854); the workflow has no pull-request trigger
+- **WHEN** the schedule fires (every 10 minutes) or a container CI run finishes
+- **THEN** the Dependabot quality-baseline alignment runs, and the same one-at-a-time rebase runs, such as for a pull request whose auto-merge was enabled after the last push (#3854) or after the up-to-date one's checks failed; a failed rebase only warns; a finished run of the container CI workflow starts the same run from `develop`'s copy, reading nothing from that run; the workflow has no pull-request trigger
 
-Evidence: `.github/dependabot.yml`; `.github/workflows/dependabot-automerge.yml`; `.github/workflows/auto-rebase-squash.yml`. Tests: `tests/test_ci_contracts.py::test_dependabot_covers_all_manifests_on_develop`; `tests/test_ci_contracts.py::test_dependabot_updates_wait_three_days`; `tests/test_ci_contracts.py::test_dependabot_automerge_is_limited_to_develop`; `tests/test_ci_contracts.py::test_dependabot_automerge_security_and_major_updates`. `tests/test_ci_contracts.py::test_dependabot_tool_bumps_align_the_baseline_without_running_pr_code` pins the schedule, the trigger set and the scheduled behind-only rebase.
+Evidence: `.github/dependabot.yml`; `.github/workflows/dependabot-automerge.yml`; `.github/workflows/auto-rebase-squash.yml`. Tests: `tests/test_ci_contracts.py::test_dependabot_covers_all_manifests_on_develop`; `tests/test_ci_contracts.py::test_dependabot_updates_wait_three_days`; `tests/test_ci_contracts.py::test_dependabot_automerge_is_limited_to_develop`; `tests/test_ci_contracts.py::test_dependabot_automerge_security_and_major_updates`. `tests/test_ci_contracts.py::test_dependabot_tool_bumps_align_the_baseline_without_running_pr_code` pins the schedule and the trigger set; `tests/test_ci_contracts.py::test_auto_rebase_rebases_one_armed_pr_once_its_checks_are_green` runs the one-at-a-time rebase.
 
 ### Requirement: Generated OpenSpec skills are refreshed without privileged generation
 
