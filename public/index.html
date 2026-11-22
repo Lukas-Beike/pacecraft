@@ -707,7 +707,7 @@
       <video id="nutritionBarcodeVideo" playsinline muted aria-label="Kamerabild für Barcode-Scan"></video>
       <p id="nutritionBarcodeStatus" class="tab-sync-detail" aria-live="polite">Kamera wird vorbereitet …</p>
       <label for="nutritionBarcodeManual">EAN manuell eingeben<input id="nutritionBarcodeManual" inputmode="numeric" pattern="[0-9]{8,14}" maxlength="14" autocomplete="off"></label>
-      <div class="dialog-actions"><button type="button" id="nutritionBarcodeCancel" class="secondary-button">Abbrechen</button><button type="submit" id="nutritionBarcodeLookup" class="adaptive-planning-button">Produkt suchen</button></div>
+      <div class="dialog-actions"><button type="button" id="nutritionBarcodeCancel" class="secondary-button">Abbrechen</button><button type="submit" id="nutritionBarcodeLookup">Produkt suchen</button></div>
     </form>
   </dialog>
   <dialog id="nutritionCleanupDialog" aria-labelledby="nutritionCleanupTitle">
@@ -728,7 +728,7 @@
       <fieldset id="nutritionProductUseSizes" class="chip-field" hidden><legend class="sr-only">Menge wählen</legend><div class="chip-group"></div></fieldset>
       <label for="nutritionProductUseMeal">Mahlzeit<select id="nutritionProductUseMeal"></select></label>
       <output id="nutritionProductUseStatus" class="tab-sync-detail" aria-live="polite"></output>
-      <div class="dialog-actions"><button type="button" id="nutritionProductUseCancel" class="secondary-button">Abbrechen</button><button type="button" id="nutritionProductUseCoach" class="secondary-button">Zur Coach-Nachricht</button><button type="submit" id="nutritionProductUseAdd" class="adaptive-planning-button">Erfassen</button></div>
+      <div class="dialog-actions"><button type="button" id="nutritionProductUseCancel" class="secondary-button">Abbrechen</button><button type="button" id="nutritionProductUseCoach" class="secondary-button">Zur Coach-Nachricht</button><button type="submit" id="nutritionProductUseAdd">Erfassen</button></div>
     </form>
   </dialog>
   <dialog id="nutritionMealEditDialog" aria-labelledby="nutritionMealEditTitle">
@@ -759,7 +759,7 @@
       <label for="bodyFatDialogPct">Körperfett (%)<input id="bodyFatDialogPct" name="pct" type="number" min="2" max="70" step="0.1" inputmode="decimal" required></label>
       <output id="bodyFatDialogResult" aria-live="polite" hidden></output>
       <output id="bodyFatDialogStatus" class="tab-sync-detail" aria-live="polite"></output>
-      <div class="dialog-actions"><button type="button" id="bodyFatDialogCancel" class="secondary-button">Abbrechen</button><button type="button" id="bodyFatDialogRemove" class="secondary-button" hidden>Löschen</button><button type="submit" id="bodyFatDialogSave" class="adaptive-planning-button">Speichern</button></div>
+      <div class="dialog-actions"><button type="button" id="bodyFatDialogCancel" class="secondary-button">Abbrechen</button><button type="button" id="bodyFatDialogRemove" class="secondary-button" hidden>Löschen</button><button type="submit" id="bodyFatDialogSave">Speichern</button></div>
     </form>
   </dialog>
   <dialog id="lt2AdoptDialog" aria-labelledby="lt2AdoptTitle">
@@ -769,7 +769,7 @@
       <fieldset class="chip-field"><legend class="sr-only">Werte</legend><div id="lt2AdoptValues" class="lt2-adopt-values"></div></fieldset>
       <div class="dialog-actions">
         <button type="button" id="lt2AdoptCancel" class="secondary-button">Abbrechen</button>
-        <button type="submit" id="lt2AdoptAccept" class="adaptive-planning-button">Übernehmen</button>
+        <button type="submit" id="lt2AdoptAccept">Übernehmen</button>
       </div>
     </form>
   </dialog>
@@ -779,7 +779,7 @@
       <label for="weightDialogDate">Datum<input id="weightDialogDate" name="date" type="date" required></label>
       <label for="weightDialogKg">Gewicht (kg)<input id="weightDialogKg" name="kg" type="number" min="30" max="300" step="0.1" inputmode="decimal" required></label>
       <output id="weightDialogStatus" class="tab-sync-detail" aria-live="polite"></output>
-      <div class="dialog-actions"><button type="button" id="weightDialogCancel" class="secondary-button">Abbrechen</button><button type="button" id="weightDialogRemove" class="secondary-button" hidden>Löschen</button><button type="submit" id="weightDialogSave" class="adaptive-planning-button">Speichern</button></div>
+      <div class="dialog-actions"><button type="button" id="weightDialogCancel" class="secondary-button">Abbrechen</button><button type="button" id="weightDialogRemove" class="secondary-button" hidden>Löschen</button><button type="submit" id="weightDialogSave">Speichern</button></div>
     </form>
   </dialog>
   <dialog id="competitionDialog" aria-labelledby="competitionDialogTitle">
@@ -821,7 +821,7 @@
       <label for="energyGoalDialogKcal"><span id="energyGoalDialogKcalLabel">Defizit pro Tag (kcal)</span><input id="energyGoalDialogKcal" name="kcal" type="number" min="0" max="1500" step="1" inputmode="numeric"></label>
       <output id="energyGoalDialogWeek" class="tab-sync-detail"></output>
       <output id="energyGoalDialogStatus" class="tab-sync-detail" aria-live="polite"></output>
-      <div class="dialog-actions"><button type="button" id="energyGoalDialogCancel" class="secondary-button">Abbrechen</button><button type="button" id="energyGoalDialogRemove" class="secondary-button" hidden>Entfernen</button><button type="submit" id="energyGoalDialogSave" class="adaptive-planning-button">Speichern</button></div>
+      <div class="dialog-actions"><button type="button" id="energyGoalDialogCancel" class="secondary-button">Abbrechen</button><button type="button" id="energyGoalDialogRemove" class="secondary-button" hidden>Entfernen</button><button type="submit" id="energyGoalDialogSave">Speichern</button></div>
     </form>
   </dialog>
   <dialog id="confirmationDialog" aria-labelledby="confirmationDialogTitle" aria-describedby="confirmationDialogMessage">
@@ -836,7 +836,7 @@
       <div class="dialog-actions">
         <button type="button" id="confirmationDialogSecondary" class="secondary-button" hidden></button>
         <button type="button" id="confirmationDialogCancel" class="secondary-button">Abbrechen</button>
-        <button type="submit" id="confirmationDialogAccept" class="adaptive-planning-button">Bestätigen</button>
+        <button type="submit" id="confirmationDialogAccept">Bestätigen</button>
       </div>
     </form>
   </dialog>

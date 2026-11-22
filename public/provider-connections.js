@@ -384,7 +384,7 @@ async function clearProviderCredential(field, provider) {
   const label = CREDENTIAL_FIELD_LABELS[field];
   const confirmed = await requestConfirmation(
     `Danach gilt wieder der Wert aus der Server-Einstellung, falls dort einer gesetzt ist.`,
-    { title: `${label} entfernen?`, confirmLabel: "Entfernen" },
+    { title: `${label} entfernen?`, danger: true, confirmLabel: "Entfernen" },
   );
   if (!confirmed) return;
   if (provider === "yazio") invalidateYazioStatus();
@@ -489,7 +489,7 @@ function cancelGarminMfa() {
 async function disconnectGarmin() {
   const confirmed = await requestConfirmation(
     "Die in der App gespeicherten Garmin-Tokens werden gelöscht. Bereits geladene Daten bleiben erhalten.",
-    { title: "Garmin trennen?", confirmLabel: "Trennen" },
+    { title: "Garmin trennen?", danger: true, confirmLabel: "Trennen" },
   );
   if (!confirmed) return;
   try {

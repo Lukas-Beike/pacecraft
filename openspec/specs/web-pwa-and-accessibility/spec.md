@@ -703,6 +703,10 @@ Evidence: `public/views.js::replaceMarkdownLinks`; `public/views.js::linkHostNot
 
 Destructive or discarding actions SHALL use one modal confirmation with a title that asks the question, a message that names the consequence, "Abbrechen" and an accept button named by a verb (no default title or label); `docs/view-catalogue.md` lists the texts per action. Closing the dialog in any way SHALL count as declined, and a newer confirmation SHALL decline a pending one.
 
+#### Scenario: Accent and danger buttons
+- **WHEN** a dialog offers a save or a confirmation
+- **THEN** the save and every accept are the accent button; only a confirmed destructive action fills red (`danger` on the call, for "Löschen", "Entfernen", "Ausmustern", "Zurücksetzen", "Verwerfen", "Trennen" and "Wiederherstellen"), and a "Löschen" outside a confirmation is the red-outlined `danger-button`
+
 #### Scenario: Typed confirmation
 - **WHEN** an action requires a confirmation text
 - **THEN** the dialog shows "Tippe „<text>“ zur Bestätigung.", focuses the text field and keeps the accept button disabled until the input equals the text exactly

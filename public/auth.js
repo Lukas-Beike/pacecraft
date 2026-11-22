@@ -110,6 +110,7 @@ function requestConfirmation(message, {
   inputLabel = "",
   expectedText = "",
   confirmLabel,
+  danger = false,
   secondaryAction = null,
 } = {}) {
   if (!title || !confirmLabel) throw new TypeError("requestConfirmation needs a title and a confirmLabel");
@@ -143,6 +144,8 @@ function requestConfirmation(message, {
   input.setCustomValidity("");
   input.oninput = syncConfirmationAcceptState;
   acceptButton.textContent = confirmLabel;
+  // Red fills only a confirmed destructive action; every other accept is the default accent button.
+  acceptButton.classList.toggle("adaptive-planning-button", danger);
   // The secondary action never settles the confirmation; the dialog stays open.
   secondaryButton.hidden = !secondaryAction;
   secondaryButton.textContent = secondaryAction?.label || "";

@@ -735,7 +735,7 @@ async function resetCoachChat() {
     toast("Bitte warte, bis die wartenden Nachrichten gesendet sind. Danach kannst du den Chat zurücksetzen.", true);
     return;
   }
-  if (!button || !await requestConfirmation("Der Verlauf dieses Chats wird gelöscht, eine neue Unterhaltung beginnt. Profil, Pläne und Einträge bleiben.", { title: "Coach-Chat zurücksetzen?", confirmLabel: "Zurücksetzen" })) return;
+  if (!button || !await requestConfirmation("Der Verlauf dieses Chats wird gelöscht, eine neue Unterhaltung beginnt. Profil, Pläne und Einträge bleiben.", { title: "Coach-Chat zurücksetzen?", danger: true, confirmLabel: "Zurücksetzen" })) return;
   button.disabled = true;
   button.textContent = "Wird zurückgesetzt…";
   try {
