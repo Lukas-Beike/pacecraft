@@ -53,7 +53,7 @@ function wahooConnectionView(data) {
   const needsWrite = configured && connected && !String(wahoo.scope || "").split(" ").includes("user_write");
   let status = "Nicht verbunden";
   if (connected) status = "Verbunden";
-  else if (!configured) status = "Nicht konfiguriert";
+  else if (!configured) status = "Nicht eingerichtet";
   else if (reconnect) status = "Erneute Verbindung erforderlich";
   const since = globalThis.AppFormat?.dateTime(connected ? wahoo.connected_at : null);
   // A reconnect names itself; #3677: without user_write the entered weight never reaches Wahoo, so the card says so.

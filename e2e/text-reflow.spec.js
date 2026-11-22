@@ -65,3 +65,76 @@ test("@responsive pages do not scroll horizontally at 200 % text size", async ({
     expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth), route).toBeLessThanOrEqual(0);
   }
 });
+
+// #3935 X-01: at 200 % text on the phone no control is cut off, runs past the edge or breaks inside a word
+// that would fit on its own line. The check reads boxes, not pixels, so a hidden clip is found too.
+const WHOLE_SCREENS = [
+  "more/appearance", "more/profile", "more/equipment", "more/connections", "more/coach", "more/operations",
+  "plan/season", "nutrition/products", "nutrition/diary", "analysis/records",
+];
+
+async function wholeScreenProblems(page) {
+  return page.evaluate(() => {
+    const panel = document.querySelector(".panel.active");
+    const viewport = document.documentElement.clientWidth;
+    const name = (element) => `${element.tagName.toLowerCase()}${element.id ? `#${element.id}` : ""}${typeof element.className === "string" && element.className ? `.${element.className.trim().split(/\s+/)[0]}` : ""}`;
+    const scrolls = (element) => /(auto|scroll)/.test(getComputedStyle(element).overflowX);
+    const inScroll = (element) => { for (let node = element.parentElement; node && node !== panel; node = node.parentElement) if (scrolls(node)) return true; return false; };
+    const problems = [];
+    for (const element of panel.querySelectorAll("*")) {
+      // Inside a scroll box the table may be wider than the box, but no cell or button may cut its own text.
+      if (inScroll(element) && element.getClientRects().length && !(element instanceof SVGElement) && getComputedStyle(element).overflowX !== "visible" && element.scrollWidth > element.clientWidth + 1 && !element.matches(".sr-only, pre")) problems.push(`${name(element)} in a scroll box clips ${element.scrollWidth - element.clientWidth}px ("${(element.textContent || "").trim().slice(0, 20)}")`);
+      if (!element.getClientRects().length || element instanceof SVGElement || inScroll(element) || element.matches(".sr-only, pre, input, textarea, select, .threshold-info")) continue;
+      const box = element.getBoundingClientRect();
+      if (!box.width) continue;
+      const style = getComputedStyle(element);
+      if (box.right > viewport + 1 || box.left < -1) problems.push(`${name(element)} leaves the screen (${Math.round(box.left)}..${Math.round(box.right)} of ${viewport})`);
+      else if (element.scrollWidth > element.clientWidth + 1 && !scrolls(element) && style.textOverflow !== "ellipsis" && style.display !== "inline") {
+        const edge = box.right + 1;
+        const over = [...element.querySelectorAll("*")].filter((inner) => inner.getClientRects().length && [...inner.getClientRects()].some((rect) => rect.right > edge));
+        const leaves = over.filter((inner) => !over.some((other) => other !== inner && inner.contains(other))).slice(0, 3);
+        problems.push(`${name(element)} clips ${element.scrollWidth - element.clientWidth}px (own "${(element.textContent || "").trim().slice(0, 28)}" w=${Math.round(box.width)})${leaves.length ? ` by ${leaves.map((inner) => `${name(inner)} "${(inner.textContent || "").trim().slice(0, 24)}" w=${Math.round(inner.getBoundingClientRect().width)}`).join(", ")}` : ""}`);
+      }
+    }
+    const walker = document.createTreeWalker(panel, NodeFilter.SHOW_TEXT);
+    for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+      const parent = node.parentElement;
+      if (!parent.getClientRects().length || parent instanceof SVGElement || parent.closest("pre, .sr-only")) continue;
+      let block = parent;
+      while (block && getComputedStyle(block).display.startsWith("inline")) block = block.parentElement;
+      for (const match of node.textContent.matchAll(/[^\s\-/]{5,}/g)) {
+        const range = document.createRange();
+        range.setStart(node, match.index);
+        range.setEnd(node, match.index + match[0].length);
+        const pieces = [...range.getClientRects()];
+        if (new Set(pieces.map((piece) => Math.round(piece.top))).size > 1 && pieces.reduce((sum, piece) => sum + piece.width, 0) <= block.clientWidth - 2) problems.push(`"${match[0]}" breaks inside the word in ${name(block)}`);
+      }
+    }
+    return [...new Set(problems)];
+  });
+}
+
+test("@responsive whole screens keep their controls and words intact at 200 % text size", async ({ page, request }, testInfo) => {
+  test.skip(page.viewportSize().width > 480, "the phone layout is the one the text size breaks");
+  test.setTimeout(240_000);
+  expect((await request.get("/api/fixture/demo")).ok()).toBeTruthy();
+  expect((await request.get("/api/fixture/features")).ok()).toBeTruthy();
+  await page.goto("/#coach");
+  await page.waitForFunction(() => state.initialStateLoaded);
+  await page.evaluate(() => document.documentElement.style.setProperty("font-size", "200%", "important"));
+  const found = {};
+  for (const route of WHOLE_SCREENS) {
+    await page.evaluate((target) => AppRouter.navigate(target, { historyMode: "replace" }), route);
+    await page.waitForTimeout(600);
+    await page.evaluate(() => document.querySelectorAll(".panel.active details:not([open])").forEach((element) => { if (!element.matches(".planned-entry")) element.open = true; }));
+    await page.waitForTimeout(400);
+    const problems = await wholeScreenProblems(page);
+    if (problems.length) {
+      found[route] = problems;
+      await page.screenshot({ path: testInfo.outputPath(`${route.replace("/", "-")}.png`), fullPage: true });
+    }
+  }
+  await testInfo.attach("reflow", { body: JSON.stringify(found, null, 1), contentType: "application/json" });
+  const lines = Object.entries(found).map(([route, problems]) => `${route}: ${problems.slice(0, 6).join("; ")}`);
+  expect(lines, lines.join(" | ")).toEqual([]);
+});
