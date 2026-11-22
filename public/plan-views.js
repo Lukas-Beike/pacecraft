@@ -2869,6 +2869,8 @@ function libraryWahooRow(workout) {
 // "Einplanen" and "Löschen" without the Coach (#3028): the calendar's day strip plans a local unit from the
 // entry; "Löschen" archives the entry and units planned from it stay. Each receipt offers "Rückgängig".
 const libraryReceipts = new Map();
+// Entries whose day strip is open, so a background reload's redraw keeps it open (#3980).
+const libraryOpenStrips = new Set();
 
 function libraryActions(workout) {
   if (!workout.id) return [];
@@ -2881,6 +2883,7 @@ function libraryActions(workout) {
     const buttons = [...days.querySelectorAll("button, input")];
     buttons.forEach((item) => { item.disabled = true; });
     status.replaceChildren();
+    libraryOpenStrips.delete(id);
     try {
       const result = await api(`/api/library/${encodeURIComponent(id)}/schedule`, { method: "POST", body: JSON.stringify({ date: day }) });
       const text = `Eingeplant: ${MOVE_DAY_FORMAT.format(dateFromKey(day))}`;
@@ -2891,13 +2894,17 @@ function libraryActions(workout) {
     } catch (error) {
       buttons.forEach((item) => { item.disabled = false; });
       status.textContent = error.message;
+      libraryOpenStrips.add(id);
     }
   };
   const days = plannedDayStrip(timezoneDateKey(state.data?.profile?.timezone, new Date()), null, "Tag", (day) => void schedule(day));
-  toggle.addEventListener("click", () => {
-    days.hidden = !days.hidden;
-    toggle.setAttribute("aria-expanded", String(!days.hidden));
-  });
+  const showDays = (open) => {
+    days.hidden = !open;
+    toggle.setAttribute("aria-expanded", String(open));
+    if (open) libraryOpenStrips.add(id); else libraryOpenStrips.delete(id);
+  };
+  toggle.addEventListener("click", () => showDays(days.hidden));
+  if (libraryOpenStrips.has(id)) showDays(true);
   const [remove, confirm] = inCardDelete(async () => {
     const result = await api(`/api/library/${encodeURIComponent(id)}/archive`, { method: "POST", body: JSON.stringify({ confirmed: true }) });
     libraryReceipts.clear();
