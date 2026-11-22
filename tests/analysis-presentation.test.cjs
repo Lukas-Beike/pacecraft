@@ -230,7 +230,7 @@ test("body overview: the newest own body fat with its source, weight with its so
   // An entered percentage newer than the folds is the KFA; the scale's newer 22 % is not KFA (#3336).
   let shown = rows([["2026-11-15", 15]]);
   assert.equal(textOf(shown[0].children[0]), "GewichtGarmin Connect · 2026-11-16");
-  assert.equal(textOf(shown[1].children[0]), "KörperfettLokal · 2026-11-15");
+  assert.equal(textOf(shown[1].children[0]), "KörperfettEingetragen · 2026-11-15");
   assert.equal(textOf(shown[1].children[1]), "15 %");
   assert.equal(shown[0].children[2].children[0].label, "Gewicht eintragen");
   assert.equal(shown[1].children[2].children[0].label, "Körperfett eintragen");
@@ -679,7 +679,7 @@ test("current performance shows the status lines below its heading", () => {
   const walk = (node) => { if (node?.dataset?.metric) rows.push(node); (node?.children || []).forEach(walk); };
   root.children.forEach(walk);
   const label = (key) => textOf(rows.find((row) => row.dataset.metric === key).children[0]);
-  assert.deepEqual([label("run_lt1_pace_seconds_per_km"), label("run_lt1_hr_bpm"), label("cycling_lt1_hr_bpm"), label("cycling_lt1_watts")], ["Aerobe Schwelle (LT1) · Pace", "Aerobe Schwelle (LT1) · Puls", "Aerobe Schwelle (LT1) · Puls", "Aerobe Schwelle (LT1) · Leistung"]);
+  assert.deepEqual([label("run_lt1_pace_seconds_per_km"), label("run_lt1_hr_bpm"), label("cycling_lt1_hr_bpm"), label("cycling_lt1_watts")], ["Aerobe Schwelle (LT1) · Pace", "Aerobe Schwelle (LT1) · Herzfrequenz", "Aerobe Schwelle (LT1) · Herzfrequenz", "Aerobe Schwelle (LT1) · Leistung"]);
   assert.equal(root.dataset.analysisEmptyRunning, "false");
 });
 
@@ -756,7 +756,7 @@ test("zone distributions list the highest zone first and draw pace zones after p
   const zone = (sensor, seconds, zone_model = "local") => ({ sensor, zone_model, seconds, measured_seconds: Object.values(seconds).reduce((a, b) => a + b, 0) });
   const cards = [];
   appendTrainingFocusZones({ zones: [zone("pace", { Z1: 300, Z4: 900 }), zone("power", { Z2: 600 }), zone("heart_rate", { Z2: 1200 }), zone("pace", { Z0: 0 }, "provider")] }, { append: (card) => cards.push(card) });
-  assert.deepEqual(cards.map((card) => Array.from(card)), [["HF-Zonen", "Z2:1200"], ["Power-Zonen", "Z2:600"], ["Pace-Zonen", "Z4:900 Z1:300"]]);
+  assert.deepEqual(cards.map((card) => Array.from(card)), [["Herzfrequenzzonen", "Z2:1200"], ["Leistungszonen", "Z2:600"], ["Pace-Zonen", "Z4:900 Z1:300"]]);
 });
 
 test("provider metrics carry German labels and the unit points where they are scores", () => {
@@ -1057,7 +1057,7 @@ test("one merged body series names each day's source in the overview and the tab
   } } } });
   const preferred = { weight_kg: "garmin", body_fat_pct: "garmin" };
   const entered = merged([{ date: "2026-11-16", value: 80, source_label: "Garmin" }, { date: "2026-11-17", value: 79.5, source_label: "eingetragen" }]);
-  assert.equal(JSON.stringify(bodyOverviewReading("weight_kg", entered, preferred)), JSON.stringify({ value: 79.5, note: "Lokal · 2026-11-17" }));
+  assert.equal(JSON.stringify(bodyOverviewReading("weight_kg", entered, preferred)), JSON.stringify({ value: 79.5, note: "Eingetragen · 2026-11-17" }));
   const garmin = merged([{ date: "2026-11-17", value: 80, source_label: "Garmin" }]);
   assert.equal(bodyOverviewReading("weight_kg", garmin, preferred).note, "Garmin Connect · 2026-11-17");
   // KFA reads only the athlete's own days, also out of the merged series.
@@ -1065,7 +1065,7 @@ test("one merged body series names each day's source in the overview and the tab
   assert.equal(bodyOverviewReading("body_fat_pct", garmin, preferred).text, "—");
   // #3569: a profile body fat is the athlete's own skinfold and says so.
   const fold = merged([{ date: "2026-11-16", value: 14, source_label: "Garmin" }, { date: "2026-11-17", value: 13.5, source_label: "Hautfalten" }]);
-  assert.equal(JSON.stringify(bodyOverviewReading("body_fat_pct", fold, preferred)), JSON.stringify({ value: 13.5, note: "Lokal (Hautfalten) · 2026-11-17" }));
+  assert.equal(JSON.stringify(bodyOverviewReading("body_fat_pct", fold, preferred)), JSON.stringify({ value: 13.5, note: "Eingetragen (Hautfalten) · 2026-11-17" }));
 });
 
 test("one period table serves every Analyse and Ernährung selector (#3839)", () => {

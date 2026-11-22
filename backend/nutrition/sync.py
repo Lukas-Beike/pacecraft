@@ -57,7 +57,7 @@ class IntervalsNutritionSyncService:
         if not athlete:
             raise AppError(
                 400,
-                "Intervals Athlete-ID ist nicht konfiguriert.",
+                "Intervals Athlete-ID ist nicht eingerichtet.",
                 reason="not_configured",
             )
 

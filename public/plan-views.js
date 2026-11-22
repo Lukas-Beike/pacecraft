@@ -472,7 +472,7 @@ function calendarBadgeRow(specs) {
 
 function competitionSportLabel(sport, environment) {
   if (sport === "ride" && environment === "virtual") return "Rad indoor";
-  return ({ Cycling: "Radfahren", Ride: "Radfahren", ride: "Radfahren", VirtualRide: "Rad indoor", Running: "Laufen", Run: "Laufen", run: "Laufen", Swim: "Schwimmen", swim: "Schwimmen", Strength: "Krafttraining", strength: "Krafttraining", other: "Andere" })[sport] || sport || "–";
+  return ({ Cycling: "Radfahren", Ride: "Radfahren", ride: "Radfahren", VirtualRide: "Rad indoor", Running: "Laufen", Run: "Laufen", run: "Laufen", Swim: "Schwimmen", swim: "Schwimmen", Strength: "Kraft", strength: "Kraft", other: "Andere" })[sport] || sport || "–";
 }
 
 function competitionDate(competition, todayKey) {
@@ -1040,7 +1040,7 @@ function actualCalendarFacts(actual) {
     Belastung: calendarMetricNumber(actual.training_load),
     RPE: rpe != null ? `${rpe}/10` : null,
     Intensität: calendarIntensityLabel(actual.intensity),
-    "Ø Puls": calendarMetricNumber(actual.avg_hr, " bpm"),
+    "Ø Herzfrequenz": calendarMetricNumber(actual.avg_hr, " bpm"),
     "Ø Leistung": calendarMetricNumber(actual.avg_power, " W"),
     Pace: calendarPaceLabel(actual),
     Höhenmeter: calendarMetricNumber(actual.elevation_gain_m, " m"),
@@ -1048,7 +1048,7 @@ function actualCalendarFacts(actual) {
   const sport = activitySportLabel(calendarSportType(actual));
   if (sport === "Laufen") {
     return [
-      ["Pace", values.Pace], ["Ø Puls", values["Ø Puls"]],
+      ["Pace", values.Pace], ["Ø Herzfrequenz", values["Ø Herzfrequenz"]],
       // Runs store the cadence per leg; the step frequency counts both legs.
       ["Schrittfrequenz", Number(actual.avg_cadence) > 0 ? calendarRoundedNumber(Number(actual.avg_cadence) * 2, " spm") : null],
       ["Ø Leistung", values["Ø Leistung"]], ["Belastung", values.Belastung], ["RPE", values.RPE],
@@ -1059,10 +1059,10 @@ function actualCalendarFacts(actual) {
   if (sport === "Radfahren" || sport === "Rad indoor") {
     return [
       ["Normalized Power", calendarMetricNumber(actual.normalized_power, " W")], ["Ø Leistung", values["Ø Leistung"]],
-      ["Intensitätsfaktor", calendarIntensityFactor(actual.intensity)], ["Ø Puls", values["Ø Puls"]],
+      ["Intensitätsfaktor", calendarIntensityFactor(actual.intensity)], ["Ø Herzfrequenz", values["Ø Herzfrequenz"]],
       ["Trittfrequenz", calendarRoundedNumber(actual.avg_cadence, " rpm")],
       ["Belastung", values.Belastung], ["RPE", values.RPE],
-      ["Ø Tempo", calendarSpeedLabel(actual)],
+      ["Ø Geschwindigkeit", calendarSpeedLabel(actual)],
       ["Höhenmeter", values.Höhenmeter],
     ];
   }
@@ -1287,7 +1287,7 @@ function plannedWeekSyncButton(weekKey, weekEntries, leftovers, todayKey) {
 function plannedConflict(entry, dateKey) {
   const labels = plannedConflictLabels(entry.conflicts);
   if (!labels.length) return null;
-  const button = h("button", { type: "button", className: "secondary-button planned-conflict-button" }, "Mit Coach lösen");
+  const button = h("button", { type: "button", className: "secondary-button planned-conflict-button" }, "Mit Coach besprechen");
   button.addEventListener("click", (event) => {
     // The button sits in the card summary; a click must not toggle the card.
     event.preventDefault();
@@ -1311,7 +1311,7 @@ function plannedGarminBlocked(entry, dateKey, todayKey, actual) {
     return block;
   }
   if (reason !== "unmapped") {
-    block.append(h("span", null, plannedGarminBlockedText(entry)), plannedCoachButton("Mit Coach strukturieren", `Strukturiere die Krafteinheit ${unit} für die Uhr: Übungen in Reihenfolge mit Sätzen, Wiederholungen, Last und Garmin-Übung. Frag nach, was fehlt.`));
+    block.append(h("span", null, plannedGarminBlockedText(entry)), plannedCoachButton("Mit Coach besprechen", `Strukturiere die Krafteinheit ${unit} für die Uhr: Übungen in Reihenfolge mit Sätzen, Wiederholungen, Last und Garmin-Übung. Frag nach, was fehlt.`));
     return block;
   }
   const unmapped = Array.isArray(entry.push_unmapped) ? entry.push_unmapped : [];
@@ -1364,7 +1364,7 @@ function plannedActivityActions(actual, dateKey, title, entryKey) {
     plannedEntryDurationLabel(actual, actual),
     /^[\w:.-]{1,80}$/.test(id) ? `ID ${id}` : null,
   ].filter(Boolean).join(", ")}).`;
-  const coach = plannedCoachButton("Mit dem Coach analysieren", prompt, "secondary-button", "session_analysis");
+  const coach = plannedCoachButton("Mit Coach besprechen", prompt, "secondary-button", "session_analysis");
   const feedback = h("button", { type: "button", className: "secondary-button planned-activity-feedback" }, "Feedback");
   feedback.addEventListener("click", () => globalThis.ActivityDetails.open({ ...actual, name: title }, { api, showDialog: showAccessibleDialog }));
   return [more, h("div", "planned-activity-actions", coach, feedback)];
@@ -1479,7 +1479,7 @@ function plannedDeleteControls(entry, dateKey, key) {
   });
 }
 
-// "Mit dem Coach besprechen" (#2193) opens the Coach with the unit named by date, sport, start, duration and
+// "Mit Coach besprechen" (#2193) opens the Coach with the unit named by date, sport, start, duration and
 // local id in the message field; the athlete adds the question and sends it. The stored name is never Coach input.
 function plannedDiscussButton(entry, dateKey) {
   const id = String(entry.local_id);
@@ -1489,7 +1489,7 @@ function plannedDiscussButton(entry, dateKey) {
     plannedEntryDurationLabel(null, entry),
     /^[\w:.-]{1,80}$/.test(id) ? `ID ${id}` : null,
   ].filter(Boolean).join(", ");
-  const button = h("button", { type: "button", className: "secondary-button" }, "Mit dem Coach besprechen");
+  const button = h("button", { type: "button", className: "secondary-button" }, "Mit Coach besprechen");
   button.addEventListener("click", () => void globalThis.askCoach?.(`Zur geplanten Einheit am ${dateLabel(dateKey)} (${reference}): `, { send: false }));
   return button;
 }
@@ -1617,7 +1617,7 @@ async function appendPlannedZoneTime(details, activityId, ride) {
     box.remove();
     return;
   }
-  const kind = power ? "Leistungszonen" : "HF-Zonen";
+  const kind = power ? "Leistungszonen" : "Herzfrequenzzonen";
   const minutes = (seconds) => `${Math.round(seconds / 60)}′`;
   const spoken = buckets.map((item) => `${item.name} ${Math.round(item.seconds / 60)} min`).join(", ");
   const bar = h("div", { className: "planned-zone-time-bar", role: "img", "aria-label": `Zeit in ${kind}: ${spoken}` },

@@ -67,7 +67,7 @@ test("the notice needs 2 bpm, 3 s/km or 5 W, or a switch to or from unbekannt", 
   const moved = { provider_hr: 173, provider_pace: 249, dfa_hr: 169, dfa_pace: 256, cs_pace: 249 };
   const changes = lt2NoticeChanges(seen, moved);
   assert.deepEqual(plain(changes).map((change) => change.key), ["provider_hr", "provider_pace", "cs_pace"]);
-  assert.equal(lt2NoticeDetail(changes, "Garmin"), "Garmin Puls 171 → 173 bpm, Garmin Pace 4:12 → 4:09 /km, CS unbekannt → 4:09 /km");
+  assert.equal(lt2NoticeDetail(changes, "Garmin"), "Garmin Herzfrequenz 171 → 173 bpm, Garmin Pace 4:12 → 4:09 /km, CS unbekannt → 4:09 /km");
   assert.deepEqual(plain(lt2NoticeChanges({ cp_power: 271 }, { cp_power: 266 })).length, 1);
   assert.deepEqual(plain(lt2NoticeChanges({ cp_power: 271 }, { cp_power: 267 })), []);
 });

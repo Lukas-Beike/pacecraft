@@ -375,7 +375,7 @@ function populateProfileField(form, key, value) {
   field.value = value || "";
 }
 
-const PROFILE_SPORT_LABELS = { Cycling: "Radfahren", Running: "Laufen", Swimming: "Schwimmen", Strength: "Krafttraining", WeightTraining: "Krafttraining", Triathlon: "Triathlon", Other: "Andere" };
+const PROFILE_SPORT_LABELS = { Cycling: "Radfahren", Running: "Laufen", Swimming: "Schwimmen", Strength: "Kraft", WeightTraining: "Kraft", Triathlon: "Triathlon", Other: "Andere" };
 
 function profileSportsLabel(sports) {
   return String(sports || "").split(",").map((item) => item.trim()).filter(Boolean)
@@ -518,7 +518,7 @@ function renderModel(model) {
   // A task whose provider has no key disables only its own entry points.
   // Every quick-action kind but the morning check-in runs on the planning model,
   // in the "Analyse & Plan" menu, its copies in the composer's "+" menu and the
-  // calendar's "Mit dem Coach analysieren" (#2744).
+  // calendar's "Mit Coach besprechen" (#2744).
   const planningOff = model?.tasks?.planning?.ready === false;
   const planning = $("#quickAnalysisButton");
   if (planning) planning.disabled = planningOff;
@@ -607,7 +607,7 @@ function renderReleaseChangelog(releases) {
   return true;
 }
 
-function aiConnectionConfigurationDetail() { return "OPENAI_API_KEY nicht konfiguriert"; }
+function aiConnectionConfigurationDetail() { return "OpenAI nicht eingerichtet"; }
 
 function aiConnectionErrorDetail(status) {
   const message = status.message || "OpenAI-Anfrage fehlgeschlagen.";
@@ -646,10 +646,10 @@ function intervalsConnectionState(data, configured) {
 
 function intervalsConnectionDetail(intervals) {
   const librarySync = intervals.library_sync || {};
-  if (!intervals.configured) return "API-Schlüssel nicht konfiguriert";
+  if (!intervals.configured) return "API-Schlüssel nicht eingerichtet";
   if (intervals.state === "syncing") return "Intervals.icu wird synchronisiert.";
   if (intervals.state === "error") return intervals.last_error || "Letzter Export fehlgeschlagen";
-  if (intervals.state === "configured") return "Noch nicht getestet";
+  if (intervals.state === "configured") return "Nicht geprüft";
   const usedAt = intervals.last_used_at || librarySync.last_sync_at;
   if (!usedAt) return "Noch keine Synchronisierung durchgeführt";
   const updated = formatTime(usedAt);

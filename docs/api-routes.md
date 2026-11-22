@@ -1077,7 +1077,7 @@ applied `days`, and for the weather `force: true`.
 Errors: 400 "Der Synchronisationszeitraum muss eine ganze Zahl sein." when
 `days` is not an integer, or "Der Zeitraum für garmin muss -1 oder
 zwischen 1 und 90 Tagen liegen." when it is out of range; 409
-`not_configured` for Garmin ("Garmin ist nicht konfiguriert. Unter Mehr →
+`not_configured` for Garmin ("Garmin ist nicht eingerichtet. Unter Mehr →
 Anbindungen bei Garmin anmelden oder einen Schlüssel der Garmin Personal
 API hinterlegen.") and Wahoo ("Wahoo ist nicht verbunden. Bitte Wahoo in
 den Einstellungen verbinden.") when the provider is not set up.
@@ -1147,7 +1147,7 @@ route of the same path.
 
 Errors: 400 "Zum vollständigen Resync muss FULL_RESYNC bestätigt werden."
 when `confirm` is not `FULL_RESYNC`; 503 `not_configured` when the
-provider is not set up: "Garmin ist nicht konfiguriert. Unter Mehr →
+provider is not set up: "Garmin ist nicht eingerichtet. Unter Mehr →
 Anbindungen bei Garmin anmelden oder einen Schlüssel der Garmin Personal
 API hinterlegen." or "Wahoo ist nicht verbunden. Bitte Wahoo in den
 Einstellungen verbinden."
@@ -1566,7 +1566,7 @@ Errors: 409 `nutrition_product_archived` "Archivierte Produkte werden nicht
 aktualisiert."; 400 `nutrition_product_barcode_missing` "Zum Aktualisieren
 braucht das Produkt eine EAN. Trage sie beim Bearbeiten ein."; 404
 `food_not_found` "Datenbankeintrag nicht gefunden."; 409 `not_configured` "Yazio
-ist nicht konfiguriert." for a Yazio food without credentials; 502
+ist nicht eingerichtet." for a Yazio food without credentials; 502
 `food_database_unavailable` "Der Datenbankeintrag konnte nicht aktualisiert
 werden."
 

@@ -21,7 +21,7 @@ test("equipment percentages render with a German decimal comma and a space befor
 test("profile sports are shown in German while stored identifiers stay unchanged", () => {
   const context = extractFunctions("views.js", ["PROFILE_SPORT_LABELS", "profileSportsLabel"]);
   assert.equal(context.profileSportsLabel("Cycling,Running,Swimming"), "Radfahren, Laufen, Schwimmen");
-  assert.equal(context.profileSportsLabel("Strength"), "Krafttraining");
+  assert.equal(context.profileSportsLabel("Strength"), "Kraft");
   assert.equal(context.profileSportsLabel("Rowing"), "Rowing");
   assert.equal(context.profileSportsLabel(""), "");
 });
@@ -100,4 +100,14 @@ test("a change that rounds to zero carries no sign (#3933)", () => {
   assert.equal(analysisChange(0.04, "kg"), "0,0 kg");
   assert.equal(analysisChange(-4, "s/km"), "−0:04 /km");
   assert.equal(analysisChange(0.2, "s/km"), "0:00 /km");
+
+// The term list of docs/view-catalogue.md: one word per thing, none of the others in the client source (#3933).
+test("the client source holds one word per thing", () => {
+  const fs = require("node:fs");
+  const path = require("node:path");
+  const dir = path.join(__dirname, "../public");
+  const sources = fs.readdirSync(dir).filter((name) => /\.(js|html)$/.test(name)).map((name) => [name, fs.readFileSync(path.join(dir, name), "utf8")]);
+  const other = ["Ø Puls", "Pulszonen", "HF-Zone", "Ø Tempo", "Kadenz", "Power-Zonen", "Kurzzeitbelastung", "Langzeitbelastung", "Session-RPE-Last", "Athletenkontext", "Mit Coach lösen", "Mit Coach strukturieren", "Mit dem Coach", "Nicht gesetzt", "Noch nicht getestet", "\"Krafttraining\"", ">Krafttraining<"];
+  const found = sources.flatMap(([name, text]) => other.filter((word) => text.includes(word)).map((word) => `${name}: ${word}`));
+  assert.deepEqual(found, []);
 });

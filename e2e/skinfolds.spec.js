@@ -49,7 +49,7 @@ for (const scheme of ["light", "dark"]) {
     await dialog.getByRole("button", { name: "Speichern" }).click();
     await expect(dialog).toBeHidden();
     await expect(row.locator("td").first()).toHaveText("14,3 %");
-    await expect(row.locator("th small")).toContainText("Lokal · ");
+    await expect(row.locator("th small")).toContainText("Eingetragen · ");
     await expect(page.locator("[data-body-overview] tr[data-metric='lean_mass_kg'] button")).toHaveCount(0);
 
     // A day with an entry fills the dialog; Löschen asks first.

@@ -28,7 +28,7 @@ test("saving a measured first threshold confirms, clears the entry and leaves no
 
   await form.locator('[name="first_threshold_hr"]').fill("150");
   await form.locator('[name="first_threshold_on"]').fill("2026-11-01");
-  await form.getByRole("button", { name: "Athletenkontext speichern" }).click();
+  await form.getByRole("button", { name: "Profil speichern" }).click();
 
   await expect(page.locator("#toast")).toContainText("Profil gespeichert");
   await expect(page.locator("#toast")).not.toContainText("unvollständig");
@@ -39,7 +39,7 @@ test("saving a measured first threshold confirms, clears the entry and leaves no
   expect(baseline.first_threshold_hr || "").toBe("");
   expect(baseline.first_threshold_on || "").toBe("");
 
-  await form.getByRole("button", { name: "Athletenkontext speichern" }).click();
+  await form.getByRole("button", { name: "Profil speichern" }).click();
   await expect(page.locator("#profileDirtyIndicator")).toBeHidden();
   await page.waitForTimeout(500);
   expect(puts.filter((body) => "first_threshold_hr" in body)).toHaveLength(1);

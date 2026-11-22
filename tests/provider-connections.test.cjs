@@ -98,7 +98,7 @@ test("badges show the source and only stored values offer removal", () => {
   assert.equal(badge("openai_api_key").className, "credential-source is-db");
   assert.equal(badge("openai_base_url").textContent, "Server-Einstellung");
   assert.equal(badge("openai_base_url").className, "credential-source is-env");
-  assert.equal(badge("intervals_api_key").textContent, "Nicht gesetzt");
+  assert.equal(badge("intervals_api_key").textContent, "Nicht eingerichtet");
   assert.equal(badge("intervals_api_key").className, "credential-source is-none");
 
   assert.equal(clear("openai_api_key").hidden, false);
@@ -416,8 +416,8 @@ test("the save payload drops blank and non-string values", () => {
 test("source views fall back to none for unknown sources", () => {
   assert.deepEqual(credentialSourceView({ source: "db" }), { source: "db", label: "In der App gespeichert", removable: true });
   assert.deepEqual(credentialSourceView({ source: "env" }), { source: "env", label: "Server-Einstellung", removable: false });
-  assert.deepEqual(credentialSourceView({ source: "weird" }), { source: "none", label: "Nicht gesetzt", removable: false });
-  assert.deepEqual(credentialSourceView(undefined), { source: "none", label: "Nicht gesetzt", removable: false });
+  assert.deepEqual(credentialSourceView({ source: "weird" }), { source: "none", label: "Nicht eingerichtet", removable: false });
+  assert.deepEqual(credentialSourceView(undefined), { source: "none", label: "Nicht eingerichtet", removable: false });
 });
 
 test("the Garmin card mode follows garmin_connection and the legacy flag", () => {

@@ -105,7 +105,7 @@ test("@responsive training focus draws pace-zone time after power zones", async 
     });
   });
   const zones = page.locator("#trainingZoneCharts");
-  await expect(zones.locator("h4")).toHaveText(["HF-Zonen", "Power-Zonen", "Pace-Zonen"].map((name) => new RegExp(`^${name}`)));
+  await expect(zones.locator("h4")).toHaveText(["Herzfrequenzzonen", "Leistungszonen", "Pace-Zonen"].map((name) => new RegExp(`^${name}`)));
   const pace = zones.locator(".training-focus-distribution").nth(2);
   await expect(pace.locator(".training-focus-row > span:first-child")).toHaveText(["Z5", "Z4", "Z3", "Z2", "Z1"]);
   await expect(pace.getByRole("progressbar", { name: "Z2: 55 Prozent" })).toBeVisible();
@@ -151,9 +151,9 @@ test("@responsive recovery, power, training focus, season and calendar profiles 
   const zones = page.locator("#trainingZoneCharts");
   // Power counts in the local zones from the streams; the fixture has no threshold
   // HR and Intervals.icu zone times are never read (#1743).
-  await expect(zones.getByRole("heading", { name: /^HF-Zonen/ })).toHaveCount(0);
+  await expect(zones.getByRole("heading", { name: /^Herzfrequenzzonen/ })).toHaveCount(0);
   await expect(zones).not.toContainText("keine aufgezeichneten");
-  await expect(zones.getByRole("heading", { name: /^Power-Zonen Power-Zonen/ })).toBeVisible();
+  await expect(zones.getByRole("heading", { name: /^Leistungszonen Leistungszonen/ })).toBeVisible();
   await expect(zones.getByRole("heading", { name: /\(Gerät\)/ })).toHaveCount(0);
   await expect(zones.locator("details")).toHaveCount(0);
   expect((await zones.boundingBox()).y).toBeGreaterThan((await report.boundingBox()).y);

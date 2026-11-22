@@ -360,7 +360,7 @@ The client SHALL present domain-provided planning, performance, activity, and eq
 
 #### Scenario: Compact calendar week
 - **WHEN** the athlete opens the calendar with past, today's and planned sessions
-- **THEN** it shows the current week as a timeline (weekday and date column, today filled) with previous/next week buttons and the ISO week, limited to the configured weeks ahead (the configured weeks back load at once; paging back has no limit and older weeks load their completed sessions on demand); each session is one compact row with sport icon, title, duration and distance and, for a planned unit only, a zone bar for its workout profile (16 px high on narrow screens), and opened, its session-type and intensity labels sit above their selects so no word breaks at phone width; a completed or missed unit is one slim row whose line holds the time and the status ("✓ Absolviert" with the share of the plan, "✓ Zusätzlich", "✕ Nicht absolviert") without zone or compliance bar, its activity name shown without the place prefix of the profile's weather location; opened, it shows its chart, each value once with German labels and per sport (runs and rides have their own lists, a value without data is left out), the plan line, the "Details" toggle, "Mit dem Coach analysieren" and "Feedback" (see "Calendar cards carry the single-session analysis"); planned sessions are dashed, completed ones solid and missed ones outlined in red; identical extra activities of a day form one row; on screens at least 1100 px wide the opened session shows as a detail pane beside the week, level with its card (title, day, status, larger profile with its axis, and the session details), and one session of the week is opened by default; a "Woche | Monat" switch (never stored, entering the calendar shows the week again) shows the month of the selected day as whole weeks Monday to Sunday with neighbouring days muted, one mark per session (a dot coloured by sport, outlined when planned, red when missed; a duration chip and the ISO week with its planned time on wide screens), today filled, the selected day ringed and the current week tinted, and selecting a day shows its week below; "Zusätzlich" appears only in weeks with a plan; the week summary is a fixed planned/completed grid with one duration format and no dash-only rows; calendar notes are neutral text, each conflict is one component with one Coach action, and weeks with workout profiles show a zone legend.
+- **THEN** it shows the current week as a timeline (weekday and date column, today filled) with previous/next week buttons and the ISO week, limited to the configured weeks ahead (the configured weeks back load at once; paging back has no limit and older weeks load their completed sessions on demand); each session is one compact row with sport icon, title, duration and distance and, for a planned unit only, a zone bar for its workout profile (16 px high on narrow screens), and opened, its session-type and intensity labels sit above their selects so no word breaks at phone width; a completed or missed unit is one slim row whose line holds the time and the status ("✓ Absolviert" with the share of the plan, "✓ Zusätzlich", "✕ Nicht absolviert") without zone or compliance bar, its activity name shown without the place prefix of the profile's weather location; opened, it shows its chart, each value once with German labels and per sport (runs and rides have their own lists, a value without data is left out), the plan line, the "Details" toggle, "Mit Coach besprechen" and "Feedback" (see "Calendar cards carry the single-session analysis"); planned sessions are dashed, completed ones solid and missed ones outlined in red; identical extra activities of a day form one row; on screens at least 1100 px wide the opened session shows as a detail pane beside the week, level with its card (title, day, status, larger profile with its axis, and the session details), and one session of the week is opened by default; a "Woche | Monat" switch (never stored, entering the calendar shows the week again) shows the month of the selected day as whole weeks Monday to Sunday with neighbouring days muted, one mark per session (a dot coloured by sport, outlined when planned, red when missed; a duration chip and the ISO week with its planned time on wide screens), today filled, the selected day ringed and the current week tinted, and selecting a day shows its week below; "Zusätzlich" appears only in weeks with a plan; the week summary is a fixed planned/completed grid with one duration format and no dash-only rows; calendar notes are neutral text, each conflict is one component with one Coach action, and weeks with workout profiles show a zone legend.
 
 #### Scenario: Calendar sport filter
 - **WHEN** the athlete picks "Lauf", "Rad" or "Kraft" in the chip row below the week or month switch
@@ -378,12 +378,12 @@ The client SHALL present domain-provided planning, performance, activity, and eq
 - **THEN** the pane lists one row per step with its zone colour mark, duration or distance, zone, and the target range right-aligned ("110–128 bpm", "≤ 109 bpm", pace in min/km) from the zones in effect on the unit's day; a step without a range shows none; the description keeps only its free text, and the stored workout text and its export stay unchanged.
 
 #### Scenario: Discuss a planned unit with the Coach
-- **WHEN** the athlete taps "Mit dem Coach besprechen" on an opened planned unit
+- **WHEN** the athlete taps "Mit Coach besprechen" on an opened planned unit
 - **THEN** the Coach opens with the unit named by date, sport, start time, duration and local id in the message field (after an unsent draft, which stays), focused for the athlete's question; nothing is sent and the stored name is not part of the message.
 
 #### Scenario: Provider send state of plan entries
 - **WHEN** the athlete views a pending planned unit, a strength unit Garmin cannot receive, or a changed Wahoo library workout
-- **THEN** a week with pending units or leftovers at a provider offers one "Woche synchronisieren" button in its heading (unit cards carry none; `garmin-strength-workout-push` and `training-library` define what it sends and removes); a blocked strength unit names the reason (no strength structure or an unmapped exercise) with a "Mit Coach strukturieren" action or exercise suggestions; a changed library workout shows "Wahoo: geändert" with an explicit send, and opening a view sends nothing.
+- **THEN** a week with pending units or leftovers at a provider offers one "Woche synchronisieren" button in its heading (unit cards carry none; `garmin-strength-workout-push` and `training-library` define what it sends and removes); a blocked strength unit names the reason (no strength structure or an unmapped exercise) with a "Mit Coach besprechen" action or exercise suggestions; a changed library workout shows "Wahoo: geändert" with an explicit send, and opening a view sends nothing.
 
 #### Scenario: Loading, empty, missing and failed reads
 - **WHEN** an analysis or session read is pending, has no data yet, lacks a single value, or fails
@@ -435,7 +435,7 @@ Evidence:
 - `e2e/analysis-info.spec.js::@responsive steps and floors show per-day units, whole numbers and the plotted basis`
 - `e2e/calendar-detail-pane.spec.js::@responsive a planned unit lists its steps with zone and target range instead of the workout notation`
 - `e2e/calendar-detail-pane.spec.js::@responsive Löschen asks once in the card, deletes a planned unit and Rückgängig brings it back`
-- `e2e/calendar-detail-pane.spec.js::@responsive Mit dem Coach besprechen puts the planned unit into the Coach field without sending`
+- `e2e/calendar-detail-pane.spec.js::@responsive Mit Coach besprechen puts the planned unit into the Coach field without sending`
 - `e2e/calendar-detail-pane.spec.js::@responsive Verschieben moves a planned unit to a tapped day and Rückgängig puts it back`
 - `e2e/calendar-week-compact.spec.js::@responsive compact calendar week shows one week, groups repeats and keeps one conflict style`
 - `e2e/calendar-week-compact.spec.js::@responsive the Monat switch shows the month grid and the calendar returns to the week`
@@ -533,7 +533,7 @@ The client SHALL fill the selected tab or range with one accent style everywhere
 Evidence: `public/analysis.js::appendAnalysisDateTicks`, `public/activity-analysis.js::chartRange`, `public/activity-details.js::providerNotes`, `public/nutrition.js::nutritionCard`, `public/auth.js::setLoginError`, `e2e/ux-polish.spec.js`.
 
 ### Requirement: Calendar cards carry the single-session analysis
-The calendar card of a completed session SHALL carry its single-session analysis behind a "Details" toggle, with "Mit dem Coach analysieren" and "Feedback" beside it. The Analyse tab SHALL have no separate list of sessions, the calendar SHALL page back without limit so every stored session stays reachable, and the Coach SHALL NOT receive per-second running dynamics.
+The calendar card of a completed session SHALL carry its single-session analysis behind a "Details" toggle, with "Mit Coach besprechen" and "Feedback" beside it. The Analyse tab SHALL have no separate list of sessions, the calendar SHALL page back without limit so every stored session stays reachable, and the Coach SHALL NOT receive per-second running dynamics.
 
 #### Scenario: Details in the card
 - **WHEN** the athlete opens "Details" of a completed session
@@ -541,7 +541,7 @@ The calendar card of a completed session SHALL carry its single-session analysis
 
 #### Scenario: Time in zones
 - **WHEN** the athlete opens a completed session's card
-- **THEN** below its values one slim bar shows the session's time per zone (power zones for a ride that has them, else heart-rate zones) with the minutes per zone below and the zone kind and source ("HF-Zonen · Garmin Connect"), read from the same session read as "Details" (one request per session and calendar data while both are open; a failed read is read again); a session without zones or with a failed read shows no bar.
+- **THEN** below its values one slim bar shows the session's time per zone (power zones for a ride that has them, else heart-rate zones) with the minutes per zone below and the zone kind and source ("Herzfrequenzzonen · Garmin Connect"), read from the same session read as "Details" (one request per session and calendar data while both are open; a failed read is read again); a session without zones or with a failed read shows no bar.
 
 #### Scenario: Session chart scale
 - **WHEN** a session channel is charted
@@ -552,7 +552,7 @@ The calendar card of a completed session SHALL carry its single-session analysis
 - **THEN** each available one is charted per second with the same name as its average in the value list and named in the data coverage, and the Coach's activity details carry only the averages.
 
 #### Scenario: Feedback and Coach actions
-- **WHEN** the athlete taps "Feedback" or "Mit dem Coach analysieren" on an opened completed session
+- **WHEN** the athlete taps "Feedback" or "Mit Coach besprechen" on an opened completed session
 - **THEN** "Feedback" opens the dialog with the session type, session RPE, deviation reason, notes and the confirm, split and delete actions, and the Coach button starts one session-analysis turn (`session_analysis`, on the planning model; off without that model's key) that names the session by date, sport, time, duration and id, never by its stored name.
 
 #### Scenario: No sessions segment in Analyse

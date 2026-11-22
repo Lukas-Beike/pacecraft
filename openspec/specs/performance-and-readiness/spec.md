@@ -143,7 +143,7 @@ The system SHALL summarize the supported 28-day training focus from recorded hea
 
 #### Scenario: Zone cards in the Analysis view
 - **WHEN** the training focus holds zone seconds
-- **THEN** the PWA draws one card per sensor and zone model, highest zone on top, in the order HF-Zonen, Power-Zonen, Pace-Zonen, device zones as a separate "(Gerät)" card.
+- **THEN** the PWA draws one card per sensor and zone model, highest zone on top, in the order Herzfrequenzzonen, Leistungszonen, Pace-Zonen, device zones as a separate "(Gerät)" card.
 
 #### Scenario: Category map and periods
 - **WHEN** a session's `training_effect_label` is read

@@ -94,7 +94,7 @@ test("a profile save sends no Garmin export and reports its own failure", async 
   const { context, calls, toasts } = profileContext({ server: {}, baseline: { name: "Anna", sports: "" }, stateProfile: {} });
   await context.saveProfile(submitEvent([["name", "Anna M."]]).event);
   assert.deepEqual(plain(calls.find((call) => call.method === "PUT").body), { name: "Anna M." });
-  assert.equal(toasts.at(-1).message, "Profil gespeichert und für den Coach aktiviert");
+  assert.equal(toasts.at(-1).message, "Profil gespeichert");
   const failed = profileContext({ server: {}, baseline: { name: "Anna", sports: "" }, stateProfile: {}, error: new Error("Nicht gespeichert") });
   await failed.context.saveProfile(submitEvent([["name", "Anna M."]]).event);
   assert.deepEqual(plain(failed.toasts.at(-1)), { message: "Nicht gespeichert", isError: true });

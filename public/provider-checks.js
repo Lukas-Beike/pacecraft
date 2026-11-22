@@ -6,7 +6,7 @@
 // the recovery guidance for rejected credentials.
 
 const PROVIDER_CHECK_TEXT = Object.freeze({
-  not_configured: "Verbindung: nicht konfiguriert",
+  not_configured: "Verbindung: nicht eingerichtet",
   unchecked: "Verbindung: nicht geprüft",
   success: "Verbindung erfolgreich",
   rate_limited: "Anfragen begrenzt – später erneut prüfen",

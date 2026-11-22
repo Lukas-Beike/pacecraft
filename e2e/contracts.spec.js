@@ -401,7 +401,7 @@ test("profile invalid JSON and incomplete success preserve the dirty draft", asy
     await page.route("**/api/profile", (route) => route.request().method() === "PUT"
       ? route.fulfill({ status: 200, contentType: "application/json", body }) : route.continue());
     await page.locator("#profileForm").getByLabel("Name", { exact: true }).fill("Unsaved fixture athlete");
-    await page.getByRole("button", { name: "Athletenkontext speichern", exact: true }).click();
+    await page.getByRole("button", { name: "Profil speichern", exact: true }).click();
     await expect(page.locator("#profileDirtyIndicator")).toBeVisible();
     await expect(page.locator("#profileForm").getByLabel("Name", { exact: true })).toHaveValue("Unsaved fixture athlete");
     await expect(page.locator("#toast")).not.toContainText("Athletenprofil gespeichert");
@@ -689,7 +689,7 @@ test("planned agenda prioritizes dates and sessions with compact weather and exp
   await expect(facts).toContainText("Belastung 42");
   await expect(facts).not.toContainText("Trainingsload");
   await expect(completed.locator(".planned-entry-details")).not.toContainText(/Belastung 42.*Belastung 42/);
-  const analyse = completed.getByRole("button", { name: "Mit dem Coach analysieren" });
+  const analyse = completed.getByRole("button", { name: "Mit Coach besprechen" });
   const [sent, kind] = await analyse.evaluate((button) => {
     let text = null;
     let requestKind = null;
@@ -705,8 +705,8 @@ test("planned agenda prioritizes dates and sessions with compact weather and exp
   expect(await page.evaluate(() => {
     const planning = state.data.model?.tasks?.planning;
     state.data.model = { ...state.data.model, tasks: { ...state.data.model?.tasks, planning: { ...planning, ready: false } } };
-    const off = plannedCoachButton("Mit dem Coach analysieren", "x", "secondary-button", "session_analysis").disabled;
-    const discuss = plannedCoachButton("Mit dem Coach besprechen", "x").disabled;
+    const off = plannedCoachButton("Mit Coach besprechen", "x", "secondary-button", "session_analysis").disabled;
+    const discuss = plannedCoachButton("Mit Coach besprechen", "x").disabled;
     state.data.model = { ...state.data.model, tasks: { ...state.data.model.tasks, planning } };
     return [off, discuss];
   })).toEqual([true, false]);

@@ -95,7 +95,7 @@ test("the Intervals.icu detail names the last export, also one that was no libra
   const { intervalsConnectionDetail } = extractFunctions("views.js", ["intervalsConnectionDetail"], { formatTime: (value) => `um ${value}` });
   const base = { configured: true, library_sync: { last_sync_at: null, state: {} } };
   assert.equal(intervalsConnectionDetail({ ...base, state: "connected", last_used_at: "T1" }), "Letzte Aktualisierung: um T1");
-  assert.equal(intervalsConnectionDetail({ ...base, state: "configured" }), "Noch nicht getestet");
+  assert.equal(intervalsConnectionDetail({ ...base, state: "configured" }), "Nicht geprüft");
   assert.equal(intervalsConnectionDetail({ ...base, state: "error", last_error: null }), "Letzter Export fehlgeschlagen");
 });
 
