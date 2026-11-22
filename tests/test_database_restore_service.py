@@ -118,7 +118,7 @@ class DatabaseRestoreServiceTests(unittest.TestCase):
                 sync_wake=self.sync_wake,
                 coach_wake=self.coach_wake,
                 config=DatabaseRestoreConfig(self.data_dir, self.database_path),
-                redact=lambda _message: "redacted",
+                redact=lambda message: "redacted" if message else "",
                 diagnostics_suspended=self.diagnostics_suspended,
                 canonical_backfill_start=self.canonical_backfill_start,
                 logger=self.logger,
@@ -429,16 +429,24 @@ class DatabaseRestoreServiceTests(unittest.TestCase):
         )
 
     def test_unexpected_validation_error_is_redacted_without_mutation(self) -> None:
-        self.validation.validate.side_effect = RuntimeError("sensitive source")
+        # Damaged pages raise without text and answered an empty reason (#3927).
+        for error, reason in (
+            (RuntimeError("sensitive source"), "redacted"),
+            (sqlite3.DatabaseError(""), "Die Datei ist beschädigt oder unlesbar."),
+        ):
+            with self.subTest(error=repr(error)):
+                self.validation.validate.side_effect = error
 
-        with self.assertRaises(AppError) as raised:
-            self.service.restore(b"replacement database")
+                with self.assertRaises(AppError) as raised:
+                    self.service.restore(b"replacement database")
 
-        self.assertEqual(raised.exception.status, 400)
-        self.assertIn("redacted", raised.exception.message)
-        self.assertNotIn("sensitive source", raised.exception.message)
-        self.assertEqual(self.database_path.read_bytes(), b"previous database")
-        self.assertFalse((self.data_dir / "staged.db").exists())
+                self.assertEqual(raised.exception.status, 400)
+                self.assertEqual(
+                    "Das Datenbank-Backup konnte nicht validiert werden: " + reason,
+                    raised.exception.message,
+                )
+                self.assertEqual(self.database_path.read_bytes(), b"previous database")
+                self.assertFalse((self.data_dir / "staged.db").exists())
 
     def test_swap_failure_preserves_previous_database_and_releases_gate(self) -> None:
         with (

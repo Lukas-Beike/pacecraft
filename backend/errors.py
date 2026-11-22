@@ -31,6 +31,10 @@ PLANNED_CALENDAR_RECHECK_ERROR = (
 )
 
 
+class SchemaRefusedError(RuntimeError):
+    """The database schema is not one this release opens; nothing was changed."""
+
+
 class AppError(Exception):
     def __init__(
         self,

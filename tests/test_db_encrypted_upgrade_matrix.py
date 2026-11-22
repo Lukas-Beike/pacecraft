@@ -29,7 +29,7 @@ from backend.backup.restore_validation import (
     DatabaseRestoreValidationConfig,
     DatabaseRestoreValidationService,
 )
-from backend.config import DATABASE_KEY_MISMATCH_MESSAGE, refuse_wrong_database_key
+from backend.config import DATABASE_KEY_MISMATCH_MESSAGE, refuse_unopenable_database
 from backend.db import migrations, row_factory
 from backend.db.manager import DatabaseManager
 from backend.db.migrations import migrate_schema
@@ -274,7 +274,7 @@ class EncryptedUpgradeMatrixTests(unittest.TestCase):
         # The pinned driver's wrong-key error is the one start-up refuses with a
         # plain reason, and the database file is untouched (#2912).
         with self.assertRaises(SystemExit) as refused:
-            refuse_wrong_database_key(raised.exception, mock.Mock())
+            refuse_unopenable_database(raised.exception, mock.Mock())
         self.assertEqual(DATABASE_KEY_MISMATCH_MESSAGE, refused.exception.code)
         self.assertEqual(stored, path.read_bytes())
 

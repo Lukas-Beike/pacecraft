@@ -100,6 +100,10 @@ The loader SHALL read `KEY=VALUE` lines from `<application directory>/.env` and 
 - **WHEN** `APP_PASSWORD` does not open the existing encrypted database
 - **THEN** one CRITICAL log with event `secure_startup_refused` and reason `database_unreadable` is written without the driver's text, key or path, the process exits non-zero with "Die Datenbank lässt sich mit diesem App-Passwort nicht öffnen: Das Passwort passt nicht, oder die Datei ist beschädigt. Die Datenbank wurde nicht verändert.", and the database file is unchanged
 
+#### Scenario: Schema this release does not open
+- **WHEN** the existing database has an older, newer or unknown schema
+- **THEN** one CRITICAL log with event `secure_startup_refused` and reason `schema_unsupported` is written, the process exits non-zero with the schema refusal message, and the database file stays byte-identical
+
 #### Scenario: Password in the data directory
 - **WHEN** `<DATA_DIR>/.env` assigns a non-empty `APP_PASSWORD`
 - **THEN** startup continues and logs a warning with event `app_password_in_data_dir`
@@ -112,7 +116,7 @@ The loader SHALL read `KEY=VALUE` lines from `<application directory>/.env` and 
 - **WHEN** `OPENAI_BASE_URL` or `ANTHROPIC_BASE_URL` fails validation
 - **THEN** the process does not start (error "OPENAI_BASE_URL muss HTTPS oder HTTP auf Loopback verwenden." or the same text for `ANTHROPIC_BASE_URL`)
 
-Evidence: `backend/config.py` (`load_local_env`, `_parse_local_env_line`, `security_configuration_error`, `refuse_wrong_database_key`, `data_dir_env_warning`, `proxy_list_warning`, `validated_base_url`); `server.py::main`. Tests: `tests/test_config.py::test_security_error_order_and_success`; `tests/test_config.py::test_local_env_defines_reports_only_assigned_names`; `tests/test_config.py::test_data_dir_env_warning_never_contains_the_value`; `tests/test_config.py::test_process_values_win_over_persisted_values`; `tests/test_config.py::test_openai_base_url_requires_https_or_loopback_http`; `tests/test_server_sync.py::test_a_wrong_app_password_stops_startup_with_one_plain_reason`; `tests/test_db_encrypted_upgrade_matrix.py::test_the_baseline_restarts_unchanged_and_needs_its_key`. No test pins the quote handling, the other `secure_startup_refused` and warning log events, or the startup failure for an unsafe `ANTHROPIC_BASE_URL`.
+Evidence: `backend/config.py` (`load_local_env`, `_parse_local_env_line`, `security_configuration_error`, `refuse_unopenable_database`, `data_dir_env_warning`, `proxy_list_warning`, `validated_base_url`); `server.py::main`. Tests: `tests/test_config.py::test_security_error_order_and_success`; `tests/test_config.py::test_local_env_defines_reports_only_assigned_names`; `tests/test_config.py::test_data_dir_env_warning_never_contains_the_value`; `tests/test_config.py::test_process_values_win_over_persisted_values`; `tests/test_config.py::test_openai_base_url_requires_https_or_loopback_http`; `tests/test_server_sync.py::test_a_wrong_app_password_stops_startup_with_one_plain_reason`; `tests/test_db_encrypted_upgrade_matrix.py::test_the_baseline_restarts_unchanged_and_needs_its_key`. No test pins the quote handling, the other `secure_startup_refused` and warning log events, or the startup failure for an unsafe `ANTHROPIC_BASE_URL`.
 
 ### Requirement: Ordered startup and durable-work recovery
 
