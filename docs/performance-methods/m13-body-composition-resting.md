@@ -40,6 +40,7 @@ These stand beside Garmin's resting value and the derived resting rate of M12 as
 - **R71** (Siri 1961): density to body fat.
 - **R72** (Cunningham 1980): BMR from lean mass. Full text read.
 - **R73** (Cunningham 1991): the general REE equation, which is the formula known as Katch-McArdle.
+- **R78** (Loucks, Kiens & Wright 2011) and **R79** (Mountjoy et al. 2023): energy availability and its low state; the lean mass is this card's (#3917). The 30 kcal/kg FFM line is the athlete's decision; the abstracts read name no cut-off.
 - Athlete decisions on #3099:
   - one value per site;
   - a birth year in the profile;
@@ -113,6 +114,7 @@ None of these is a validation in this athlete or in trained endurance athletes a
 | Fitted ages | 18–61 (men), 18–55 (women) | source | R69, R70 |
 | Body fat for lean mass | 0–70 % (exclusive) | product assumption | outside, the lean mass is not plausible |
 | Measurement validity | 90 days | product assumption | the resting reference's lookback (M12) |
+| Energy availability | (intake − net exercise energy, M11) / lean mass, a 7-day mean; shown with ≥ 5 complete intake days among the 7 and a known lean mass, below 30 kcal/kg FFM/day (rounded down) | product assumption | athlete decision, #3917; R78 and R79 define energy availability, their abstracts name no cut-off; the lean mass is this card's, so it is as uncertain as the body fat; non-blocking |
 
 ## Allowed statements
 
@@ -122,6 +124,7 @@ None of these is a validation in this athlete or in trained endurance athletes a
 - "Passt am besten: Katch-McArdle", from the fit against the adaptive expenditure.
 - "Körperfett unbekannt (ohne Geburtsjahr)".
 - "Alter außerhalb der Studie", next to a body fat whose age lies outside the fitted range.
+- "Energieverfügbarkeit (7 Tage) X kcal/kg FFM · unter 30", a note below the line only; never a diagnosis of low energy availability or REDs (#3917).
 
 ## Forbidden statements
 

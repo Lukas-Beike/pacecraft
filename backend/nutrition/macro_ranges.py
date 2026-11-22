@@ -119,12 +119,19 @@ def _training_totals(calendar: list[Any], day: str) -> tuple[float, bool] | None
     return minutes, intense
 
 
-def macro_ranges(weight: Any, calendar: Any, day: str, kcal: Any) -> dict[str, Any]:
-    """Calculate ranges; an unknown input leaves its comparison unavailable."""
+def macro_ranges(
+    weight: Any, calendar: Any, day: str, kcal: Any, energy_goal: str | None = None
+) -> dict[str, Any]:
+    """Calculate ranges; an unknown input leaves its comparison unavailable.
+
+    With the energy goal "lose" protein is 1.6 to 2.4 g/kg (Hector & Phillips
+    2018, R81), else 1.7 to 2.3 g/kg.
+    """
     result: dict[str, Any] = {}
     mass = _number(weight)
     if mass:
-        result["protein_g"] = (mass * 170 / 100, mass * 230 / 100)
+        low, high = (160, 240) if energy_goal == "lose" else (170, 230)
+        result["protein_g"] = (mass * low / 100, mass * high / 100)
         result["carbs_g"] = (mass * 3, mass * 5)
     energy = _number(kcal)
     if energy:

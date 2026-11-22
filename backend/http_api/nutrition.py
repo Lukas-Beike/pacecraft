@@ -43,7 +43,9 @@ class NutritionGetRoutes:
         macro_context: Callable[[str], tuple[Any, Any]] | None = None,
         session_fuelling: Callable[[dict[str, list[str]]], dict[str, Any]]
         | None = None,
+        energy_goal: Callable[[], str] | None = None,
     ) -> None:
+        self._energy_goal = energy_goal
         self._session_fuelling = session_fuelling
         self._diary_service = diary_service
         self._meal_library_service = meal_library_service
@@ -64,7 +66,11 @@ class NutritionGetRoutes:
             )
             weight, calendar = None, None
         summary["macro_ranges"] = macro_ranges(
-            weight, calendar, date_param, summary.get("total_kcal")
+            weight,
+            calendar,
+            date_param,
+            summary.get("total_kcal"),
+            self._energy_goal() if self._energy_goal else None,
         )
         return summary
 
