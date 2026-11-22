@@ -3,9 +3,17 @@
 from __future__ import annotations
 
 import math
-from typing import Any
+from typing import Any, Final
 
 from backend.canonical.activity_summary import summary_leading_duration_s
+
+# Daily carbohydrate in g/kg by training load (Thomas, Erdman & Burke 2016,
+# Table 1): light, moderate (about 1 h a day), high (1-3 h), very high
+# (more than 4-5 h). The day's training minutes step up at 60 and 90 minutes,
+# hard work one more level, and 240 minutes are very high (#3920).
+CARB_G_PER_KG: Final = ((3, 5), (5, 7), (6, 10), (8, 12))
+CARB_STEP_MINUTES: Final = (60, 90)
+CARB_VERY_HIGH_MINUTES: Final = 240
 
 
 def _number(value: Any) -> float | None:
@@ -142,8 +150,12 @@ def macro_ranges(
     if totals is None:
         return result
     minutes, intense = totals
-    level = int(minutes >= 90) + int(minutes >= 120)
+    # Thomas, Erdman & Burke 2016, Table 1: light 3-5, about 1 h a day 5-7,
+    # 1-3 h 6-10 and more than 4-5 h 8-12 g/kg (#3920).
+    level = int(minutes >= CARB_STEP_MINUTES[0]) + int(minutes >= CARB_STEP_MINUTES[1])
     level = min(2, level + int(intense))
-    low, high = ((3, 5), (5, 7), (6, 10))[level]
+    if minutes >= CARB_VERY_HIGH_MINUTES:
+        level = 3
+    low, high = CARB_G_PER_KG[level]
     result["carbs_g"] = (mass * low, mass * high)
     return result

@@ -84,7 +84,7 @@ Provider payloads are stored raw and projected into provider-neutral records: ac
 
 ## Performance methods
 
-Load, fitness/fatigue/form, critical power and speed, session efficiency, HRV, sleep, thresholds, activity energy, body composition and an early infection hint are computed locally by methods M1-M14. Each has an evidence card with its limits, backed by the literature register R1-R85: [docs/performance-methods/README.md](docs/performance-methods/README.md).
+Load, fitness/fatigue/form, critical power and speed, session efficiency, HRV, sleep, thresholds, activity energy, body composition and an early infection hint are computed locally by methods M1-M14. Each has an evidence card with its limits, backed by the literature register R1-R86: [docs/performance-methods/README.md](docs/performance-methods/README.md).
 
 ## Backup, restore and upgrades
 
