@@ -1470,6 +1470,10 @@ def build_structured_tool_schemas(
             },
             ["equipment_id", "date"],
         ),
+    ]
+    # The body tools take their fields at the top level, as their executor and
+    # the write gate read them (#3640).
+    body_schemas = [
         (
             "save_body_entry",
             "Record the athlete's own weight (kg, 30 to 300) or body fat (%, 2 to 70) for one day in Körper, as the Körper dialogs do; the profile holds neither. Only a value the athlete states in this message. A day that already holds an entry is refused unless replace is true, and replacing needs the athlete's explicit request to change it. Garmin Connect (and Wahoo for the weight) follow after the save.",
@@ -1491,6 +1495,10 @@ def build_structured_tool_schemas(
             ["kind", "date"],
         ),
     ]
+    for body_name, body_description, body_fields, body_required in body_schemas:
+        body_tool = _canonical_coach_tool(body_name, body_description, body_fields)
+        body_tool["parameters"]["required"] = body_required
+        COACH_STRUCTURED_TOOLS.append(body_tool)
     COACH_STRUCTURED_TOOLS.append(
         _canonical_coach_tool(
             "read_training_records",

@@ -462,6 +462,18 @@ class CoachToolCoverageTests(DialogueHarness, unittest.TestCase):
         response = super().call(*args, **kwargs)
         item = response["output"][0]
         self.issued[item["call_id"]] = json.loads(item["arguments"])
+        # A scripted call uses the shape the model is offered (#3640's body
+        # tools read flat fields the schema wrapped in payload).
+        schema = next(
+            (t for t in server.COACH_DIALOGUE_TOOLS if t["name"] == item["name"]),
+            None,
+        )
+        if schema is not None:
+            self.assertLessEqual(
+                set(self.issued[item["call_id"]]),
+                set(schema["parameters"]["properties"]),
+                item["name"],
+            )
         return response
 
     def turn(self, *args, **kwargs):
