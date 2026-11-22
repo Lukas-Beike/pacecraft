@@ -439,7 +439,7 @@ function renderFirstThresholdEstimate(estimate, profile = {}) {
     box.dataset.percent = String(estimate.percent_lthr);
   }
   const stored = document.getElementById("firstThresholdStoredLabel");
-  if (stored) stored.textContent = profile?.first_threshold_hr && profile.first_threshold_origin === "estimated" ? "Puls (bpm, DFA-α1)" : "Puls (bpm)";
+  if (stored) stored.textContent = profile?.first_threshold_hr && profile.first_threshold_origin === "estimated" ? "Herzfrequenz (bpm, DFA-α1)" : "Herzfrequenz (bpm)";
   const percent = document.getElementById("firstThresholdPercent");
   if (percent) percent.textContent = firstThresholdPercentText(profile?.first_threshold_hr, state.data?.performance?.metrics?.run_threshold_hr_bpm?.value);
 }

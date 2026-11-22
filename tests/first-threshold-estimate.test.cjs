@@ -9,7 +9,7 @@ function nodes() {
   return {
     firstThresholdEstimate: make(),
     firstThresholdEstimateText: make(),
-    firstThresholdStoredLabel: { textContent: "Puls (bpm)" },
+    firstThresholdStoredLabel: { textContent: "Herzfrequenz (bpm)" },
     firstThresholdPercent: { textContent: "" },
   };
 }
@@ -42,11 +42,11 @@ test("no estimate hides the block", () => {
 
 test("a stored adopted estimate is marked on the stored bpm, the percent is display only (#3915)", () => {
   const adopted = render(null, { first_threshold_hr: "153", first_threshold_origin: "estimated" });
-  assert.equal(adopted.firstThresholdStoredLabel.textContent, "Puls (bpm, DFA-α1)");
+  assert.equal(adopted.firstThresholdStoredLabel.textContent, "Herzfrequenz (bpm, DFA-α1)");
   // 153 of today's 170 bpm threshold HR.
   assert.equal(adopted.firstThresholdPercent.textContent, "90 % LSHF");
   const measured = render(null, { first_threshold_hr: "144", first_threshold_origin: "measured" });
-  assert.equal(measured.firstThresholdStoredLabel.textContent, "Puls (bpm)");
+  assert.equal(measured.firstThresholdStoredLabel.textContent, "Herzfrequenz (bpm)");
   assert.equal(measured.firstThresholdPercent.textContent, "84,7 % LSHF");
   assert.equal(render(null, {}).firstThresholdPercent.textContent, "");
 });
