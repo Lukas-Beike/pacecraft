@@ -118,9 +118,12 @@ class ProtocolTests(unittest.TestCase):
         validate_workout_description(dict(template))
 
     def test_at_most_ten_stages_and_implausible_paces_fall_back(self) -> None:
-        # LT1 5:20 /km starts at 9.75 km/h; LT2 4:25 /km needs stage 9, plus two is 11.
+        # LT1 5:20 /km would start at 9.75 km/h; LT2 4:25 /km (13.58 km/h) moves
+        # stage 1 up to 13.58 - 3.5 = 10.1 km/h (#3915): stage 8 (13.6 km/h) is the
+        # first at or above LT2, plus two is 10.
         self.assertEqual(len(step_test.stage_speeds(320, 265)), 10)
-        self.assertEqual(step_test.stage_speeds(320, 265)[0], 9.8)
+        self.assertEqual(step_test.stage_speeds(320, 265)[0], 10.1)
+        self.assertGreaterEqual(step_test.stage_speeds(320, 265)[-1], 3600 / 265 + 0.9)
         # A 15:00 /km LT1 would start the stages at walking speed.
         for paces in ((None, None), (20, None), ("5:00", True), (5000, 0), (900, None)):
             with self.subTest(paces=paces):

@@ -409,12 +409,12 @@ class FirstThresholdHistoryTests(unittest.TestCase):
         metrics = {key: {"value": max(values.items())[1]}
                    for key, values in LT1_GARMIN_HISTORY.items()}  # fmt: skip
         current = first_thresholds(
-            metrics, None, "", {},
+            metrics, None, "",
             lambda sport, bpm: output_at_heart_rate(records, sport, bpm, self.TODAY),
         )  # fmt: skip
         history = first_threshold_history(
             current, {}, self.TODAY, garmin_history=LT1_GARMIN_HISTORY,
-            zone_configurations=(), records=records,
+            records=records,
         )  # fmt: skip
         return current, history["run"]
 

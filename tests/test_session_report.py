@@ -31,6 +31,15 @@ def zones(*seconds: float) -> dict[str, Any]:
     }
 
 
+def easy_limit(above: float, total: float, bpm: int = 146) -> dict[str, Any]:
+    """The report inputs' LT1 line: the stream's seconds above it and in all (#3915)."""
+    return {
+        session_conditions.INPUTS: {
+            "easy_limit": {"bpm": bpm, "above_s": above, "total_s": total}
+        }
+    }
+
+
 def result(
     *,
     sport: str = "run",
@@ -53,9 +62,12 @@ def checks(report: dict[str, Any]) -> dict[str, dict[str, Any]]:
 
 
 class EasySessionTests(unittest.TestCase):
-    def test_decoupling_cap_and_time_above_with_planned_strides_left_out(self) -> None:
-        # 3600 s of zone time, 300 s above zone 2, of which the plan's two 20 s
-        # strides: (300 - 40) / 3600 = 7.2 % stays under 10 %. Decoupling 6.2 % > 5 %.
+    def test_decoupling_and_time_above_lt1_with_planned_strides_left_out(
+        self,
+    ) -> None:
+        # 3600 s of heart-rate time, 300 s above the LT1 heart rate, of which the
+        # plan's two 20 s strides: (300 - 40) / 3600 = 7.2 % stays under 10 %.
+        # Decoupling 6.2 % > 5 %.
         report = session_report(
             result(
                 focus="easy",
@@ -64,13 +76,7 @@ class EasySessionTests(unittest.TestCase):
                 execution={
                     "data_quality": {"heart_rate": "ok", "speed": "ok"},
                 },
-                planned_targets={
-                    "heart_rate_cap": {
-                        "cap_bpm": 150,
-                        "time_above_cap_pct": 10,
-                        "verdict": "above_cap",
-                    }
-                },
+                **easy_limit(300, 3600),
             ),
             {"above_easy_s": 40},
         )
@@ -81,34 +87,65 @@ class EasySessionTests(unittest.TestCase):
             (found["decoupling"]["verdict"], found["decoupling"]["basis"]),
         )
         self.assertEqual(
-            ({"seconds_above": 260, "share_pct": 7.2}, "ok"),
+            ({"seconds_above": 260, "share_pct": 7.2, "limit_bpm": 146}, "ok"),
             (found["easy_time_above"]["value"], found["easy_time_above"]["verdict"]),
         )
+        self.assertEqual(["decoupling"], report["notable"])
+
+    def test_a_capped_unit_is_judged_by_its_cap_only(self) -> None:
+        # The cap (weight 4) leads before the decoupling (weight 3); the LT1 line
+        # is not judged beside it (#3915).
+        report = session_report(
+            result(
+                focus="easy",
+                metrics={"decoupling_pct": metric(6.2), "max_hr": metric(171)},
+                execution={"data_quality": {"heart_rate": "ok", "speed": "ok"}},
+                planned_targets={
+                    "heart_rate_cap": {
+                        "cap_bpm": 150,
+                        "time_above_cap_pct": 10,
+                        "verdict": "above_cap",
+                    }
+                },
+                **easy_limit(1200, 3600),
+            ),
+            {"above_easy_s": 40},
+        )
+        found = checks(report)
+        self.assertNotIn("easy_time_above", found)
         # 10 % rounded is not above 10, but planned_targets judged above_cap.
         self.assertEqual("notable", found["heart_rate_cap"]["verdict"])
-        # The cap (weight 4) leads before the decoupling (weight 3).
-        # Without a duration or load the plan checks are unknown, not notable.
         self.assertEqual(["heart_rate_cap", "decoupling"], report["notable"])
         self.assertEqual(report["notable"], report["lead"])
 
     def test_unplanned_surges_count_as_time_above(self) -> None:
-        # 600 s above zone 2 of 3600 s = 16.7 %; no plan excuses the laps.
+        # 600 s above the LT1 heart rate of 3600 s = 16.7 %; no plan excuses the laps.
         found = checks(
             session_report(
                 result(
                     focus="easy",
-                    zones=zones(1000, 2000, 400, 200),
                     execution={
                         "data_quality": {"heart_rate": "ok", "speed": "ok"},
                         "reps": [{"rep": n, "duration_s": 180} for n in (1, 2, 3)],
                     },
+                    **easy_limit(600, 3600),
                 )
             )
         )["easy_time_above"]
         self.assertEqual(
-            ({"seconds_above": 600, "share_pct": 16.7}, "notable"),
+            ({"seconds_above": 600, "share_pct": 16.7, "limit_bpm": 146}, "notable"),
             (found["value"], found["verdict"]),
         )
+        # Without the LT1 line (no stream or threshold HR) the check is unknown.
+        unknown = checks(
+            session_report(
+                result(
+                    focus="easy",
+                    execution={"data_quality": {"heart_rate": "ok", "speed": "ok"}},
+                )
+            )
+        )["easy_time_above"]
+        self.assertEqual("unknown", unknown["verdict"])
 
     def test_unchecked_heart_rate_is_unknown(self) -> None:
         # No execution analysis: no spike or cadence-lock check ran.
@@ -1556,8 +1593,17 @@ _ZONES = {
     "zones": [{"zone": 2, "planned_s": 3000, "actual_s": 2000}],
 }
 # Each base and the report arguments it needs; every base makes checks notable.
+def _uncapped_easy_run() -> dict[str, Any]:
+    return result(
+        focus="easy",
+        execution={"data_quality": dict(_OK)},
+        **easy_limit(1100, 3600),
+    )
+
+
 BASES: dict[str, tuple[Any, dict[str, Any]]] = {
     "easy_run": (_easy_run, {"plan_zones": _ZONES}),
+    "uncapped_easy_run": (_uncapped_easy_run, {}),
     "interval_run": (_interval_run, {}),
     "tempo_run": (_tempo_run, {}),
     "race": (_race, {"race": _RACE_PLAN}),

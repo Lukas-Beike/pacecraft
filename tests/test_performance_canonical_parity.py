@@ -322,7 +322,6 @@ class CanonicalWiringTests(unittest.TestCase):
             PARITY_TODAY,
             canonical=EMPTY_PERFORMANCE_INPUTS,
             session_feedback=None,
-            zone_configurations=(),
             lt1_session_records=None,
         )
         self.assertEqual(manager.events, ["enter", "exit"])
@@ -342,7 +341,6 @@ class CanonicalWiringTests(unittest.TestCase):
             PARITY_TODAY,
             canonical=EMPTY_PERFORMANCE_INPUTS,
             session_feedback=None,
-            zone_configurations=(),
             lt1_session_records=None,
         )
 
@@ -481,7 +479,6 @@ class CanonicalWiringTests(unittest.TestCase):
             PARITY_TODAY,
             canonical=EMPTY_PERFORMANCE_INPUTS,
             session_feedback=None,
-            zone_configurations=(),
             lt1_session_records=None,
         )
 

@@ -473,7 +473,9 @@ class SessionAnalysisStageTests(unittest.TestCase):
         assert row is not None
         zones = row["payload"]["zone_times"]
         self.assertEqual("Zoneneinstellungen", zones["label"])
-        self.assertEqual({"power": "Standardzonen"}, zones["sources"])
+        self.assertEqual(
+            {"power": "Standardzonen", "power_bands": "Standardzonen"}, zones["sources"]
+        )
         power = {zone["id"]: zone["secs"] for zone in zones["power"]}
         # 200 W at the Garmin FTP of 200 W is Z4; the Intervals FTP is never read.
         self.assertEqual(float(SECONDS), power["Z4"])
