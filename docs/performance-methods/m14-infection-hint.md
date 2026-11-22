@@ -1,7 +1,7 @@
 # M14 — Early infection hint from night values
 
 - **Card:** M14
-- **Card version:** 2
+- **Card version:** 3
 - **Method ID:** infection-hint-v1 (#3762)
 - **Status:** implemented (`backend/performance/infection_hint.py`), awaiting athlete review
 - **Classification:** descriptive statistic
@@ -61,10 +61,14 @@ an infection, illness, recovery or readiness state.
 
 ## Sources
 
-Evidence gap: no source was entered in the evidence register for this card.
-Wearable studies on night breathing rate, resting heart rate and HRV before
-symptom onset exist, but none was read and recorded for this card, so no
-threshold here rests on a source. The baselines follow M2 and its sources.
+Wearable studies show that night breathing rate and resting heart rate rise
+and HRV falls around an infection, often before symptoms, against the
+person's own baseline (R83, R84, R85; #3920). They support the direction of
+the three signals and the use of a personal baseline. The thresholds here
+(quartiles plus half the IQR, the minimum differences, two of three values)
+remain product rules: none of the studies tested them, and all of them
+studied COVID-19, mostly retrospectively. The baselines follow M2 and its
+sources.
 
 ## Population and reference measurement
 
@@ -139,8 +143,10 @@ athlete for this one athlete and is not validated for anyone.
 
 ## Open points
 
-- Literature check for night breathing rate, resting heart rate and HRV
-  before symptom onset, with sources entered in the register.
+- Validation check (#3920): after three months, the shown hints that
+  were followed within 3 days by "Ich bin krank" or an illness
+  check-in, and the illness check-ins without a hint before them. Both
+  counts are recorded here.
 - Validation figures for Garmin's breathing rate during sleep.
 - Athlete review of this card before release.
 

@@ -194,6 +194,10 @@ formula rows' everyday energy runs low. M12's own row names that remainder
 
 ## Open points
 
+- Validation check (#3920): after 12 weeks with logged intake, the
+  existing fit of the formula rows (resting plus this card's sport
+  energy) against the own total from intake and the weight trend (M12
+  `fit_scale`). The mean error with its band is recorded here.
 - Daily wiring, the adaptive TDEE and the calibration factor (#3100).
 - Imbach 2020 and Cerezuela-Espejo 2021 are not cited until identified.
 - Keytel's coefficients are checked against secondary sources only.

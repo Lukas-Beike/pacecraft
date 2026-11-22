@@ -3,7 +3,8 @@
 Both compare with the athlete's own earlier nights through the existing personal
 recovery baselines (``personal-quartiles-v1``, 42 days, at least 14 earlier
 nights, measurement-context segments): the HRV (RMSSD) is "not below the usual
-range" while its position is not ``below`` the lower quartile, and the usual
+range" while it is not below the lower quartile by more than half the
+interquartile range (``illness_return._hrv_sign``, #3920), and the usual
 resting heart rate is the baseline median. A value that is not from this morning,
 or a baseline without enough nights, is missing and leaves the check-in alone to
 decide (#2042).

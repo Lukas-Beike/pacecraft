@@ -3,7 +3,8 @@
 Athlete decision: after the pause window three stages follow, stage 1 easy only,
 stage 2 easy and moderate, stage 3 the normal plan. A stage lasts at least two
 days. One stage is gained per morning when the check-in reports no complaint and
-a normal body feel, the overnight HRV is not below the athlete's usual range and
+a normal body feel, the overnight HRV is not below the athlete's usual range by
+more than half its width (the M14 margin, #3920) and
 the resting heart rate is at most 5 bpm above the usual value. A poor sign holds
 the stage, a new complaint steps back one stage. A missing overnight value leaves
 the check-in alone to decide. A step is a previewed local proposal; the stage
@@ -18,6 +19,7 @@ from typing import Any, Final
 
 from backend.athlete.checkins import reports_complaint
 from backend.canonical.vocabulary import ProviderId
+from backend.performance.infection_hint import RANGE_MARGIN
 from backend.providers.source_labels import SourceView, provider_label
 
 LAST_STAGE: Final = 3
@@ -100,15 +102,22 @@ def _checkin_signs(checkin: Mapping[str, Any]) -> tuple[list[dict[str, Any]], bo
 
 
 def _hrv_sign(item: Mapping[str, Any] | None) -> dict[str, Any]:
-    if not item:
+    """Poor only below the lower quartile less half the interquartile range,
+    the M14 margin of the infection hint (#3920): below the quartile alone is
+    one night in four."""
+    item = item or {}
+    value, lower, upper = item.get("value"), item.get("lower"), item.get("upper")
+    if value is None or lower is None or upper is None:
         return _evidence(GARMIN_SOURCE, "hrv", None, None, missing=True)
+    limit = lower - RANGE_MARGIN * (upper - lower)
     return _evidence(
         str(item.get("source") or GARMIN_SOURCE),
         "hrv",
-        item.get("value"),
-        item.get("position") != "below",
+        value,
+        value >= limit,
         unit=item.get("unit"),
-        lower=item.get("lower"),
+        lower=lower,
+        limit=round(limit, 1),
         observed_at=item.get("observed_at"),
     )
 

@@ -50,7 +50,9 @@ HEAVY_FACTOR = 0.85
 MODERATE_FACTOR = 0.70
 HEAVY_RPE = 8
 MODERATE_RPE = 6
-KEY_GAP_H = 24
+# One gap for planning and explaining (#3920): heavy leg work counts 48 h
+# before a key session, moderate 24 h (Doma, Deakin & Bentley 2017: 24-72 h).
+KEY_GAP_H: Final = {"heavy": 48, "moderate": 24}
 SAME_DAY_GAP_H = 6
 MAX_LEG_SESSIONS = 3
 MAX_HEAVY_LEG_SESSIONS = 2
@@ -281,9 +283,12 @@ def _gap_hours(strength: Mapping[str, Any], key: Mapping[str, Any]) -> float | N
 
 
 def _too_close(
-    strength: Mapping[str, Any], key: Mapping[str, Any], heavy_hard: bool
+    strength: Mapping[str, Any],
+    key: Mapping[str, Any],
+    heavy_hard: bool,
+    limit_h: float,
 ) -> bool:
-    """Less than about 24 h before the key session; dates alone mean the day before."""
+    """Less than ``limit_h`` before the key session; dates alone count whole days."""
     gap = _gap_hours(strength, key)
     if gap is None:
         try:
@@ -292,9 +297,9 @@ def _too_close(
             ).days
         except ValueError:
             return False
-        return days == 1
+        return 1 <= days <= limit_h // 24
     same_day_rule = heavy_hard and _day(strength) == _day(key) and gap < SAME_DAY_GAP_H
-    return 0 < gap < KEY_GAP_H and not same_day_rule
+    return 0 < gap < limit_h and not same_day_rule
 
 
 def _before_key_draft(
@@ -307,21 +312,23 @@ def _before_key_draft(
     found = classify(strength)
     if found is None or not found.leg or found.intensity not in {"moderate", "heavy"}:
         return None
+    limit = KEY_GAP_H[found.intensity]
     for key in keys:
         hard = is_hard(key)
-        if not _too_close(strength, key, is_heavy(strength) and hard):
+        if not _too_close(strength, key, is_heavy(strength) and hard, limit):
             continue
         gap = _gap_hours(strength, key)
         return (
             BEFORE_KEY,
             [strength, key],
-            "Moderate or heavy leg strength less than about 24 h before a hard or long session.",
+            "Heavy leg strength less than 48 h, or moderate less than 24 h, before a hard or long session.",
             {
                 "strength_intensity": found.intensity,
                 "key_session": "hard" if hard else "long",
                 "strength_day": _day(strength),
                 "key_day": _day(key),
                 "gap_hours": None if gap is None else round(gap, 1),
+                "limit_hours": limit,
                 "time_known": gap is not None,
             },
         )
@@ -453,12 +460,22 @@ def _before(
             inside, hours = _strength_hours(unit, start, planned)
         except ValueError:
             continue
+        # Every session of the 48 h window is listed; within_key_gap marks the
+        # plan check's gap (#3920): known moderate or light leg work 24 h,
+        # heavy, unknown and other strength 48 h.
+        light = (
+            strength is not None
+            and strength.leg
+            and strength.intensity in {"moderate", "light"}
+        )
+        limit = KEY_GAP_H["moderate"] if light else KEY_GAP_H["heavy"]
         if strength is not None and inside:
             found.append(
                 {
                     "hours_before": hours,
                     "legs": strength.leg,
                     "intensity": strength.intensity,
+                    "within_key_gap": hours is None or hours <= limit,
                 }
             )
     found.sort(key=lambda row: (row["hours_before"] is None, row["hours_before"] or 0))
