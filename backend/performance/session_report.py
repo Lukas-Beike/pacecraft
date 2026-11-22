@@ -2399,8 +2399,8 @@ def _heat(facts: _Facts, weather: Mapping[str, Any]) -> dict[str, Any]:
     """Heat from the activity weather only (#3036), only ever an explanation.
 
     From 25 C apparent temperature it names in ``explains`` the heart-rate
-    checks the report finds notable (decoupling, time above zone 2, cardiac
-    drift), each judged by its own function (athlete, #3084 3c C).
+    checks the report finds notable (decoupling, the heart-rate cap or the time
+    above LT1, cardiac drift), each judged by its own function (athlete, #3084 3c C).
     """
     title = "Hitze (Wetter der Einheit)"
     apparent = _number(weather.get("apparent_temperature_c"))
@@ -2458,7 +2458,10 @@ def _notable_heart_checks(facts: _Facts) -> list[str]:
     """
     heart_checks = []
     if facts.kind == "easy":
-        heart_checks = [_decoupling(facts), _easy_time_above(facts)]
+        # The same check the report judges by: the cap, else the LT1 line (#3915).
+        cap = _mapping(facts.targets.get("heart_rate_cap"))
+        line = _heart_rate_cap(facts, cap) if cap else _easy_time_above(facts)
+        heart_checks = [_decoupling(facts), line]
     elif facts.kind == "interval":
         reps = [
             rep for rep in facts.execution.get("reps") or () if isinstance(rep, Mapping)

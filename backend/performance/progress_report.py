@@ -29,7 +29,7 @@ from backend.performance.session_rpe_load import period_load, session_load
 from backend.performance.training_report import metric_sum, valid_zones
 from backend.performance.zone_time_reads import LOCAL_MODEL, zone_model
 
-METHOD = "weekly-progress-v1"
+METHOD = "weekly-progress-v2"
 SPORT_BUCKETS = ("run", "ride", "strength")
 # The stored band times hold Z1 low, Z2 moderate and Z3 high (#3915).
 BANDS = ("low", "moderate", "high")

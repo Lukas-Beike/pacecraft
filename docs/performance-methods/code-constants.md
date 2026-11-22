@@ -208,7 +208,7 @@ every named number the code fixes. A test fails when it is out of date.
 | `MAX_RUNNING_NET_GRADE` | `0.01` | `backend/performance/power_profile.py` |  |
 | `MAX_DISTANCE_GAP_S` | `600` | `backend/performance/power_profile.py` | A distance best is timed like a race clock (athlete decision, #2818): a stop inside the window counts as elapsed time, and so does a recording gap (auto-pause, signal loss) of at most this many seconds; a longer gap breaks the window. |
 | `MAX_GAP_SPEED_MPS` | `1000 / 150` | `backend/performance/power_profile.py` | A recording gap (a step above 5 s) across which the distance implies a pace faster than 2:30 min/km is a measurement error and breaks the window (#2818). |
-| `METHOD` | `'weekly-progress-v1'` | `backend/performance/progress_report.py` |  |
+| `METHOD` | `'weekly-progress-v2'` | `backend/performance/progress_report.py` |  |
 | `SPORT_BUCKETS` | `('run', 'ride', 'strength')` | `backend/performance/progress_report.py` |  |
 | `BANDS` | `('low', 'moderate', 'high')` | `backend/performance/progress_report.py` | The stored band times hold Z1 low, Z2 moderate and Z3 high (#3915). |
 | `ZONE_MAPPING` | `'3-zone model from the local band times: low up to LT1 (85 % of the threshold HR, 75 % of the FTP... (sha256 a1862de2)` | `backend/performance/progress_report.py` |  |
@@ -392,7 +392,7 @@ every named number the code fixes. A test fails when it is out of date.
 | `WAHOO_CURRENT_MAX_AGE_DAYS` | `90` | `backend/performance/source_policy.py` | A Wahoo FTP or weight observed longer ago than this is history, not the current value. |
 | `GARMIN_THRESHOLD_MAX_AGE_DAYS` | `180` | `backend/performance/source_policy.py` | A Garmin threshold observed longer ago than this is history, not current. |
 | `FAMILY_LOOKBACK_DAYS` | `84` | `backend/performance/source_policy.py` | Days, ending on the latest day read, of recovery history every reader uses. |
-| `METHOD` | `'run-step-test-v2'` | `backend/performance/step_test.py` | v1 fitted the crossings over the whole run (#3833), v2 over the stage windows (#3916). |
+| `METHOD` | `'run-step-test-v3'` | `backend/performance/step_test.py` | v1 fitted the crossings over the whole run (#3833), v2 over the stage windows (#3916), v3 starts stage 1 at most 3.5 km/h below LT2 (#3915). |
 | `PROTOCOL` | `'run_step_test'` | `backend/performance/step_test.py` |  |
 | `NAME` | `'Stufentest Laufen (LT1 und LT2)'` | `backend/performance/step_test.py` |  |
 | `WARMUP_MIN` | `10` | `backend/performance/step_test.py` |  |
@@ -480,6 +480,7 @@ every named number the code fixes. A test fails when it is out of date.
 | `METHOD_VERSION` | `2` | `backend/activities/stream_zones.py` |  |
 | `ZONE_TIMES_VERSION` | `3` | `backend/activities/stream_zones.py` | Bump when zone_times counts or names its zones differently, so stored report zones recompute (2: the zone source of each sensor, the Garmin watch zones; 3: the 3-zone bands, #3915). |
 | `LABEL` | `'Zoneneinstellungen'` | `backend/activities/stream_zones.py` |  |
+| `BAND_SOURCE` | `'LT1-Standardwert und Schwelle'` | `backend/activities/stream_zones.py` |  |
 | `MIN_GAP_S` | `30.0` | `backend/activities/stream_zones.py` |  |
 | `GAP_FACTOR` | `3.0` | `backend/activities/stream_zones.py` |  |
 | `MAX_SESSIONS` | `6` | `backend/activities/strength_progress.py` |  |

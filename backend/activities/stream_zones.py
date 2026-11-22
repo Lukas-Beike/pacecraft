@@ -64,6 +64,7 @@ METHOD_VERSION: Final = 2
 # 3: the 3-zone bands, #3915).
 ZONE_TIMES_VERSION: Final = 3
 LABEL: Final = "Zoneneinstellungen"
+BAND_SOURCE: Final = "LT1-Standardwert und Schwelle"
 MIN_GAP_S: Final = 30.0
 GAP_FACTOR: Final = 3.0
 # Metric -> stream channel and the unit ``ZoneSettings.absolute_zone`` reads.
@@ -112,12 +113,16 @@ def with_stream_zones(
 
 
 def zone_sources(settings: ZoneSettings) -> dict[str, str]:
-    """The source of the zone limits of each report sensor."""
+    """The source of the zone limits of each report sensor.
+
+    The bands' limits are the LT1 stand-in and the threshold, whatever zone set
+    applies, so they name that basis (#3915).
+    """
     return {
         "heart_rate": settings.hr_source,
-        "heart_rate_bands": settings.hr_source,
+        "heart_rate_bands": BAND_SOURCE,
         "power": settings.power_source,
-        "power_bands": settings.power_source,
+        "power_bands": BAND_SOURCE,
         "pace": settings.pace_source,
     }
 

@@ -73,17 +73,15 @@ def zone_source_name(configuration: ZoneConfiguration | None) -> str:
     return LOCAL_ZONE_SOURCE if provider is None else _PROVIDER_ZONE_SOURCES[provider]
 
 
-def intensity_band(
-    kind: str, intensity: float, lt1_hr_share: float | None = None
-) -> str:
+def intensity_band(kind: str, intensity: float) -> str:
     """The 3-zone band of an intensity (fraction of the threshold) of one sensor.
 
-    Low up to LT1 (``lt1_hr_share`` for heart rate when the athlete has one, else
-    the fixed shares above), high above the threshold itself, moderate between,
-    for every sensor alike (#3915). ``kind`` is ``hr``, ``power`` or ``pace``.
+    Low up to the LT1 stand-in (the fixed shares above), high above the
+    threshold itself, moderate between, for every sensor alike (#3915).
+    ``kind`` is ``hr``, ``power`` or ``pace``.
     """
     lt1 = {
-        "hr": lt1_hr_share or LT1_HR_SHARE,
+        "hr": LT1_HR_SHARE,
         "power": LT1_POWER_SHARE,
         "pace": LT1_RUN_SPEED_SHARE,
     }[kind]

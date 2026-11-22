@@ -445,6 +445,23 @@ class PlanHeatHillsTests(unittest.TestCase):
         )
         self.assertEqual([], heat(24.9, 8.0)["value"]["explains"])
         self.assertEqual([], heat(27.0, 3.0)["value"]["explains"])
+        # A capped unit is judged by its cap, so heat names the cap, never the
+        # LT1 line the report leaves out (#3915).
+        capped = _run(
+            focus={"status": "matched", "session_focus": "easy"},
+            metrics={"decoupling_pct": {"value": 3.0}},
+            planned_targets={
+                "heart_rate_cap": {
+                    "cap_bpm": 150,
+                    "time_above_cap_pct": 30,
+                    "verdict": "above_cap",
+                }
+            },
+            weather={"apparent_temperature_c": 27.0, "temperature_c": 25.0},
+        )
+        check = _check(session_report(capped), "heat")
+        assert check is not None
+        self.assertEqual(["heart_rate_cap"], check["value"]["explains"])
 
     def test_hills_per_rep_of_a_ride_are_facts(self) -> None:
         result = _run(sport="ride")

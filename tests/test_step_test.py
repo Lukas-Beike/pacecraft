@@ -329,7 +329,7 @@ class EvaluationTests(unittest.TestCase):
         lt1 = step_test.evaluate(result, laps, DAY, streams)["lt1"]
         self.assertEqual(lt1["pace_seconds_per_km"], 308)
         self.assertEqual(
-            step_test.evaluate(result, laps, DAY)["method"], "run-step-test-v2"
+            step_test.evaluate(result, laps, DAY)["method"], "run-step-test-v3"
         )
 
     def test_a_stamped_unit_is_a_step_test_after_its_template_is_gone(self) -> None:

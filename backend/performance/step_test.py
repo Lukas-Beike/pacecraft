@@ -41,8 +41,9 @@ from backend.performance.second_threshold_estimate import (
     session_second_threshold,
 )
 
-# v1 fitted the crossings over the whole run (#3833), v2 over the stage windows (#3916).
-METHOD: Final = "run-step-test-v2"
+# v1 fitted the crossings over the whole run (#3833), v2 over the stage windows
+# (#3916), v3 starts stage 1 at most 3.5 km/h below LT2 (#3915).
+METHOD: Final = "run-step-test-v3"
 PROTOCOL: Final = "run_step_test"
 NAME: Final = "Stufentest Laufen (LT1 und LT2)"
 WARMUP_MIN: Final = 10

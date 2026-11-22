@@ -148,7 +148,7 @@ def _at_heart_rate(
     """Pace or power at a heart rate from the session records, read at most once.
 
     A busy database or a missing session source reads as no sessions, so LT1
-    falls back to zone 2 or the fixed share instead of failing the projection.
+    falls back to the fixed share instead of failing the projection.
     """
     if records is None:
         return None

@@ -66,6 +66,8 @@ _LIST_OMITTED_KEYS: Final = frozenset(
         "power_zone_times",
         "heart_rate_zone_times",
         "pace_zone_times",
+        "power_band_times",
+        "heart_rate_band_times",
         "strength_sets",
         # Garmin's sweat-loss estimate serves the fuelling advice only (#2804).
         "water_estimated_ml",
@@ -829,14 +831,15 @@ class CoachActivityReadToolService:
     ) -> dict[str, Any] | None:
         """The LT1 heart rate of the session's day and the stream's time above it.
 
-        The LT1 stand-in of the threshold HR in effect (``LT1_HR_SHARE``, #3915),
-        the boundary of the easy check; None without a threshold HR or stream.
+        The LT1 stand-in of the heart-rate reference in effect (``LT1_HR_SHARE``
+        of the LTHR, else of the max-HR share, as the stored band times count it,
+        #3915); None without a reference or stream.
         """
         sport = session.get("sport")
         if self._unit_thresholds is None or day is None or sport not in ("run", "ride"):
             return None
         reference = unit or {"sport": str(sport).title(), "date": day.isoformat()}
-        lthr = self._unit_thresholds.thresholds(reference).lthr
+        lthr = self._unit_thresholds.thresholds(reference).hr_zone_reference
         if not lthr:
             return None
         bpm = round(lthr * LT1_HR_SHARE)

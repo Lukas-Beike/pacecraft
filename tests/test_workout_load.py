@@ -155,8 +155,6 @@ class UnknownTests(unittest.TestCase):
         for kind, intensity, band in cases:
             with self.subTest(kind=kind, intensity=intensity):
                 self.assertEqual(band, intensity_band(kind, intensity))
-        # An own LT1 moves the heart-rate split.
-        self.assertEqual("moderate", intensity_band("hr", 0.82, 0.8))
         result = estimate_workout("- 60m 84% LTHR\n", Sport.RUN, FULL)
         self.assertEqual({"low": 3600, "moderate": 0, "high": 0}, result.band_seconds)
 
