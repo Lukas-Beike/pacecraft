@@ -400,7 +400,7 @@ test("tapping a notification opens its screen in the open app or a new window", 
 });
 
 // Runs the push subscription of public/notifications.js against stubbed browser and API.
-function pushPage({ refuse = false } = {}) {
+function pushPage({ refuse = false, registered = true } = {}) {
   const calls = [];
   const subscription = {
     endpoint: "https://fcm.googleapis.com/fcm/send/fake",
@@ -411,16 +411,18 @@ function pushPage({ refuse = false } = {}) {
     subscribe: async (options) => { calls.push(["subscribe", options.userVisibleOnly, [...options.applicationServerKey]]); return subscription; },
     getSubscription: async () => subscription,
   };
-  const context = extractFunctions("notifications.js", ["pushSupported", "currentPushSubscription", "pushKeyBytes", "enablePush", "disablePush"], {
-    Notification: { requestPermission: async () => "granted" },
+  const context = extractFunctions("notifications.js", ["pushRefused", "pushSupported", "pushRegistration", "currentPushSubscription", "pushKeyBytes", "storePushSubscription", "enablePush", "syncPushSubscription", "disablePush"], {
+    Notification: { permission: "granted", requestPermission: async () => "granted" },
     PushManager: function PushManager() {},
-    navigator: { serviceWorker: { ready: Promise.resolve({ pushManager }) } },
+    renderNotificationStatus: async () => {},
+    // Without a registration `ready` never settles, as in a browser.
+    navigator: { serviceWorker: { getRegistration: async () => (registered ? {} : undefined), ready: registered ? Promise.resolve({ pushManager }) : new Promise(() => {}) } },
     atob,
     toast: (text) => calls.push(["toast", text]),
     api: async (path, options) => {
       calls.push([path, JSON.parse(options.body)]);
       if (path === "/api/push/key") return { public_key: "AQID_-8" };
-      if (refuse && path === "/api/push/subscribe") throw new Error("Dieser Browser wird für Push-Benachrichtigungen nicht unterstützt.");
+      if (refuse && path === "/api/push/subscribe") throw Object.assign(new Error("Dieser Browser wird für Push-Benachrichtigungen nicht unterstützt."), { status: 400 });
       return {};
     },
   });
@@ -442,6 +444,22 @@ test("a subscription the server refuses is removed from the browser", async () =
   const { context, calls } = pushPage({ refuse: true });
   await assert.rejects(context.enablePush(), /nicht unterstützt/);
   assert.deepEqual(calls.at(-1), ["browser-unsubscribe"]);
+  // The status then reads "Von diesem Browser nicht unterstützt".
+  assert.equal(context.pushSupported(), false);
+});
+
+test("without a service worker registration enabling fails at once instead of hanging", async () => {
+  const { context, calls } = pushPage({ registered: false });
+  await assert.rejects(context.enablePush(), /unterstützt keine Push/);
+  assert.deepEqual(calls, []);
+});
+
+test("each app start sends the browser's subscription to the server again", async () => {
+  const { context, calls } = pushPage();
+  await context.syncPushSubscription();
+  assert.deepEqual(JSON.parse(JSON.stringify(calls)), [
+    ["/api/push/subscribe", { endpoint: "https://fcm.googleapis.com/fcm/send/fake", keys: { p256dh: "p", auth: "a" } }],
+  ]);
 });
 
 test("disabling push removes the subscription on the server and in the browser", async () => {

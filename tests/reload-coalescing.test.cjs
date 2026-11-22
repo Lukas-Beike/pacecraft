@@ -100,6 +100,7 @@ function frontend({ eventSource = false } = {}) {
     AppRouter: { routeFromHash: () => "coach", planSegmentFromRoute: () => "overview", baseRoute: () => "coach" },
     AppState: { setPlanSegment() {} },
     retryBootstrapAuth() {},
+    syncPushSubscription() {},
     scrollChatToLatest() {},
     reloadForUpdateWhenSafe() {},
     renderMessages() {},

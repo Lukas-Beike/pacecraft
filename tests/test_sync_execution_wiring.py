@@ -357,10 +357,10 @@ class SyncSchedulerBuilderTests(unittest.TestCase):
 
         # #3141: the archive purge is background work behind the maintenance gate;
         # the nightly backup (#3760) runs first and reads behind the gate,
-        # without the writer. The push checks (#3914) come last, gated, as
-        # background writes.
+        # without the writer. The push checks (#3914) come last as background
+        # writes; they take the gate themselves, outside their network calls.
         self.assertEqual(["nightly backup", "prune", "purge", "push"], calls)
-        self.assertEqual(ctx.maintenance.operation.call_count, 3)
+        self.assertEqual(ctx.maintenance.operation.call_count, 2)
         self.assertEqual(writer.call_count, 2)
 
 

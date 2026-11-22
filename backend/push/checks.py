@@ -2,14 +2,17 @@
 
 The daily loop calls ``check`` every few minutes. Each check derives its events
 from state that already exists (provider refresh history, competitions, the
-infection hint) and hands them to ``PushService.notify``, which sends each event
-key once. Nothing is sent at night: an event found then waits for the morning,
-because the state it comes from is still there.
+infection hint) and claims them through ``PushService``, which sends each event
+key once. Reads and claims run inside the maintenance operation; the network
+calls to the push services run outside it, so they never hold up a restore.
+Nothing is sent at night: an event found then waits for the morning, because the
+state it comes from is still there.
 """
 
 from __future__ import annotations
 
 from collections.abc import Callable, Iterable
+from contextlib import AbstractContextManager, nullcontext
 from datetime import date, datetime, timedelta
 from typing import Any, Final
 
@@ -39,19 +42,34 @@ class PushChecks:
         *,
         infection_hint: Callable[[], Any] = lambda: None,
         threshold_warnings: Callable[[], Any] = lambda: None,
+        operation: Callable[[], AbstractContextManager[Any]] = nullcontext,
     ) -> None:
         self._push = push
         self._database = database
         self._local_now = local_now
         self._infection_hint = infection_hint
         self._threshold_warnings = threshold_warnings
+        self._operation = operation
 
     def check(self) -> int:
         """Send the new events; the number delivered."""
-        since = self._push.subscribed_since()
         local = self._local_now()
-        if since is None or not DAY_START_HOUR <= local.hour < DAY_END_HOUR:
+        if not DAY_START_HOUR <= local.hour < DAY_END_HOUR:
             return 0
+        with self._operation():
+            claims = [
+                claim
+                for event in self._events(local)
+                if (claim := self._push.claim(event)) is not None
+            ]
+        delivered = [(claim, self._push.deliver(claim)) for claim in claims]
+        with self._operation():
+            return sum(self._push.settle(claim, status) for claim, status in delivered)
+
+    def _events(self, local: datetime) -> list[Notification]:
+        since = self._push.subscribed_since()
+        if since is None:
+            return []
         today = local.date()
         with self._database().reader() as db:
             events = [
@@ -60,9 +78,13 @@ class PushChecks:
             ]
         if self._infection_hint():
             events.append(infection_hint_event(today))
-        if step_test := step_test_event(self._threshold_warnings(), since.date()):
+        # The subscription day as the athlete counts days, like the staleness hint.
+        subscribed_on = (
+            since.astimezone(local.tzinfo).date() if local.tzinfo else since.date()
+        )
+        if step_test := step_test_event(self._threshold_warnings(), subscribed_on):
             events.append(step_test)
-        return sum(1 for event in events if self._push.notify(event))
+        return events
 
 
 def _parse(value: Any) -> datetime | None:
@@ -76,8 +98,8 @@ def provider_problems(db: Any, since: datetime) -> list[Notification]:
     """One notification per provider for an expired sign-in or a failure streak.
 
     A streak is the run of failed refreshes since the last success of an area;
-    skipped runs neither end nor extend it. Its key is the day it began, so a
-    streak is announced once however long it lasts. Only a streak whose latest
+    skipped runs neither end nor extend it. Its key is that last success, which
+    stays put however long the streak lasts, so a streak is announced once. Only a streak whose latest
     failure came after the subscription is announced.
     """
     events: dict[str, Notification] = {}
@@ -107,7 +129,7 @@ def provider_problems(db: Any, since: datetime) -> list[Notification]:
 def _area_problem(
     db: Any, provider: str, area: str, since: datetime
 ) -> tuple[str, str] | None:
-    """The area's problem kind and the day its streak began; None without one."""
+    """The area's problem kind and its last success before the streak; None without one."""
     rows = db.execute(
         "SELECT status, error_code, started_at, finished_at "
         "FROM provider_refresh_history WHERE provider=? AND area=? "
@@ -123,7 +145,12 @@ def _area_problem(
     expired = any(row["error_code"] in ATHLETE_ACTION_ERROR_CODES for row in streak)
     if not expired and len(streak) < REPEATED_FAILURES:
         return None
-    return ("auth" if expired else "failing"), str(streak[-1]["started_at"])[:10]
+    last_success = db.execute(
+        "SELECT MAX(started_at) AS at FROM provider_refresh_history "
+        "WHERE provider=? AND area=? AND status IN ('success', 'partial')",
+        (provider, area),
+    ).fetchone()["at"]
+    return ("auth" if expired else "failing"), f"{area}:{last_success or 'never'}"
 
 
 def _streak(rows: Iterable[Any]) -> list[Any]:
@@ -171,8 +198,9 @@ def step_test_event(warnings: Any, since: date) -> Notification | None:
     """A step test is due: a threshold turned stale (over 8 weeks) since the subscription.
 
     Athlete decision 2026-11-22: once when the existing staleness hint newly
-    appears. A value already stale when the device subscribed is not announced;
-    its key is the stale value, so a newer value that turns stale later is new.
+    appears. A value already stale when the device subscribed is not announced.
+    Each stale value is its own key: the notification goes out while any is new,
+    and a newer value that turns stale later is new again.
     """
     items = warnings.get("items") if isinstance(warnings, dict) else None
     keys = []
@@ -186,12 +214,14 @@ def step_test_event(warnings: Any, since: date) -> Notification | None:
             keys.append(f"{item.get('metric')}:{item.get('sport')}:{dated_on}")
     if not keys:
         return None
+    first, *rest = sorted(f"step_test:{key}" for key in keys)
     return Notification(
         "upcoming",
-        "step_test:" + ",".join(sorted(keys)),
+        first,
         "Stufentest fällig",
         "Ein Schwellenwert ist älter als acht Wochen.",
         "#more/profile",
+        covers=tuple(rest),
     )
 
 

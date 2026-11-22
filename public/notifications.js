@@ -1,12 +1,20 @@
 // Web Push (#3914): the server sends each notification once; the page only subscribes.
+// Set when the server refused this browser's push service (only Chrome and Firefox work).
+let pushRefused = false;
+
 function pushSupported() {
-  return "Notification" in globalThis && "PushManager" in globalThis && "serviceWorker" in navigator;
+  return !pushRefused && "Notification" in globalThis && "PushManager" in globalThis && "serviceWorker" in navigator;
+}
+
+// The active worker registration, or null when none is registered (ready would never settle).
+async function pushRegistration() {
+  if (!pushSupported() || !await navigator.serviceWorker.getRegistration()) return null;
+  return navigator.serviceWorker.ready;
 }
 
 async function currentPushSubscription() {
-  if (!pushSupported()) return null;
-  const registration = await navigator.serviceWorker.ready;
-  return registration.pushManager.getSubscription();
+  const registration = await pushRegistration();
+  return registration ? registration.pushManager.getSubscription() : null;
 }
 
 async function renderNotificationStatus() {
@@ -43,19 +51,36 @@ async function enableNotifications() {
   }
 }
 
-async function enablePush() {
-  if (await Notification.requestPermission() !== "granted") return;
-  const { public_key: key } = await api("/api/push/key", { method: "POST", body: "{}" });
-  const registration = await navigator.serviceWorker.ready;
-  const subscription = await registration.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: pushKeyBytes(key) });
+// Store the browser's subscription on the server; a refused push service is removed again.
+async function storePushSubscription(subscription) {
   try {
     await api("/api/push/subscribe", { method: "POST", body: JSON.stringify(subscription.toJSON()) });
   } catch (error) {
-    // A push service the server refuses must not stay subscribed in the browser.
-    await subscription.unsubscribe().catch(() => {});
+    if (error.status === 400) {
+      pushRefused = true;
+      await subscription.unsubscribe().catch(() => {});
+    }
     throw error;
   }
+}
+
+async function enablePush() {
+  const registration = await pushRegistration();
+  if (!registration) throw new Error("Dieser Browser unterstützt keine Push-Benachrichtigungen");
+  if (await Notification.requestPermission() !== "granted") return;
+  const { public_key: key } = await api("/api/push/key", { method: "POST", body: "{}" });
+  const subscription = await registration.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: pushKeyBytes(key) });
+  await storePushSubscription(subscription);
   toast("Benachrichtigungen aktiviert");
+}
+
+// On each app start the browser's subscription is sent again, so a server that lost it
+// (a restore, a purge, a replaced endpoint) receives it before the status says "Aktiv".
+async function syncPushSubscription() {
+  if (!pushSupported() || Notification.permission !== "granted") return;
+  const subscription = await currentPushSubscription().catch(() => null);
+  if (subscription) await storePushSubscription(subscription).catch(() => {});
+  await renderNotificationStatus();
 }
 
 async function disablePush() {

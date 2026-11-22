@@ -33,6 +33,8 @@ PUSH_HOSTS: Final = ("fcm.googleapis.com", "updates.push.services.mozilla.com")
 VAPID_SUBJECT: Final = "mailto:push@pacecraft.invalid"
 _RECORD_SIZE: Final = 4096
 _TIMEOUT_SECONDS: Final = 10
+# The status ``send`` reports for a subscription it cannot use: gone, like a 410.
+UNUSABLE: Final = 410
 
 
 def b64url(data: bytes) -> str:
@@ -70,6 +72,20 @@ def _point(key: ec.EllipticCurvePublicKey) -> bytes:
 def public_key(private: str) -> str:
     """The base64url uncompressed public point the browser subscribes with."""
     return b64url(_point(_private_key(private).public_key()))
+
+
+def valid_point(p256dh: str) -> bool:
+    """Whether the browser's key is an uncompressed point on P-256."""
+    from cryptography.hazmat.primitives.asymmetric import ec
+
+    raw = unb64url(p256dh)
+    if len(raw) != 65:
+        return False
+    try:
+        ec.EllipticCurvePublicKey.from_encoded_point(ec.SECP256R1(), raw)
+    except ValueError:
+        return False
+    return True
 
 
 def supported_endpoint(endpoint: Any) -> bool:
@@ -150,21 +166,29 @@ def send(
     opener: Callable[..., Any] = provider_http.urlopen,
     now: Callable[[], float] = time.time,
 ) -> int:
-    """Deliver one encrypted message; the push service's HTTP status (0: no answer)."""
-    endpoint = subscription["endpoint"]
-    if not supported_endpoint(endpoint):
-        return 0
-    body = encrypt(
-        json.dumps(message, ensure_ascii=False).encode("utf-8"),
-        subscription["p256dh"],
-        subscription["auth"],
-    )
+    """Deliver one encrypted message; the push service's HTTP status (0: no answer).
+
+    A subscription that cannot be used here (another host, keys that do not
+    encrypt) answers ``UNUSABLE``, so the caller forgets it like a gone one.
+    """
+    endpoint = subscription.get("endpoint")
+    try:
+        if not supported_endpoint(endpoint):
+            return UNUSABLE
+        body = encrypt(
+            json.dumps(message, ensure_ascii=False).encode("utf-8"),
+            str(subscription["p256dh"]),
+            str(subscription["auth"]),
+        )
+        authorization = vapid_authorization(str(endpoint), private, now())
+    except KeyError, TypeError, ValueError:
+        return UNUSABLE
     request = urllib.request.Request(
-        endpoint,
+        str(endpoint),
         data=body,
         method="POST",
         headers={
-            "Authorization": vapid_authorization(endpoint, private, now()),
+            "Authorization": authorization,
             "Content-Encoding": "aes128gcm",
             "Content-Type": "application/octet-stream",
             "TTL": str(ttl),

@@ -143,7 +143,9 @@ def build_sync_schedulers(
         with ctx.maintenance.operation(), background_writer():
             ctx.planning.workout_library().purge_archived()
         if ctx.push_checks is not None:
-            with ctx.maintenance.operation(), background_writer():
+            # The checks take the maintenance gate themselves, around their
+            # database steps only, never around a push service call.
+            with background_writer():
                 ctx.push_checks.check()
 
     def daily_loop() -> scheduler.DailySyncLoop:

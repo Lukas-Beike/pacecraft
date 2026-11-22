@@ -5,7 +5,8 @@ the VAPID private key and the browser subscriptions are secrets (excluded from
 export and diagnostics like the provider credentials), the switches and the
 sent-event record are plain settings. Each event key is sent once; a type that
 is switched off is recorded as handled so turning it on later does not replay
-old events. Notification bodies are lock-screen safe: no names, values, places,
+old events. Delivery is three steps, so the network calls hold no gate: claim
+(database), deliver (push services only), settle (database). Notification bodies are lock-screen safe: no names, values, places,
 provider error text or Coach content.
 """
 
@@ -62,6 +63,22 @@ class Notification:
     title: str
     body: str
     url: str
+    # Further event keys this notification stands for; it is sent while any is new.
+    covers: tuple[str, ...] = ()
+
+    @property
+    def keys(self) -> tuple[str, ...]:
+        return (self.key, *self.covers)
+
+
+@dataclass(frozen=True)
+class Claim:
+    """A notification due for delivery: its devices, key and the keys it made new."""
+
+    notification: Notification
+    subscriptions: list[dict[str, Any]]
+    private: str
+    new_keys: tuple[str, ...]
 
 
 class PushService:
@@ -121,12 +138,24 @@ class PushService:
         """Store one browser subscription (replacing the same endpoint)."""
         subscription = _subscription(payload)
         with self._database().unit_of_work() as db:
+            stored = self._read(db, PUSH_SUBSCRIPTIONS_KEY, [])
+            # A device sending its subscription again keeps when it first subscribed.
+            created = next(
+                (
+                    item.get("created_at")
+                    for item in stored
+                    if item.get("endpoint") == subscription["endpoint"]
+                ),
+                None,
+            )
             current = [
                 item
-                for item in self._read(db, PUSH_SUBSCRIPTIONS_KEY, [])
+                for item in stored
                 if item.get("endpoint") != subscription["endpoint"]
             ]
-            current.append(subscription | {"created_at": self._now().isoformat()})
+            current.append(
+                subscription | {"created_at": created or self._now().isoformat()}
+            )
             self._write(db, PUSH_SUBSCRIPTIONS_KEY, current[-MAX_SUBSCRIPTIONS:])
         return self.state(subscription["endpoint"])
 
@@ -163,35 +192,53 @@ class PushService:
         return self.state(payload.get("endpoint"))
 
     def notify(self, notification: Notification) -> bool:
-        """Send ``notification`` once to every subscription; True when delivered."""
+        """Claim, deliver and settle in one go; True when a device received it."""
+        claim = self.claim(notification)
+        return claim is not None and self.settle(claim, self.deliver(claim))
+
+    def claim(self, notification: Notification) -> Claim | None:
+        """Record the notification's keys; the claim when it is new, on and has devices.
+
+        Recorded before delivery, so a crash or a second check never sends it twice.
+        Keys already recorded are refreshed, so an event that stays current (a
+        stale threshold, a long failure streak) never ages out and repeats.
+        """
         with self._database().unit_of_work() as db:
-            sent = self._read(db, PUSH_SENT_KEY, {})
             subscriptions = self._read(db, PUSH_SUBSCRIPTIONS_KEY, [])
-            if notification.key in sent or not subscriptions:
-                return False
-            # Recorded first, so a crash or a concurrent check never sends it twice.
-            sent[notification.key] = self._now().isoformat()
-            self._write(db, PUSH_SENT_KEY, _pruned(sent, self._now()))
-            if not self._preferences(db)[notification.type]:
-                return False
-            private = self._private_key(db)
+            if not subscriptions:
+                return None
+            sent = self._read(db, PUSH_SENT_KEY, {})
+            new_keys = tuple(key for key in notification.keys if key not in sent)
+            now = self._now()
+            sent |= dict.fromkeys(notification.keys, now.isoformat())
+            self._write(db, PUSH_SENT_KEY, _pruned(sent, now))
+            if not new_keys or not self._preferences(db)[notification.type]:
+                return None
+            return Claim(notification, subscriptions, self._private_key(db), new_keys)
+
+    def deliver(self, claim: Claim) -> dict[str, int]:
+        """Send the claimed notification to each device; its push service status."""
+        notification = claim.notification
         message = {
             "title": notification.title,
             "body": notification.body,
             "url": notification.url,
-            "tag": notification.type,
+            # One tag per event, so two events never replace each other on the phone.
+            "tag": notification.key,
         }
-        statuses = {
-            item["endpoint"]: self._sender(item, message, private, ttl=_TTL_SECONDS)
-            for item in subscriptions
+        return {
+            item["endpoint"]: self._sender(
+                item, message, claim.private, ttl=_TTL_SECONDS
+            )
+            for item in claim.subscriptions
         }
-        delivered = any(200 <= status < 300 for status in statuses.values())
-        self._record(notification.type, statuses)
-        return delivered
 
-    def _record(self, kind: str, statuses: Mapping[str, int]) -> None:
+    def settle(self, claim: Claim, statuses: Mapping[str, int]) -> bool:
+        """Forget gone devices and count; a claim nobody received is retried later."""
+        kind = claim.notification.type
         gone = {endpoint for endpoint, status in statuses.items() if status in _GONE}
-        failed = sum(1 for status in statuses.values() if not 200 <= status < 300)
+        delivered = sum(1 for status in statuses.values() if 200 <= status < 300)
+        failed = len(statuses) - delivered
         with self._database().unit_of_work() as db:
             if gone:
                 self._write(
@@ -203,10 +250,16 @@ class PushService:
                         if item.get("endpoint") not in gone
                     ],
                 )
+            if not delivered and len(gone) < len(statuses):
+                # No device got it and one may later (network down, 5xx, 429).
+                sent = self._read(db, PUSH_SENT_KEY, {})
+                for key in claim.new_keys:
+                    sent.pop(key, None)
+                self._write(db, PUSH_SENT_KEY, sent)
             counts = self._read(db, PUSH_COUNTS_KEY, {})
             entry = counts.get(kind) if isinstance(counts.get(kind), dict) else {}
             entry = {
-                "sent": int(entry.get("sent", 0)) + len(statuses) - failed,
+                "sent": int(entry.get("sent", 0)) + delivered,
                 "failed": int(entry.get("failed", 0)) + failed,
             }
             self._write(db, PUSH_COUNTS_KEY, counts | {kind: entry})
@@ -224,6 +277,7 @@ class PushService:
                     },
                 },
             )
+        return delivered > 0
 
     def subscribed_since(self) -> datetime | None:
         """When the oldest current subscription was made; None without one."""
@@ -270,7 +324,7 @@ def _subscription(payload: Any) -> dict[str, str]:
     p256dh, auth = keys.get("p256dh"), keys.get("auth")
     try:
         valid = (
-            len(web_push.unb64url(str(p256dh))) == 65
+            web_push.valid_point(str(p256dh))
             and len(web_push.unb64url(str(auth))) == 16
         )
     except ValueError:

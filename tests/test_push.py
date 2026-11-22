@@ -39,6 +39,7 @@ RFC_BODY = (
     "pK4Mqgkf1CXztLVBSt2Ks3oZwbuwXPXLWyouBWLVWGNWQexSgSxsj_Qulcy4a-fN"
 )
 ENDPOINT = "https://fcm.googleapis.com/fcm/send/fake-device"
+NOT_A_POINT = web_push.b64url(bytes([4]) + bytes([1]) * 64)
 SUBSCRIPTION = {
     "endpoint": ENDPOINT,
     "keys": {"p256dh": RFC_RECEIVER_PUBLIC, "auth": RFC_AUTH},
@@ -195,11 +196,23 @@ class PushServiceTests(unittest.TestCase):
                 {**SUBSCRIPTION, "keys": {"p256dh": "AAAA", "auth": RFC_AUTH}},
                 "invalid_push_keys",
             ),
+            (
+                # 65 bytes, but no point on the curve.
+                {**SUBSCRIPTION, "keys": {"p256dh": NOT_A_POINT, "auth": RFC_AUTH}},
+                "invalid_push_keys",
+            ),
             ([], "unsupported_push_endpoint"),
         ):
             with self.subTest(reason=reason), self.assertRaises(AppError) as raised:
                 self.service.subscribe(payload)
             self.assertEqual(raised.exception.reason, reason)
+
+    def test_a_repeated_subscription_keeps_when_the_device_first_subscribed(self):
+        self.service.subscribe(SUBSCRIPTION)
+        first = self.service.subscribed_since()
+        self.clock["now"] = NOW + timedelta(days=3)
+        self.service.subscribe(SUBSCRIPTION)
+        self.assertEqual(self.service.subscribed_since(), first)
 
     def test_unsubscribe_removes_the_device(self):
         self.service.subscribe(SUBSCRIPTION)
@@ -229,7 +242,8 @@ class PushServiceTests(unittest.TestCase):
                         "title": "T",
                         "body": "B",
                         "url": "#plan/season",
-                        "tag": "upcoming",
+                        # One tag per event: two events never replace each other.
+                        "tag": "competition:c1:2026-11-25",
                     },
                 )
             ],
@@ -274,6 +288,51 @@ class PushServiceTests(unittest.TestCase):
             {"upcoming": {"sent": 0, "failed": 1}},
         )
 
+    def test_a_failed_delivery_is_tried_again_and_still_sent_once(self):
+        event = Notification("upcoming", "competition:c1:2026-11-25", "T", "B", "#p")
+        self.service.subscribe(SUBSCRIPTION)
+        for status in (0, 503, 429):
+            self.sender.status = status
+            with (
+                self.subTest(status=status),
+                self.assertLogs("intervals_coach", "WARNING"),
+            ):
+                self.assertFalse(self.service.notify(event))
+        self.sender.status = 201
+        self.assertTrue(self.service.notify(event))
+        self.assertFalse(self.service.notify(event))
+        self.assertEqual(len(self.sender.sent), 4)
+
+    def test_an_unusable_subscription_is_dropped_without_stopping_delivery(self):
+        def opener(request, timeout):
+            raise AssertionError("an unusable subscription is never sent")
+
+        def sender(subscription, message, private, *, ttl):
+            return web_push.send(subscription, message, private, ttl=ttl, opener=opener)
+
+        service = _service(self, sender=sender)
+        service.subscribe(SUBSCRIPTION)
+        stored = json.loads(
+            self.key_values.get(self.connection, PUSH_SUBSCRIPTIONS_KEY)
+        )
+        stored[0]["p256dh"] = NOT_A_POINT
+        self.key_values.set(self.connection, PUSH_SUBSCRIPTIONS_KEY, json.dumps(stored))
+        event = Notification("upcoming", "k", "T", "B", "#plan")
+        with self.assertLogs("intervals_coach", "WARNING"):
+            self.assertFalse(service.notify(event))
+        self.assertFalse(service.state()["subscribed"])
+
+    def test_a_still_current_event_never_ages_out_of_the_record(self):
+        event = Notification(
+            "upcoming", "step_test:ftp:Ride:2026-09-27", "T", "B", "#p"
+        )
+        self.service.subscribe(SUBSCRIPTION)
+        self.assertTrue(self.service.notify(event))
+        for days in (30, 60, 90):
+            self.clock["now"] = NOW + timedelta(days=days)
+            self.assertFalse(self.service.notify(event))
+        self.assertEqual(len(self.sender.sent), 1)
+
 
 class PushChecksTests(unittest.TestCase):
     def setUp(self):
@@ -317,6 +376,42 @@ class PushChecksTests(unittest.TestCase):
             self._bodies(), ["Eine Synchronisierung schlägt wiederholt fehl."]
         )
         self.assertEqual(self.sender.sent[0][1]["url"], "#more/connections")
+
+    def test_a_streak_longer_than_the_rows_read_is_announced_once(self):
+        self._refresh("ok", "success", 1)
+        for minute in range(2, 40):
+            self._refresh(f"e{minute}", "error", minute, "timeout")
+            self.checks.check()
+        self.assertEqual(len(self.sender.sent), 1)
+
+    def test_the_checks_hold_the_gate_only_around_database_steps(self):
+        events = []
+        gate = {"held": False}
+
+        class Gate:
+            def __enter__(self):
+                gate["held"] = True
+                events.append("enter")
+
+            def __exit__(self, *_exc):
+                gate["held"] = False
+                events.append("exit")
+
+        def sender(subscription, message, private, *, ttl):
+            events.append(("send", gate["held"]))
+            return 201
+
+        service = _service(self, sender=sender)
+        service.subscribe(SUBSCRIPTION)
+        self.connection.execute("INSERT INTO competitions VALUES ('c1', '2026-11-23')")
+        checks = PushChecks(
+            service,
+            lambda: FakeManager(self.connection),
+            lambda: self.local["now"],
+            operation=Gate,
+        )
+        self.assertEqual(checks.check(), 1)
+        self.assertEqual(events, ["enter", "exit", ("send", False), "enter", "exit"])
 
     def test_an_expired_sign_in_is_announced_at_once(self):
         self._refresh(
@@ -371,6 +466,13 @@ class PushChecksTests(unittest.TestCase):
             self._bodies(), ["Ein Schwellenwert ist älter als acht Wochen."]
         )
         self.assertEqual(self.sender.sent[0][1]["url"], "#more/profile")
+        # Two values were announced together; updating one never re-announces the other.
+        self.warnings["value"]["items"].append(item("ftp", "2026-09-28"))
+        self.checks.check()
+        self.assertEqual(len(self.sender.sent), 2)
+        self.warnings["value"]["items"].pop()
+        self.checks.check()
+        self.assertEqual(len(self.sender.sent), 2)
 
     def test_nothing_is_sent_at_night_and_it_waits_for_the_morning(self):
         self.connection.execute("INSERT INTO competitions VALUES ('c1', '2026-11-23')")

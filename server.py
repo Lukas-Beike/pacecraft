@@ -977,6 +977,7 @@ APP.push_checks = PushChecks(
         lambda: APP.clock.now().date(),
     )(),
     threshold_warnings=lambda: APP.athlete.zones().threshold_warnings(),
+    operation=lambda: APP.maintenance.operation(),
 )
 HTTP_API = build_http_api(
     APP,
