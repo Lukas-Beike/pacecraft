@@ -158,9 +158,17 @@ function analysisChart(title, series, unit, start, end, note, {
   appendAnalysisDateTicks(svg, start, end, scales, weekTicks ? analysisWeekTickLabel : analysisDayTickLabel);
   appendAnalysisPointInspectors(section, svg, series, unit, scales);
   section.append(svg);
+  appendAnalysisDataStart(section, shown, start, end);
   appendAnalysisReferenceNotes(section, series, unit);
   appendAnalysisTable(section, title, series, unit, caption);
   return section;
+}
+
+// Data that begins in the last part of the period says so, instead of leaving the first part of the axis unexplained.
+function appendAnalysisDataStart(section, series, start, end) {
+  const first = series.flatMap((item) => item.points.filter(analysisValidPoint).map((point) => point.date)).sort()[0];
+  if (!first || (Date.parse(first) - Date.parse(start)) / Math.max(86400000, Date.parse(end) - Date.parse(start)) <= 0.3) return;
+  section.append(h("p", "muted", `Keine Daten vor ${dateLabel(first)}.`));
 }
 
 // A single series named like the chart only repeats the heading in its legend; its info button joins the heading instead.
@@ -259,6 +267,8 @@ function analysisPlotScales(series, start, end, { unit = "", zeroCentered = fals
   let low = Math.min(...values), high = Math.max(...values);
   if (zeroCentered) { const extent = Math.max(Math.abs(low), Math.abs(high), 1); low = -extent; high = extent; }
   if (series.some((item) => item.bars)) low = Math.min(0, low);
+  // A pulse that varies by two beats does not fill the axis: the range is at least ten beats wide.
+  if (unit === "bpm" && high - low < 10) { const middle = (high + low) / 2; low = middle - 5; high = middle + 5; }
   const padding = Math.max((high - low) * .12, analysisMinimumPadding(unit, high));
   const rawStep = (high - low + padding * 2) / 4;
   const magnitude = 10 ** Math.floor(Math.log10(rawStep));
