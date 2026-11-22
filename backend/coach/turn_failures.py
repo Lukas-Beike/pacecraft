@@ -144,10 +144,10 @@ class CoachTurnFailureService:
             )
             if summary:
                 receipt["message"]["coach_changes"] = summary
-            if status == "failed":
-                receipt["message"]["coach_failed"] = True
-                if receipt.get("request_kind"):
-                    receipt["message"]["coach_request_kind"] = receipt["request_kind"]
+            flags = self._outcome_flags(status, receipt, error)
+            receipt["message"].update(flags)
+            if "coach_failure_reason" in flags:
+                receipt["failure_reason"] = flags["coach_failure_reason"]
             coach_store.write_command(
                 db,
                 client_turn_id,
@@ -198,6 +198,24 @@ class CoachTurnFailureService:
             )
         )
         return commands, successes, failures, pending
+
+    @staticmethod
+    def _outcome_flags(
+        status: str, receipt: dict[str, Any], error: BaseException
+    ) -> dict[str, Any]:
+        """What the chat reads off a stopped or failed reply: kind, reason (#3931)."""
+        if status == "cancelled":
+            return {"coach_cancelled": True}
+        if status != "failed":
+            return {}
+        flags: dict[str, Any] = {"coach_failed": True}
+        if receipt.get("request_kind"):
+            flags["coach_request_kind"] = receipt["request_kind"]
+        # The reason decides whether a retry or the connections help.
+        reason = getattr(error, "reason", "")
+        if isinstance(reason, str) and reason:
+            flags["coach_failure_reason"] = reason[:60]
+        return flags
 
     @staticmethod
     def _base_response(

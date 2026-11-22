@@ -410,6 +410,9 @@ class CoachTurnFailureTests(unittest.TestCase):
         self.assertIs(result["message"]["coach_failed"], True)
         # The chat offers to send a failed turn again, after a reload too.
         self.assertIs(self._reloaded_reply()["coach_failed"], True)
+        # The reason tells the chat whether a retry or the connections help.
+        self.assertEqual(result["message"]["coach_failure_reason"], reason)
+        self.assertEqual(self._reloaded_reply()["coach_failure_reason"], reason)
 
     def _reloaded_reply(self) -> dict:
         # The chat reader projects dict rows, as the production database does.
@@ -447,6 +450,9 @@ class CoachTurnFailureTests(unittest.TestCase):
         )
         self.assertNotIn("coach_failed", result["message"])
         self.assertNotIn("coach_failed", self._reloaded_reply())
+        # It is marked as stopped instead, so the chat can say so (#3931).
+        self.assertIs(result["message"]["coach_cancelled"], True)
+        self.assertIs(self._reloaded_reply()["coach_cancelled"], True)
 
 
 if __name__ == "__main__":
