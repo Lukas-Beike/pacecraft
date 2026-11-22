@@ -55,7 +55,7 @@ function unitStepsText(rows) {
   const stepLine = (row) => `- ${row.minutes}m ${row.value}`;
   for (const row of rows) {
     if (row.kind === "step") { lines.push(stepLine(row)); continue; }
-    if (lines.length) lines.push("");
+    if (lines.length && lines.at(-1)) lines.push("");
     lines.push(unitRowHead(row));
     if (row.kind === "repeat") lines.push(...row.steps.map(stepLine), "");
   }
@@ -74,13 +74,19 @@ function unitStepsMinutes(rows) {
 function unitExerciseRow(item = {}) {
   const load = ["kg", "pct_1rm", "rpe", "rir"].find((key) => item[key] != null) || "";
   const base = { name: "", sets: 3, reps: 8, kg: null, pct_1rm: null, rpe: null, rir: null, rest_s: null, warmup: null, note: null, garmin_exercise: null, ...item };
-  return { base, load, amount: load ? String(item[load]) : "" };
+  return { base, load, shown: load, amount: load ? String(item[load]) : "" };
 }
 
+// The row edits one load; a further stored one (kg beside an RPE) stays as it is.
 function unitExercises(rows) {
   return rows.filter((row) => row.base.name.trim()).map((row) => {
-    const loads = { kg: null, pct_1rm: null, rpe: null, rir: null };
-    if (row.load && row.amount !== "") loads[row.load] = Number(row.amount);
+    const loads = { kg: row.base.kg, pct_1rm: row.base.pct_1rm, rpe: row.base.rpe, rir: row.base.rir };
+    if (row.shown) loads[row.shown] = null;
+    if (row.load) {
+      // A relative load replaces the stored one; kg may stay beside it.
+      if (row.load !== "kg") for (const key of ["pct_1rm", "rpe", "rir"]) loads[key] = null;
+      loads[row.load] = row.amount === "" ? null : Number(row.amount);
+    }
     return { ...row.base, name: row.base.name.trim(), ...loads };
   });
 }
