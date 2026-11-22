@@ -25,7 +25,9 @@ checkout root nor that directory holds a `.env` (#3076); tests set it through
 their support module. Beside it,
 `scripts/hooks/guard_destructive_git.py` blocks git commands that discard work
 (`reset --hard`, `clean -f`, `branch -D`, `checkout .`, `restore .` and a force
-push without `--force-with-lease`); normal and lease pushes stay allowed.
+push without `--force-with-lease`); normal and lease pushes stay allowed. It
+also blocks `--no-verify`, `git add -A` or `.`, `gh pr merge --auto` without
+`--squash`, `docker rm -v` and `ruff format` of a folder (#3923).
 `scripts/hooks/guard_shell_backslashes.py` blocks Bash edits whose backslashes
 the Windows shell tool collapses: a doubled backslash in a heredoc fed to an
 interpreter or written to a file, or in `python -c`, `sed -i` and similar inline

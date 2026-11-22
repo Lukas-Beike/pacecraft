@@ -36,8 +36,8 @@ Copy this checklist into your response and tick it as you go:
 - Setup prerequisite: the SonarQube CLI is installed and authenticated
   ([development](../../../docs/development.md#secret-checks-before-git-pushes));
   without it the pre-push hook refuses every push.
-- Commit only this task's changes, staged by named path (never `git add -A`
-  or `git add .`), with Conventional Commit subjects; leave
+- Commit only this task's changes, staged by named path, with
+  Conventional Commit subjects; leave
   unrelated user changes alone and stop if they block the rebase.
 - Rebase with [branch-sync](../pacecraft-branch-sync/SKILL.md) (no `--push`
   yet). Resolve conflicts by understanding both sides; ask the user for product
@@ -138,8 +138,7 @@ confirmation. List every unfixed finding with its reason in the PR body.
 ## 3. Publish
 
 - Push with [branch-sync](../pacecraft-branch-sync/SKILL.md) `--push`; the
-  repository hooks scan for secrets and run the quality ratchet. Never bypass
-  them with `--no-verify`.
+  repository hooks scan for secrets and run the quality ratchet.
 - Create one non-draft PR against `develop` (or reuse the open one for this
   branch) with an English Conventional Commit title and a body covering the
   change, validation, and review results, plus a merge-danger line: one-way or

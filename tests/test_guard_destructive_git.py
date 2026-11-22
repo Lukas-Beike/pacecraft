@@ -73,6 +73,48 @@ class GuardDestructiveGitTests(unittest.TestCase):
             "git --git-dir /tmp/x reset --hard",
             "git -C .. -c core.hooksPath=x push --force",
             "/usr/bin/git reset --hard",
+            # Rules without exceptions (#3923).
+            "git commit --no-verify -m x",
+            "git commit -n -F msg.txt",
+            "git commit -anm x",
+            "git push --no-verify origin feat/x",
+            "git push --no-v",
+            "git -C ../x merge --no-verify develop",
+            "git add -A",
+            "git add --all",
+            "git add .",
+            "git add -- :/",
+            "git -C ../x add -vA",
+            "gh pr merge 12 --auto",
+            "gh pr merge --auto --merge 12",
+            "gh pr merge 12 --auto --rebase",
+            "gh pr merge 12 --auto --squash=false",
+            "docker rm -v pacecraft",
+            "docker rm -f -v pacecraft",
+            "docker rm -fv pacecraft",
+            "docker container rm --volumes pacecraft",
+            "docker compose down -v",
+            "docker compose -f compose.yml down --volumes",
+            "docker-compose rm -v",
+            "DOCKER.exe rm -v x",
+            "ruff format",
+            "ruff format tests",
+            "ruff format .",
+            "ruff format server.py backend",
+            "python -m ruff format tests",
+            "ruff format --config line-length=88 tests",
+            "git stage -A",
+            "git add ./*",
+            "git add **",
+            "gh pr -R owner/repo merge 12 --auto",
+            "docker compose --ansi never down -v",
+            "docker --tlscacert ca.pem rm -v x",
+            "docker container remove -v x",
+            "ruff format tests 2>&1",
+            "ruff format . # all",
+            # Quotes are dropped, so a `#` inside one is no comment.
+            'gh pr merge 12 --body "fix #1" --auto',
+            "ruff format a.py # changed only",
         ):
             with self.subTest(command=command):
                 self.assertEqual(run_hook(command), 2)
@@ -98,6 +140,39 @@ class GuardDestructiveGitTests(unittest.TestCase):
             'git stash push -m "wip 2 +3"',
             "git switch develop",
             "git -C ../l16-2614 status",
+            "git commit -m x",
+            "git commit --amend --no-edit",
+            "git commit -am x",
+            "git push -n origin feat/x",
+            "git add backend/x.py tests/test_x.py",
+            "git add -u",
+            "git add -p backend/x.py",
+            "git log --all",
+            "git fetch --all",
+            "gh pr merge 12 --auto --squash",
+            "gh pr merge 12 --squash --auto --delete-branch",
+            "gh pr merge 12 -s --auto",
+            "gh pr merge 12 --disable-auto",
+            "gh pr view 12 --json autoMergeRequest",
+            "docker rm pacecraft",
+            "docker rm -f pacecraft",
+            "docker run --rm -v data:/data pacecraft:local",
+            "docker compose down",
+            "docker compose up -d",
+            "docker volume ls",
+            "ruff format server.py backend/config.py",
+            "ruff format --check tests",
+            "ruff format --diff backend",
+            "ruff format --range 3:1-9:1 backend/x.py",
+            "ruff check --select I backend",
+            "git stage backend/x.py",
+            "ruff format a.py 2>&1",
+            "ruff format a.py > out.txt",
+            "ruff format --extension py:ipynb a.py",
+            "ruff format tool.pyw",
+            "ruff format --help",
+            'rg "ruff format" docs',
+            'grep -rn "docker rm -v" README.md docs',
         ):
             with self.subTest(command=command):
                 self.assertEqual(run_hook(command), 0)
@@ -109,6 +184,10 @@ class GuardDestructiveGitTests(unittest.TestCase):
             ("git -C x " * 30_000 + "reset --hard", 2),
             ("git push " * 30_000, 0),
             ("git push a" + " b" * 60_000, 0),
+            ("gh " * 50_000 + "pr merge --auto", 2),
+            ("docker -f x " * 30_000 + "rm -v x", 2),
+            ("ruff format a.py" + " b.py" * 60_000, 0),
+            ("ruff " * 50_000 + "format tests", 2),
         ):
             with self.subTest(command=command[-20:]):
                 started = time.monotonic()
@@ -145,6 +224,11 @@ class GuardDestructiveGitTests(unittest.TestCase):
         ):
             self.assertIn(f'    "{name}",\n', guards, name)
         self.assertTrue(all(hook["onFailure"] == "block" for hook in shell["hooks"]))
+        # The plain prefixes are also deny rules for both shells (#3923).
+        for shell_name in ("Bash", "PowerShell"):
+            for prefix in ("git commit --no-verify", "git add -A", "docker rm -v"):
+                rule = f"{shell_name}({prefix}*)"
+                self.assertIn(rule, settings["permissions"]["deny"])
 
 
 if __name__ == "__main__":
