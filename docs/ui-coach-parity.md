@@ -48,9 +48,9 @@ Counts: both 53, UI only 23, Coach only 10, neither 0, UI by rule 8.
 | Planning | Choose a strength exercise's Garmin exercise | Kalender card `POST /api/planned-units/{id}/garmin-exercise` | `apply_training_patch` (`garmin_exercise`) | receipt | both | |
 | Planning | Read multi-week training plans | Bibliothek › Pläne `GET /api/plan` | `list_training_plans` | — | both | |
 | Planning | Create a multi-week training plan | Bibliothek › Pläne "+ Plan" `POST /api/training-plans`, its units in the unit editor | `stage_training_plan`, `commit_training_plan` | receipt, plan checks | both | |
-| Planning | Replace a period of the plan | — | `replace_training_plan` | receipt, plan checks | Coach only | #3950 |
+| Planning | Replace a period of the plan | — | `replace_training_plan` | receipt, plan checks | Coach only | #4024 |
 | Planning | Change, archive or delete a training plan | Bibliothek › Pläne `POST /api/training-plans/{id}/update`, `POST /api/training-plans/{id}/delete` | `update_training_plan` | confirmed request, undo | both | |
-| Planning | Preview and apply an adaptive replan | — | `preview_adaptive_replan`, `apply_adaptive_replan` | approved preview | Coach only | #3950 |
+| Planning | Preview and apply an adaptive replan | — | `preview_adaptive_replan`, `apply_adaptive_replan` | approved preview | Coach only | #4020 |
 | Planning | Read the week review and training report | Analyse `GET /api/analysis/week-review` | `get_training_report` | — | both | |
 | History | Undo a change | receipt "Rückgängig" `POST /api/change-history/undo`, `POST /api/change-history/undo-turn` | `undo_training_change` | bound preview, confirmation | both | |
 | History | Read the change history | — | `list_change_history` | — | Coach only | #3954 |
@@ -104,8 +104,8 @@ Counts: both 53, UI only 23, Coach only 10, neither 0, UI by rule 8.
 | Syncs | Refresh calendars, Garmin, Wahoo and weather | Sync buttons `POST /api/external-calendar/sync`, `POST /api/garmin/sync`, `POST /api/wahoo/sync`, `POST /api/weather/sync`, `POST /api/analysis/refresh`, `POST /api/nutrition/refresh` | `start_provider_refresh` | — | both | |
 | Syncs | Read sync state and job results | Status strip `GET /api/sync/status`, `GET /api/sync/jobs/{id}` | `get_sync_job` | — | both | |
 | Syncs | Send planned units to Intervals.icu or Garmin | Kalender week sync `POST /api/sync/jobs` (`plan_push`) | `start_intervals_plan_sync`, `push_strength_to_garmin` (`push`) | named sync | both | |
-| Syncs | Remove the app's own Garmin workouts of a unit | — | `push_strength_to_garmin` (`remove`) | Garmin removal card | Coach only | #3950 |
-| Syncs | Resolve a training sync conflict | — | `resolve_training_sync_conflict` | receipt | Coach only | #3950 |
+| Syncs | Remove the app's own Garmin workouts of a unit | — | `push_strength_to_garmin` (`remove`) | Garmin removal card | Coach only | #4022 |
+| Syncs | Resolve a training sync conflict | — | `resolve_training_sync_conflict` | receipt | Coach only | #4021 |
 | Syncs | Start a full Garmin or Wahoo resync | Anbindungen `POST /api/garmin/full-resync`, `POST /api/wahoo/full-resync` | — | confirmation | UI only | #3960 |
 | Syncs | Check a provider connection | Anbindungen `POST /api/providers/{provider}/check`, `POST /api/nutrition/yazio/check` | — | read-only | UI only | #3960 |
 | Syncs | Switch the automatic metric export | Anbindungen `POST /api/metric-export/automatic` | — | consent per field | UI only | #3960 |
