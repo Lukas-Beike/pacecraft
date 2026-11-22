@@ -5,6 +5,7 @@ from __future__ import annotations
 import unittest
 from typing import Any
 
+from backend.canonical.change_detail import change_detail, detail_line
 from backend.coach.change_receipts import change_summary, turn_changes
 from backend.coach.request_payload import model_confirmed_steps
 
@@ -315,6 +316,18 @@ class ChangeSummaryTests(unittest.TestCase):
         assert beside_change is not None
         self.assertTrue(beside_change["undoable"])
         self.assertEqual(len(beside_change["not_done"]), 1)
+
+    def test_a_profile_line_is_titled_profile_not_with_the_athletes_name(self) -> None:
+        detail = change_detail(
+            "profile",
+            {"name": "Ada", "weight_kg": 70},
+            {"name": "Ada", "weight_kg": 72},
+        )
+        assert detail is not None
+        self.assertEqual(detail["subject"], "")
+        self.assertEqual(
+            detail_line("profile", "update", detail), "Profil: Gewicht 70 → 72 kg"
+        )
 
     def test_the_model_never_receives_undo_references(self) -> None:
         steps = [_step("update_profile", changes=[_PROFILE_CHANGE])]

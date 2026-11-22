@@ -79,12 +79,10 @@ def change_detail(
     if not isinstance(record, dict) or entity_type not in _ENTITY_NAMES:
         return None
     fields = _changed_fields(before or {}, after or {})
-    # A renamed record is named by its change, not twice.
-    subject = (
-        ""
-        if any(f[0] == "name" and f[1] is not None for f in fields)
-        else _subject(record)
-    )
+    # The profile's name is the athlete's own, so its line says "Profil"; a renamed record is
+    # named by its change, not twice.
+    renamed = any(f[0] == "name" and f[1] is not None for f in fields)
+    subject = "" if renamed or entity_type == "profile" else _subject(record)
     day = next(
         (str(record[field]) for field in _DATE_FIELDS if _scalar(record.get(field))),
         "",
