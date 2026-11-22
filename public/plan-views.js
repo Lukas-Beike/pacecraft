@@ -2951,8 +2951,6 @@ function renderLibrary(workouts) {
   for (const [id, receipt] of libraryReceipts) {
     if (!shown.has(id)) root.append(libraryReceiptLine(h("p", { className: "planned-move-status", role: "status" }), id, receipt));
   }
-  const librarySummary = $("#librarySummary");
-  if (librarySummary) librarySummary.textContent = `${visible.length} Einheit${visible.length === 1 ? "" : "en"}`;
   if (!visible.length) {
     root.append(h("p", "context-empty", "Noch keine Einheiten in der Bibliothek. Der Coach legt hier Einheiten ab, wenn du sie planst."));
     return;

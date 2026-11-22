@@ -397,7 +397,7 @@ The client SHALL show the nutrition area as Tagebuch, Verlauf, Körper and Produ
 
 #### Scenario: Empty day
 - **WHEN** a day has no entries
-- **THEN** all total tiles show "nicht erfasst" and the status reads "Noch keine Mahlzeiten erfasst. Das bedeutet nicht, dass du nichts gegessen hast."
+- **THEN** all total tiles show "nicht erfasst" and the status reads "Noch keine Mahlzeiten erfasst."
 
 #### Scenario: Failed load
 - **WHEN** a day cannot be loaded and no cached copy exists

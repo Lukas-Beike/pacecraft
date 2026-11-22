@@ -499,7 +499,7 @@ The client SHALL name each dashed line and show no "Schätzung" qualifier on der
 
 #### Scenario: Estimates and predictions
 - **WHEN** a derived value (VO2max, race predictions, CP/CS, load, fitness/fatigue/form, heart-rate drift, projected daily expenditure) is shown
-- **THEN** it carries no "Schätzung" chip, 5 and 10 km predictions show minutes and seconds while half marathon and marathon show hours and minutes, VO2max keeps the precise provider value's one decimal, and a dashed line is named in the legend or a line key.
+- **THEN** it carries no "Schätzung" chip, 5 and 10 km predictions show minutes and seconds while half marathon and marathon show hours and minutes, VO2max keeps the precise provider value's one decimal, and a dashed line is named in the legend.
 
 #### Scenario: Hit areas and contrast
 - **WHEN** the analysis or nutrition routes render in the light theme
@@ -513,7 +513,7 @@ The client SHALL name each dashed line and show no "Schätzung" qualifier on der
 - **WHEN** an Analyse tab or another view with the two-column chart grid renders on a desktop
 - **THEN** two cards in a row have the same height, and a card alone in its row spans the full row width; the phone layout keeps one column (#3154).
 
-Evidence: `public/performance-view.js::currentPerformanceRows`, `public/performance-view.js::predictionTime`, `public/analysis.js::appendAnalysisLineKey`, `public/nutrition.js::nutritionChartRows`, `tests/test_css_design_tokens.py::test_training_focus_percentages_use_neutral_text_in_both_themes`, `tests/analysis-presentation.test.cjs::race prediction rows exclude body weight and empty states give a reason`, `backend/providers/garmin_health_mapping.py:_map_max_metrics`, `tests/test_performance_garmin_metrics.py:test_precise_vo2max_wins_over_its_rounded_twin`, `e2e/estimates-targets.spec.js`.
+Evidence: `public/performance-view.js::currentPerformanceRows`, `public/performance-view.js::predictionTime`, `public/nutrition.js::nutritionChartRows`, `tests/test_css_design_tokens.py::test_training_focus_percentages_use_neutral_text_in_both_themes`, `tests/analysis-presentation.test.cjs::race prediction rows exclude body weight and empty states give a reason`, `backend/providers/garmin_health_mapping.py:_map_max_metrics`, `tests/test_performance_garmin_metrics.py:test_precise_vo2max_wins_over_its_rounded_twin`, `e2e/estimates-targets.spec.js`.
 
 ### Requirement: Selection, sources and axes read consistently
 The client SHALL fill the selected tab or range with one accent style everywhere, show the app name, a password toggle and an invalid-field border on the login, and show a meal source only when it differs from the manual local default. Charts SHALL keep a minimum axis span, draw a flat series as a line and space tick labels evenly, naming weeks "Woche ab". Session detail SHALL show one muted source line with the provenance folded away.

@@ -134,7 +134,6 @@ function analysisChart(title, series, unit, start, end, note, {
   });
   if (showLegend && analysisLegendRepeatsTitle(series, title)) analysisLegendInfoToHeading(heading, legend, title);
   else if (showLegend) section.append(legend);
-  else appendAnalysisLineKey(section, series);
 
   if (!series.some(analysisPlottable)) {
     section.append(h("p", "empty", "Ein einzelner Messwert zeigt noch keinen Verlauf; mindestens zwei datierte Werte sind erforderlich."));
@@ -176,13 +175,6 @@ function analysisLegendInfoToHeading(heading, legend, title) {
 function analysisLineStyle(item, index) {
   if (item.bars) return "solid";
   return item.line || (index ? "dashed" : "solid");
-}
-
-// Without a legend, a dashed line is named once under the heading.
-function appendAnalysisLineKey(section, series) {
-  const dashed = series.filter((item, index) => analysisLineStyle(item, index) === "dashed" && item.points.filter(analysisValidPoint).length >= 2);
-  if (!dashed.length) return;
-  section.append(h("p", "analysis-line-key", h("span", "analysis-line-key-swatch"), ` Gestrichelt: ${dashed.map((item) => item.legendLabel || item.label).join(", ")}`));
 }
 
 // A change that rounds to zero carries no sign.
@@ -1215,7 +1207,7 @@ function renderAnalysisHistory(history) { // NOSONAR
     const periodPoints = (points) => (key === "cycling_ftp_watts" ? points.filter((point) => point.date >= performanceStart && point.date <= end) : analysisWeeklyPerformancePoints(points, performanceStart, end, key.includes("vo2max")));
     return [{
       label: `${label} · ${item.source}`, legendLabel: label.replace(/^Rad · /, ""), source: item.source, unit, color,
-      line: key.includes("vo2max") ? "dashed" : "solid",
+      line: "solid",
       cadenceDays: key === "cycling_ftp_watts" ? 1 : 7,
       explanation: performanceSeriesExplanation(key),
       currentPoint: item.points.filter((point) => point.date <= end).findLast(analysisValidPoint),

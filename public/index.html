@@ -104,16 +104,16 @@
         </nav>
         <output id="planListStatus" class="sr-only"></output>
         <section id="seasonPreparation" class="plan-segment" data-plan-segment-panel="season" aria-labelledby="competitionsTitle" hidden>
-          <div class="competition-heading"><h3 id="competitionsTitle">Wettkämpfe</h3><button type="button" id="competitionAdd" class="secondary-button">Hinzufügen</button></div>
+          <div class="competition-heading"><h3 id="competitionsTitle" class="sr-only">Wettkämpfe</h3><button type="button" id="competitionAdd" class="secondary-button">Hinzufügen</button></div>
           <div class="competition-read-state"><output id="competitionReadStatus">Wettkämpfe werden geladen …</output><button id="competitionRetry" type="button" class="secondary-button" hidden>Erneut laden</button></div>
           <div id="competitionList" class="competition-list"></div>
         </section>
         <section id="planOverviewSegment" class="plan-segment" data-plan-segment-panel="overview" aria-labelledby="planOverviewTitle">
-          <div class="plan-segment-heading"><div><h3 id="planOverviewTitle">Trainingskalender</h3></div></div>
+          <h3 id="planOverviewTitle" class="sr-only">Trainingskalender</h3>
           <div id="plannedCalendar" class="planned-calendar"></div>
         </section>
         <section id="planLibrarySegment" class="plan-segment" data-plan-segment-panel="library" aria-labelledby="planLibraryTitle" hidden>
-          <div class="plan-segment-heading"><div><h3 id="planLibraryTitle">Bibliothek</h3><span id="librarySummary" class="tab-sync-detail"></span></div></div>
+          <h3 id="planLibraryTitle" class="sr-only">Bibliothek</h3>
           <div id="library" class="library"></div>
         </section>
       </section>
@@ -250,7 +250,6 @@
               <label>Messdatum<input name="first_threshold_on" type="date"></label>
               <label><span id="firstThresholdStoredLabel">Gespeichert (% LSHF)</span><input name="first_threshold_pct" type="number" min="40" max="100" step="0.1" inputmode="decimal"></label>
               <div id="firstThresholdEstimate" class="profile-estimate" hidden><output id="firstThresholdEstimateText"></output><button id="firstThresholdAdopt" type="button" class="secondary-button">Übernehmen</button></div>
-              <p class="fine-print profile-help">Garmin schreibt RR-Intervalle nur, wenn die HRV-Aufzeichnung für den Brustgurt aktiviert ist.</p>
             </fieldset>
             <div id="zoneEditor" class="zone-editor" hidden>
               <div class="form-grid" hidden>
@@ -624,7 +623,7 @@
         <details class="settings-section context-preview collapsible-section" data-more-segment-panel="coach" aria-label="Chat-Kontext und Prompt">
           <summary class="collapsible-summary"><span class="collapsible-summary-title">Chat-Kontext und Prompt</span></summary>
           <div class="context-preview-heading">
-            <div><h3 id="systemContextPreviewTitle">Chat-Kontext und Prompt</h3></div>
+            <h3 id="systemContextPreviewTitle" class="sr-only">Chat-Kontext und Prompt</h3>
             <button type="button" id="systemContextPreviewButton" class="secondary-button">Kontext laden</button>
           </div>
           <div id="systemContextPreviewStatus" class="context-preview-status">Noch nicht geladen.</div>
@@ -632,7 +631,7 @@
         </details>
         <details class="settings-section logs-section collapsible-section" data-more-segment-panel="operations">
           <summary class="collapsible-summary"><span class="collapsible-summary-title">Server-Logs</span></summary>
-          <div class="settings-section-heading"><div><h3>Server-Logs</h3></div><div class="settings-inline-action"><button id="logsDownloadButton" type="button" class="secondary-button">Logs herunterladen</button><button id="logsRefreshButton" type="button" class="secondary-button">Logs aktualisieren</button><button id="logsDeleteButton" type="button" class="secondary-button danger-button">Logs löschen</button></div></div>
+          <div class="settings-section-heading"><h3 class="sr-only">Server-Logs</h3><div class="settings-inline-action"><button id="logsDownloadButton" type="button" class="secondary-button">Logs herunterladen</button><button id="logsRefreshButton" type="button" class="secondary-button">Logs aktualisieren</button><button id="logsDeleteButton" type="button" class="secondary-button danger-button">Logs löschen</button></div></div>
           <pre id="logsOutput" class="logs-output">Logs werden beim Öffnen geladen…</pre>
         </details>
         <details id="privacySection" class="settings-section collapsible-section" data-more-segment-panel="operations">
