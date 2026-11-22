@@ -646,7 +646,7 @@ function plannedStrengthName(exercise) {
 function plannedStrengthRows(strength) {
   if (!strength?.exercises?.length) return null;
   return h("ul", "planned-strength", strength.exercises.map((exercise) => {
-    const load = !(exercise.planned_kg > 0) ? "" : ` @ ${calendarMetricNumber(exercise.planned_kg)} kg`;
+    const load = Number(exercise.planned_kg) > 0 ? ` @ ${calendarMetricNumber(exercise.planned_kg)} kg` : "";
     const plan = `${exercise.planned_sets}×${exercise.planned_reps}${load}`;
     const name = plannedStrengthName(exercise);
     // A unit without recorded reps names none ("Ist – Wdh." says nothing), a plan without weight no "0 kg" (#3932 K-16).
