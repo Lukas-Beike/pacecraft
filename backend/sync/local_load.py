@@ -35,7 +35,10 @@ from backend.canonical.vocabulary import (
     Sport,
 )
 from backend.db import canonical_store
-from backend.db.activity_analysis_reads import stored_heart_rate_histogram
+from backend.db.activity_analysis_reads import (
+    stored_heart_rate_histogram,
+    stored_normalized_graded_speed,
+)
 from backend.db.repositories import KeyValueRepository
 from backend.performance.canonical_session_analysis import ANALYSIS_VERSION
 from backend.performance.local_tss import (
@@ -45,7 +48,9 @@ from backend.performance.local_tss import (
     DatedThresholds,
     HistogramLookup,
     LocalLoad,
+    SpeedLookup,
     parse_heart_rate_histogram,
+    parse_normalized_graded_speed,
     rated_sessions,
     session_loads,
 )
@@ -118,16 +123,18 @@ def reconcile_local_loads(
     feedback: Mapping[str, Mapping[str, Any]] | None = None,
     sex: str | None = None,
     histograms: HistogramLookup | None = None,
+    speeds: SpeedLookup | None = None,
 ) -> dict[str, Any]:
     """Write every session's local load and retire stale rows; return counts.
 
     ``feedback`` is each session's effective local feedback by stored key, which
     the session-RPE branch of strength sessions and its calibration read;
     ``sex`` is the profile sex the heart-rate branch reads; ``histograms`` looks up
-    a session's stored heart-rate histogram for that branch.
+    a session's stored heart-rate histogram for that branch and ``speeds`` its stored
+    normalized graded speed for the pace branch.
     """
     loads = session_loads(
-        summaries, thresholds, feedback, sex=sex, histograms=histograms
+        summaries, thresholds, feedback, sex=sex, histograms=histograms, speeds=speeds
     )
     by_id = {str(summary.get("id")): summary for summary in summaries}
     keep: set[str] = set()
@@ -233,6 +240,9 @@ class LocalLoadStage:
             sex=self._athlete_sex(db),
             histograms=lambda session_id: parse_heart_rate_histogram(
                 stored_heart_rate_histogram(db, ANALYSIS_VERSION, session_id)
+            ),
+            speeds=lambda session_id: parse_normalized_graded_speed(
+                stored_normalized_graded_speed(db, ANALYSIS_VERSION, session_id)
             ),
         )
         self._save(

@@ -122,6 +122,38 @@ def heart_rate_histogram(activity: dict[str, Any]) -> dict[str, Any] | None:
     }
 
 
+# Normalized graded speed (M6 v8, McGregor et al. 2009): the analogue of
+# normalized power on the grade-adjusted speed. Bump when it computes differently.
+NGS_VERSION = 1
+NGS_WINDOW_S = 30.0
+
+
+def normalized_graded_speed(activity: dict[str, Any]) -> dict[str, Any] | None:
+    """A run's normalized graded speed in m/s, or None without a usable stream.
+
+    The 30 s rolling mean of the moving grade-adjusted speed (``_aerobic_output``:
+    Minetti outdoors, belt speed indoors), raised to the 4th power, time-weighted
+    averaged, then the 4th root. ``seconds`` is the time the rolling means cover.
+    """
+    if activity.get("sport") != "run":
+        return None
+    output = _aerobic_output(activity, "velocity_smooth")
+    if output is None:
+        return None
+    view, sensor = output
+    means = rolling_means(_samples(view, sensor, -math.inf, math.inf), NGS_WINDOW_S)
+    seconds = sum(weight for weight, _mean in means)
+    if seconds <= 0:
+        return None
+    fourth = sum(weight * mean**4 for weight, mean in means) / seconds
+    return {
+        "version": NGS_VERSION,
+        "ngs_mps": round(fourth**0.25, 4),
+        "seconds": round(seconds, 3),
+        "source": sensor,
+    }
+
+
 def _target(
     step: dict[str, Any], basis: dict[str, Any]
 ) -> tuple[str, float, float, str] | None:

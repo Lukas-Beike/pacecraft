@@ -61,7 +61,7 @@ M7_TOTALS = {
         "start_state": 0,
         "first_load_date": "2026-01-05",
         "load_method_id": "local-tss-load",
-        "load_method_version": 7,
+        "load_method_version": 8,
     },
     "coverage": {
         "loaded": 104,

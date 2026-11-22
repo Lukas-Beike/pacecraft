@@ -8,6 +8,7 @@ from backend.performance.session_analysis import (
     aerobic_analysis,
     heart_rate_histogram,
     interval_quality,
+    normalized_graded_speed,
     rolling_means,
 )
 from backend.planning.target_snapshot import freeze_targets
@@ -67,6 +68,46 @@ class SessionAnalysisTests(unittest.TestCase):
             {"streams": {"time": smart, "heartrate": [140] * len(smart)}}
         )
         self.assertAlmostEqual(smart[-1], result["covered_s"], places=2)
+
+    def test_normalized_graded_speed_of_an_interval_run_by_hand(self):
+        # Indoor (flat), 1 Hz: 600 s at 3 m/s, then 300 s at 5 m/s. A 30 s
+        # trailing mean ends at each second from 29 on (871 means): 571 at 3,
+        # 29 ramping 3 + 2k/30 (k = 1..29), 271 at 5. NGS is the 4th root of
+        # the mean of their 4th powers.
+        times = list(range(901))
+        speed = [3.0] * 600 + [5.0] * 301
+        fourth = 571 * 3**4 + 271 * 5**4
+        fourth += sum((3 + 2 * k / 30) ** 4 for k in range(1, 30))
+        expected = (fourth / 871) ** 0.25
+        result = normalized_graded_speed(
+            {
+                "sport": "run",
+                "environment": "indoor",
+                "streams": {"time": times, "velocity_smooth": speed},
+            }
+        )
+        self.assertAlmostEqual(expected, result["ngs_mps"], places=3)
+        self.assertEqual(871.0, result["seconds"])
+        self.assertGreater(result["ngs_mps"], (600 * 3 + 300 * 5) / 900)
+
+    def test_normalized_graded_speed_of_a_steady_flat_run_is_its_speed(self):
+        result = normalized_graded_speed(
+            {
+                "sport": "run",
+                "environment": "outdoor",
+                "streams": {
+                    "time": list(range(1201)),
+                    "velocity_smooth": [3.0] * 1201,
+                    "grade_smooth": [0.0] * 1201,
+                },
+            }
+        )
+        self.assertEqual(3.0, result["ngs_mps"])
+
+    def test_normalized_graded_speed_needs_a_run_with_grade_outdoors(self):
+        self.assertIsNone(normalized_graded_speed(run(grade=False)))
+        self.assertIsNone(normalized_graded_speed(ride()))
+        self.assertIsNotNone(normalized_graded_speed(run()))
 
     def test_decoupling_works_on_a_downsampled_ride(self):
         result = aerobic_analysis(ride([index * 5.4 for index in range(2000)]))

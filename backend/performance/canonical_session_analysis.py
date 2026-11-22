@@ -36,9 +36,11 @@ from backend.performance.form_drift import form_drift
 from backend.performance.power_profile import power_profile, running_profile
 from backend.performance.session_analysis import (
     HEART_RATE_HISTOGRAM_VERSION,
+    NGS_VERSION,
     aerobic_analysis,
     heart_rate_histogram,
     interval_quality,
+    normalized_graded_speed,
 )
 from backend.performance.session_execution import session_execution
 
@@ -187,6 +189,15 @@ def session_heart_rate_histogram(
     return heart_rate_histogram(adapted.activity)
 
 
+def session_normalized_graded_speed(
+    records: Sequence[ActivityRecord], merged: MergedDetail
+) -> dict[str, Any] | None:
+    """The normalized graded speed of the merged full-resolution streams (M6 v8)."""
+    ordered = measured_order(records)
+    adapted = analysis_input(ordered[0], merged.streams, None, members=ordered)
+    return normalized_graded_speed(adapted.activity)
+
+
 def record_part(record: ActivityRecord) -> list[object]:
     """The record fields the analysis reads, for the input fingerprint."""
     provider = record.provenance.provider
@@ -217,6 +228,7 @@ def analysis_fingerprint(
     the stream and lap sets (each hash covers its mapper version), whether a
     provider detail is stale, the frozen targets and the thresholds used.
     """
+    hashes = sorted(set_hashes)
     return fingerprint_inputs(
         {
             "versions": [
@@ -226,9 +238,12 @@ def analysis_fingerprint(
                 form_drift_module.METHOD_VERSION,
                 stream_zones.ZONE_TIMES_VERSION,
                 HEART_RATE_HISTOGRAM_VERSION,
+                # Only streams carry an NGS: a session whose details are gone
+                # keeps its stored row and fingerprint.
+                *([NGS_VERSION] if hashes else []),
             ],
             "records": [record_part(record) for record in measured_order(records)],
-            "sets": sorted(set_hashes),
+            "sets": hashes,
             "stale": stale,
             "targets": None if targets is None else dict(targets),
             "thresholds": dict(thresholds),

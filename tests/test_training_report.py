@@ -742,7 +742,7 @@ class TrainingReportTests(unittest.TestCase):
         }
         self.assertEqual(
             payload_digest(curves),
-            "3a996588835a81ba808ebfb8eefb1411d2bcb85c5937c0ef60be2e26fcfd222c",
+            "163584a2525b142a7924666e3d04751f0edd00e3b7e3378d6fae0774123767b5",
         )
         ride = training_report(**arguments, sport="ride")
         self.assertIsNone(ride["smoothed_session_load"])

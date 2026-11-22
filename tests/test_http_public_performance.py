@@ -333,7 +333,7 @@ class PublicPerformanceStateTests(unittest.TestCase):
         # 91 days (3 Monate); the first 84 days' own digest (the earlier window) is unchanged.
         self.assertEqual(
             payload_digest(curves),
-            "532c775a9d3517c3e09d20c86c8b56b65d6168aa640f5868cb2d6fb893dda979",
+            "c3ab07e5b301cc62aa4bb0a0eda90f23429d7d391ea63127e6a949ea92a32c4d",
         )
 
 

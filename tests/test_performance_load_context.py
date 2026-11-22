@@ -149,7 +149,7 @@ class PerformanceLoadContextTests(unittest.TestCase):
         )
         self.assertEqual(
             payload_digest(window),
-            "de93e1e19c30d40be80b16fffc3c47b17c2af76d2beeafb22ccab70afa35ddbb",
+            "66479cc72de31a1f279c627345ada1bc58d74b55ade93390d0e672815ab405d1",
         )
 
 
