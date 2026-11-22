@@ -277,6 +277,45 @@ class SessionSpikeTests(unittest.TestCase):
         self.assertEqual([], only(check(plan), "load_spike"))
 
 
+class HeartRateStepLoadTests(unittest.TestCase):
+    """Planned heart-rate steps are scored like a completed heart-rate session (A8)."""
+
+    def references(self, resting_hr: float | None) -> load_checks.LoadThresholds:
+        settings = ZoneSettings(lthr=170.0, max_hr=190.0)
+        return load_checks.LoadThresholds(
+            resolver=lambda *_: settings, resting_hr=resting_hr, sex="male"
+        )
+
+    def estimate(self, steps: str, resting_hr: float | None) -> Any:
+        unit = planned("h", "2026-11-04", "run", steps)
+        (session,) = load_checks.plan_sessions([unit], self.references(resting_hr))
+        return session.estimate
+
+    def test_an_hour_at_the_threshold_scores_100_like_m6(self) -> None:
+        estimate = self.estimate("- 60m 100% LTHR", 50.0)
+        self.assertAlmostEqual(100.0, estimate.load, places=6)
+        self.assertEqual("heart_rate_trimp", estimate.load_basis)
+
+    def test_easy_heart_rate_steps_score_below_the_intensity_factor_rule(self) -> None:
+        # 60 min at 75 % LTHR: the old IF rule gave 0.75^2 x 100 = 56; TRIMP with
+        # rest 50 and max 190 gives clearly less, as a completed easy run does.
+        trimp = self.estimate("- 60m 75% LTHR", 50.0).load
+        self.assertLess(trimp, 45.0)
+        self.assertGreater(trimp, 20.0)
+
+    def test_without_a_resting_hr_the_load_is_unknown_with_its_reason(self) -> None:
+        estimate = self.estimate("- 60m 100% LTHR", None)
+        self.assertIsNone(estimate.load)
+        self.assertIn("missing_heart_rate_reference", estimate.unknown)
+        # Power and pace steps keep their own rule.
+        unit = planned("p", "2026-11-04", "ride", "- 60m 100%")
+        settings = ZoneSettings(ftp=250.0)
+        (ride,) = load_checks.plan_sessions(
+            [unit], load_checks.LoadThresholds(resolver=lambda *_: settings)
+        )
+        self.assertAlmostEqual(100.0, ride.estimate.load, places=6)
+
+
 class LighterWeekTests(unittest.TestCase):
     """Four rising weeks without a lighter one get a note (C3, #3918)."""
 

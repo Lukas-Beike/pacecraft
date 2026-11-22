@@ -16,10 +16,11 @@ from backend.canonical.first_threshold import (
     first_threshold_estimated,
 )
 from backend.canonical.stored_sports import resolve_competition_sport
-from backend.canonical.vocabulary import Sport
+from backend.canonical.vocabulary import MetricKind, Sport
 from backend.errors import AppError
 from backend.performance.canonical_current import read_current_inputs
 from backend.performance.canonical_inputs import resolve_reader
+from backend.performance.local_tss import RESTING_HR_LOOKBACK_DAYS, DatedThresholds
 from backend.planning import (
     brief_budget,
     calendar_load,
@@ -123,11 +124,32 @@ def read_load_thresholds(
     observations: Any,
     today: date,
     configurations: Sequence[Any] = (),
+    sex: str | None = None,
 ) -> LoadThresholds:
-    """Local zone configurations, then the source-policy provider thresholds."""
+    """Local zone configurations, then the source-policy provider thresholds.
+
+    The newest resting HR of the last 7 days (Garmin, then Wahoo, as M6 reads
+    it) scores planned heart-rate steps (#3918).
+    """
     with database_manager.reader() as db:
-        current = read_current_inputs(resolve_reader(observations, db), db, as_of=today)
-    return load_thresholds(current, today, configurations)
+        reader = resolve_reader(observations, db)
+        current = read_current_inputs(reader, db, as_of=today)
+        rest = DatedThresholds(
+            (),
+            resting_hr=reader.observations(
+                db,
+                MetricKind.RESTING_HR,
+                start=today - timedelta(days=RESTING_HR_LOOKBACK_DAYS),
+                end=today,
+            ),
+        ).resting_hr(today)
+    return load_thresholds(
+        current,
+        today,
+        configurations,
+        resting_hr=None if rest is None else float(rest.value),
+        sex=sex,
+    )
 
 
 def read_progress(reports: Any) -> Mapping[str, Any]:

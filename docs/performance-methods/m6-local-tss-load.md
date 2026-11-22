@@ -1,7 +1,7 @@
 # M6 — Local TSS-scale session load and intensity
 
 - **Card:** M6
-- **Card version:** 7
+- **Card version:** 8
 - **Method ID:** local-tss-load v7 (#1725, v2 #1726, v3 #1774, v4 #1771, v5 #1773, v6 #1892, v7 #1950)
 - **Status:** implemented (`backend/performance/local_tss.py`, `backend/sync/local_load.py`)
 - **Classification:** model estimate
@@ -17,7 +17,11 @@ session's day. The sessions sum to the day, week and period load of the
 rollups and of the local fitness and fatigue curves (#1726), and the plan
 checks compare planned load with the stored values (athlete decision
 2026-11-11, #2082: one completed-session load for plan checks and charts; a
-session without a stored value is unknown there). It is not
+session without a stored value is unknown there). A planned unit of heart-rate
+steps is scored with the same heart-rate branch (the newest resting HR of 7
+days, the threshold and maximum HR in effect, the profile sex), so planned and
+completed loads share one scale; without those references its planned load is
+unknown with its reason (#3918). It is not
 measured fatigue, readiness, metabolic stress or injury risk, and not the
 session-RPE load M1.
 
