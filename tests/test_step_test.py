@@ -279,14 +279,18 @@ class EvaluationTests(unittest.TestCase):
         # Nine stage windows on a clean line are too few for an LT1 (MIN_WINDOWS 10).
         few = linear_windows(20)[::2][:9]
         result = ActivityDfaAlpha1(None, 9, 0.0, None, 3, few)
-        self.assertEqual(step_test.evaluate(result, laps, DAY)["lt1"]["status"], "unknown")
+        self.assertEqual(
+            step_test.evaluate(result, laps, DAY)["lt1"]["status"], "unknown"
+        )
         # Without a stage LT1, LT2 must still lie above the run's stored crossing.
         line = tuple(
             DfaWindow(start_s=15.0 * i, heart_rate_bpm=140 + 0.6 * i, alpha1=round(0.75 - 0.0225 * i, 4), artifact_share=0.0)
             for i in range(21)
         )  # fmt: skip
         floor = ActivityDfaAlpha1(150.0, 21, 0.0, DfaQuality.GOOD, 3, line)
-        self.assertEqual(step_test.evaluate(floor, laps, DAY)["lt2"]["status"], "unknown")
+        self.assertEqual(
+            step_test.evaluate(floor, laps, DAY)["lt2"]["status"], "unknown"
+        )
         free = ActivityDfaAlpha1(140.0, 21, 0.0, DfaQuality.GOOD, 3, line)
         self.assertEqual(step_test.evaluate(free, laps, DAY)["lt2"]["status"], "ok")
 
@@ -299,7 +303,9 @@ class EvaluationTests(unittest.TestCase):
             DfaWindow(start_s=400.0 + 30 * i, heart_rate_bpm=130.0, alpha1=0.45, artifact_share=0.0)
             for i in range(5)
         )  # fmt: skip
-        result = ActivityDfaAlpha1(None, 25, 0.0, None, 3, linear_windows(20) + cool_down)
+        result = ActivityDfaAlpha1(
+            None, 25, 0.0, None, 3, linear_windows(20) + cool_down
+        )
         self.assertEqual(
             step_test.evaluate(result, laps, DAY)["lt2"]["status"], "not_reached"
         )
@@ -319,7 +325,9 @@ class EvaluationTests(unittest.TestCase):
         }
         lt1 = step_test.evaluate(result, laps, DAY, streams)["lt1"]
         self.assertEqual(lt1["pace_seconds_per_km"], 308)
-        self.assertEqual(step_test.evaluate(result, laps, DAY)["method"], "run-step-test-v2")
+        self.assertEqual(
+            step_test.evaluate(result, laps, DAY)["method"], "run-step-test-v2"
+        )
 
     def test_a_stamped_unit_is_a_step_test_after_its_template_is_gone(self) -> None:
         # The result and its adoption read the unit's own stamp; a unit planned
