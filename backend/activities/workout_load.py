@@ -16,8 +16,9 @@ Definitions (intensity = fraction of the threshold, 1.0 = threshold):
 - Unit intensity factor: normalized over steps (4th-power mean) when every step
   is power-targeted, else the quadratic mean. Load = hours x IF^2 x 100
   (TSS style; for pace/HR steps an rTSS/hrTSS-style analogue, not a provider TSS).
-- Bands: Z1-Z2 low, Z3-Z4 moderate, Z5+ high (7 zones); Z1-Z2 / Z3 / Z4+ with
-  up to 5 zones, as in the recorded progress report.
+- Bands (``zone_settings.intensity_band``, #3915): low up to LT1 (85 % of
+  LTHR, 75 % of FTP, 88 % of the threshold speed), high above the threshold,
+  moderate between, as in the recorded progress report.
 """
 
 from __future__ import annotations
@@ -32,14 +33,14 @@ from backend.activities.workout_text import WorkoutTextError, structured_steps
 from backend.activities.zone_settings import (
     LTHR_SHARE_OF_MAX_HR,
     ZoneSettings,
+    intensity_band,
     percent_zone,
 )
 from backend.canonical.vocabulary import Sport
 
 SOURCE = "derived"
-METHOD = "workout-steps-v1"
+METHOD = "workout-steps-v2"
 BANDS = ("low", "moderate", "high")
-_MANY_ZONES = 6
 _MILE_M = 1609.344
 _NUMBER = r"\d++(?:\.\d++)?+"
 _ZONE = re.compile(r"Z(\d++)(?:-Z(\d++))?+")
@@ -84,13 +85,6 @@ class _Target:
     zone: int | None = None
     basis: str | None = None
     unknown: str | None = None
-
-
-def zone_band(zone: int, zone_count: int) -> str:
-    moderate, high = (3, 5) if zone_count >= _MANY_ZONES else (3, 4)
-    if zone < moderate:
-        return "low"
-    return "moderate" if zone < high else "high"
 
 
 def _unknown(reason: str) -> _Target:
@@ -237,9 +231,11 @@ def _estimate_step(
     if zone is None and target.intensity is not None:
         limits = _limits(str(step["kind"]), thresholds)
         zone = percent_zone(target.intensity * 100, limits)
-    band = None
-    if zone is not None:
-        band = zone_band(zone, len(_limits(str(step["kind"]), thresholds)) + 1)
+    band = (
+        None
+        if target.intensity is None
+        else intensity_band(str(step["kind"]), target.intensity)
+    )
     return StepEstimate(
         kind=str(step["kind"]),
         target=str(step["target"]),

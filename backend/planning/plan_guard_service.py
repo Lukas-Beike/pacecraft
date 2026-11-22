@@ -47,7 +47,7 @@ LESSONS_SOURCE = (
     "descriptive observations, no causes; an empty list means nothing notable or unknown"
 )
 BRIEF_SOURCE = (
-    "Local activity records (weekly-progress-v1), local planning and "
+    "Local activity records (weekly-progress-v2), local planning and "
     "confirmed profile; derived, not provider-measured"
 )
 

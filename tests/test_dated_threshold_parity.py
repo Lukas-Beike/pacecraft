@@ -3,8 +3,8 @@
 Precedence for a sport, kind and day: (1) the locally confirmed zone configuration
 in effect, (2) the Garmin watch zone set in effect (lactate threshold heart rate),
 (3) the stored source-policy observations. Expected values are worked examples:
-a watch LTHR of 172 against a stored 168 gives an easy cap (87 % of LTHR) of 150
-against 146 bpm, and one hour at 150 bpm scores 60.6 against 66.2 TSS (male
+a watch LTHR of 172 against a stored 168 gives an easy cap (84 % of LTHR, #3915) of
+144 against 141 bpm, and one hour at 150 bpm scores 60.6 against 66.2 TSS (male
 constants, rest 50, max 190).
 """
 
@@ -159,15 +159,15 @@ class WatchLthrParityTests(unittest.TestCase):
             Sport.RUN, Environment.OUTDOOR, DAY
         )
         self.assertEqual((zones.lthr, planned.lthr), (172.0, 172.0))
-        # The Garmin cap bpm export reads the zones' LTHR: 87 % of 172.
+        # The Garmin cap bpm export reads the zones' LTHR: 84 % of 172 (#3915).
         easy = effective_caps(None)["easy"]
-        self.assertEqual(resolved_range(easy, zones.lthr), (112, 150))
+        self.assertEqual(resolved_range(easy, zones.lthr), (112, 144))
 
     def test_session_load_current_metrics_and_coach_caps(self) -> None:
         _, metrics = self._metrics()
         coach = coach_thresholds(metrics)
         self.assertEqual(coach["run_lthr"], 172)
-        self.assertEqual(coach["run_hr_caps"]["easy"]["bpm"], 150)
+        self.assertEqual(coach["run_hr_caps"]["easy"]["bpm"], 144)
         self.assertEqual(metrics["run_threshold_hr_bpm"]["source_provider"], "garmin")
         self.assertEqual(metrics["run_threshold_hr_bpm"]["source"], "Garmin Connect")
         thresholds = DatedThresholds(self.observations, self.configurations)

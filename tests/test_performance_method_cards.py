@@ -338,7 +338,7 @@ def version_problems(card: str) -> list[str]:
 # A changed number fails until the version is bumped (results change) or the pin
 # is renewed with the same version and a reason in the PR (a refactor).
 METHOD_NUMBER_PINS = {
-    "backend/activities/stream_zones.py": (1, "82316f71249b825e"),
+    "backend/activities/stream_zones.py": (2, "aa1d0759b6b339be"),
     "backend/athlete/body_composition.py": (5, "8d13a81b8c901c9c"),
     "backend/canonical/dfa_alpha1.py": (3, "15f9cecd3bd14787"),
     "backend/nutrition/energy_balance.py": (26, "133a07e43fdc5174"),

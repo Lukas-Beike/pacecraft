@@ -212,6 +212,9 @@ class CoachActivityReadToolServiceTests(unittest.TestCase):
             "power_zone_times": [{"id": "Z1", "secs": 60.0}],
             "heart_rate_zone_times": [],
             "pace_zone_times": [],
+            # The 3-zone band times stay in the details too (#3915).
+            "power_band_times": [{"id": "Z1", "secs": 60.0}],
+            "heart_rate_band_times": [],
             # Garmin's unlabelled sweat-loss estimate stays out of the list (#2804).
             "water_estimated_ml": 900.0,
         }
