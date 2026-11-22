@@ -15,7 +15,7 @@ const addDateKey = (key, days) => {
 function navCount(calendar, undecided) {
   const link = { attributes: {}, badge: null,
     querySelector() { return this.badge; },
-    append(badge) { this.badge = badge; },
+    append(...nodes) { this.badge = nodes.at(-1); },
     setAttribute(name, value) { this.attributes[name] = value; } };
   const state = { data: {
     profile: { timezone: "Europe/Berlin" },
@@ -61,16 +61,16 @@ test("the running week's units to sync count once each, by the week sync button'
   const { count, badge, label } = navCount(calendar, 2);
   assert.equal(count, 3);
   assert.equal(badge, "5", "one sum with the undecided events");
-  assert.match(label, /^Kalender, 2 neue Termine bis \d\d\.\d\d\., 3 Einheiten zu synchronisieren$/);
+  assert.match(label, /^Kalender 5, 2 neue Termine bis \d\d\.\d\d\., 3 Einheiten zu synchronisieren$/);
 });
 
 test("the label names only the non-zero parts, and nothing shows without either", () => {
   const one = navCount([pending("new", "2026-11-19", { intervals: true })], 0);
   assert.equal(one.badge, "1");
-  assert.equal(one.label, "Kalender, 1 Einheit zu synchronisieren");
+  assert.equal(one.label, "Kalender 1, 1 Einheit zu synchronisieren");
   const none = navCount([pending("synced", "2026-11-19", { intervals: false })], 0);
   assert.equal(none.badge, "");
   assert.equal(none.label, "Kalender");
   const undecided = navCount([], 1);
-  assert.match(undecided.label, /^Kalender, 1 neuer Termin bis /);
+  assert.match(undecided.label, /^Kalender 1, 1 neuer Termin bis /);
 });

@@ -882,7 +882,7 @@ a.message-retry { display: grid; place-items: center; text-decoration: none; }
 /* rem follows the text size: with bigger text each row names its threshold on its own line above the two values. */
 @container (max-width: 18rem) {
   .zone-thresholds { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px 8px; }
-  .zone-thresholds > .zone-muted { font-size: .7rem; }
+  .zone-thresholds > .zone-muted { font-size: .72rem; }
   .zone-thresholds > :nth-child(3n + 1) { grid-column: 1 / -1; }
   .zone-thresholds > :empty { display: none; }
 }
@@ -1167,7 +1167,7 @@ a.message-retry { display: grid; place-items: center; text-decoration: none; }
 .profile-subsection { display: grid; gap: 12px; min-width: 0; margin: 0; border: 1px solid var(--line); border-radius: 14px; padding: 12px; }
 .profile-subsection legend { padding: 0 6px; color: var(--ink); font-size: .85rem; font-weight: 700; }
 .competition-list { display: grid; gap: 12px; }
-.competition-card { min-width: 0; padding: 14px; border: 1px solid var(--line); border-radius: 15px; background: var(--card-hover-surface); }
+.competition-card { position: relative; min-width: 0; padding: 14px; border: 1px solid var(--line); border-radius: 15px; background: var(--card-hover-surface); }
 .competition-card > summary, .competition-archive > summary { min-height: 44px; cursor: pointer; color: var(--ink); overflow-wrap: anywhere; }
 .competition-card > summary strong { font-size: .95rem; }
 .competition-heading { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
@@ -1179,7 +1179,8 @@ a.message-retry { display: grid; place-items: center; text-decoration: none; }
 .competition-summary-main::before { content: ""; display: inline-block; width: 6px; height: 6px; margin: 0 8px 2px 1px; border: solid var(--muted); border-width: 0 2px 2px 0; transform: rotate(-45deg); transition: transform .15s; }
 .competition-card[open] > summary .competition-summary-main::before { transform: rotate(45deg); }
 @media (prefers-reduced-motion: reduce) { .competition-summary-main::before { transition: none; } }
-.competition-card > summary .message-action { margin: -2px -6px -2px 0; }
+.competition-card > .message-action { position: absolute; top: 8px; right: 6px; margin: 0; }
+.competition-card > summary { padding-right: 40px; }
 #competitionDialog [hidden] { display: none; }
 #competitionDialogConfirm { display: grid; gap: 15px; }
 .confirmation-dialog :is(select, textarea) { width: 100%; }

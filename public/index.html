@@ -38,6 +38,7 @@
       <a class="nav-item" href="#more" aria-controls="settingsPanel" aria-label="Mehr" data-panel="settingsPanel" data-route="more" aria-keyshortcuts="Alt+5"><svg class="nav-icon" aria-hidden="true"><use href="#icon-more"></use></svg><span>Mehr</span></a>
     </aside>
     <header class="topbar">
+      <h1 class="sr-only">Pacecraft</h1>
       <div class="topbar-actions">
       </div>
     </header>
@@ -333,7 +334,7 @@
                   <div id="freshness-garmin" class="provider-freshness-list" aria-live="polite"></div>
                 </div>
                 <section class="credential-form garmin-credential-form" aria-labelledby="credGarminTitle">
-                  <div class="credential-row-head"><h4 id="credGarminTitle">Garmin-Konto</h4><span id="garmin-source" class="credential-source">Status wird geprüft…</span></div>
+                  <div class="credential-row-head"><h4 id="credGarminTitle" aria-level="3">Garmin-Konto</h4><span id="garmin-source" class="credential-source">Status wird geprüft…</span></div>
                   <p id="garmin-connection-status" class="credential-current">Status wird geprüft…</p>
                   <form id="garmin-login-form" class="credential-step" autocomplete="off" hidden>
                     <p class="fine-print settings-message">Die Anmeldung läuft direkt bei Garmin. Gespeichert werden nur die Garmin-Tokens in der verschlüsselten Datenbank, nicht das Passwort.</p>
@@ -359,7 +360,7 @@
                   </div>
                 </section>
                 <form id="cred-form-garmin_personal" class="credential-form" autocomplete="off" aria-labelledby="credGarminPersonalTitle">
-                  <h4 id="credGarminPersonalTitle">Personal API</h4>
+                  <h4 id="credGarminPersonalTitle" aria-level="3">Personal API</h4>
                   <div class="credential-row">
                     <div class="credential-row-head"><label for="cred-garmin_personal_api_key">API-Schlüssel</label><span id="cred-source-garmin_personal_api_key" class="credential-source">Status wird geprüft…</span></div>
                     <input id="cred-garmin_personal_api_key" type="password" autocomplete="off" spellcheck="false" placeholder="Neuen Schlüssel eingeben">
@@ -394,8 +395,8 @@
                   <small data-check-result="wahoo"></small>
                   <div id="freshness-wahoo" class="provider-freshness-list" aria-live="polite"></div>
                 </div>
-                <form id="cred-form-wahoo" class="credential-form" autocomplete="off" aria-labelledby="credWahooTitle">
-                  <h4 id="credWahooTitle">Zugang</h4>
+                <form id="cred-form-wahoo" class="credential-form" autocomplete="off" aria-label="Wahoo-Zugang">
+                  <h4 id="credWahooTitle" aria-level="3">Zugang</h4>
                   <div class="credential-row">
                     <div class="credential-row-head"><label for="cred-wahoo_client_id">Client-ID</label><span id="cred-source-wahoo_client_id" class="credential-source">Status wird geprüft…</span></div>
                     <input id="cred-wahoo_client_id" type="text" autocomplete="off" spellcheck="false" placeholder="Neue Client-ID eingeben">
@@ -428,8 +429,8 @@
                   <small data-check-result="intervals"></small>
                   <div id="freshness-intervals" class="provider-freshness-list" aria-live="polite"></div>
                 </div>
-                <form id="cred-form-intervals" class="credential-form" autocomplete="off" aria-labelledby="credIntervalsTitle">
-                  <h4 id="credIntervalsTitle">Zugang</h4>
+                <form id="cred-form-intervals" class="credential-form" autocomplete="off" aria-label="Intervals.icu-Zugang">
+                  <h4 id="credIntervalsTitle" aria-level="3">Zugang</h4>
                   <div class="credential-row">
                     <div class="credential-row-head"><label for="cred-intervals_api_key">API-Schlüssel</label><span id="cred-source-intervals_api_key" class="credential-source">Status wird geprüft…</span></div>
                     <input id="cred-intervals_api_key" type="password" autocomplete="off" spellcheck="false" placeholder="Neuen Schlüssel eingeben">
@@ -455,8 +456,8 @@
                   <small id="openaiConnectionDetail"></small>
                   <small data-check-result="openai"></small>
                 </div>
-                <form id="cred-form-openai" class="credential-form" autocomplete="off" aria-labelledby="credOpenaiTitle">
-                  <h4 id="credOpenaiTitle">Zugang</h4>
+                <form id="cred-form-openai" class="credential-form" autocomplete="off" aria-label="OpenAI-Zugang">
+                  <h4 id="credOpenaiTitle" aria-level="3">Zugang</h4>
                   <div class="credential-row">
                     <div class="credential-row-head"><label for="cred-openai_api_key">API-Schlüssel</label><span id="cred-source-openai_api_key" class="credential-source">Status wird geprüft…</span></div>
                     <input id="cred-openai_api_key" type="password" autocomplete="off" spellcheck="false" placeholder="Neuen Schlüssel eingeben">
@@ -484,8 +485,8 @@
                 <div class="connection-card-status">
                   <small data-check-result="anthropic"></small>
                 </div>
-                <form id="cred-form-anthropic" class="credential-form" autocomplete="off" aria-labelledby="credAnthropicTitle">
-                  <h4 id="credAnthropicTitle">Zugang</h4>
+                <form id="cred-form-anthropic" class="credential-form" autocomplete="off" aria-label="Claude-Zugang">
+                  <h4 id="credAnthropicTitle" aria-level="3">Zugang</h4>
                   <div class="credential-row">
                     <div class="credential-row-head"><label for="cred-anthropic_api_key">API-Schlüssel</label><span id="cred-source-anthropic_api_key" class="credential-source">Status wird geprüft…</span></div>
                     <input id="cred-anthropic_api_key" type="password" autocomplete="off" spellcheck="false" placeholder="Neuen Schlüssel eingeben">
@@ -513,8 +514,8 @@
                 <div class="connection-card-status">
                   <small id="yazioConnectionDetail"></small>
                 </div>
-                <form id="cred-form-yazio" class="credential-form" autocomplete="off" aria-labelledby="credYazioTitle">
-                  <h4 id="credYazioTitle">Zugang</h4>
+                <form id="cred-form-yazio" class="credential-form" autocomplete="off" aria-label="Yazio-Zugang">
+                  <h4 id="credYazioTitle" aria-level="3">Zugang</h4>
                   <div class="credential-row">
                     <div class="credential-row-head"><label for="cred-yazio_email">Yazio-E-Mail</label><span id="cred-source-yazio_email" class="credential-source">Status wird geprüft…</span></div>
                     <input id="cred-yazio_email" type="email" autocomplete="off" spellcheck="false" placeholder="Neue E-Mail eingeben">
@@ -629,7 +630,7 @@
         <details class="settings-section logs-section collapsible-section" data-more-segment-panel="operations">
           <summary class="collapsible-summary"><span class="collapsible-summary-title">Server-Logs</span></summary>
           <div class="settings-section-heading"><h3 class="sr-only">Server-Logs</h3><div class="settings-inline-action"><button id="logsDownloadButton" type="button" class="secondary-button">Logs herunterladen</button><button id="logsRefreshButton" type="button" class="secondary-button">Logs aktualisieren</button><button id="logsDeleteButton" type="button" class="secondary-button danger-button">Logs löschen</button></div></div>
-          <pre id="logsOutput" class="logs-output">Logs werden beim Öffnen geladen…</pre>
+          <pre id="logsOutput" class="logs-output" tabindex="0" role="region" aria-label="Server-Logs">Logs werden beim Öffnen geladen…</pre>
         </details>
         <details id="privacySection" class="settings-section collapsible-section" data-more-segment-panel="operations">
           <summary class="collapsible-summary"><span class="collapsible-summary-title">Datenschutz &amp; Backup</span></summary>

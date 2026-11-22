@@ -157,6 +157,18 @@ async function expectTextFormats(page, view) {
   expect(found, `value formats: ${found.join(" | ")}`).toEqual([]);
 }
 
+// #3935 X-02: the structural rules axe found on the fixture views; none may come back.
+// Controls inside a calendar card's summary (sync, conflict, Garmin buttons) are still nested interactive content;
+// only the competition cards are checked for it until those move out of the summary.
+const STRUCTURE_RULES = ["label-content-name-mismatch", "scrollable-region-focusable", "page-has-heading-one", "heading-order", "landmark-unique"];
+
+async function expectStructure(page, view) {
+  const { violations } = await new AxeBuilder({ page }).withRules(STRUCTURE_RULES).analyze();
+  const nested = await new AxeBuilder({ page }).include(".competition-card").withRules(["nested-interactive"]).analyze().catch(() => ({ violations: [] }));
+  const found = [...violations, ...nested.violations].flatMap((violation) => violation.nodes.map((node) => `${view}: ${violation.id} ${node.target.join(" ")}`));
+  expect(found, `axe structure: ${found.join(" | ")}`).toEqual([]);
+}
+
 // Fails with the view, the theme and every failing node with its measured and expected contrast.
 async function expectContrast(page, view, theme, scopes = SCOPES) {
   await page.mouse.move(0, 0);
@@ -191,6 +203,7 @@ test.describe("colour contrast sweep", () => {
           await applyTheme(page, theme);
           await expectContrast(page, view, theme);
           if (theme === "light") await expectTextFormats(page, view);
+          if (theme === "light") await expectStructure(page, view);
           if (route === "analysis/running") {
             // One opened explanation popover, named so a new chart legend cannot change it (#2766).
             await page.locator(".panel.active").getByRole("button", { name: "Entwicklung: Informationen", exact: true }).click();

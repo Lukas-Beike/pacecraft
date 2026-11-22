@@ -2014,9 +2014,10 @@ function plannedEventBand(events) {
     const time = plannedEventTime(event);
     const chip = h("button", {
       type: "button", className: "planned-event-chip", dataset: { impact, uid: event.uid, start: event.start_local || "" },
-      "aria-label": [name, time, EVENT_IMPACT_LABELS.get(impact)].filter(Boolean).join(", "),
+      // The name starts with what the chip shows, in its order (WCAG 2.5.3).
+      "aria-label": [[time, name].filter(Boolean).join(" "), EVENT_IMPACT_LABELS.get(impact)].filter(Boolean).join(", "),
     }, impact === "open" ? h("span", { className: "planned-event-dot", "aria-hidden": "true" }) : null,
-    time ? h("small", null, time) : null, h("span", "planned-event-name", name));
+    time ? h("small", null, time) : null, time ? " " : null, h("span", "planned-event-name", name));
     chip.addEventListener("click", () => openPlannedEventSheet(event));
     band.append(chip);
   }
@@ -2133,10 +2134,11 @@ function renderUndecidedNavCount() {
     let badge = link.querySelector("b.nav-count");
     if (!badge) {
       badge = h("b", { className: "nav-count", "aria-hidden": "true" });
-      link.append(badge);
+      // The space keeps the visible text "Kalender 1" and so inside the name that starts with it (WCAG 2.5.3).
+      link.append(" ", badge);
     }
     badge.textContent = count ? String(count) : "";
-    link.setAttribute("aria-label", ["Kalender", ...parts].join(", "));
+    link.setAttribute("aria-label", [count ? `Kalender ${count}` : "Kalender", ...parts].join(", "));
   }
 }
 
@@ -2343,7 +2345,10 @@ function plannedMonthDay(view, dateKey, monthKey) {
   const blocked = (view.calendarEventsByDate?.get(dateKey) || []).some((event) => event.impact === "block");
   button.classList.toggle("has-blocked-event", blocked);
   const units = entries.length ? countLabel(entries.length, "Einheit", "Einheiten") : "keine Einheit";
-  button.setAttribute("aria-label", `${DETAIL_DATE_FORMAT.format(dateFromKey(dateKey))}: ${units}${blocked ? ", Termin blockiert Training" : ""}`);
+  // The visible number and marks are decoration for the name, which the hidden text spells out (WCAG 2.5.3).
+  number.setAttribute("aria-hidden", "true");
+  marks.setAttribute("aria-hidden", "true");
+  button.append(h("span", "sr-only", `${DETAIL_DATE_FORMAT.format(dateFromKey(dateKey))}: ${units}${blocked ? ", Termin blockiert Training" : ""}`));
   button.addEventListener("click", () => {
     state.plannedTodayFocusPending = false;
     selectPlannedDay(dateKey);
@@ -3129,12 +3134,8 @@ function competitionCard(competition, todayKey, openIds) {
   const sport = competition.sport_detail || competitionSportLabel(competition.sport, competition.environment);
   const when = AppFormat.relativeDay(competition.event_date, todayKey);
   const edit = messageActionButton("edit", "Wettkampf bearbeiten");
-  edit.addEventListener("click", (event) => {
-    // The pencil sits in the summary: it must not open or close the card.
-    event.preventDefault();
-    event.stopPropagation();
-    openCompetitionDialog(competition);
-  });
+  // The pencil is a sibling of the summary, drawn over its corner: a control inside a summary is nested interactive content.
+  edit.addEventListener("click", () => openCompetitionDialog(competition));
   const summary = h("summary", null,
     h("span", "competition-summary-main",
       h("strong", null, `${competitionDate(competition, todayKey) ? dateLabel(competition.event_date) : "Datum unbekannt"} · ${competition.name || "Wettkampf"}`),
@@ -3157,7 +3158,7 @@ function competitionCard(competition, todayKey, openIds) {
   const upcoming = competitionDate(competition, todayKey) && competition.event_date >= todayKey;
   const plan = upcoming ? h("section", "race-plan") : null;
   const card = h("details", { className: "competition-card", dataset: { competitionId: String(competition.id) }, open: openIds.has(String(competition.id)) },
-    summary, source, facts.length ? h("div", "competition-card-facts", facts) : null, plan);
+    summary, edit, source, facts.length ? h("div", "competition-card-facts", facts) : null, plan);
   if (plan) {
     card.addEventListener("toggle", () => { if (card.open) loadRacePlan(plan, competition); });
     if (card.open) loadRacePlan(plan, competition);
