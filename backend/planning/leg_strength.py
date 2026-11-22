@@ -460,21 +460,22 @@ def _before(
             inside, hours = _strength_hours(unit, start, planned)
         except ValueError:
             continue
-        # The same gap as the plan check (#3920): known moderate or light leg
-        # work counts 24 h; heavy, unknown and other strength stay at 48 h.
+        # Every session of the 48 h window is listed; within_key_gap marks the
+        # plan check's gap (#3920): known moderate or light leg work 24 h,
+        # heavy, unknown and other strength 48 h.
         light = (
             strength is not None
             and strength.leg
             and strength.intensity in {"moderate", "light"}
         )
         limit = KEY_GAP_H["moderate"] if light else KEY_GAP_H["heavy"]
-        inside = inside and (hours is None or hours <= limit)
         if strength is not None and inside:
             found.append(
                 {
                     "hours_before": hours,
                     "legs": strength.leg,
                     "intensity": strength.intensity,
+                    "within_key_gap": hours is None or hours <= limit,
                 }
             )
     found.sort(key=lambda row: (row["hours_before"] is None, row["hours_before"] or 0))
