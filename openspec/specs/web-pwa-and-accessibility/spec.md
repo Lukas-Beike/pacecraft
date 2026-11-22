@@ -859,6 +859,10 @@ Every analysis chart SHALL pad its value axis by 12 % of the span (at least a un
 - **WHEN** a series has a single reading
 - **THEN** no curve is drawn and "Ein einzelner Messwert zeigt noch keinen Verlauf; mindestens zwei datierte Werte sind erforderlich." is shown with the table
 
+#### Scenario: Readable axes and honest series
+- **WHEN** a chart has a long period or a series without a drawn line
+- **THEN** the date labels keep a round step, or an even one, so that no more labels than fit are drawn (4 on a phone, 7 on a wide screen) even for 12 months of days; a weekly chart names its week starts at the top right, clear of the first label; a series with one reading or none has no legend entry and sets no axis range, and its table cell is "–" without a date; the coverage of a weekly series counts the weeks of the chart's period; data that begins in the last 70 % of the period says "Daten ab dd.mm.jjjj."; a pulse chart spans at least ten beats
+
 Evidence: `public/analysis.js::analysisChart`; `public/analysis.js::analysisPlotScales`; `public/analysis.js::analysisLabelledPoints`; `public/analysis.js::appendAnalysisPointInspectors`; `public/analysis.js::analysisWeeklyLastPoints`; `public/analysis.js::analysisWeeklySumPoints`; `public/analysis.js::analysisWeeklyMeanPoints`; `public/analysis.js::analysisWeeklyPerformancePoints`; `public/activity-analysis.js::chartRange`; `public/activity-analysis.js::speedChannel`. Tests: `e2e/analysis-info.spec.js::@responsive a history chart is one tab stop with arrow-key navigation inside a named region`; `tests/analysis-presentation.test.cjs::analysis popovers stay inside the viewport on narrow screens and flip above when needed`; `tests/analysis-presentation.test.cjs::weekly daily-activity mean averages known days and keeps empty weeks as gaps`.
 
 ### Requirement: Display formats

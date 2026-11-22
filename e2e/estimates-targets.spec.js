@@ -57,8 +57,14 @@ test("@responsive derived values carry no estimate chip and race predictions sho
   for (const title of [/^RPE-Belastung/, /^RPE-Belastung kurz und lang/]) {
     await expect(page.getByRole("heading", { name: title }).first().locator(".estimate-chip")).toHaveCount(0);
   }
-  // A dashed series shows its dash in the legend.
-  await expect(page.locator(".analysis-chart-legend li[data-line='dashed']").first()).toBeVisible();
+  // Every legend entry names a series that is drawn: a series without a line has no entry (#3928). The dash of a legend
+  // entry is pinned by the analysis-pace golden of tests/chart-golden.test.cjs.
+  const unmatched = await page.locator("#dataPanel .analysis-chart-card").evaluateAll((cards) => cards.flatMap((card) => {
+    const entries = card.querySelectorAll(".analysis-chart-legend li").length;
+    const drawn = new Set([...card.querySelectorAll("svg [data-series]")].map((node) => node.dataset.series)).size;
+    return entries && entries !== drawn ? [`${card.querySelector("h3")?.textContent}: ${entries} entries, ${drawn} drawn`] : [];
+  }));
+  expect(unmatched).toEqual([]);
 });
 
 test("@responsive nutrition diary shows calories as hero with one equal macro row", async ({ page }) => {

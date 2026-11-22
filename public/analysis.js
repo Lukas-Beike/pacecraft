@@ -110,8 +110,13 @@ function analysisChart(title, series, unit, start, end, note, {
   const section = h("section", "analysis-chart-card", heading);
   const valid = analysisValidPoint;
 
+  // A series without a drawn line (a single reading, or none) names no legend entry and sets no axis; the table still lists it.
+  const shown = series.some(analysisPlottable) ? series.filter(analysisPlottable) : series;
+  // One denominator for every series of a cadence: the days or the week starts of the chart's own period.
+  const periodCount = { 1: analysisTickDates(start, end, false).length, 7: analysisTickDates(start, end, true).length };
   const legend = h("ul", "analysis-chart-legend");
   series.forEach((item, index) => {
+    if (!shown.includes(item)) return;
     const latest = analysisLatestPoint(item);
     const label = item.legendLabel || item.label;
     const sourceInfo = item.source ? " · Quelle: " + item.source : "";
@@ -123,7 +128,7 @@ function analysisChart(title, series, unit, start, end, note, {
     if (latest) info.append(h("span", "analysis-metric-meta", `${dateLabel(latest.observedDate || latest.date)}${sourceSuffix}`));
     if (item.referenceLabel) info.append(h("span", "analysis-metric-context", item.referenceLabel));
     const readings = item.points.filter(valid);
-    info.append(h("span", "analysis-metric-meta", item.coverageShort || analysisCoverageText(readings.length, item.points.length, item.cadenceDays === 7 ? "Wochen" : "Tagen")));
+    info.append(h("span", "analysis-metric-meta", item.coverageShort || analysisCoverageText(readings.length, item.cadenceDays === 7 ? periodCount[7] : item.points.length, item.cadenceDays === 7 ? "Wochen" : "Tagen")));
     if (readings.length > 1) {
       const first = readings[0];
       const delta = Number(latest.value) - Number(first.value);
@@ -132,7 +137,7 @@ function analysisChart(title, series, unit, start, end, note, {
     }
     legend.append(entry);
   });
-  if (showLegend && analysisLegendRepeatsTitle(series, title)) analysisLegendInfoToHeading(heading, legend, title);
+  if (showLegend && analysisLegendRepeatsTitle(shown, title)) analysisLegendInfoToHeading(heading, legend, title);
   else if (showLegend) section.append(legend);
 
   if (!series.some(analysisPlottable)) {
@@ -144,18 +149,26 @@ function analysisChart(title, series, unit, start, end, note, {
   if (fewReadings) section.querySelectorAll(".analysis-info-tooltip").forEach((info) => info.append(h("p", "analysis-sparse-note", "Wenige Messungen · kein belastbarer Trend.")));
   const weekTicks = calendarWeeks && series.length > 0 && series.every((item) => item.cadenceDays === 7);
   // A week's mark sits on its week start; half a week of room keeps the first mark off the value axis.
-  const scales = analysisPlotScales(series, weekTicks ? addDateKey(start, -3) : start, end, { unit, zeroCentered });
+  const scales = analysisPlotScales(shown, weekTicks ? addDateKey(start, -3) : start, end, { unit, zeroCentered });
   const svg = svgNode("svg", { viewBox: `0 0 ${scales.chartWidth} 200`, role: "group", "aria-label": `${title}: datierter Verlauf. Tageswerte auswählen oder Werte ansehen öffnen.` });
   svg.append(svgNode("title", {}, `${title} · ${dateLabel(start)} bis ${dateLabel(end)}`));
   svg.append(svgNode("desc", {}, `Eigene Skala: ${caption}. Fehlende Messungen bleiben unbekannt.`));
   appendAnalysisAxes(svg, unit, scales, caption);
-  appendAnalysisSeries(svg, series, unit, scales, zeroCentered, caption);
+  appendAnalysisSeries(svg, series, unit, scales, zeroCentered, caption, weekTicks);
   appendAnalysisDateTicks(svg, start, end, scales, weekTicks ? analysisWeekTickLabel : analysisDayTickLabel);
   appendAnalysisPointInspectors(section, svg, series, unit, scales);
   section.append(svg);
+  appendAnalysisDataStart(section, shown, start, end);
   appendAnalysisReferenceNotes(section, series, unit);
   appendAnalysisTable(section, title, series, unit, caption);
   return section;
+}
+
+// Data that begins in the last part of the period says so, instead of leaving the first part of the axis unexplained.
+function appendAnalysisDataStart(section, series, start, end) {
+  const first = series.flatMap((item) => item.points.filter(analysisValidPoint).map((point) => point.date)).sort()[0];
+  if (!first || (Date.parse(first) - Date.parse(start)) / Math.max(86400000, Date.parse(end) - Date.parse(start)) <= 0.3) return;
+  section.append(h("p", "muted", `Daten ab ${dateLabel(first)}.`));
 }
 
 // A single series named like the chart only repeats the heading in its legend; its info button joins the heading instead.
@@ -236,7 +249,7 @@ function appendAnalysisTable(section, title, series, unit, caption = analysisAxi
   const rows = dates.map((date) => [h("th", { scope: "row" }, dateLabel(date)), ...series.map((item) => {
     const point = item.points.find((candidate) => candidate.date === date);
     let value = analysisValidPoint(point) ? analysisPointValue(item, point, unit) : "–";
-    if (point?.count || point?.weekReadings || point?.observedDate) value += analysisReadingDetails(point, item.unit || unit);
+    if (analysisValidPoint(point) && (point.count || point.weekReadings || point.observedDate)) value += analysisReadingDetails(point, item.unit || unit);
     // A merged body series names each day's source (#3464).
     if (analysisValidPoint(point) && point.source_label) value += ` · ${point.source_label}`;
     return value;
@@ -254,6 +267,8 @@ function analysisPlotScales(series, start, end, { unit = "", zeroCentered = fals
   let low = Math.min(...values), high = Math.max(...values);
   if (zeroCentered) { const extent = Math.max(Math.abs(low), Math.abs(high), 1); low = -extent; high = extent; }
   if (series.some((item) => item.bars)) low = Math.min(0, low);
+  // A pulse that varies by two beats does not fill the axis: the range is at least ten beats wide.
+  if (unit === "bpm" && high - low < 10) { const middle = (high + low) / 2; low = middle - 5; high = middle + 5; }
   const padding = Math.max((high - low) * .12, analysisMinimumPadding(unit, high));
   const rawStep = (high - low + padding * 2) / 4;
   const magnitude = 10 ** Math.floor(Math.log10(rawStep));
@@ -463,9 +478,11 @@ function appendAnalysisPointLabels(svg, labels, obstacles, { chartWidth }) {
   accepted.forEach(({ box, index, label }) => svg.append(svgNode("text", { x: (box.left + box.right) / 2, y: box.bottom - 3, "text-anchor": "middle", class: "analysis-point-value", "data-value-series": index }, label)));
 }
 
-function appendAnalysisSeries(svg, series, unit, scales, zeroCentered, caption) {
+function appendAnalysisSeries(svg, series, unit, scales, zeroCentered, caption, weeklyCaption = false) {
   const labels = [];
   const obstacles = [analysisTextBox(4, 15, caption, 6.4)];
+  // The week caption sits at the top right: no value label may overprint it.
+  if (weeklyCaption) obstacles.push(analysisTextBox(scales.chartWidth - 8 - "Woche ab".length * 6.4, 15, "Woche ab", 6.4));
   // A dashed zero line beside a label reads as a minus sign (#3450).
   if (scales.min < 0 && scales.max > 0) obstacles.push({ left: 60, right: scales.chartRight, top: scales.y(0) - 1, bottom: scales.y(0) + 1 });
   series.forEach((item, index) => {
@@ -489,19 +506,26 @@ function analysisDayTickLabel(dateKey) {
   return dateKey.slice(5).split("-").reverse().join(".");
 }
 
+// The label step in ticks: a round step (days of a week, a few weeks) when one fits, else the even step for the labels that fit.
+function analysisTickStep(tickCount, maxLabels) {
+  const fits = (step) => Math.floor((tickCount - 1) / step) + 1 <= maxLabels;
+  return [1, 2, 3, 4, 7, 14, 28, 56, 91].find(fits) || Math.ceil((tickCount - 1) / (maxLabels - 1));
+}
+
 // Tick marks sit on every day (or every week start of a weekly chart); labels repeat at an even step counted back from the latest tick.
 function appendAnalysisDateTicks(svg, start, end, { chartWidth, x }, tickLabel = analysisDayTickLabel) {
   const weekly = tickLabel === analysisWeekTickLabel;
   const dates = analysisTickDates(start, end, weekly);
   const maxLabels = chartWidth < 600 ? 4 : 7;
-  const step = [1, 2, 3, 4, 7, 14, 28].find((candidate) => Math.floor((dates.length - 1) / candidate) + 1 <= maxLabels) || 28;
+  const step = analysisTickStep(dates.length, maxLabels);
   dates.forEach((date, index) => {
     const labelled = (dates.length - 1 - index) % step === 0;
     if (!labelled && dates.length > 31) return;
     svg.append(svgNode("line", { x1: x(date), x2: x(date), y1: 160, y2: labelled ? 168 : 164, class: "analysis-tick-mark" }));
     if (labelled) svg.append(svgNode("text", { x: x(date), y: 188, "text-anchor": "middle", class: "analysis-date-tick" }, tickLabel(date)));
   });
-  if (weekly) svg.append(svgNode("text", { x: 4, y: 188, class: "analysis-week-caption" }, "Woche ab"));
+  // At the top right, clear of the first tick label.
+  if (weekly) svg.append(svgNode("text", { x: chartWidth - 8, y: 15, "text-anchor": "end", class: "analysis-week-caption" }, "Woche ab"));
 }
 
 function analysisTickDates(start, end, weekly) {
@@ -1438,8 +1462,9 @@ function bodyMetricChart(metric, title, unit, window, period, preferred = {}) {
   if (weekly) chart.querySelectorAll(".analysis-info-tooltip").forEach((info) => {
     info.append(h("p", "analysis-reference-note", `${analysisPeriod(period).weeks} rollierende Wochen: letzter Messwert je Woche.`));
   });
-  if (metric === "cycling_w_per_kg") chart.querySelectorAll(".analysis-info-tooltip").forEach((info, index) => {
-    const item = entries[index];
+  // The legend tooltip names its series; a hidden series leaves no tooltip, so the position says nothing.
+  if (metric === "cycling_w_per_kg") chart.querySelectorAll(".analysis-info-tooltip[data-series]").forEach((info) => {
+    const item = entries[Number(info.dataset.series)];
     if (item?.power_method) info.append(h("p", "analysis-reference-note", `Methode: ${item.power_method}. FTP- und Gewichtsdatum sind in den Einzelwerten getrennt ausgewiesen.`));
   });
   return chart;

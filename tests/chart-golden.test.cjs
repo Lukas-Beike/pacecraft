@@ -144,3 +144,33 @@ test("the activity details dialog keeps its rendered tree: series charts with va
   await context.ActivityDetails.open({ id: "a1", name: "Testlauf" }, { api: async () => DETAIL_PAYLOAD, showDialog() {} });
   expectGolden("activity-details", context.document.body.children[0]);
 });
+
+test("a series without a drawn line leaves the legend and the axis; the table shows an empty cell without a date (#3928)", () => {
+  const context = chartContext(1200);
+  extractFunctions("views.js", ["dateFromKey", "localDateKey", "addDateKey"], context);
+  loadPublicScript("analysis.js", context);
+  const drawn = { label: "Schwelle", color: 0, cadenceDays: 7, points: [{ date: "2026-10-05", value: 100 }, { date: "2026-10-19", value: 105 }] };
+  // One reading only: nothing to draw, and an observed date that must not follow an empty cell.
+  const single = { label: "LT1", color: 1, cadenceDays: 7, points: [{ date: "2026-10-05", value: null }, { date: "2026-10-12", value: 900, observedDate: "2026-10-12" }, { date: "2026-10-19", value: null, observedDate: "2026-09-06" }] };
+  const text = serialize(context.analysisChart("Schwellen", [drawn, single], "W", "2026-10-05", "2026-10-19", "Hinweis.", { calendarWeeks: true }));
+  assert.match(text, /"Schwelle"/);
+  assert.doesNotMatch(text, /Erklärung zu LT1/, "no legend entry for a series with one reading");
+  const ticks = [...text.matchAll(/class="analysis-value-tick"[^>]*>\n\s+"([^"]+)"/g)].map((match) => Number(match[1].replace(",", ".")));
+  assert.ok(ticks.length > 1 && Math.max(...ticks) < 200, `the single reading sets no axis tick: ${ticks}`);
+  assert.doesNotMatch(text, /"– · letzter Messwert/, "an empty cell names no date");
+  assert.match(text, /Daten für 2 von 3 Wochen vorhanden/, "the week count is the chart's own, not the number of points");
+});
+
+test("data that starts late in the period names its start, and a pulse chart keeps a ten-beat range (#3928)", () => {
+  const context = chartContext(1200);
+  extractFunctions("views.js", ["dateFromKey", "localDateKey", "addDateKey"], context);
+  loadPublicScript("analysis.js", context);
+  const late = { label: "Ruhepuls", color: 0, cadenceDays: 7, points: [{ date: "2026-11-02", value: 50 }, { date: "2026-11-09", value: 51 }, { date: "2026-11-16", value: 49 }] };
+  const text = serialize(context.analysisChart("Ruhepuls", [late], "bpm", "2026-08-31", "2026-11-16", "Hinweis.", { calendarWeeks: true, showLegend: false }));
+  assert.match(text, /"Daten ab 02\.11\.2026\."/);
+  const ticks = [...text.matchAll(/class="analysis-value-tick"[^>]*>\n\s+"([^"]+)"/g)].map((match) => Number(match[1].replace(",", ".")));
+  assert.ok(Math.max(...ticks) - Math.min(...ticks) >= 10, `the axis spans at least ten beats: ${ticks}`);
+  // Data over the whole period names no start.
+  const whole = { ...late, points: [{ date: "2026-08-31", value: 50 }, ...late.points] };
+  assert.doesNotMatch(serialize(context.analysisChart("Ruhepuls", [whole], "bpm", "2026-08-31", "2026-11-16", "Hinweis.", { calendarWeeks: true, showLegend: false })), /Daten ab/);
+});
