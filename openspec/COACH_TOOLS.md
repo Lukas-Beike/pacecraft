@@ -681,6 +681,7 @@ effect `local_write`; gate domain `checkin`; receipt „Tages-Check-in gespeiche
 - `payload.complaints[].area`* (string; one of `"foot"`, `"ankle"`, `"achilles"`, `"calf"`, `"shin"`, `"knee"`, `"thigh_front"`, `"thigh_back"`, `"hip"`, `"groin"`, `"lower_back"`, `"upper_back_neck"`, `"shoulder"`, `"arm_elbow"`, `"hand_wrist"`, `"other"`)
 - `payload.complaints[].side`* (string; one of `"left"`, `"right"`, `"both"`, `"none"`)
 - `payload.complaints[].severity`* (integer; ≥0; ≤10)
+- `payload.symptoms` (array of string; unique items; each one of `"schnupfen"`, `"halsschmerzen"`, `"husten"`, `"kopfschmerzen"`, `"fieber"`, `"gliederschmerzen"`, `"muedigkeit"`, `"brust_atemnot"`, `"magen_darm"`)
 - `payload.day_form` (string; ≤2000 chars)
 - `payload.illness` (string; ≤1000 chars)
 - `payload.pain` (string; ≤1000 chars)

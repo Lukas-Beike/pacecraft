@@ -106,6 +106,10 @@ def _approve_existing_pause(
     )
     if same_pause:
         illness_pause.update(start_date=start, end_date=end, approved=True)
+        illness_pause["symptoms_reported"] = bool(
+            previous_pause.get("symptoms_reported")
+            or illness_pause["symptoms_reported"]
+        )
         illness_pause["status"] = "approved"
     return illness_pause
 
@@ -299,7 +303,7 @@ def _replacement(
     ]
     if state["illness_active"]:
         replacement = adaptive.illness_pause_replacement(draft, reason)
-    elif state["no_training"]:
+    elif state["no_training"] or state["return_stage"] == 0:
         replacement = {
             **draft,
             "archived": True,
@@ -582,7 +586,9 @@ class AdaptiveReplanPreviewService:
         if state is None or illness_return.enforced_stage(state) is None:
             return None
         overnight = self._overnight() if self._overnight else {}
-        decision = illness_return.decide(state, today, feedback, overnight)
+        decision = illness_return.decide(
+            state, today, feedback, overnight, self._checkin_service.list(30)
+        )
         after = illness_return.state_after(state, decision, today)
         stage = decision["stage"]
         return {

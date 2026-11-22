@@ -310,6 +310,10 @@ After an approved illness pause the system SHALL run a three-stage return (stage
 - **WHEN** the newest applied or partial adjustment holds an approved pause and today lies 1 to 28 days after its end date
 - **THEN** a return runs, starting at stage 1 on the day after the pause; a stored stage state is used only when it belongs to the same pause end, and after 28 days or at stage 3 nothing is enforced.
 
+#### Scenario: Return after fever or muscle ache
+- **WHEN** the approved pause carries a selected symptom (any of the nine ids)
+- **THEN** the return starts at stage 0 (rest only, every session is above the stage) and the preview advances to stage 1 only when two check-ins after the latest day with a symptom have none; otherwise it holds with the reason `symptoms_reported`. Coach rule 2a says rest only, with no training and no easy alternatives, while a symptom is selected. An empty symptom list keeps stage 1.
+
 #### Scenario: Advance
 - **WHEN** today's check-in exists, reports no pain or illness complaint, its soreness (if given) is at most 5, the overnight HRV is not below the lower quartile less half the interquartile range (the M14 margin of the infection hint, #3920), the resting heart rate is at most 5 bpm above the usual value and the stage is at least 2 days old
 - **THEN** the preview proposes the next stage (`action: advance`, `pending: true`).

@@ -7,7 +7,8 @@ a normal body feel, the overnight HRV is not below the athlete's usual range by
 more than half its width (the M14 margin, #3920) and
 the resting heart rate is at most 5 bpm above the usual value. A poor sign holds
 the stage, a new complaint steps back one stage. A missing overnight value leaves
-the check-in alone to decide. A step is a previewed local proposal; the stage
+the check-in alone to decide. With a symptom selected (#3919) the return waits at
+stage 0, rest only, until two later check-ins have none. A step is a previewed local proposal; the stage
 state lives in the payload of the applied adjustment. No I/O.
 """
 
@@ -37,8 +38,12 @@ HISTORY_LIMIT: Final = 20
 CHECKIN_SOURCE: Final = "Check-in (lokal)"
 GARMIN_SOURCE: Final = provider_label(ProviderId.GARMIN, SourceView.DAILY_HEALTH)
 # Highest session level a stage allows: 0 easy, 1 moderate, 2 hard (normal plan).
-STAGE_MAX_LEVEL: Final = {1: 0, 2: 1, 3: 2}
+STAGE_MAX_LEVEL: Final = {0: -1, 1: 0, 2: 1, 3: 2}
+# Stage 0 (a symptom selected): rest only until this many later
+# check-ins have none (Ruuskanen et al. 2022 on rest after febrile illness).
+SYMPTOM_FREE_CHECKINS: Final = 2
 STAGE_LABELS: Final = {
+    0: "nur Ruhe",
     1: "nur lockere Einheiten",
     2: "lockere und moderate Einheiten",
     3: "normaler Plan",
@@ -46,14 +51,17 @@ STAGE_LABELS: Final = {
 
 
 def initial_state(pause: Mapping[str, Any]) -> dict[str, Any]:
-    """Stage 1 from the day after the pause window."""
+    """Stage 1 from the day after the pause window; stage 0 (rest only) after a symptom."""
     end = date.fromisoformat(str(pause["end_date"]))
-    return {
+    state = {
         "pause_end": end.isoformat(),
         "stage": 1,
         "since": (end + timedelta(days=1)).isoformat(),
         "history": [],
     }
+    if pause.get("symptoms_reported"):
+        state.update(stage=0, symptom_date=str(pause["start_date"]))
+    return state
 
 
 def current_state(
@@ -163,13 +171,41 @@ def _result(
     }
 
 
+def _symptom_free(checkin: Mapping[str, Any]) -> bool:
+    """No symptom selected."""
+    return not checkin.get("symptoms")
+
+
+def _free_checkins(
+    state: Mapping[str, Any], today: date, checkins: Sequence[Mapping[str, Any]]
+) -> int:
+    """Check-ins without symptoms after the last day that had one.
+
+    A later symptom restarts the count, so today's own check-in with one leaves
+    no free check-in after it.
+    """
+    days = [str(item.get("checkin_date") or "") for item in checkins]
+    symptom_date = max(
+        [
+            str(state.get("symptom_date") or ""),
+            *(day for item, day in zip(checkins, days) if not _symptom_free(item)),
+        ]
+    )
+    return sum(symptom_date < day <= today.isoformat() for day in days)
+
+
 def decide(
     state: Mapping[str, Any],
     today: date,
     checkin: Mapping[str, Any] | None,
     overnight: Mapping[str, Any] | None,
+    checkins: Sequence[Mapping[str, Any]] = (),
 ) -> dict[str, Any]:
-    """Advance, hold or step back for this morning; never more than one stage."""
+    """Advance, hold or step back for this morning; never more than one stage.
+
+    Stage 0 (after a symptom) advances to stage 1 only once
+    ``SYMPTOM_FREE_CHECKINS`` check-ins after the last such day have none.
+    """
     stage = int(state["stage"])
     if not checkin or str(checkin.get("checkin_date") or "") != today.isoformat():
         return _result("hold", stage, stage, ["no_checkin"], [])
@@ -179,6 +215,10 @@ def decide(
         _hrv_sign(overnight.get("hrv")),
         _resting_hr_sign(overnight.get("resting_hr")),
     ]
+    if stage == 0:
+        if _free_checkins(state, today, checkins) < SYMPTOM_FREE_CHECKINS:
+            return _result("hold", 0, 0, ["symptoms_reported"], evidence)
+        return _result("advance", 0, 1, [], evidence)
     if complaint:
         target = max(1, stage - 1)
         return _result(

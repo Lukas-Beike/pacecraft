@@ -1,11 +1,11 @@
 # M14 — Early infection hint from night values
 
 - **Card:** M14
-- **Card version:** 3
+- **Card version:** 4
 - **Method ID:** infection-hint-v1 (#3762)
 - **Status:** implemented (`backend/performance/infection_hint.py`), awaiting athlete review
 - **Classification:** descriptive statistic
-- **Literature checked:** 2026-11-20
+- **Literature checked:** 2026-11-22
 - **Review:** blocked
 
 ## Target construct
@@ -58,6 +58,16 @@ an infection, illness, recovery or readiness state.
   hint for today in the calendar, the Coach context and the planning brief;
   only that day is stored, and a hint on a later day shows again. Once today
   reports illness the note keeps its values without the two answers.
+- Symptoms (#3919, athlete decision): "Ich bin krank" expands the note into
+  nine symptom chips and "Bestätigen"; the selected symptom ids are stored with
+  that check-in (`schnupfen`, `halsschmerzen`, `husten`, `kopfschmerzen`,
+  `fieber`, `gliederschmerzen`, `muedigkeit`, `brust_atemnot`, `magen_darm`);
+  the Coach reads them and sets them from the athlete's own message. Any
+  selected symptom means rest only, with no training, no easy alternatives and
+  no session cap, and the return after the illness pause waits at stage 0 (rest
+  only) until two later check-ins have no symptom selected; a later symptom
+  restarts the count; stage 1 then starts as before. An illness report with an
+  empty list keeps the earlier behaviour.
 
 ## Sources
 
@@ -69,6 +79,20 @@ the three signals and the use of a personal baseline. The thresholds here
 remain product rules: none of the studies tested them, and all of them
 studied COVID-19, mostly retrospectively. The baselines follow M2 and its
 sources.
+
+Reason for rest with any symptom: R89 (Ruuskanen et al. 2022, full text) finds
+the "neck-check" rule, which allows exercise when symptoms sit above the neck,
+without supporting evidence, possibly hazardous, and says it "should be
+abandoned"; it advises rest of 1 day to 1 week after a febrile illness (expert
+opinion). Context: R87 (Weidner et al. 1998, abstract) found moderate exercise
+did not worsen an experimental rhinovirus cold in 34 young healthy adults, one
+virus and no fever, so it does not carry over; R88 (Schwellnus et al. 2016,
+full text) notes fever impairs heat regulation and that runners with systemic
+symptoms before a race were 2-3 times less likely to finish. No source gives a
+number of symptom-free check-ins; the count of two is a product rule. Animal
+and case-report evidence on myocarditis and post-Covid return-to-play guidance
+were not verified and are not cited.
+
 
 ## Population and reference measurement
 
@@ -124,6 +148,7 @@ athlete for this one athlete and is not validated for anyone.
 | HRV minimum change | −10 % of the median | product assumption | As above, relative because HRV varies widely between people. Chosen by the athlete. |
 | Unusual values for the hint | at least 2 of 3 | product assumption | One value alone moves too often for other reasons. Chosen by the athlete. |
 | Known values for any statement | at least 2 | product assumption | With one value the 2-of-3 rule cannot be met. Chosen by the athlete. |
+| Check-ins without symptoms before the return starts | 2 later check-ins | product assumption | Rest with any symptom rests on R89; the count of two is not from a source. Chosen by the athlete. |
 | Night that counts | today's observation only | product assumption | An older value says nothing about last night. Chosen by the athlete. |
 
 ## Allowed statements

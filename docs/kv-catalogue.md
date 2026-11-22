@@ -16,7 +16,7 @@ read. A new key needs no entry: it appears here when its write is added.
   `profile` is only set when absent.
 
 <!-- BEGIN GENERATED KEYS -->
-106 keys and 24 key patterns; `<value>` stands for a value the code computes.
+106 keys and 25 key patterns; `<value>` stands for a value the code computes.
 
 | Key | Written by | Deleted by | Export | Reset at start | Purge |
 | --- | --- | --- | --- | --- | --- |
@@ -36,6 +36,7 @@ read. A new key needs no entry: it appears here when its write is added.
 | `chat_generation` | backend/coach/conversation.py:CoachConversationResetService._reset_local | - | yes | - | - |
 | `checkin_complaints:<value>` | backend/athlete/checkins.py:CheckinService._write<br>backend/athlete/checkins.py:CheckinService.restore_in_transaction | backend/athlete/checkins.py:CheckinService._write<br>backend/athlete/checkins.py:CheckinService.restore_in_transaction | yes | - | - |
 | `checkin_day_status:<value>` | backend/athlete/checkins.py:CheckinService._write<br>backend/athlete/checkins.py:CheckinService.restore_in_transaction | backend/athlete/checkins.py:CheckinService._write<br>backend/athlete/checkins.py:CheckinService.restore_in_transaction | yes | - | - |
+| `checkin_symptoms:<value>` | backend/athlete/checkins.py:CheckinService._write<br>backend/athlete/checkins.py:CheckinService.restore_in_transaction | backend/athlete/checkins.py:CheckinService._write<br>backend/athlete/checkins.py:CheckinService.restore_in_transaction | yes | - | - |
 | `checkin_tags:<value>` | backend/athlete/checkins.py:CheckinService._write<br>backend/athlete/checkins.py:CheckinService.restore_in_transaction | backend/athlete/checkins.py:CheckinService._write<br>backend/athlete/checkins.py:CheckinService.restore_in_transaction | yes | - | - |
 | `claude_models` | backend/providers/model_wiring.py:build_model_transport | - | yes | - | - |
 | `coach_pending_request` | backend/coach/clarification.py:CoachClarificationService.save_question<br>backend/coach/conversation.py:CoachConversationResetService._reset_local<br>backend/coach/tool_execution_service.py:CoachStructuredToolExecutionService._execute_tool<br>backend/coach/turn_failures.py:CoachTurnFailureService._pending_request<br>backend/coach/turn_outcome.py:CoachStructuredOutcomeService._persist_pending | - | yes | - | - |

@@ -1182,8 +1182,12 @@ Errors: none beyond the common ones.
 
 ### `POST /api/infection-hint/ill`
 
-Request: JSON body `{"date": "YYYY-MM-DD"}`, the day of the answered
-note. Records illness in today's check-in like a
+Request: JSON body `{"date": "YYYY-MM-DD", "symptoms": [id]}`, the day
+of the answered note and the optional selected symptoms (ids of
+`SYMPTOM_LABELS`, unknown ids are refused; stored with the check-in;
+any symptom means rest only and holds the return after the pause
+until two later check-ins have none).
+Records illness in today's check-in like a
 check-in or Coach turn: other answers stay and an earlier illness text
 is kept, the new text joining it. Planning then pauses as for any
 reported illness, through the adaptive preview and its approval.

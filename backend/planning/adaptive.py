@@ -256,6 +256,7 @@ def illness_pause_forecast(
         "end_date": end_date.isoformat(),
         "recommended_pause_days": default_days,
         "illness": illness,
+        "symptoms_reported": bool(feedback.get("symptoms")),
         "forecast": "Vorsichtige Trainingsprognose: zunächst vollständige Sportpause und danach schrittweise Rückkehr. Die Dauer ist ein Coach-Vorschlag, keine medizinische Diagnose, und muss bestätigt werden.",
     }
 

@@ -7,7 +7,7 @@ from backend.coach.dialogue import INSTRUCTIONS
 from backend.coach.playbooks import _TASKS, nutrition_playbook, playbook_for
 from backend.coach.prompt import COACH_PROMPT
 
-EXPECTED_SHA256 = "42796250948b0e4f915772ab169bfb628736b0e033299f726ec780f717aeaccd"
+EXPECTED_SHA256 = "3702b8f44f8886520772fca52c1508c462398fc14003ba336542fb6c19d2612f"
 
 
 class CoachPromptTests(unittest.TestCase):
@@ -46,6 +46,15 @@ class CoachPromptTests(unittest.TestCase):
         identifiers = re.findall(r"^(\d+[a-z]?)\. ", COACH_PROMPT, re.MULTILINE)
         self.assertGreater(len(identifiers), 20)
         self.assertEqual(len(identifiers), len(set(identifiers)))
+
+    def test_rule_2a_rests_only_while_a_symptom_is_selected(self):
+        rule_2a = re.search(r"^2a\. .*$", COACH_PROMPT, re.MULTILINE).group(0)
+        for text in (
+            "Any check-in symptom: rest only, no easy alternatives",
+            "until two later check-ins have none",
+        ):
+            with self.subTest(text=text):
+                self.assertIn(text, rule_2a)
 
     def test_plan_calendar_repair_requires_explicit_named_sync(self):
         self.assertNotIn(
