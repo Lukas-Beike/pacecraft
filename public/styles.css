@@ -1733,6 +1733,27 @@ button:focus-visible, a:focus-visible, summary:focus-visible {
 @media (min-width: 700px) { .nutrition-totals { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
 
 #nutritionPanel button { min-width: 44px; min-height: 44px; }
+/* A diary meal's pencil and its component dialog (#3948). */
+.nutrition-card-head { display: flex; gap: 8px; align-items: flex-start; justify-content: space-between; }
+.nutrition-card-head h3 { min-width: 0; }
+.nutrition-card-head .message-action { margin: -8px -8px 0 0; }
+.nutrition-meal-edit { display: grid; gap: 15px; }
+.nutrition-meal-edit form, #nutritionMealEditSwap { display: grid; gap: 12px; }
+.edit-list, .swap-results { display: grid; gap: 10px; margin: 0; padding: 0; list-style: none; }
+.edit-row { display: grid; gap: 8px; padding: 12px; border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--surface); }
+.edit-row.is-removed { opacity: .6; }
+.edit-row.is-removed strong { text-decoration: line-through; }
+.edit-row strong { overflow-wrap: anywhere; }
+.edit-row small { color: var(--muted); }
+.edit-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.edit-controls .push { display: flex; align-items: center; gap: 8px; margin-left: auto; }
+.edit-amount { display: flex; align-items: center; gap: 6px; }
+.edit-amount input { width: 6rem; min-width: 0; text-align: right; }
+.swap-result { display: grid; gap: 3px; width: 100%; padding: 12px; border: 1px solid var(--line); border-radius: var(--radius-sm); color: var(--ink); background: var(--surface); text-align: left; font: inherit; }
+.swap-result strong { overflow-wrap: anywhere; }
+.swap-result small { color: var(--muted); }
+.swap-result .origin { color: var(--accent-bright); font-size: .78rem; font-weight: 650; }
+
 #nutritionPanel .analysis-period-controls button { min-width: 4.5rem; }
 #nutritionPanel .push-button { padding: 12px 16px; }
 .nutrition-total span, .nutrition-card small { color: var(--muted); }

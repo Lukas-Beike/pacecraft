@@ -108,13 +108,14 @@ function showNutritionReceipt(status, message, change, afterUndo) {
 }
 
 async function deleteNutritionEntry(item) {
-  if (!await requestConfirmation(`Mahlzeit „${item.description}“ wirklich löschen?`, { title: "Mahlzeit löschen?", confirmLabel: "Löschen" })) return;
+  if (!await requestConfirmation(`Mahlzeit „${item.description}“ wirklich löschen?`, { title: "Mahlzeit löschen?", confirmLabel: "Löschen" })) return false;
   const status = document.querySelector("#nutritionStatus");
   try {
     const result = await api("/api/nutrition/entry/delete", { method: "POST", body: JSON.stringify({ id: item.id }) });
     await loadNutrition({ preserve: true });
     showNutritionReceipt(status, "Mahlzeit gelöscht.", result.change, () => loadNutrition({ preserve: true }));
-  } catch (error) { status.textContent = `Mahlzeit konnte nicht gelöscht werden: ${error.message}`; }
+    return true;
+  } catch (error) { status.textContent = `Mahlzeit konnte nicht gelöscht werden: ${error.message}`; return false; }
 }
 
 // Flags or clears a meal as estimated; the logged values stay, the energy table reads again (#3100).
@@ -247,14 +248,22 @@ function nutritionCard(item, template, sessions = []) {
   const sourceSuffix = template ? "" : syncLabel;
   const sourceText = basisLabel && !isDefaultSource ? basisLabel + sourceSuffix : "";
   const volume = item.volume_ml > 0 ? ` · ${AppFormat.number(item.volume_ml, { digits: 0 })} ml` : "";
+  const title = h("h3", null, template ? item.name : nutritionMealTitle(item), ...(template ? [] : nutritionEstimateChip(item)));
   const card = h("article", "nutrition-card",
-    h("h3", null, template ? item.name : nutritionMealTitle(item), ...(template ? [] : nutritionEstimateChip(item))),
+    template ? title : h("div", "nutrition-card-head", title, nutritionEditButton(item)),
     template ? null : nutritionSessionBlock(item, sessions),
     h("p", null, item.description),
     h("p", null, `${nutritionNumber(item.kcal)} kcal · KH ${nutritionNumber(item.carbs_g, "g")} g · Protein ${nutritionNumber(item.protein_g, "g")} g · Fett ${nutritionNumber(item.fat_g, "g")} g${template ? " / Portion" : ""}${volume}`),
     sourceText ? h("small", null, sourceText) : null);
   if (!template) card.append(...nutritionEntryActions(item));
   return card;
+}
+
+// The pencil in a meal card's head opens its components (#3948).
+function nutritionEditButton(item) {
+  const button = messageActionButton("edit", `Mahlzeit bearbeiten: ${item.description}`);
+  button.addEventListener("click", () => void openNutritionMealEdit(item));
+  return button;
 }
 
 // A meal whose amounts were estimated (restaurant, friends) says so in its title (#3100).

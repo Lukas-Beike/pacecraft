@@ -78,9 +78,26 @@ The system SHALL update or delete the identified local meal, preserve omitted co
 
 #### Scenario: No direct entry update route
 - **WHEN** a client sends `PUT /api/nutrition/entry`
-- **THEN** no nutrition route handles it and no entry changes; an entry is corrected only through the Coach correction with its field whitelist, `manual_correction` basis and undo reference.
+- **THEN** no nutrition route handles it and no entry changes; an entry is corrected only through the Coach correction with its field whitelist, `manual_correction` basis and undo reference, or through the component edit.
 
 Evidence: `backend/http_api/nutrition.py::NutritionPutRoutes.routes`, `backend/nutrition/diary.py::NutritionDiaryService.correct_meal`, `backend/nutrition/diary.py::NutritionDiaryService.delete_meal`, `backend/nutrition/diary.py::NutritionDiaryService.add_product_to_meal`; `tests/test_nutrition_api_and_sync.py::NutritionHttpApiTests.test_put_entry_route_is_removed`, `tests/test_nutrition_history.py::NutritionHistoryTests.test_undo_of_an_added_product_restores_the_previous_meal`, `tests/test_nutrition.py::NutritionRepositoryAndServiceTests.test_correct_meal_preserves_omitted_fields_and_marks_old_and_new_days_pending`, `tests/test_nutrition.py::NutritionRepositoryAndServiceTests.test_correct_meal_rejects_empty_invalid_or_missing_target`, `tests/test_nutrition.py::NutritionRepositoryAndServiceTests.test_deleting_last_synced_entry_keeps_empty_date_pending`. Shared history/undo authorization is owned by the history and Coach contracts.
+
+### Requirement: A logged meal's components are edited directly
+The system SHALL let the athlete remove a component of a logged meal, change its amount, or swap it for another database food or saved product, addressed by position. The server SHALL scale the stored snapshot or calculate from the food or product ID and the amount; a client SHALL send no nutrient values. The meal keeps its name and source, becomes a composite, gets a change-history record and has its date marked pending; templates stay unchanged.
+
+#### Scenario: Change an amount
+- **WHEN** the athlete sets a component to a new amount
+- **THEN** its nutrients scale with the amount from its stored origin, the other components stay as stored, and the meal totals follow.
+
+#### Scenario: Swap a component
+- **WHEN** the athlete swaps a component for another food or product
+- **THEN** its amount and unit stay and its nutrients and origin come from the new food; a food counted in another unit fails with `food_unit_mismatch` and nothing changes.
+
+#### Scenario: Remove the last component
+- **WHEN** an edit would leave the meal without a component
+- **THEN** it fails with `last_component`; the client deletes the meal after its own confirmation instead.
+
+Evidence: `backend/nutrition/meal_components.py::edited_components`, `backend/nutrition/meal_components.py::entry_components`, `backend/nutrition/diary.py::NutritionDiaryService.edit_components`, `backend/http_api/nutrition.py::NutritionPostRoutes._edit_components`; `tests/test_nutrition_meal_components.py::MealComponentEditTests.test_a_changed_amount_is_recalculated_and_the_others_stay_as_stored`, `tests/test_nutrition_meal_components.py::MealComponentEditTests.test_a_swap_keeps_the_amount_and_takes_the_new_origin`, `tests/test_nutrition_meal_components.py::MealComponentEditTests.test_a_removed_component_leaves_the_rest_and_the_last_one_stays`, `tests/test_nutrition_meal_components.py::MealComponentEditTests.test_a_swap_to_another_unit_is_refused_and_changes_nothing`; `e2e/nutrition-meal-edit.spec.js`.
 
 ### Requirement: Diary changes are recorded and undoable
 The system SHALL record every diary create, correction, added product and deletion as a `nutrition_entry` change in change history, with the audit-projected fields of the entry, and SHALL let the shared undo restore the recorded state only while the entry still matches the state the change produced. A restored entry SHALL mark its date pending for a later explicit export. A Coach turn whose applied writes are all diary tools SHALL be undoable as a whole.
@@ -369,7 +386,7 @@ A correction SHALL accept only meal date, time, time knowledge, meal type, descr
 - **WHEN** the meal already has 20 components
 - **THEN** the addition fails with 400; otherwise the description gains " + {product name}" and stays within 500 characters, cutting the older text first.
 
-Evidence: `backend/nutrition/diary.py::NutritionDiaryService.correct_meal`, `backend/nutrition/diary.py::NutritionDiaryService._apply_meal_correction`, `backend/nutrition/diary.py::NutritionDiaryService.add_product_to_meal`, `backend/nutrition/diary.py::NutritionDiaryService._meal_component`, `backend/nutrition/diary.py::NutritionDiaryService._extended_description`; `tests/test_nutrition_favorites_and_meal_additions.py::test_an_estimated_meal_keeps_its_values_as_the_first_component`, `tests/test_nutrition_favorites_and_meal_additions.py::test_description_keeps_the_newest_product_within_the_limit`, `tests/test_nutrition_favorites_and_meal_additions.py::test_wrapped_meal_keeps_sugar_and_salt_totals`, `tests/test_nutrition.py::test_database_values_override_model_values_and_provenance_survives_corrections`.
+Evidence: `backend/nutrition/diary.py::NutritionDiaryService.correct_meal`, `backend/nutrition/diary.py::NutritionDiaryService._apply_meal_correction`, `backend/nutrition/diary.py::NutritionDiaryService.add_product_to_meal`, `backend/nutrition/meal_components.py::wrapped_component`, `backend/nutrition/diary.py::NutritionDiaryService._extended_description`; `tests/test_nutrition_favorites_and_meal_additions.py::test_an_estimated_meal_keeps_its_values_as_the_first_component`, `tests/test_nutrition_favorites_and_meal_additions.py::test_description_keeps_the_newest_product_within_the_limit`, `tests/test_nutrition_favorites_and_meal_additions.py::test_wrapped_meal_keeps_sugar_and_salt_totals`, `tests/test_nutrition.py::test_database_values_override_model_values_and_provenance_survives_corrections`.
 
 ### Requirement: Diary and history view states
 The client SHALL show the nutrition area as Tagebuch, Verlauf, Körper and Produkte. The diary SHALL offer a date field with previous, next and "Heute", show a cached copy of the requested view at once, and let the athlete delete a meal directly after a confirmation, with a "Rückgängig" receipt. The history SHALL switch between 4 weeks, 3 months and 6 months, draw one card layout with the period in every title row, and state the coverage of every figure.
