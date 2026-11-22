@@ -170,6 +170,11 @@ test("@responsive Betrieb & Diagnose lists the release changes from the image as
   const earlier = changelog.locator(":scope > details", { has: page.locator(":scope > summary", { hasText: "Frühere Versionen (1)" }) });
   await earlier.locator(":scope > summary").click();
   await expect(earlier.locator(":scope > details > summary")).toHaveText(["Version 2.1.14"]);
+  // Every summary of the changelog is a 44 px target on the phone (#3935).
+  if (page.viewportSize().width <= 480) {
+    const heights = await changelog.locator("summary").evaluateAll((nodes) => nodes.map((node) => Math.round(node.getBoundingClientRect().height)));
+    expect(Math.min(...heights)).toBeGreaterThanOrEqual(44);
+  }
   await expect(changelog.getByText("analysis: pace zones")).toBeHidden();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   served = false;

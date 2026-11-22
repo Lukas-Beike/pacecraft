@@ -315,7 +315,7 @@ h2 {
 .settings-app-version { margin: 0; color: var(--subtle); font-size: .72rem; }
 .device-sync-stale { color: var(--ink); font-weight: 650; }
 .release-changelog { display: grid; gap: 6px; color: var(--muted); font-size: .78rem; }
-.release-changelog summary { color: var(--subtle); cursor: pointer; }
+.release-changelog summary { box-sizing: border-box; min-height: 44px; padding-block: 14px; color: var(--subtle); cursor: pointer; }
 .release-changelog h4 { margin: 6px 0 0; color: var(--ink); font-size: .78rem; }
 .release-changelog ul { margin: 0; padding-left: 18px; overflow-wrap: anywhere; }
 @keyframes spin { to { transform: rotate(360deg); } }
