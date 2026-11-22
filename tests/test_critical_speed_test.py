@@ -99,11 +99,20 @@ class FitTests(unittest.TestCase):
         times = {1200: 250, 2400: 550, 3600: 860}
         fit = _fit([_record("test", _laps(times))])
         self.assertEqual("ok", fit["status"])
-        # Slope (3600 - 1200) / (860 - 250) of the outer points is 3.934; the
-        # least-squares slope of the three points is 2400 / 610.
-        self.assertAlmostEqual(2400 / 610, fit["cs_mps"], places=2)
-        self.assertLess(fit["r_squared"], 1.0)
-        self.assertGreater(fit["see_m"], 0)
+        # Least squares by hand from the sums, independent of the fit code.
+        seconds, meters = (250, 550, 860), (1200, 2400, 3600)
+        mean_t, mean_d = sum(seconds) / 3, sum(meters) / 3
+        sxy = sum((t - mean_t) * (d - mean_d) for t, d in zip(seconds, meters))
+        sxx = sum((t - mean_t) ** 2 for t in seconds)
+        slope = sxy / sxx  # 732000 / 186066.67 = 3.93407
+        intercept = mean_d - slope * mean_t
+        sse = sum((d - slope * t - intercept) ** 2 for t, d in zip(seconds, meters))
+        sst = sum((d - mean_d) ** 2 for d in meters)
+        self.assertAlmostEqual(3.93407, slope, places=5)
+        self.assertAlmostEqual(slope, fit["cs_mps"], places=2)
+        self.assertAlmostEqual(intercept, fit["d_prime_meters"], delta=0.5)
+        self.assertAlmostEqual(round(1 - sse / sst, 4), fit["r_squared"])
+        self.assertAlmostEqual(round(sse**0.5, 1), fit["see_m"])
 
     def test_the_test_takes_precedence_over_the_window_fit(self):
         # Three sessions on the window model CS 5 m/s, D' 100 m.
@@ -160,9 +169,17 @@ class StopRuleTests(unittest.TestCase):
         self.assertEqual("withheld", fit["status"])
 
     def test_an_implausible_d_prime_withholds_the_test(self):
-        # CS 4 m/s and D' 900 m: 1200 m in 325 s, 2400 in 625 s, 3600 in 925 s.
-        fit = _fit([_record("big", _laps({1200: 325, 2400: 625, 3600: 925}))])
+        # CS 3 m/s and D' 600 m (above 500 m): 1200 m in 200 s, 2400 in 600 s,
+        # 3600 in 1000 s, all within 2 to 20 min, so the range rule decides.
+        fit = _fit([_record("big", _laps({1200: 200, 2400: 600, 3600: 1000}))])
         self.assertEqual("withheld", fit["status"])
+        self.assertIn("Plausibilitätsbereich", fit["reason"])
+
+    def test_a_negative_intercept_withholds_the_test(self):
+        # d = 4 t - 100 m: 1200 m in 325 s, 2400 in 625 s, 3600 in 925 s.
+        fit = _fit([_record("neg", _laps({1200: 325, 2400: 625, 3600: 925}))])
+        self.assertEqual("withheld", fit["status"])
+        self.assertIn("positiv", fit["reason"])
 
     def test_a_withheld_test_does_not_fall_back_to_the_window_fit(self):
         fit = _fit([_record("slow", _laps({1200: 250, 2400: 550, 3600: 1300}))])
