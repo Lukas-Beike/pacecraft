@@ -922,6 +922,8 @@ def browser_mounts(root):
         str(root / "public/service-worker.js") + ":/work/public/service-worker.js:ro",
         "--volume",
         str(root / "scripts/ui_walk.mjs") + ":/work/scripts/ui_walk.mjs:ro",
+        "--volume",
+        str(root / "scripts/ui_explore.mjs") + ":/work/scripts/ui_explore.mjs:ro",
     ]
 
 

@@ -18,6 +18,10 @@ walk with exit 2.
 node scripts/ui_walk.mjs --url <app address> --password-file <secret file> --out-dir <scratchpad>/walk [--compare <previous walk>]
 ```
 
+To explore beyond the fixed steps, `scripts/ui_explore.mjs` takes the same three
+arguments plus `--plan - < plan.json` (the plan on standard input); its header
+lists the step kinds (#3913).
+
 `--compare` takes the previous walk's out-dir or its `ui-walk.json`; an
 unreadable one stops with exit 2 and names the file it expected (#3346).
 
