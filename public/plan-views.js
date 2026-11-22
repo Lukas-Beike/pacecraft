@@ -1593,7 +1593,7 @@ async function adoptStepTestValue(activityId, row, button) {
     return;
   }
   const profile = state.data?.profile || {};
-  const replacesMeasured = Boolean(profile.first_threshold_pct) && profile.first_threshold_origin === "measured";
+  const replacesMeasured = Boolean(profile.first_threshold_hr) && profile.first_threshold_origin === "measured";
   if (replacesMeasured && !(await requestConfirmation("Der gemessene Wert wird durch den Wert aus dem Stufentest ersetzt.", { title: "Gemessenen Wert ersetzen?", confirmLabel: "Ersetzen" }))) return;
   button.disabled = true;
   try {

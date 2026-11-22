@@ -157,6 +157,11 @@ class UnknownTests(unittest.TestCase):
                 self.assertEqual(band, intensity_band(kind, intensity))
         result = estimate_workout("- 60m 84% LTHR\n", Sport.RUN, FULL)
         self.assertEqual({"low": 3600, "moderate": 0, "high": 0}, result.band_seconds)
+        # An own first threshold (#3915) moves the heart-rate split.
+        self.assertEqual("moderate", intensity_band("hr", 0.82, 0.8))
+        own = ZoneSettings(lthr=170, lt1_share=0.8)
+        result = estimate_workout("- 60m 84% LTHR\n", Sport.RUN, own)
+        self.assertEqual({"low": 0, "moderate": 3600, "high": 0}, result.band_seconds)
 
 
 class PlannedUnitTests(unittest.TestCase):

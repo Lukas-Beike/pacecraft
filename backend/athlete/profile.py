@@ -3,6 +3,7 @@
 import json
 import math
 import os
+import threading
 from collections.abc import Callable, Mapping
 from datetime import UTC, date, datetime, time
 from typing import Any
@@ -12,12 +13,10 @@ from backend import change_history
 from backend.canonical.decimal_text import comma_decimal_float
 from backend.canonical.first_threshold import (
     FIRST_THRESHOLD_BOUNDS,
-    FIRST_THRESHOLD_DATE_FIELD,
-    FIRST_THRESHOLD_ENTRY_FIELD,
     FIRST_THRESHOLD_FIELD,
     FIRST_THRESHOLD_ORIGIN_FIELD,
     FIRST_THRESHOLD_ORIGINS,
-    FIRST_THRESHOLD_PERCENT_BOUNDS,
+    LEGACY_PERCENT_FIELD,
     ORIGIN_MEASURED,
     first_threshold_bpm,
     first_threshold_percent,
@@ -255,11 +254,7 @@ def _normalize_birth_year(result: dict[str, str], *, strict: bool) -> None:
 
 
 def _normalize_first_threshold(result: dict[str, str], *, strict: bool) -> None:
-    """Keep a plausible stored first threshold (percent of LTHR); reject or clear another.
-
-    The entry fields (bpm and measurement date) are consumed by the profile
-    service when it saves and are no profile fields: a stored profile never has them.
-    """
+    """Keep a plausible stored first threshold (bpm, #3915); reject or clear another."""
     text = result[FIRST_THRESHOLD_FIELD]
     origin = result[FIRST_THRESHOLD_ORIGIN_FIELD]
     if origin not in FIRST_THRESHOLD_ORIGINS:
@@ -272,18 +267,18 @@ def _normalize_first_threshold(result: dict[str, str], *, strict: bool) -> None:
     if not text:
         result[FIRST_THRESHOLD_ORIGIN_FIELD] = ""
         return
-    number = first_threshold_percent(text)
+    number = first_threshold_bpm(text)
     if number is not None:
-        result[FIRST_THRESHOLD_FIELD] = f"{number:g}"
+        result[FIRST_THRESHOLD_FIELD] = f"{round(number)}"
         # A value stored before the origin existed was entered by the athlete.
         result[FIRST_THRESHOLD_ORIGIN_FIELD] = origin or ORIGIN_MEASURED
         return
     result[FIRST_THRESHOLD_ORIGIN_FIELD] = ""
     if strict:
-        low, high = FIRST_THRESHOLD_PERCENT_BOUNDS
+        low, high = FIRST_THRESHOLD_BOUNDS
         raise AppError(
             400,
-            f"Die gemessene erste Schwelle muss zwischen {low:g} und {high:g} % LSHF liegen.",
+            f"Die gemessene erste Schwelle muss zwischen {low} und {high} bpm liegen.",
         )
     result[FIRST_THRESHOLD_FIELD] = ""
 
@@ -370,8 +365,8 @@ def _origin_after_edit(
     adopted estimate. A write that keeps the value, or names another origin,
     keeps what it says.
     """
-    new = first_threshold_percent(profile.get(FIRST_THRESHOLD_FIELD))
-    if new == first_threshold_percent(previous.get(FIRST_THRESHOLD_FIELD)):
+    new = first_threshold_bpm(profile.get(FIRST_THRESHOLD_FIELD))
+    if new == first_threshold_bpm(previous.get(FIRST_THRESHOLD_FIELD)):
         return profile
     named = str(profile.get(FIRST_THRESHOLD_ORIGIN_FIELD) or "")
     if named != previous.get(FIRST_THRESHOLD_ORIGIN_FIELD, ""):
@@ -380,6 +375,40 @@ def _origin_after_edit(
         **profile,
         FIRST_THRESHOLD_ORIGIN_FIELD: "" if new is None else ORIGIN_MEASURED,
     }
+
+
+def audit_view(stored: Mapping[str, Any]) -> dict[str, str]:
+    """The profile as change history projects it, legacy percent included.
+
+    Rows recorded before #3915 were hashed with ``first_threshold_pct`` and its
+    origin; a stored legacy percent stays in the view so they still match.
+    """
+    value = normalize_profile(dict(stored))
+    percent = first_threshold_percent(stored.get(LEGACY_PERCENT_FIELD))
+    if LEGACY_PERCENT_FIELD in stored:
+        value[LEGACY_PERCENT_FIELD] = "" if percent is None else f"{percent:g}"
+    if percent is not None and not value[FIRST_THRESHOLD_FIELD]:
+        value[FIRST_THRESHOLD_ORIGIN_FIELD] = (
+            stored.get(FIRST_THRESHOLD_ORIGIN_FIELD) or ORIGIN_MEASURED
+        )
+    return value
+
+
+def _legacy_percent_day(db: Any) -> date | None:
+    """The day the legacy percent of the first threshold was last changed, if recorded."""
+    rows = db.execute(
+        "SELECT created_at, diff FROM change_history WHERE entity_type=? "
+        "AND entity_id=? ORDER BY created_at DESC, rowid DESC",
+        ("profile", "profile"),
+    ).fetchall()
+    for row in rows:
+        try:
+            fields = json.loads(row["diff"] or "{}").get("fields") or {}
+            if LEGACY_PERCENT_FIELD in fields:
+                return date.fromisoformat(str(row["created_at"])[:10])
+        except AttributeError, TypeError, ValueError:
+            continue
+    return None
 
 
 class ProfileService:
@@ -401,17 +430,79 @@ class ProfileService:
         self._key_value_repository = key_value_repository
         self._on_location_changed = on_location_changed
         self._run_lthr_on = run_lthr_on
+        # The run threshold lookup reads the athlete's local date, which reads
+        # this profile: a legacy conversion never starts a second one (#3915).
+        self._converting = threading.local()
 
-    def get_from_db(self, db: Any) -> dict[str, str]:
+    def _stored(self, db: Any) -> dict[str, Any]:
+        """The stored profile JSON as written, or an empty one when unreadable."""
         payload = self._profile_repository.get(db)
         try:
-            return normalize_profile(json.loads(payload or "{}"))
+            stored = json.loads(payload or "{}")
         except TypeError, json.JSONDecodeError:
-            return dict(DEFAULT_PROFILE)
+            return {}
+        return stored if isinstance(stored, dict) else {}
+
+    def get_from_db(self, db: Any) -> dict[str, str]:
+        return normalize_profile(self._with_legacy_bpm(self._stored(db), db))
+
+    def _with_legacy_bpm(self, stored: dict[str, Any], db: Any) -> dict[str, Any]:
+        """A profile stored before #3915 read with its first threshold in bpm.
+
+        Its percent of LTHR becomes bpm with the run threshold HR in effect on
+        the day the percent was last changed (change history), else today. The
+        read writes nothing; the next save stores the bpm and drops the percent.
+        A read inside the threshold lookup itself sees no first threshold.
+        """
+        percent = first_threshold_percent(stored.get(LEGACY_PERCENT_FIELD))
+        if percent is None or first_threshold_bpm(stored.get(FIRST_THRESHOLD_FIELD)):
+            return stored
+        if getattr(self._converting, "active", False):
+            return stored
+        self._converting.active = True
+        try:
+            day = _legacy_percent_day(db)
+            lthr = (self._run_lthr_on(day) if day else None) or self._run_lthr_on(None)
+        finally:
+            self._converting.active = False
+        bpm = None if not lthr else first_threshold_bpm(round(percent * lthr / 100))
+        return {**stored, FIRST_THRESHOLD_FIELD: "" if bpm is None else f"{bpm:g}"}
+
+    def _kept_legacy(
+        self,
+        stored: Mapping[str, Any],
+        normalized: Mapping[str, str],
+        shown: str = "",
+    ) -> dict[str, Any]:
+        """``normalized`` as stored: a legacy percent no bpm replaced yet is kept.
+
+        Without a known run threshold HR the percent cannot become bpm; it stays
+        in the stored JSON (not in the profile) until a bpm is written (#3915).
+        A bpm the profile ``shown`` before that the save empties is a clear, so
+        the percent goes too.
+        """
+        if (
+            normalized[FIRST_THRESHOLD_FIELD]
+            or shown
+            or first_threshold_percent(stored.get(LEGACY_PERCENT_FIELD)) is None
+        ):
+            return dict(normalized)
+        return {
+            **normalized,
+            LEGACY_PERCENT_FIELD: stored[LEGACY_PERCENT_FIELD],
+            FIRST_THRESHOLD_ORIGIN_FIELD: stored.get(FIRST_THRESHOLD_ORIGIN_FIELD)
+            or ORIGIN_MEASURED,
+        }
 
     def get(self) -> dict[str, str]:
         with self._manager.reader() as db:
             return self.get_from_db(db)
+
+    def first_threshold_percent(self) -> float | None:
+        """The stored first threshold as percent of today's run threshold HR."""
+        bpm = first_threshold_bpm(self.get().get(FIRST_THRESHOLD_FIELD))
+        lthr = self._run_lthr_on(None)
+        return None if bpm is None or not lthr else percent_of_lthr(bpm, lthr)
 
     def revision(self) -> str | None:
         """Identify the latest committed profile history entry for export ordering."""
@@ -434,20 +525,26 @@ class ProfileService:
             dict(profile)
             if already_normalized
             else normalize_profile(
-                self._with_first_threshold(profile),
+                profile,
                 validate_timezone=True,
                 previous=previous,
             )
         )
-        self._profile_repository.set(db, json.dumps(normalized, ensure_ascii=False))
+        stored = self._stored(db)
+        kept = self._kept_legacy(
+            stored, normalized, previous.get(FIRST_THRESHOLD_FIELD, "")
+        )
+        self._profile_repository.set(db, json.dumps(kept, ensure_ascii=False))
         self._on_location_changed(
             previous,
             normalized,
             repository=self._key_value_repository,
             db=db,
         )
+        # Recorded as the history's current view rebuilds it, so a kept legacy
+        # percent still matches for undo (Gitar, #3915).
         change_history.record_change(
-            db, "profile", "profile", "update", previous, normalized
+            db, "profile", "profile", "update", audit_view(stored), audit_view(kept)
         )
         return normalized
 
@@ -459,9 +556,16 @@ class ProfileService:
     ) -> dict[str, str]:
         restored = dict(current or DEFAULT_PROFILE)
         restored.update(target or DEFAULT_PROFILE)
-        normalized = normalize_profile(restored)
+        if LEGACY_PERCENT_FIELD in (target or {}):
+            # A state from before #3915: its percent (or none), not the current
+            # bpm, is restored.
+            restored[FIRST_THRESHOLD_FIELD] = (target or {}).get(
+                FIRST_THRESHOLD_FIELD, ""
+            )
+        normalized = normalize_profile(self._with_legacy_bpm(restored, db))
         previous = self.get_from_db(db)
-        self._profile_repository.set(db, json.dumps(normalized, ensure_ascii=False))
+        kept = self._kept_legacy(restored, normalized)
+        self._profile_repository.set(db, json.dumps(kept, ensure_ascii=False))
         self._on_location_changed(
             previous,
             normalized,
@@ -470,47 +574,9 @@ class ProfileService:
         )
         return normalized
 
-    def _with_first_threshold(self, profile: dict[str, Any]) -> dict[str, Any]:
-        """Turn an entered first threshold (bpm) into percent of the LTHR on its date.
-
-        The entry is the athlete's own explicit input; the stored value is the
-        percent of the run threshold HR in effect on the measurement date (today
-        when none is given), so the threshold's later changes never move it.
-        """
-        entry = str(profile.get(FIRST_THRESHOLD_ENTRY_FIELD) or "").strip()
-        if not entry:
-            return profile
-        bpm = first_threshold_bpm(entry)
-        low, high = FIRST_THRESHOLD_BOUNDS
-        if bpm is None:
-            raise AppError(
-                400,
-                f"Die gemessene erste Schwelle muss zwischen {low} und {high} bpm liegen.",
-            )
-        text = str(profile.get(FIRST_THRESHOLD_DATE_FIELD) or "").strip()
-        try:
-            measured_on = date.fromisoformat(text) if text else None
-        except ValueError as exc:
-            raise AppError(
-                400, "Das Messdatum muss das Format JJJJ-MM-TT haben."
-            ) from exc
-        lthr = self._run_lthr_on(measured_on)
-        percent = None if lthr is None else percent_of_lthr(bpm, lthr)
-        if percent is None:
-            raise AppError(
-                400,
-                "Zu diesem Datum ist keine Laktatschwelle (LSHF) bekannt, mit der die "
-                "erste Schwelle in Prozent gespeichert werden kann.",
-            )
-        return {
-            **profile,
-            FIRST_THRESHOLD_FIELD: f"{percent:g}",
-            FIRST_THRESHOLD_ORIGIN_FIELD: ORIGIN_MEASURED,
-        }
-
     def save(self, profile: dict[str, Any]) -> dict[str, str]:
         """Replace the whole profile; callers must send every field they keep."""
-        submitted = self._with_first_threshold(profile)
+        submitted = profile
         # Reject bad input before waiting for the coordinator; the check inside the
         # transaction below is the authoritative one.
         normalize_profile(submitted, validate_timezone=True, previous=self.get())
@@ -540,14 +606,14 @@ class ProfileService:
             merged = _origin_after_edit({**current, **changes}, current)
             return self.save_in_transaction(merged, db)
 
-    def set_first_threshold(self, percent: str, origin: str) -> dict[str, str]:
-        """Store a first threshold (percent of the LTHR) with its origin, as one profile change."""
+    def set_first_threshold(self, bpm: str, origin: str) -> dict[str, str]:
+        """Store a first threshold (bpm) with its origin, as one profile change."""
         with self.mutation_coordinator, self._manager.unit_of_work() as db:
             current = self.get_from_db(db)
             return self.save_in_transaction(
                 {
                     **current,
-                    FIRST_THRESHOLD_FIELD: percent,
+                    FIRST_THRESHOLD_FIELD: bpm,
                     FIRST_THRESHOLD_ORIGIN_FIELD: origin,
                 },
                 db,

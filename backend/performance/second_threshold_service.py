@@ -19,10 +19,7 @@ from typing import Any
 
 from backend.activities.zone_settings import effective_zone_configuration
 from backend.canonical.domain_records import ZoneConfiguration
-from backend.canonical.first_threshold import (
-    FIRST_THRESHOLD_FIELD,
-    first_threshold_percent,
-)
+from backend.canonical.first_threshold import stored_bpm
 from backend.canonical.vocabulary import Sport, ZoneConfigurationMetric
 from backend.db import activity_detail_store
 from backend.errors import AppError
@@ -149,13 +146,7 @@ class SecondThresholdService:
 
     def _first_threshold_bpm(self) -> float | None:
         """The stored LT1 heart rate of runs today, or None."""
-        percent = first_threshold_percent(
-            self._profile_service.get().get(FIRST_THRESHOLD_FIELD)
-        )
-        lthr = self._lthr_resolver()(None)
-        if percent is None or lthr is None or lthr <= 0:
-            return None
-        return float(percent * lthr / 100)
+        return stored_bpm(self._profile_service.get())
 
     def adopt(
         self,

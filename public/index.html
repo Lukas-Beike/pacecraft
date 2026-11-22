@@ -246,9 +246,8 @@
             <div id="zoneOverview" class="zone-overview"></div>
             <p id="zoneReceipt" class="fine-print settings-message" aria-live="polite" hidden></p>
             <fieldset id="firstThresholdEditor" class="profile-subsection zone-editor" hidden><legend>Erste Schwelle (LT1)</legend>
-              <label>Messwert (bpm)<input name="first_threshold_hr" type="number" min="60" max="220" step="1" inputmode="numeric"></label>
-              <label>Messdatum<input name="first_threshold_on" type="date"></label>
-              <label><span id="firstThresholdStoredLabel">Gespeichert (% LSHF)</span><input name="first_threshold_pct" type="number" min="40" max="100" step="0.1" inputmode="decimal"></label>
+              <label><span id="firstThresholdStoredLabel">Herzfrequenz (bpm)</span><input name="first_threshold_hr" type="number" min="60" max="220" step="1" inputmode="numeric"></label>
+              <output id="firstThresholdPercent" class="fine-print"></output>
               <div id="firstThresholdEstimate" class="profile-estimate" hidden><output id="firstThresholdEstimateText"></output><button id="firstThresholdAdopt" type="button" class="secondary-button">Übernehmen</button></div>
             </fieldset>
             <div id="zoneEditor" class="zone-editor" hidden>

@@ -6,8 +6,9 @@ percentages are stored: the bpm is resolved wherever it is read, checked or
 exported, from the lactate threshold HR in effect on the unit's date, so the
 watch's own LTHR updates apply without editing a unit. The source says where the
 percent comes from: the default table, the athlete's measured first threshold
-(profile value ``first_threshold_pct``, entered by the athlete) or an estimated
-one the athlete adopted (same value, profile origin ``estimated``). This module
+(profile value ``first_threshold_hr`` in bpm, entered by the athlete, as percent
+of today's threshold HR) or an estimated one the athlete adopted (same value,
+profile origin ``estimated``). This module
 is the only place that holds the cap values and the rules that derive the
 measured and the exported ones; prompts, labels, checks and tests read it. Pure.
 """

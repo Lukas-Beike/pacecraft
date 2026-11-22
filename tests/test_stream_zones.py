@@ -304,6 +304,22 @@ class ReportZoneTimeTests(unittest.TestCase):
         )
         self.assertNotIn("pace", times)
 
+    def test_the_bands_split_at_the_own_first_threshold_else_the_stand_in(
+        self,
+    ) -> None:
+        # LTHR 160: 140 bpm is 87.5 %, above the 85 % stand-in (moderate) but
+        # below an own first threshold of 144 bpm (90 %, low); 170 bpm is high.
+        merged = merge_details([_streams(SECONDS, heart_rate_bpm=HEART_RATE)])
+        for settings, expected in (
+            (SETTINGS, [4.0, 4.0, 2.0]),
+            (ZoneSettings(lthr=160.0, lt1_share=0.9), [8.0, 0.0, 2.0]),
+        ):
+            with self.subTest(lt1_share=settings.lt1_share):
+                times = zone_times(merged.streams, settings, pace=False)
+                self.assertEqual(
+                    expected, [zone["secs"] for zone in times["heart_rate_bands"]]
+                )
+
     def test_run_pace_counts_against_the_threshold_speed(self) -> None:
         # Threshold 4 m/s: 3 m/s is 75 % (Z1), 4 m/s is 100 % (Z4); 0 is no reading.
         speed = (3.0,) * 4 + (4.0,) * 4 + (0.0,) * 3

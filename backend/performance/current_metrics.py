@@ -18,6 +18,7 @@ from backend.activities.zone_settings import (
 )
 from backend.athlete.body_records import CurrentBody
 from backend.canonical.decimal_text import provider_number as as_number
+from backend.canonical.first_threshold import percent_of_lthr
 from backend.canonical.records import Observation
 from backend.canonical.vocabulary import MetricKind, ProviderId, Sport
 from backend.performance.canonical_current import CanonicalCurrentInputs
@@ -63,7 +64,7 @@ def _with_resolved_bpm(cap: dict[str, Any], lthr: float | None) -> dict[str, Any
 
 def coach_thresholds(
     metrics: Mapping[str, Mapping[str, Any]],
-    first_threshold_pct: float | None = None,
+    first_threshold_bpm: float | None = None,
     first_threshold_estimated: bool = False,
 ) -> dict[str, Any]:
     """Return the thresholds plans use, with the FTP's source and alternatives.
@@ -85,11 +86,14 @@ def coach_thresholds(
     # with its source), and the bpm it currently resolves to for the run LTHR.
     run_lthr = result["run_lthr"]
     lthr = run_lthr if isinstance(run_lthr, int | float) and run_lthr > 0 else None
+    share = (
+        percent_of_lthr(first_threshold_bpm, lthr)
+        if first_threshold_bpm and lthr
+        else None
+    )
     result["run_hr_caps"] = {
         focus: _with_resolved_bpm(cap, lthr)
-        for focus, cap in effective_caps(
-            first_threshold_pct, first_threshold_estimated
-        ).items()
+        for focus, cap in effective_caps(share, first_threshold_estimated).items()
     }
     if ftp.get("alternatives"):
         result["ftp_alternatives"] = [
@@ -122,20 +126,26 @@ def _first_candidate(
 
 def first_thresholds(
     metrics: Mapping[str, Mapping[str, Any]],
-    first_threshold_pct: float | None,
+    first_threshold_bpm: float | None,
     origin: str,
     at_heart_rate: OutputAtHeartRate | None = None,
 ) -> dict[str, dict[str, Any]]:
     """LT1 of running and cycling with the origin of each value.
 
-    Heart rate: the stored share of the threshold HR (``origin``, measured or
-    estimated), else ``LT1_HR_SHARE``. Pace and power: ``at_heart_rate(sport,
+    Heart rate: the stored bpm (``origin``, measured or estimated) for runs and
+    its share of the run threshold HR applied to the ride threshold HR, else
+    ``LT1_HR_SHARE``. Pace and power: ``at_heart_rate(sport,
     LT1 bpm)`` from the athlete's own steady sessions, else the fixed share of
     the threshold pace or the FTP. The top of a zone 2 is no LT1 (#3915). A
     value without its base is left out, and a sport without any LT2 value has
     no LT1.
     """
-    hr_share = first_threshold_pct / 100 if first_threshold_pct else None
+    run_lthr = as_number(metrics.get("run_threshold_hr_bpm", {}).get("value"))
+    hr_share = (
+        first_threshold_bpm / run_lthr
+        if first_threshold_bpm and run_lthr and run_lthr > 0
+        else None
+    )
     result: dict[str, dict[str, Any]] = {}
     for sport, lthr_key, lt2_key, (main_key, main_origin_key), share in (
         ("run", "run_threshold_hr_bpm", "run_threshold_pace_seconds_per_km",

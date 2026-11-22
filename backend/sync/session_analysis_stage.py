@@ -67,6 +67,7 @@ from backend.performance.session_zones import (
     dated_thresholds,
     own_configurations,
     session_zone_settings,
+    with_own_lt1,
     zone_settings_part,
 )
 from backend.planning.target_snapshot import freeze_targets
@@ -139,6 +140,21 @@ class _Tally:
 
     written: int = 0
     outcomes: Counter[str] = field(default_factory=Counter)
+
+
+def _own_lt1_zones(
+    summary: Mapping[str, Any],
+    thresholds: DatedThresholds,
+    configurations: Sequence[ZoneConfiguration],
+    first_threshold_bpm: float | None,
+) -> ZoneSettings | None:
+    """The session's zones with the stored first threshold as its LT1 share."""
+    zones = session_zone_settings(summary, thresholds, configurations)
+    try:
+        day = date.fromisoformat(summary_local_date(summary))
+    except ValueError:
+        return zones
+    return with_own_lt1(zones, thresholds, day, first_threshold_bpm)
 
 
 def _thresholds(
@@ -219,6 +235,7 @@ class SessionAnalysisStage:
         planned_units: PlannedUnits = list,
         reader: CanonicalTableReader | None = None,
         batch_size: int = DEFAULT_BATCH_SIZE,
+        first_threshold_bpm: Callable[[Any], float | None] = lambda _db: None,
     ) -> None:
         if batch_size < 1:
             raise ValueError("batch_size must be at least 1")
@@ -228,6 +245,8 @@ class SessionAnalysisStage:
         self._planned_units = planned_units
         self._reader = reader or CanonicalTableReader()
         self._batch_size = batch_size
+        # The athlete's stored first threshold (bpm) moves the band split (#3915).
+        self._first_threshold_bpm = first_threshold_bpm
         self._prepared: dict[str, tuple[str, _Analysed]] | None = None
         # The clock reading the prefetch froze targets with.
         self._prepared_at: str | None = None
@@ -350,6 +369,7 @@ class SessionAnalysisStage:
             },
         )
         thresholds, configurations = _thresholds(db, self._reader)
+        first_threshold = self._first_threshold_bpm(db)
         sessions: list[tuple[_Session, Mapping[str, Any] | None]] = []
         for summary in summaries:
             session_id = str(summary["id"])
@@ -359,7 +379,7 @@ class SessionAnalysisStage:
             if not own and _version(row) != ANALYSIS_VERSION:
                 continue
             zones = (
-                session_zone_settings(summary, thresholds, configurations)
+                _own_lt1_zones(summary, thresholds, configurations, first_threshold)
                 if own
                 else None
             )

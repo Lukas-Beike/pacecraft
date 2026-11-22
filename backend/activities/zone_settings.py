@@ -73,15 +73,28 @@ def zone_source_name(configuration: ZoneConfiguration | None) -> str:
     return LOCAL_ZONE_SOURCE if provider is None else _PROVIDER_ZONE_SOURCES[provider]
 
 
-def intensity_band(kind: str, intensity: float) -> str:
+def own_lt1_share(bpm: float | None, lthr: float | None) -> float | None:
+    """The stored first threshold as a share of a threshold HR, if plausible.
+
+    Outside 40 to 100 % (an old session's lower threshold HR, a typo) the
+    stand-in applies, so the moderate band never vanishes (#3915).
+    """
+    if not bpm or not lthr or lthr <= 0:
+        return None
+    share = bpm / lthr
+    return share if 0.4 <= share < 1.0 else None
+
+
+def intensity_band(kind: str, intensity: float, lt1_share: float | None = None) -> str:
     """The 3-zone band of an intensity (fraction of the threshold) of one sensor.
 
-    Low up to the LT1 stand-in (the fixed shares above), high above the
-    threshold itself, moderate between, for every sensor alike (#3915).
-    ``kind`` is ``hr``, ``power`` or ``pace``.
+    Low up to LT1: for heart rate the athlete's own first threshold as a share
+    of the threshold HR (``lt1_share``) when stored, else the fixed shares
+    above; high above the threshold itself, moderate between, for every sensor
+    alike (#3915). ``kind`` is ``hr``, ``power`` or ``pace``.
     """
     lt1 = {
-        "hr": LT1_HR_SHARE,
+        "hr": lt1_share if lt1_share is not None else LT1_HR_SHARE,
         "power": LT1_POWER_SHARE,
         "pace": LT1_RUN_SPEED_SHARE,
     }[kind]
@@ -113,6 +126,10 @@ class ZoneSettings:
     power_limits: tuple[float, ...] = POWER_ZONE_LIMITS
     hr_limits: tuple[float, ...] = HR_ZONE_LIMITS
     pace_limits: tuple[float, ...] = PACE_ZONE_LIMITS
+    # The athlete's own first threshold as a share of this sport's threshold HR
+    # (the stored bpm over the run threshold HR of the day, #3915); None for the
+    # ``LT1_HR_SHARE`` stand-in. It moves the low/moderate band split.
+    lt1_share: float | None = None
     # Where the limits come from: names for texts, not part of the zones' identity.
     power_source: str = field(default=DEFAULT_ZONE_SOURCE, compare=False)
     hr_source: str = field(default=DEFAULT_ZONE_SOURCE, compare=False)

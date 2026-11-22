@@ -481,6 +481,7 @@ every named number the code fixes. A test fails when it is out of date.
 | `ZONE_TIMES_VERSION` | `3` | `backend/activities/stream_zones.py` | Bump when zone_times counts or names its zones differently, so stored report zones recompute (2: the zone source of each sensor, the Garmin watch zones; 3: the 3-zone bands, #3915). |
 | `LABEL` | `'Zoneneinstellungen'` | `backend/activities/stream_zones.py` |  |
 | `BAND_SOURCE` | `'LT1-Standardwert und Schwelle'` | `backend/activities/stream_zones.py` |  |
+| `OWN_BAND_SOURCE` | `'eigene erste Schwelle und Schwelle'` | `backend/activities/stream_zones.py` |  |
 | `MIN_GAP_S` | `30.0` | `backend/activities/stream_zones.py` |  |
 | `GAP_FACTOR` | `3.0` | `backend/activities/stream_zones.py` |  |
 | `MAX_SESSIONS` | `6` | `backend/activities/strength_progress.py` |  |

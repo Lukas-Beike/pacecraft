@@ -107,6 +107,7 @@ PROFILE_FIELDS = {
     "energy_goal_kcal",
     "learned_everyday_checked",
     "first_threshold_pct",
+    "first_threshold_hr",
     "first_threshold_origin",
     "preferred_source_thresholds",
     "preferred_source_body",
@@ -474,6 +475,8 @@ _FIELDS_ADDED_TO_AUDIT: dict[str, tuple[tuple[str, ...], ...]] = {
         ("energy_goal", "energy_goal_kcal"),
         # #3577: the date the athlete took the learned everyday term over.
         ("learned_everyday_checked",),
+        # #3915: the first threshold in bpm.
+        ("first_threshold_hr",),
     ),
     "planned_unit": (("starts_at_local",), FOCUS_KEYS, (TEMPLATE_ID,)),
     "workout_library": (FOCUS_KEYS,),

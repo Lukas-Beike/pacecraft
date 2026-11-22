@@ -2035,12 +2035,10 @@ characters. Fields: `name`, `goals`, `sports`, `training_background`,
 day, 0 to 1500, required for `lose` and `build`, empty for `hold`),
 `learned_everyday_checked` (`YYYY-MM-DD` the athlete took the learned
 everyday term over, or empty; the Coach cannot set it, #3577),
-`first_threshold_pct` (40 to 100, percent of the run threshold HR),
-`first_threshold_origin` (`measured`, `estimated` or empty) and
-`preferred_source_thresholds`, `_body`, `_hrv`, `_resting_hr`, `_sleep`
-(`garmin` or empty). Instead of the percent, `first_threshold_hr` (bpm, 60
-to 220) with optional `first_threshold_on` (`YYYY-MM-DD`) is converted with
-the run threshold HR of that day and stored as `measured`. `weight_kg` and
+`first_threshold_hr` (bpm, 60 to 220, stored as entered, #3915; a changed
+value without an origin is `measured`), `first_threshold_origin`
+(`measured`, `estimated` or empty) and `preferred_source_thresholds`,
+`_body`, `_hrv`, `_resting_hr`, `_sleep` (`garmin` or empty). `weight_kg` and
 `body_fat_pct` are no profile fields (#3640): Körper enters them
 (`/api/body/weight`, `/api/body/body-fat`, skinfolds); a sent value is
 ignored and the stored one stays as data.
@@ -2055,11 +2053,7 @@ Geburtsjahr muss zwischen 1920 und 2010 liegen."; 400 "Die Größe muss
 zwischen 50 und 250 cm liegen.", "Das Schlafziel muss zwischen 4 und 12
 Stunden liegen."; 400
 "Die Herkunft der ersten Schwelle muss gemessen oder geschätzt sein."; 400
-"Die gemessene erste Schwelle muss zwischen 40 und 100 % LSHF liegen."; 400
-"Die gemessene erste Schwelle muss zwischen 60 und 220 bpm liegen."; 400
-"Das Messdatum muss das Format JJJJ-MM-TT haben."; 400 "Zu diesem Datum ist
-keine Laktatschwelle (LSHF) bekannt, mit der die erste Schwelle in Prozent
-gespeichert werden kann.".
+"Die gemessene erste Schwelle muss zwischen 60 und 220 bpm liegen.".
 
 ### `POST /api/profile/first-threshold/adopt`
 
@@ -2068,12 +2062,12 @@ Request: JSON body `{"percent_lthr": number, "replace_measured": boolean}`.
 `GET /api/profile`; `replace_measured: true` is needed to replace a value
 stored with origin `measured`. Or `{"step_test": string, "heart_rate_bpm":
 number, "replace_measured": boolean}` adopts the good LT1 of the run step
-test with that session id (#3833) as percent of today's run threshold HR;
+test with that session id (#3833) in bpm (#3915);
 `heart_rate_bpm` must equal `step_test.lt1.heart_rate_bpm` of
 `GET /api/activities/{id}`.
 
 Response: 200 `{"profile": object, "first_threshold_estimate": object,
-"adopted": boolean}`. The estimate is stored as percent of the run
+"adopted": boolean}`. The estimate is stored in bpm of today's run
 threshold HR with origin `estimated`; `adopted` is `false` without a profile
 write when that value is already stored.
 
@@ -2082,7 +2076,8 @@ Schätzung hat sich geändert. Bitte die Anzeige aktualisieren." when
 `percent_lthr` differs from the current estimate; 409 "Ein gemessener Wert
 ist gespeichert. Zum Ersetzen bitte bestätigen." without
 `replace_measured`; 409 "Dieser Stufentest liefert keinen guten Wert der
-ersten Schwelle."; 409 "Ohne Schwellenpuls lässt sich der Wert nicht
+ersten Schwelle."; 409 "Der Wert der ersten Schwelle ist nicht
+plausibel."; 409 "Ohne Schwellenpuls lässt sich der Wert nicht
 speichern."; 404 for an unknown session.
 
 ### `GET /api/providers/connections`
