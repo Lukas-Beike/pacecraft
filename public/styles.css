@@ -930,6 +930,7 @@ a.message-retry { display: grid; place-items: center; text-decoration: none; }
 .planned-day-weather { margin-left: auto; color: var(--muted); font-size: .72rem; line-height: 1.5; }
 .planned-day-flag { max-width: 100%; color: var(--muted); font-size: .72rem; line-height: 1.5; overflow-wrap: anywhere; }
 .planned-day-content { display: grid; min-width: 0; align-content: start; gap: 6px; padding: 6px 0 10px; }
+.planned-weather-hint .secondary-button { display: flex; width: fit-content; margin: 8px auto 0; }
 .planned-weather-hint { margin: 0 0 12px; padding: 8px 12px; border: 1px dashed var(--line-strong); border-radius: 10px; color: var(--subtle); font-size: .72rem; line-height: 1.5; text-align: center; }
 .planned-day-observations { display: flex; flex-wrap: wrap; gap: 3px 12px; margin-top: 5px; color: var(--subtle); font-size: .72rem; line-height: 1.5; overflow-wrap: anywhere; }
 .planned-day-observations p { margin: 0; }

@@ -973,10 +973,24 @@ function plannedWeatherDetails(weather) {
   ].filter(Boolean);
 }
 
+// Without a location the hint's link opens the profile at that field (#3932 K-03).
+function openWeatherLocationField(event) {
+  // A modified click keeps the browser's own behaviour (new tab, new window).
+  if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button > 0) return;
+  event.preventDefault();
+  void AppRouter.navigate("more/profile", { historyMode: "push" }).then((shown) => {
+    const field = shown && document.querySelector('#profileForm [name="weather_location"]');
+    if (!field) return;
+    field.closest("details")?.setAttribute("open", "");
+    field.focus();
+  });
+}
+
 function plannedWeatherHint() {
-  return h("p", "planned-weather-hint", state.data?.weather?.configured
-    ? "Für die kommenden Tage liegt noch keine Wettervorhersage vor."
-    : "Wetter fehlt: Im Profil ist kein Wetterort hinterlegt.");
+  if (state.data?.weather?.configured) return h("p", "planned-weather-hint", "Für die kommenden Tage liegt noch keine Wettervorhersage vor.");
+  const link = h("a", { className: "secondary-button", href: "#more/profile" }, "Wetterort angeben");
+  link.addEventListener("click", openWeatherLocationField);
+  return h("p", "planned-weather-hint", "Wetter fehlt: Im Profil ist kein Wetterort hinterlegt. ", link);
 }
 
 function plannedWeekSummary(weekKey, weekEndKey, weekEntries, compliance, todayKey) {

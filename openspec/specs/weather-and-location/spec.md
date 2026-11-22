@@ -312,7 +312,7 @@ The client SHALL show, beside each calendar day, the weather symbol with the tem
 
 #### Scenario: No weather
 - **WHEN** no forecast exists for the coming days
-- **THEN** the hint reads "Für die kommenden Tage liegt noch keine Wettervorhersage vor.", or without a saved location "Wetter fehlt: Im Profil ist kein Wetterort hinterlegt."
+- **THEN** the hint reads "Für die kommenden Tage liegt noch keine Wettervorhersage vor.", or without a saved location "Wetter fehlt: Im Profil ist kein Wetterort hinterlegt." with the link "Wetterort angeben", which opens the location field in the profile.
 
 Evidence: `public/plan-views.js::plannedWeatherFlags`, `public/plan-views.js::plannedPollenPeak`, `public/plan-views.js::plannedWeatherDetails`, `public/plan-views.js::plannedWeatherHint`.
 
