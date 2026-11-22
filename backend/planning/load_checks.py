@@ -43,9 +43,16 @@ from backend.planning.running_week import unit_day as _day
 from backend.planning.sport import planned_sport_environment
 
 LOAD_EVIDENCE = "extrapolated from distance/volume studies, not directly validated"
+# The weekly rise is a planning convention against the recent peak, not a
+# risk ratio (#3918; acute:chronic ratios add nothing, Impellizzeri et al. 2020).
+WEEKLY_RISE_EVIDENCE = (
+    "planning convention against the highest of the last 4 known weeks, no risk ratio"
+)
 SESSION_WINDOW_DAYS = 30
 SPIKE_FACTOR = 1.10
 SPIKE_WARNING_FACTOR = 1.30
+# A ride is noted only from the warning factor on (athlete decision B8, #3918).
+RIDE_SPIKE_FACTOR = SPIKE_WARNING_FACTOR
 WEEKLY_RISE_FACTOR = 1.20
 BASELINE_WEEKS = 4
 MIN_BASELINE_WEEKS = 3
@@ -154,6 +161,28 @@ def plan_sessions(
     return sessions
 
 
+def load_coverage(
+    sessions: Sequence[PlannedSession], today: date
+) -> list[dict[str, Any]]:
+    """Per planned ISO week: run and ride units and how many have a planned load.
+
+    The load checks are only as good as this coverage (#3918): a week with an
+    unknown load is never judged by the weekly rise, so the brief names how
+    many units it could compute.
+    """
+    weeks: dict[str, list[int]] = {}
+    for session in sessions:
+        if session.day < today.isoformat():
+            continue
+        counts = weeks.setdefault(_monday(session.day), [0, 0])
+        counts[0] += 1
+        counts[1] += session.estimate.load is not None
+    return [
+        {"week_start": week, "units": total, "with_load": known}
+        for week, (total, known) in sorted(weeks.items())
+    ]
+
+
 def completed_load(row: Mapping[str, Any]) -> SessionLoad | None:
     """The stored M6 load of a completed session; ``None`` when it has none."""
     load = row.get("training_load")
@@ -178,10 +207,11 @@ def _completed_loads(
     return result
 
 
-def _grade(planned: float, reference: float) -> str | None:
+def _grade(planned: float, reference: float, sport: Sport) -> str | None:
     if planned > reference * SPIKE_WARNING_FACTOR:
         return "warning"
-    return "notice" if planned > reference * SPIKE_FACTOR else None
+    notice = RIDE_SPIKE_FACTOR if sport is Sport.RIDE else SPIKE_FACTOR
+    return "notice" if planned > reference * notice else None
 
 
 def _in_window(day: str, today: date) -> bool:
@@ -217,7 +247,7 @@ def _spike_draft(
     planned = session.estimate.load
     if planned is None or reference is None:
         return None
-    severity = _grade(planned, reference.load)
+    severity = _grade(planned, reference.load, session.sport)
     if severity is None:
         return None
     return (
@@ -286,6 +316,7 @@ def _baseline(
     sport: Sport,
     week: str,
 ) -> tuple[float, int] | None:
+    """The highest load of the last 3-4 known weeks of the sport, and their count."""
     first = date.fromisoformat(week)
     keys = [
         (sport, (first - timedelta(weeks=n)).isoformat())
@@ -294,7 +325,7 @@ def _baseline(
     known = [totals[key] for key in keys if key not in partial and totals.get(key)]
     if len(known) < MIN_BASELINE_WEEKS:
         return None
-    return sum(known) / len(known), len(known)
+    return max(known), len(known)
 
 
 def weekly_rises(
@@ -302,11 +333,13 @@ def weekly_rises(
     completed: Iterable[Mapping[str, Any]],
     today: date,
 ) -> list[Draft]:
-    """Planned weekly load per sport against the mean of the previous 3-4 weeks.
+    """Planned weekly load per sport against the highest of the previous 3-4 weeks.
 
+    A planning convention (#3918): a normal week after a lighter or illness week
+    stays silent, a new peak more than 20 % above the recent ones is named.
     Weeks without a record, or with a session whose load is unknown, are unknown
-    and not rest, so they are left out of the mean; fewer than three known weeks
-    give no note. A week of the sport with such a session is not judged either.
+    and not rest, so they are left out; fewer than three known weeks give no
+    note. A week of the sport with such a session is not judged either.
     """
     totals, partial = _weekly_totals(sessions, _completed_loads(completed), today)
     groups: dict[tuple[Sport, str], list[PlannedSession]] = defaultdict(list)
@@ -329,13 +362,13 @@ def weekly_rises(
             (
                 "weekly_load_rise",
                 [item.unit for item in group],
-                f"Planned {sport.value} load of the week rises more than 20 % above the mean of the previous weeks.",
+                f"Planned {sport.value} load of the week is more than 20 % above the highest of the previous weeks (planning convention).",
                 {
                     "severity": "notice",
                     "sport": sport.value,
                     "week_start": week,
                     "planned_week_load": round(planned),
-                    "baseline_mean_load": round(baseline[0]),
+                    "baseline_peak_load": round(baseline[0]),
                     "baseline_weeks": baseline[1],
                     "increase_percent": round((planned / baseline[0] - 1) * 100),
                 },
@@ -398,7 +431,7 @@ def run_distance_spikes(
         planned = session.estimate.distance_m
         if session.sport is not Sport.RUN or not planned or longest <= 0:
             continue
-        severity = _grade(planned, longest)
+        severity = _grade(planned, longest, Sport.RUN)
         if severity is None:
             continue
         drafts.append(

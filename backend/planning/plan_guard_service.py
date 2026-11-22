@@ -30,7 +30,12 @@ from backend.planning import (
     plan_checks,
     season,
 )
-from backend.planning.load_checks import LoadThresholds, load_thresholds
+from backend.planning.load_checks import (
+    LoadThresholds,
+    load_coverage,
+    load_thresholds,
+    plan_sessions,
+)
 from backend.planning.running_week import unit_day as _unit_day
 from backend.planning.session_focus import session_focus
 from backend.planning.sport import planned_sport_environment
@@ -698,6 +703,12 @@ class PlanGuardService:
             ),
             complaints=self._complaints(),
         )
+        # How many planned run and ride units have a computable load (#3918).
+        coverage = load_coverage(
+            plan_sessions(units, self._load_thresholds() or LoadThresholds()), today
+        )
+        if coverage:
+            brief = brief_budget.fit_brief({**brief, "load_coverage": coverage})
         # A shown infection hint (M14, #3762) is information only; no check reads it.
         # It is never trimmed: the brief is fitted again with it, older entries go first.
         infection_hint = self._infection_hint()

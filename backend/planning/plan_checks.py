@@ -11,9 +11,10 @@ Rules (references are observational or practice-based, not individual advice):
   no finding.
 - load_spike, weekly_load_rise, load_unknown: load = duration x intensity^2 per
   sport for planned units, the stored card M6 load for completed sessions
-  (``load_checks``). A planned run or ride more than 10 % (warning: 30 %)
-  above the highest-load session of its sport in 30 days; a planned weekly load
-  more than 20 % above the mean of the previous 3-4 weeks; load that cannot be
+  (``load_checks``). A planned run more than 10 % (warning: 30 %), a ride more
+  than 30 %, above the highest-load session of its sport in 30 days; a planned
+  weekly load more than 20 % above the highest of the previous 3-4 weeks (a
+  planning convention, no ratio); load that cannot be
   computed (missing or stale thresholds, unparsed steps) is named, not guessed.
   Only with thresholds passed to ``check_plan``.
 - back_to_back_hard: hard run/ride sessions on consecutive days. Hard means a
@@ -52,6 +53,7 @@ import json
 import re
 from collections.abc import Iterable, Mapping, Sequence
 from datetime import date, timedelta
+from itertools import pairwise
 from typing import Any
 
 from backend.activities.workout_text import WorkoutTextError, structured_steps
@@ -94,6 +96,7 @@ FINDING_CODES = (
     "back_to_back_hard",
     "strength_hard_same_day",
     "missing_taper",
+    "lighter_week_missing",
     "illness_hard",
     "strength_incomplete",
     "focus_missing",
@@ -131,11 +134,12 @@ REQUIRED_CODES = (
 EVIDENCE = {
     "run_spike": "observational, moderate (Frandsen 2025)",
     "load_spike": load_checks.LOAD_EVIDENCE,
-    "weekly_load_rise": load_checks.LOAD_EVIDENCE,
+    "weekly_load_rise": load_checks.WEEKLY_RISE_EVIDENCE,
     "load_unknown": load_checks.LOAD_EVIDENCE,
     "back_to_back_hard": "practice-based (hard/easy principle)",
     "strength_hard_same_day": "limited, performance studies (Robineau 2016)",
     "missing_taper": "meta-analysis, strong (Bosquet 2007); 20 % floor is a local choice",
+    "lighter_week_missing": "practice-based (a lighter week every 3rd to 4th week; Kiely 2012: no periodization model clearly superior)",
     "illness_hard": "medical caution",
     "strength_incomplete": "data completeness for the watch and the plan checks",
     "focus_missing": "data completeness for the plan checks and the calendar",
@@ -152,9 +156,10 @@ EVIDENCE = {
 }
 _RULE_TEXT = {
     "run_spike": "planned run more than 10 % (warning above 30 %) longer than the longest run of the last 30 days.",
-    "load_spike": "planned run or ride load more than 10 % (warning above 30 %) above the highest-load session of its sport in 30 days.",
-    "weekly_load_rise": "planned weekly run or ride load more than 20 % above the mean of the previous 3-4 weeks.",
+    "load_spike": "planned run load more than 10 % (warning above 30 %), ride load more than 30 %, above the highest-load session of its sport in 30 days.",
+    "weekly_load_rise": "planned weekly run or ride load more than 20 % above the highest of the previous 3-4 weeks (planning convention).",
     "load_unknown": "load of a planned run or ride cannot be computed (missing or stale thresholds or steps).",
+    "lighter_week_missing": "four consecutive weeks each with more run and ride time than the week before, without a lighter week.",
     "back_to_back_hard": "hard run or ride on consecutive days.",
     "strength_hard_same_day": "heavy strength and a hard run or ride less than 6 h apart.",
     "missing_taper": "final 14 days before an A/B competition less than 20 % lighter than the 14 days before.",
@@ -373,6 +378,87 @@ def _taper_for(
             "final_14d_minutes": round(final / 60),
         },
     )
+
+
+def _endurance_week_seconds(
+    units: Sequence[Mapping[str, Any]],
+    completed: Iterable[Mapping[str, Any]],
+    today: date,
+) -> dict[date, float]:
+    """Run and ride time per ISO week: completed before today, planned from today."""
+    weeks: dict[date, float] = {}
+    now = today.isoformat()
+    rows = [
+        (iso_date_prefix(row.get("started_at_local")), str(row.get("sport") or ""),
+         number(row.get("moving_duration_s")) or 0.0)
+        for row in completed
+        if iso_date_prefix(row.get("started_at_local")) < now
+    ] + [
+        (_day(unit), planned_sport_environment(unit)[0].value, _duration_s(unit))
+        for unit in units
+        if _day(unit) >= now
+    ]  # fmt: skip
+    for day, sport, seconds in rows:
+        if sport not in {Sport.RUN.value, Sport.RIDE.value} or not day:
+            continue
+        try:
+            parsed = date.fromisoformat(day)
+        except ValueError:
+            continue
+        monday = parsed - timedelta(days=parsed.weekday())
+        weeks[monday] = weeks.get(monday, 0.0) + seconds
+    return weeks
+
+
+def _lighter_week_missing(
+    units: Sequence[Mapping[str, Any]],
+    completed: Sequence[Mapping[str, Any]],
+    today: date,
+) -> list[dict]:
+    """A note when four consecutive weeks each hold more endurance time (#3918).
+
+    The playbook asks for a lighter week every 3rd to 4th week. Weeks run from
+    last week to the last planned one; completed sessions count before today,
+    planned units from today. A run of four rising weeks that ends in a planned
+    week is named once, on that week's units.
+    """
+    now = today.isoformat()
+    future = [unit for unit in units if _day(unit) >= now]
+    weeks = _endurance_week_seconds(future, completed, today)
+    monday = today - timedelta(days=today.weekday())
+    start = monday - timedelta(days=7)
+    if not weeks:
+        return []
+    last = max(weeks)
+    series = []
+    week = start
+    while week <= last:
+        series.append((week, weeks.get(week, 0.0)))
+        week += timedelta(days=7)
+    for index in range(3, len(series)):
+        window = series[index - 3 : index + 1]
+        rising = all(later[1] > earlier[1] > 0 for earlier, later in pairwise(window))
+        if rising and window[-1][0] >= monday:
+            end = window[-1][0]
+            flagged = [
+                unit
+                for unit in future
+                if end.isoformat()
+                <= _day(unit)
+                <= (end + timedelta(days=6)).isoformat()
+            ]
+            return [
+                _finding(
+                    "lighter_week_missing",
+                    flagged,
+                    "Four consecutive weeks each hold more run and ride time than the week before; plan a lighter week.",
+                    {
+                        "week_starts": [item[0].isoformat() for item in window],
+                        "minutes": [round(item[1] / 60) for item in window],
+                    },
+                )
+            ]
+    return []
 
 
 def _missing_taper(
@@ -937,6 +1023,7 @@ def check_plan(
         *_drafted(leg_strength.before_key_session(units, is_hard, is_heavy_strength)),
         *_drafted(leg_strength.frequency(units, today, expects_strength, completed)),
         *_missing_taper(units, completed, competitions, today),
+        *_lighter_week_missing(units, completed, today),
         *illness_findings,
         *_return_stage_hard(units, return_stage, today, flagged),
         *_complaint_findings(complaints),
@@ -951,6 +1038,8 @@ def finding_key(finding: Mapping[str, Any]) -> tuple[Any, ...]:
     """
     if finding["code"] == "missing_taper":
         return (finding["code"], finding["evidence"]["competition_date"])
+    if finding["code"] == "lighter_week_missing":
+        return (finding["code"], finding["evidence"]["week_starts"][-1])
     if finding["code"] == "intensity_distribution":
         return (finding["code"], finding["evidence"]["week_start"])
     if finding["code"] == leg_strength.FREQUENCY:

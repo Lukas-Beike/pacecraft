@@ -263,14 +263,30 @@ HARD_TABLE = (
         unit("Run", description="6x\n- 3m Z5 Pace\n- 2m Z1 Pace"),
         True,
     ),
+    # B7 (#3918): 30 minutes or more in the moderate band is hard.
     (
         "tempo Z3 steps",
         unit("Ride", name="Tempo", description="2x\n- 20m Z3\n- 5m Z1"),
-        False,
+        True,
     ),
     (
         "sweet spot at 90 %",
         unit("Ride", name="Sweet Spot", description="3x\n- 12m 90%\n- 4m 55%"),
+        True,
+    ),
+    (
+        "short tempo below 30 minutes",
+        unit("Ride", name="Tempo", description="2x\n- 12m Z3\n- 5m Z1"),
+        False,
+    ),
+    (
+        "set tempo with 30 moderate minutes",
+        unit("Ride", session_focus="tempo", description="- 30m 85%"),
+        True,
+    ),
+    (
+        "set tempo with 20 moderate minutes",
+        unit("Ride", session_focus="tempo", description="- 20m 85%\n- 20m 60%"),
         False,
     ),
     (
