@@ -350,7 +350,7 @@ class ExternalCalendarSyncTests(unittest.TestCase):
             self.lock.release()
         self.assertEqual(caught.exception.status, 503)
         self.assertEqual(
-            caught.exception.message, "Der Kalender-Link ist nicht konfiguriert."
+            caught.exception.message, "Der Kalender-Link ist nicht eingerichtet."
         )
         self.assertEqual(self.kv("last_external_calendar_sync_error"), "older error")
 

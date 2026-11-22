@@ -633,7 +633,7 @@ Evidence: `public/sync-status.js::providerRequiresManualAttention`; `public/sync
 
 ### Requirement: Credential and connection cards in the PWA
 
-Each credential field SHALL state its source ("In der App gespeichert", "Server-Einstellung", "Nicht gesetzt"), show its current value only for the base URLs of OpenAI and Anthropic, the Intervals.icu athlete id, the Wahoo client id and the Garmin key expiry, and offer "Entfernen" only for a value stored in the app.
+Each credential field SHALL state its source ("In der App gespeichert", "Server-Einstellung", "Nicht eingerichtet"), show its current value only for the base URLs of OpenAI and Anthropic, the Intervals.icu athlete id, the Wahoo client id and the Garmin key expiry, and offer "Entfernen" only for a value stored in the app.
 
 #### Scenario: Garmin login
 - **WHEN** the login answers `mfa_required`, or the code step answers 409

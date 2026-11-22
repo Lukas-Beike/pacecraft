@@ -383,7 +383,7 @@ async function saveProviderCredentials(event, provider) {
 async function clearProviderCredential(field, provider) {
   const label = CREDENTIAL_FIELD_LABELS[field];
   const confirmed = await requestConfirmation(
-    `${label} aus der App entfernen? Danach gilt wieder der Wert aus der Serverumgebung, falls dort einer gesetzt ist.`,
+    `${label} aus der App entfernen? Danach gilt wieder der Wert aus der Server-Einstellung, falls dort einer gesetzt ist.`,
     { title: `${label} entfernen?` },
   );
   if (!confirmed) return;

@@ -39,7 +39,7 @@ MAX_CALLBACK_VALUE_LENGTH = 2048
 _REFRESH_REJECTED_STATUSES = frozenset({400, 401, 422})
 
 NOT_CONFIGURED_MESSAGE = (
-    "Wahoo ist nicht konfiguriert. Bitte Client-ID, Client-Secret und "
+    "Wahoo ist nicht eingerichtet. Bitte Client-ID, Client-Secret und "
     "Weiterleitungs-URL in den Server-Einstellungen hinterlegen."
 )
 INVALID_REDIRECT_MESSAGE = (

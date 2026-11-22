@@ -172,7 +172,7 @@ texts.
 | `public/plan-views.js` `adoptStepTestValue` | Gemessenen Wert ersetzen? | Der gemessene Wert wird durch den Wert aus dem Stufentest ersetzt. | Ersetzen |
 | `public/provider-connections.js` `changeMetricExportField` | Intervals.icu-Abgleich | (computed) ` message ` | Bestätigen |
 | `public/provider-connections.js` `configureAutomaticMetricExport` | (computed) ` enabled ? "Automatischen Abgleich aktivieren?" : "Automatischen Abgleich deaktivieren?" ` | (computed) ` message ` | Bestätigen |
-| `public/provider-connections.js` `clearProviderCredential` | (computed) `` `${label} entfernen?` `` | (computed) `` `${label} aus der App entfernen? Danach gilt wieder der Wert aus der Serverumgebung, falls dort einer gesetzt ist.` `` | Bestätigen |
+| `public/provider-connections.js` `clearProviderCredential` | (computed) `` `${label} entfernen?` `` | (computed) `` `${label} aus der App entfernen? Danach gilt wieder der Wert aus der Server-Einstellung, falls dort einer gesetzt ist.` `` | Bestätigen |
 | `public/provider-connections.js` `disconnectGarmin` | Garmin trennen? | Garmin trennen? Die in der App gespeicherten Garmin-Tokens werden gelöscht. Bereits geladene Daten bleiben erhalten. | Bestätigen |
 | `public/settings.js` `adoptFirstThreshold` | Gemessenen Wert ersetzen? | Der gemessene Wert wird durch den Wert aus DFA-α1 ersetzt. | Ersetzen |
 | `public/settings.js` `restoreDatabaseBackup` | Datenbank-Backup wiederherstellen? | Das aktuelle Datenbank-Backup wird vorher gesichert und durch die ausgewählte Datei ersetzt. Fortfahren? | Bestätigen |
