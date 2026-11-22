@@ -149,7 +149,7 @@ test("a series without a drawn line leaves the legend and the axis; the table sh
   const context = chartContext(1200);
   extractFunctions("views.js", ["dateFromKey", "localDateKey", "addDateKey"], context);
   loadPublicScript("analysis.js", context);
-  const drawn = { label: "Schwelle", color: 0, cadenceDays: 7, points: [{ date: "2026-10-05", value: 100 }, { date: "2026-10-12", value: 110 }, { date: "2026-10-19", value: 105 }] };
+  const drawn = { label: "Schwelle", color: 0, cadenceDays: 7, points: [{ date: "2026-10-05", value: 100 }, { date: "2026-10-19", value: 105 }] };
   // One reading only: nothing to draw, and an observed date that must not follow an empty cell.
   const single = { label: "LT1", color: 1, cadenceDays: 7, points: [{ date: "2026-10-05", value: null }, { date: "2026-10-12", value: 900, observedDate: "2026-10-12" }, { date: "2026-10-19", value: null, observedDate: "2026-09-06" }] };
   const text = serialize(context.analysisChart("Schwellen", [drawn, single], "W", "2026-10-05", "2026-10-19", "Hinweis.", { calendarWeeks: true }));
@@ -158,7 +158,7 @@ test("a series without a drawn line leaves the legend and the axis; the table sh
   const ticks = [...text.matchAll(/class="analysis-value-tick"[^>]*>\n\s+"([^"]+)"/g)].map((match) => Number(match[1].replace(",", ".")));
   assert.ok(ticks.length > 1 && Math.max(...ticks) < 200, `the single reading sets no axis tick: ${ticks}`);
   assert.doesNotMatch(text, /"– · letzter Messwert/, "an empty cell names no date");
-  assert.match(text, /Daten für 3 von 3 Wochen vorhanden/, "the week count is the chart's own");
+  assert.match(text, /Daten für 2 von 3 Wochen vorhanden/, "the week count is the chart's own, not the number of points");
 });
 
 test("data that starts late in the period names its start, and a pulse chart keeps a ten-beat range (#3928)", () => {

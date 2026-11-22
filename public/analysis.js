@@ -154,7 +154,7 @@ function analysisChart(title, series, unit, start, end, note, {
   svg.append(svgNode("title", {}, `${title} · ${dateLabel(start)} bis ${dateLabel(end)}`));
   svg.append(svgNode("desc", {}, `Eigene Skala: ${caption}. Fehlende Messungen bleiben unbekannt.`));
   appendAnalysisAxes(svg, unit, scales, caption);
-  appendAnalysisSeries(svg, series, unit, scales, zeroCentered, caption);
+  appendAnalysisSeries(svg, series, unit, scales, zeroCentered, caption, weekTicks);
   appendAnalysisDateTicks(svg, start, end, scales, weekTicks ? analysisWeekTickLabel : analysisDayTickLabel);
   appendAnalysisPointInspectors(section, svg, series, unit, scales);
   section.append(svg);
@@ -478,9 +478,11 @@ function appendAnalysisPointLabels(svg, labels, obstacles, { chartWidth }) {
   accepted.forEach(({ box, index, label }) => svg.append(svgNode("text", { x: (box.left + box.right) / 2, y: box.bottom - 3, "text-anchor": "middle", class: "analysis-point-value", "data-value-series": index }, label)));
 }
 
-function appendAnalysisSeries(svg, series, unit, scales, zeroCentered, caption) {
+function appendAnalysisSeries(svg, series, unit, scales, zeroCentered, caption, weeklyCaption = false) {
   const labels = [];
   const obstacles = [analysisTextBox(4, 15, caption, 6.4)];
+  // The week caption sits at the top right: no value label may overprint it.
+  if (weeklyCaption) obstacles.push(analysisTextBox(scales.chartWidth - 8 - "Woche ab".length * 6.4, 15, "Woche ab", 6.4));
   // A dashed zero line beside a label reads as a minus sign (#3450).
   if (scales.min < 0 && scales.max > 0) obstacles.push({ left: 60, right: scales.chartRight, top: scales.y(0) - 1, bottom: scales.y(0) + 1 });
   series.forEach((item, index) => {
@@ -1460,8 +1462,9 @@ function bodyMetricChart(metric, title, unit, window, period, preferred = {}) {
   if (weekly) chart.querySelectorAll(".analysis-info-tooltip").forEach((info) => {
     info.append(h("p", "analysis-reference-note", `${analysisPeriod(period).weeks} rollierende Wochen: letzter Messwert je Woche.`));
   });
-  if (metric === "cycling_w_per_kg") chart.querySelectorAll(".analysis-info-tooltip").forEach((info, index) => {
-    const item = entries[index];
+  // The legend tooltip names its series; a hidden series leaves no tooltip, so the position says nothing.
+  if (metric === "cycling_w_per_kg") chart.querySelectorAll(".analysis-info-tooltip[data-series]").forEach((info) => {
+    const item = entries[Number(info.dataset.series)];
     if (item?.power_method) info.append(h("p", "analysis-reference-note", `Methode: ${item.power_method}. FTP- und Gewichtsdatum sind in den Einzelwerten getrennt ausgewiesen.`));
   });
   return chart;
