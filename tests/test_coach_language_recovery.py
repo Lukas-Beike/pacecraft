@@ -132,7 +132,7 @@ class CoachLanguageRecoveryTests(DialogueHarness, unittest.TestCase):
         self.assertEqual(model.call_count, 3)
         self.assertEqual(sleep.call_count, 2)
         self.assertEqual(result["status"], "failed")
-        self.assertIn("Anfragelimit", result["message"]["content"])
+        self.assertIn("begrenzt gerade die Anfragen", result["message"]["content"])
         self.assertEqual(result["sync_job_ids"], [])
 
     def test_rate_limit_retry_uses_provider_delay_and_bounded_jitter(self):
@@ -209,7 +209,7 @@ class CoachLanguageRecoveryTests(DialogueHarness, unittest.TestCase):
                 ],
             )
         self.assertIn("erfolgreich abgeschlossen", result["message"]["content"])
-        self.assertIn("Anfragelimit", result["message"]["content"])
+        self.assertIn("begrenzt gerade die Anfragen", result["message"]["content"])
         self.assertEqual(result["sync_job_ids"], [])
 
     def test_workout_repair_finishes_in_same_turn_preserving_identity_and_distance(

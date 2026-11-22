@@ -105,9 +105,9 @@ async function installControlledChatStream(page) {
 }
 
 for (const [scenario, prompt, message] of [
-  ["billing", "E2E fixture: OpenAI credit balance exhausted", "Das OpenAI-Guthaben ist aufgebraucht. Bitte im OpenAI-Billing Guthaben hinzufügen."],
-  ["model", "E2E fixture: OpenAI model not found", "Das konfigurierte KI-Modell oder der angeforderte Dienst wurde nicht gefunden. Bitte die Modellkonfiguration prüfen."],
-  ["access", "E2E fixture: OpenAI access denied", "Der KI-Dienst hat den Zugriff abgelehnt. Bitte prüfe den API-Zugang in den Einstellungen."],
+  ["billing", "E2E fixture: OpenAI credit balance exhausted", "Das OpenAI-Guthaben ist aufgebraucht. Lade es im OpenAI-Konto auf."],
+  ["model", "E2E fixture: OpenAI model not found", "OpenAI kennt das gewählte Modell nicht. Prüfe es unter Mehr › Coach & Modell."],
+  ["access", "E2E fixture: OpenAI access denied", "OpenAI hat den Zugang abgelehnt. Prüfe den API-Schlüssel unter Mehr › Anbindungen."],
   ["timeout", "E2E fixture: OpenAI timeout", "Der KI-Dienst hat nicht rechtzeitig geantwortet. Bitte versuche es erneut."],
 ]) {
   test(`OpenAI ${scenario} failures remain visible in the chat after reload`, { tag: "@responsive" }, async ({ page }, testInfo) => {
@@ -121,14 +121,18 @@ for (const [scenario, prompt, message] of [
     await expect(failures).toHaveCount(previousFailures + 1);
     await expect(failures.last()).toBeVisible();
     await expect(page.locator("#coachWorking")).toHaveCount(0);
-    // The failure shows at its message with a retry, not in the global toast.
-    const retry = failures.last().getByRole("button", { name: "Erneut senden" });
-    await expect(retry).toBeVisible();
+    // The failure shows at its message, not in the global toast: a retry where one can work, the connections where the athlete must act.
+    const retryable = scenario === "timeout";
+    const action = retryable ? failures.last().getByRole("button", { name: "Erneut senden" }) : failures.last().getByRole("link", { name: "Anbindungen öffnen" });
+    await expect(action).toBeVisible();
+    await expect(failures.last()).toHaveClass(/is-failed/);
     await expect(page.locator("#toast")).not.toContainText(message);
-    await retry.click();
-    await expect(failures).toHaveCount(previousFailures + 2);
-    await expect(page.locator("#coachWorking")).toHaveCount(0);
-    await expect(page.locator("#messages").getByRole("button", { name: "Erneut senden" })).toHaveCount(1);
+    if (retryable) {
+      await action.click();
+      await expect(failures).toHaveCount(previousFailures + 2);
+      await expect(page.locator("#coachWorking")).toHaveCount(0);
+    }
+    await expect(page.locator("#messages").getByRole("button", { name: "Erneut senden" })).toHaveCount(retryable ? 1 : 0);
     await page.locator("#messageInput").fill("Neue Frage nach dem Anbieterfehler");
     await expect(page.locator("#sendButton")).toBeEnabled();
     await page.locator("#messageInput").fill("");
@@ -137,7 +141,7 @@ for (const [scenario, prompt, message] of [
     await expect(page.locator("#appShell")).toBeVisible();
     await expect(failures.last()).toBeVisible();
     await expect(failures.last()).toContainText(message);
-    await expect(failures.last().getByRole("button", { name: "Erneut senden" })).toBeVisible();
+    await expect(action).toBeVisible();
     await expectNoBrowserErrorsOrOverflow(page, browserErrors);
     await page.screenshot({ path: testInfo.outputPath(`openai-${scenario}-error.png`), fullPage: true });
   });

@@ -446,7 +446,7 @@ The system SHALL finish each turn's one durable receipt together with its assist
 
 #### Scenario: Failed turn
 - **WHEN** a turn ends with an error other than `command_scope_denied`, `client_turn_in_progress` or `client_turn_text_mismatch`
-- **THEN** an assistant message with a fixed German explanation is stored, flagged `coach_failed` (with `coach_request_kind` for a quick action) when the status is `failed`; the receipt keeps the steps, `error` (redacted, at most 1,000 characters), `diagnostic_error`, `pending_operations`, `proposed_actions` and the change summary of the applied writes, so applied effects stay visible and undoable; a cancelled turn clears the pending request, any other failure stores the athlete's message as a `failed` pending request with its completed steps, unless a clarification question had been stored in this turn, which then is the answer with status `completed`; with applied effects a failed or cancelled turn is `partial`
+- **THEN** an assistant message with a fixed German explanation is stored, flagged `coach_failed` (with `coach_request_kind` for a quick action and `coach_failure_reason`) when the status is `failed` and `coach_cancelled` when it is `cancelled`; a provider failure reason has one text, naming the selected provider (OpenAI or Claude), shared with the connection status (`backend/providers/error_texts.py`); the receipt keeps the steps, `error` (redacted, at most 1,000 characters), `diagnostic_error`, `pending_operations`, `proposed_actions` and the change summary of the applied writes, so applied effects stay visible and undoable; a cancelled turn clears the pending request, any other failure stores the athlete's message as a `failed` pending request with its completed steps, unless a clarification question had been stored in this turn, which then is the answer with status `completed`; with applied effects a failed or cancelled turn is `partial`
 
 #### Scenario: Explanation per reason
 - **WHEN** the error has one of the reasons mapped in `CoachTurnFailureService._base_response` (OpenAI or Anthropic not configured, `refused`, `conversation_state_invalid`, `conversation_locked`, `authentication_or_permission`, `insufficient_quota`, `credit_balance_exhausted`, the three spend and usage limit reasons, `database_busy`, `provider_timeout`, `not_found`, `provider_unavailable`, `response_error`, `response_failed`, a rate limit)
@@ -505,7 +505,7 @@ The client SHALL show the working state of a turn, offer a retry on a failed ans
 
 #### Scenario: Failed answer
 - **WHEN** the newest answer belongs to a failed turn whose request had text and no attachments
-- **THEN** it offers "Erneut senden", which sends the text with its quick-action kind as a new turn
+- **THEN** it offers "Erneut senden", which sends the text with its quick-action kind as a new turn; a failure the athlete must resolve (key, balance, model, not configured) offers "Anbindungen öffnen" instead
 
 #### Scenario: Queue limits
 - **WHEN** queued follow-ups would hold more than 16,000,000 characters of encoded attachment data, or the athlete resets the chat while messages are queued
