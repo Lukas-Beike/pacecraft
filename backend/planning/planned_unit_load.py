@@ -88,7 +88,12 @@ def unit_thresholds(
 
 
 class PlannedUnitEstimator:
-    """Estimate planned units with thresholds read once, on first use."""
+    """Estimate planned units with thresholds read once, on first use.
+
+    ``heart_rate_references`` gives the plan checks' load thresholds, whose
+    ``heart_rate_load`` scores heart-rate steps like M6, so the Coach's
+    session report and the plan checks share one planned load (#3918).
+    """
 
     def __init__(
         self,
@@ -97,6 +102,7 @@ class PlannedUnitEstimator:
         zone_configurations: Callable[[], Sequence[ZoneConfiguration]],
         today: Callable[[], date] = date.today,
         first_threshold_bpm: Callable[[], float | None] = lambda: None,
+        heart_rate_references: Callable[[], Any] | None = None,
     ) -> None:
         self._database_manager = database_manager
         # The stored first threshold moves the heart-rate band split (#3915);
@@ -106,6 +112,8 @@ class PlannedUnitEstimator:
         self._today = today
         self._observation_reader = observation_reader
         self._read_configurations = zone_configurations
+        self._read_references = heart_rate_references
+        self._references: Any = None
         self._inputs: (
             tuple[Sequence[Observation], Sequence[ZoneConfiguration]] | None
         ) = None
@@ -122,7 +130,14 @@ class PlannedUnitEstimator:
         return thresholds, self._read_configurations()
 
     def __call__(self, unit: Mapping[str, Any]) -> WorkoutEstimate:
-        return estimate_planned_unit(unit, self.thresholds(unit))
+        settings = self.thresholds(unit)
+        if self._read_references is None:
+            return estimate_planned_unit(unit, settings)
+        if self._references is None:
+            self._references = self._read_references()
+        return estimate_planned_unit(
+            unit, settings, self._references.heart_rate_load(settings)
+        )
 
     def thresholds(self, unit: Mapping[str, Any]) -> ZoneSettings:
         """The current thresholds of the unit's sport, as its estimate uses.

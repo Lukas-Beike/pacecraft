@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from datetime import date
 from types import SimpleNamespace
 from typing import Any, ClassVar
+from unittest.mock import patch
 
 from backend.activities.zone_settings import ZoneSettings
 from backend.canonical.vocabulary import (
@@ -17,7 +18,10 @@ from backend.canonical.vocabulary import (
     ZoneConfigurationMetric,
 )
 from backend.planning import load_checks, plan_checks
-from backend.planning.planned_unit_load import estimate_planned_unit
+from backend.planning.planned_unit_load import (
+    PlannedUnitEstimator,
+    estimate_planned_unit,
+)
 from backend.planning.sport import planned_sport_environment
 from tests.canonical_domain_support import provenance, zone_configuration
 
@@ -315,6 +319,22 @@ class HeartRateStepLoadTests(unittest.TestCase):
         )
         assert ride.estimate.load is not None
         self.assertAlmostEqual(100.0, ride.estimate.load, places=6)
+
+    def test_the_coach_s_estimator_scores_like_the_plan_checks(self) -> None:
+        references = self.references(50.0)
+        unit = planned("h", "2026-11-04", "run", "- 60m 75% LTHR")
+        estimator = PlannedUnitEstimator(
+            lambda: None,
+            lambda: None,
+            lambda: (),
+            heart_rate_references=lambda: references,
+        )
+        settings = references.for_sport(Sport.RUN)
+        with patch.object(PlannedUnitEstimator, "thresholds", return_value=settings):
+            coach = estimator(unit)
+        (session,) = load_checks.plan_sessions([unit], references)
+        self.assertEqual(session.estimate.load, coach.load)
+        self.assertEqual("heart_rate_trimp", coach.load_basis)
 
 
 class LighterWeekTests(unittest.TestCase):
