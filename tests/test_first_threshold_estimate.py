@@ -1091,6 +1091,7 @@ class RouteTests(unittest.TestCase):
         )
         # A step test's detail read (#3833) runs before the profile lock is taken.
         events: list[str] = []
+
         def adopt(*_args: Any) -> dict[str, Any]:
             events.append("lock")
             return {}
