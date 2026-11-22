@@ -29,10 +29,13 @@ Rules (references are observational or practice-based, not individual advice):
   naming heavy, schwer, maximal or a 1-6 RM) and a hard run/ride on one date
   with less than 6 h between start times, or an unknown start time
   (Robineau et al. 2016).
-- missing_taper: a priority A/B competition whose final 14 days carry less
-  than 20 % less duration than the 14 days before them (completed activities
-  before today, planned units from today). Only judged when the plan reaches
-  into the final 14 days (Bosquet et al. 2007: cut volume 40-60 %).
+- missing_taper: an A competition whose final 14 days carry less than 20 %
+  less run and ride time than the 14 days before them, or a final week with
+  run or ride time but no hard session; a B competition whose last 5 days are
+  not 20 % lighter than the 5 before (completed activities before today,
+  planned units from today). Only judged when the plan reaches into the final
+  days before the race (Bosquet et al. 2007: cut volume 40-60 % and keep
+  intensity; #3919).
 - intensity_distribution: computed in ``intensity_distribution`` and added by
   the plan guard, not by ``check_plan``; see that module.
 - leg_strength_before_key_session, leg_strength_frequency: counted and graded in
@@ -164,7 +167,7 @@ _RULE_TEXT = {
     "lighter_week_missing": "four consecutive weeks each with more run and ride time than the week before, without a lighter week.",
     "back_to_back_hard": "hard run or ride on consecutive days.",
     "strength_hard_same_day": "heavy strength and a hard run or ride less than 6 h apart.",
-    "missing_taper": "final 14 days before an A/B competition less than 20 % lighter than the 14 days before.",
+    "missing_taper": "final 14 days before an A competition less than 20 % lighter in run and ride time than the 14 days before, or a final week without a hard session; before a B competition the last 5 days against the 5 before.",
     "illness_hard": "hard or 90+ minute session within 5 days of a reported illness (today included), or a session above the current stage of the return after an illness pause (today and tomorrow).",
     "strength_incomplete": "a strength unit the Coach created, moved or changed without strength_structure, session_focus and strength_intensity.",
     "focus_missing": "a run or ride unit the Coach created, moved or changed without session_focus.",
@@ -371,7 +374,13 @@ def _hard_in(
     for row in completed:
         day = iso_date_prefix(row.get("started_at_local"))
         factor = intensity_factor({"planned_intensity": row.get("intensity")})
-        if first <= day <= last and day < now and factor and factor >= HARD_INTENSITY:
+        if (
+            str(row.get("sport") or "") in {Sport.RUN.value, Sport.RIDE.value}
+            and first <= day <= last
+            and day < now
+            and factor
+            and factor >= HARD_INTENSITY
+        ):
             return True
     return any(
         first <= _day(unit) <= last and _day(unit) >= now and is_hard(unit)
@@ -391,10 +400,15 @@ def _taper_for(
     Run and ride time only, at least 20 % lighter (Bosquet 2007: volume down by
     41-60 % with intensity and frequency kept). Before an A race each of the two
     final weeks also keeps a hard session; a B race checks only its last five
-    days for being lighter (B1).
+    days for being lighter (B1). A final week without any run or ride time is
+    not yet planned, so only the volume rule judges it.
     """
     final_start = day - timedelta(days=days)
-    reaching = [unit for unit in units if final_start.isoformat() <= _day(unit)]
+    reaching = [
+        unit
+        for unit in units
+        if final_start.isoformat() <= _day(unit) < day.isoformat()
+    ]
     if not reaching:
         return None
     before_start = final_start - timedelta(days=days)
@@ -405,20 +419,22 @@ def _taper_for(
         final_start, day - timedelta(days=1), units, completed, today
     )
     lighter = previous <= 0 or final <= previous * (1 - TAPER_MIN_REDUCTION)
+    weeks = [
+        (
+            final_start + timedelta(days=7 * week),
+            final_start + timedelta(days=7 * week + 6),
+        )
+        for week in (0, 1)
+    ]
     weeks_without_hard = (
         []
         if days != TAPER_DAYS
         else [
-            (final_start + timedelta(days=7 * week)).isoformat()
-            for week in (0, 1)
-            if (final_start + timedelta(days=7 * week)) >= today - timedelta(days=6)
-            and not _hard_in(
-                final_start + timedelta(days=7 * week),
-                final_start + timedelta(days=7 * week + 6),
-                units,
-                completed,
-                today,
-            )
+            start.isoformat()
+            for start, end in weeks
+            if start >= today - timedelta(days=6)
+            and _endurance_seconds(start, end, units, completed, today) > 0
+            and not _hard_in(start, end, units, completed, today)
         ]
     )
     if lighter and not weeks_without_hard:

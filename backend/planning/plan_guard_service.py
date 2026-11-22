@@ -301,13 +301,13 @@ def _focus_estimate(
 def season_phase_brief(
     competitions: Sequence[Mapping[str, Any]], today: date
 ) -> dict[str, Any]:
-    """Phase toward the next A/B race with its weeks, or unknown."""
+    """Phase toward the next A race with its weeks, or unknown (#3919)."""
     return {
         **season.target_phase(
             [{**row, "event_date": _competition_day(row)} for row in competitions],
             today,
         ),
-        "source": "derived from competition dates and priority A/B, read-only",
+        "source": "derived from competition dates and priority A, read-only",
         "boundaries": season.PHASE_BOUNDARIES,
     }
 

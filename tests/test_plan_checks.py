@@ -273,12 +273,45 @@ class PlanCheckRuleTests(unittest.TestCase):
         self.assertEqual([], check(tapered, competitions=[race]))
         easy = [*flat[:2], unit("t", "2026-11-28", "ride", 20)]
         (finding,) = check(easy, competitions=[race])
-        self.assertEqual(
-            ["2026-11-22", "2026-11-29"], finding["evidence"]["weeks_without_hard"]
-        )
+        # The final week holds no run or ride yet, so it is not judged.
+        self.assertEqual(["2026-11-22"], finding["evidence"]["weeks_without_hard"])
         # Strength time no longer counts as taper volume.
         strength = [*tapered, unit("s", "2026-11-30", "strength", 120)]
         self.assertEqual([], check(strength, competitions=[race]))
+
+    def test_an_unplanned_final_week_or_a_race_day_unit_is_no_missing_taper(
+        self,
+    ) -> None:
+        race = {"event_date": "2026-12-06", "priority": "A", "name": "Race"}
+        build = [
+            unit("a", "2026-11-10", "ride", 90),
+            unit("b", "2026-11-14", "ride", 90),
+        ]
+        last_week = [*build, unit("h", "2026-12-02", "ride", 30, planned_intensity=0.9)]
+        self.assertEqual([], check(last_week, competitions=[race]))
+        race_day = [*build, unit("r", "2026-12-06", "run", 60)]
+        self.assertEqual([], check(race_day, competitions=[race]))
+
+    def test_a_hard_strength_session_is_no_taper_intensity(self) -> None:
+        race = {"event_date": "2026-11-10", "priority": "A", "name": "Race"}
+
+        def done(day, sport, minutes, intensity):
+            return {
+                "sport": sport,
+                "started_at_local": f"{day}T08:00:00",
+                "moving_duration_s": minutes * 60,
+                "intensity": intensity,
+            }
+
+        completed = [
+            done("2026-10-14", "ride", 120, 0.7),
+            done("2026-10-20", "ride", 120, 0.7),
+            done("2026-10-28", "run", 30, 0.7),
+            done("2026-10-29", "strength", 60, 0.9),
+        ]
+        hard = unit("h", "2026-11-05", "ride", 30, planned_intensity=0.9)
+        (finding,) = check([hard], completed, competitions=[race])
+        self.assertEqual(["2026-10-27"], finding["evidence"]["weeks_without_hard"])
 
     def test_a_b_race_checks_only_its_last_five_days(self) -> None:
         # B1 (#3919): no full taper, the five days before are lighter than the

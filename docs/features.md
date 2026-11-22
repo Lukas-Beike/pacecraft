@@ -31,7 +31,7 @@
   Strength takes no part because planned units carry no session-RPE.
   The Coach can justify them without repeating the receipt.
   Edits made by the athlete in the UI are not checked.
-  Weekly and block plan requests get a `planning_brief` (last weeks per sport, short deterministic `lessons` from the last block review, planned intensity distribution, planned strength sessions by leg and intensity, longest run, next races, `training_model`, and the season phase (base, build, peak, taper, transition) with the weeks to the next A/B race, derived read-only from competition dates, with transition for 28 days after an A/B race; unknown without such a race).
+  Weekly and block plan requests get a `planning_brief` (last weeks per sport, short deterministic `lessons` from the last block review, planned intensity distribution, planned strength sessions by leg and intensity, longest run, next races, `training_model`, and the season phase (base, build, peak, taper, transition) with the weeks to the next A race, derived read-only from competition dates, with transition for 28 days after an A race; unknown without such a race; B and C races do not set the phase, #3919).
   The plan playbook sets the emphasis per phase for plan_week, plan_block and adjust_week.
 - **Request-Specific Context Projection**: Compact daily, activity and dialogue windows for routine turns; detailed local context and additional tools are available on demand, with conservative fallback for continuations.
 - **Targeted Clarification Protocol**: Ambiguous coaching prompts generate a single, concrete clarification question stored locally across reloads and model switches until answered.
