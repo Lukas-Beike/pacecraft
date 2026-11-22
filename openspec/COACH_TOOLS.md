@@ -39,6 +39,7 @@ and repair details remain with the provider capabilities.
 | `delete_competition` | canonical_and_dialogue / local_write | competition | CoachAthleteRecordToolService | `competitions-and-seasons / CS4 Competition removal and remote tombstone retention`; `coach-tool-authority / CA4 Domain-confirmed destructive and bulk effects` | `test_competition_lifecycle_syncs_only_after_explicit_followup` |
 | `delete_nutrition_entry` | canonical_and_dialogue / local_write | nutrition | CoachAthleteRecordToolService | `coach-tool-authority / CA2 Athlete-message provenance and exact effect scope`; `coach-tool-authority / CA4 Domain-confirmed destructive and bulk effects` | `test_nutrition_entries_can_be_saved_read_and_deleted` |
 | `delete_nutrition_template` | canonical_and_dialogue / local_write | nutrition | CoachAthleteRecordToolService | `coach-tool-authority / CA2 Athlete-message provenance and exact effect scope`; `coach-tool-authority / CA4 Domain-confirmed destructive and bulk effects` | `test_saved_meals_run_through_authorized_coach_and_receipts` |
+| `delete_zones` | canonical_and_dialogue / local_write | profile | CoachAthleteRecordToolService | `athlete-profile-and-checkins / Coach zone changes`; `coach-tool-authority / CA4 Domain-confirmed destructive and bulk effects` | `test_the_coach_saves_and_adopts_zones_like_the_zone_editor` |
 | `fill_nutrition_product_gaps` | canonical_and_dialogue / local_write | nutrition | CoachAthleteRecordToolService | `food-catalog-and-meal-library / Coach fills empty product fields`; `coach-tool-authority / Tool-specific bulk threshold`; `coach-tool-authority / CA4 Domain-confirmed destructive and bulk effects` | `test_incomplete_products_are_listed_and_filled_by_authorized_coach_turn` |
 | `get_activity_details` | canonical_and_dialogue / read | read | CoachReadToolService | `coach-context-and-provenance / CP7 Bounded local reads and analysis parity` | `test_read_tools_return_seeded_objects_without_mutating_them` |
 | `get_sync_job` | canonical_and_dialogue / read | read | CoachSyncToolService | `coach-context-and-provenance / CP6 Explicit provider refresh and current results` | `test_provider_reads_and_job_status_use_correct_provider` |
@@ -72,6 +73,7 @@ and repair details remain with the provider capabilities.
 | `save_nutrition_entry` | canonical_and_dialogue / local_write | nutrition | CoachAthleteRecordToolService | `coach-tool-authority / CA2 Athlete-message provenance and exact effect scope`; `coach-tool-authority / CA3 Direct local writes with impact checks`; `coach-tool-authority / CA9 Truthful durable receipts and supported undo` | `test_nutrition_entries_can_be_saved_read_and_deleted` |
 | `save_nutrition_product` | canonical_and_dialogue / local_write | nutrition | CoachAthleteRecordToolService | `coach-tool-authority / CA6 Session-bound immutable approval contents`; `coach-tool-authority / CA10 Validated repair dependencies and exceptional approvals` | `test_confirmed_product_is_saved_locally_through_authorized_coach_receipt` |
 | `save_nutrition_template` | canonical_and_dialogue / local_write | nutrition | CoachAthleteRecordToolService | `coach-tool-authority / CA6 Session-bound immutable approval contents`; `coach-tool-authority / CA10 Validated repair dependencies and exceptional approvals` | `test_saved_meals_run_through_authorized_coach_and_receipts` |
+| `save_zones` | canonical_and_dialogue / local_write | profile | CoachAthleteRecordToolService | `athlete-profile-and-checkins / Coach zone changes` | `test_the_coach_saves_and_adopts_zones_like_the_zone_editor` |
 | `search_web_for_product_values` | canonical_and_dialogue / read | read | CoachReadToolService | `food-catalog-and-meal-library / Coach web search for missing product values`; `coach-tool-authority / CA1 Complete owned tool capability catalog` | `test_web_search_returns_cited_values_and_degrades_to_unavailable` |
 | `split_activity_session` | canonical_and_dialogue / local_write | profile | CoachAthleteRecordToolService | `activity-ingestion-and-storage / Athlete session corrections`; `coach-tool-authority / CA2 Athlete-message provenance and exact effect scope` | `test_session_tools_correct_the_bundle_and_leave_a_change_receipt` |
 | `stage_training_plan` | canonical_and_dialogue / local_write | planning | CoachPlanArtifactToolService | `training-plans-and-adaptation / TP1 Validated durable local plan drafts` | `test_requested_draft_commit_and_metadata_lifecycle` |
@@ -359,6 +361,13 @@ effect `local_write`; gate domain `nutrition`; needs a confirmed delete request;
 effect `local_write`; gate domain `nutrition`; needs a confirmed delete request; receipt „Mahlzeitvorlage entfernt“; proposal card „Mahlzeitvorlage entfernen“; fully tracked by change history.
 
 - `id` (string)
+- `_request`* (the envelope above)
+
+### `delete_zones`
+
+effect `local_write`; gate domain `profile`; needs a confirmed delete request; receipt „Zonen entfernt“; proposal card „Zonen entfernen“; fully tracked by change history.
+
+- `key`* (string; ≥1 chars)
 - `_request`* (the envelope above)
 
 ### `fill_nutrition_product_gaps`
@@ -845,6 +854,28 @@ effect `local_write`; gate domain `nutrition`; may call the food database; recei
 - `payload.unit` (string; one of `"g"`, `"ml"`, `"portion"`, `"package"`)
 - `payload.name`* (string; ≤120 chars)
 - `payload.id` (string)
+- `_request`* (the envelope above)
+
+### `save_zones`
+
+effect `local_write`; gate domain `profile`; receipt „Zonen gespeichert“; proposal card „Zonen speichern“; fully tracked by change history.
+
+- `action`* (string; one of `"save"`, `"adopt_first_threshold"`, `"adopt_lt2"`)
+- `sport` (string; one of `"ride"`, `"run"`, `"swim"`)
+- `metric` (string; one of `"heart_rate"`, `"power"`, `"pace"`)
+- `environment` (string/null; one of `"indoor"`, `null`)
+- `limits` (array of number; ≥3 items; ≤7 items; each >0)
+- `percent_limits` (array of number; ≥3 items; ≤7 items; each >0)
+- `threshold` (number; >0)
+- `maximum` (number; >0)
+- `valid_from` (string; date)
+- `from_beginning` (boolean)
+- `source` (string; one of `"dfa_alpha1"`, `"critical_speed"`, `"critical_power"`, `"step_test"`)
+- `value` (string; one of `"heart_rate"`, `"pace"`, `"power"`)
+- `shown` (number)
+- `activity_id` (string; ≥1 chars)
+- `confirm_deviation` (boolean)
+- `replace` (boolean)
 - `_request`* (the envelope above)
 
 ### `search_web_for_product_values`

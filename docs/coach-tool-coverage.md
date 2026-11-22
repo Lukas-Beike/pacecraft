@@ -39,6 +39,7 @@ generated from the `covers` declarations; regenerate it with
 | `delete_competition` | `success` | `test_competition_lifecycle_syncs_only_after_explicit_followup` |
 | `delete_nutrition_entry` | `success` | `test_nutrition_entries_can_be_saved_read_and_deleted` |
 | `delete_nutrition_template` | `success` | `test_saved_meals_run_through_authorized_coach_and_receipts` |
+| `delete_zones` | `success` | `test_the_coach_saves_and_adopts_zones_like_the_zone_editor` |
 | `fill_nutrition_product_gaps` | `success` | `test_incomplete_products_are_listed_and_filled_by_authorized_coach_turn` |
 | `get_activity_details` | `success` | `test_read_tools_return_seeded_objects_without_mutating_them` |
 | `get_sync_job` | `success` | `test_provider_reads_and_job_status_use_correct_provider` |
@@ -72,6 +73,7 @@ generated from the `covers` declarations; regenerate it with
 | `save_nutrition_entry` | `success` | `test_nutrition_entries_can_be_saved_read_and_deleted` |
 | `save_nutrition_product` | `success` | `test_confirmed_product_is_saved_locally_through_authorized_coach_receipt` |
 | `save_nutrition_template` | `success` | `test_saved_meals_run_through_authorized_coach_and_receipts` |
+| `save_zones` | `adopt_first_threshold`, `adopt_lt2`, `save` | `test_the_coach_saves_and_adopts_zones_like_the_zone_editor` |
 | `search_web_for_product_values` | `success` | `test_web_search_returns_cited_values_and_degrades_to_unavailable` |
 | `split_activity_session` | `success` | `test_session_tools_correct_the_bundle_and_leave_a_change_receipt` |
 | `stage_training_plan` | `success` | `test_requested_draft_commit_and_metadata_lifecycle` |

@@ -8,7 +8,7 @@ import functools
 import json
 import sys
 import unittest
-from datetime import timedelta
+from datetime import date, timedelta
 from pathlib import Path
 from unittest.mock import Mock, patch
 
@@ -21,10 +21,14 @@ from test_coach_dialogue import DialogueHarness, server
 from test_feedback_session_identity import ZONE, ingest_wahoo, wahoo_row
 
 from backend.activities.hr_cap import effective_caps
+from backend.canonical.vocabulary import DfaQuality
 from backend.coach.receipt_compaction import compact_receipt
 from backend.coach.training_patch import CoachTrainingPatchService
 from backend.coach.write_gate import CLASSIFIER_DOMAINS, TOOL_DOMAIN
 from backend.errors import AppError
+from backend.performance.first_threshold_estimate import FirstThresholdEstimate
+from backend.performance.first_threshold_service import FirstThresholdService
+from backend.performance.second_threshold_service import SecondThresholdService
 from backend.planning import library as planning_library
 from backend.planning.planned_units import plan_push_payload_hash
 from backend.providers import http as provider_http
@@ -83,6 +87,7 @@ REQUIRED_VARIANTS = {
     "apply_adaptive_replan": {"local", "intervals"},
     "sync_nutrition": {"date", "pending"},
     "push_strength_to_garmin": {"push", "remove"},
+    "save_zones": {"save", "adopt_first_threshold", "adopt_lt2"},
 }
 
 
@@ -121,6 +126,8 @@ def variants(name, arguments, result):
         return {"intervals" if arguments.get("sync_illness_to_intervals") else "local"}
     if name == "sync_nutrition":
         return {"date" if arguments.get("date") else "pending"}
+    if name == "save_zones":
+        return {arguments["action"]}
     if name == "push_strength_to_garmin":
         return {
             "remove" if entry.get("remove") else "push"
@@ -2582,6 +2589,105 @@ class CoachToolCoverageTests(DialogueHarness, unittest.TestCase):
         self.assertEqual("weight", removed["kind"])
         self.assertEqual(3, sum(1 for name, _ in pushed if name == "garmin"))
         self.assertEqual({"entries": []}, server.ATHLETE_DATA.weight_entries().read())
+
+    @covers(
+        "save_zones:save",
+        "save_zones:adopt_lt2",
+        "save_zones:adopt_first_threshold",
+        "delete_zones:success",
+    )
+    def test_the_coach_saves_and_adopts_zones_like_the_zone_editor(self):
+        # #3956: the Coach saves, adopts and removes through the zone editor's
+        # use cases. The estimates are fixed; their derivation is tested apart.
+        estimate = FirstThresholdEstimate(
+            88.0, 5, DfaQuality.GOOD, date(2026, 8, 1), date(2026, 9, 1), 2.0
+        )
+        lt2 = {"status": "ok", "heart_rate_bpm": 172}
+        zones = server.ATHLETE_DATA.zones
+        with (
+            patch.object(
+                FirstThresholdService,
+                "_estimate",
+                autospec=True,
+                return_value=(estimate, lambda _day: 170.0),
+            ),
+            patch.object(
+                SecondThresholdService,
+                "estimates",
+                autospec=True,
+                return_value={"run": {"dfa_alpha1": lt2}, "ride": {}},
+            ),
+        ):
+            saved = self.run_tool(
+                "save_zones",
+                {
+                    "action": "save",
+                    "sport": "run",
+                    "metric": "heart_rate",
+                    "environment": None,
+                    "percent_limits": [81, 89, 94, 100, 106],
+                    "threshold": 168,
+                    "maximum": 192,
+                    "from_beginning": True,
+                },
+                ["local_zones"],
+                message="Speichere meine Laufpulszonen mit Schwelle 168.",
+            )
+            self.assertEqual(168, saved["configuration"]["threshold"])
+            # The entered threshold is replaced only on the athlete's request.
+            adopted = self.run_tool(
+                "save_zones",
+                {
+                    "action": "adopt_lt2",
+                    "sport": "run",
+                    "source": "dfa_alpha1",
+                    "value": "heart_rate",
+                    "shown": 172,
+                    "replace": True,
+                },
+                ["local_zones"],
+                message="Ersetze meine Schwelle durch die DFA-Schätzung von 172.",
+            )
+            self.assertEqual(
+                (172, "dfa_alpha1"),
+                (
+                    adopted["configuration"]["threshold"],
+                    adopted["configuration"]["threshold_origin"],
+                ),
+            )
+            first = self.run_tool(
+                "save_zones",
+                {"action": "adopt_first_threshold", "shown": 88.0},
+                ["local_zones"],
+                message="Übernimm die geschätzte erste Schwelle.",
+            )
+            # 88 % of 170 bpm, stored in bpm (#3915).
+            self.assertEqual(
+                ("150", None), (first["first_threshold_bpm"], first.get("status"))
+            )
+            again = self.run_tool(
+                "save_zones",
+                {"action": "adopt_first_threshold", "shown": 88.0},
+                ["local_zones"],
+                message="Übernimm die geschätzte erste Schwelle.",
+            )
+            self.assertEqual("unchanged", again["status"])
+        removed = self.run_tool(
+            "delete_zones",
+            {"key": adopted["configuration"]["key"]},
+            ["local_zones"],
+            message="Entferne die übernommene Schwelle wieder.",
+        )
+        self.assertIsNone(removed["configuration"])
+        effective = [
+            entry
+            for entry in zones().read()["configurations"]
+            if entry["source"] == "local"
+        ]
+        self.assertEqual([168], [entry["threshold"] for entry in effective])
+        self.assertEqual(
+            "150", server.ATHLETE_DATA.profile().get()["first_threshold_hr"]
+        )
 
     @covers(
         "read_training_records:success",

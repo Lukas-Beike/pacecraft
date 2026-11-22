@@ -24,6 +24,7 @@ _DELETE_TOOLS = (
     "delete_nutrition_entry",
     "delete_nutrition_template",
     "delete_body_entry",
+    "delete_zones",
 )
 
 
@@ -403,6 +404,22 @@ class DestructiveTierTests(unittest.TestCase):
                 decision = _check(
                     "save_body_entry", "korrigier auf 80 kg",
                     classifier=_Classifier(verdict), arguments=replace,
+                )  # fmt: skip
+                self.assertEqual(allowed, decision.allowed, decision)
+        # #3956: replacing a measured or entered threshold is a delete in profile.
+        adopt = {"action": "adopt_lt2", "sport": "run", "shown": 172}
+        self.assertEqual(gate.call_impact("save_zones", adopt), frozenset())
+        self.assertEqual(
+            gate.call_impact("save_zones", {**adopt, "replace": True}), {"delete"}
+        )
+        for verdict, allowed in (
+            (_verdict(["profile"], True), True),
+            (_verdict(["body"], True), False),
+        ):
+            with self.subTest(verdict=verdict):
+                decision = _check(
+                    "save_zones", "ersetze meine Schwelle",
+                    classifier=_Classifier(verdict), arguments={**adopt, "replace": True},
                 )  # fmt: skip
                 self.assertEqual(allowed, decision.allowed, decision)
 

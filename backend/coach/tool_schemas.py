@@ -1722,5 +1722,56 @@ def build_structured_tool_schemas(
             },
         )
     )
+    # Zonen & Schwellen, with its fields at the top level (#3956).
+    zone_limits = {
+        "type": "array",
+        "minItems": 3,
+        "maxItems": 7,
+        "items": {"type": "number", "exclusiveMinimum": 0},
+    }
+    zone_tools = (
+        (
+            "save_zones",
+            "Change Zonen & Schwellen as its editor does, only on the athlete's own request in this message; read_coach_context shows training_zones, first_threshold_estimate and lt2_estimates in current_performance first. action save: one local zone configuration of sport and metric (environment null or indoor), exactly one of limits (absolute upper limits: bpm, W, or m/s for pace) or percent_limits (percent of the threshold), threshold for heart_rate and power, maximum for heart_rate, valid_from (not in the future, default today) or from_beginning for the first configuration. action adopt_first_threshold: shown is the estimate's percent_lthr, or with activity_id the run step test's good LT1 heart rate in bpm. action adopt_lt2: sport, source, value and shown as read (bpm, s/km or W); with source step_test also activity_id; confirm_deviation only when the athlete accepts a value more than 5 % from the one in effect. replace only when the athlete asks to replace a measured or self-entered value.",
+            {
+                "action": {
+                    "type": "string",
+                    "enum": ["save", "adopt_first_threshold", "adopt_lt2"],
+                },
+                "sport": {"type": "string", "enum": ["ride", "run", "swim"]},
+                "metric": {"type": "string", "enum": ["heart_rate", "power", "pace"]},
+                "environment": {"type": ["string", "null"], "enum": ["indoor", None]},
+                "limits": zone_limits,
+                "percent_limits": zone_limits,
+                "threshold": {"type": "number", "exclusiveMinimum": 0},
+                "maximum": {"type": "number", "exclusiveMinimum": 0},
+                "valid_from": {"type": "string", "format": "date"},
+                "from_beginning": {"type": "boolean"},
+                "source": {
+                    "type": "string",
+                    "enum": [
+                        "dfa_alpha1",
+                        "critical_speed",
+                        "critical_power",
+                        "step_test",
+                    ],
+                },
+                "value": {"type": "string", "enum": ["heart_rate", "pace", "power"]},
+                "shown": {"type": "number"},
+                "activity_id": {"type": "string", "minLength": 1},
+                "confirm_deviation": {"type": "boolean"},
+                "replace": {"type": "boolean"},
+            },
+        ),
+        (
+            "delete_zones",
+            "Remove one local zone configuration, only on the athlete's explicit request to remove it; key is the key of a local entry of training_zones in read_coach_context.",
+            {"key": {"type": "string", "minLength": 1}},
+        ),
+    )
+    for zone_name, zone_description, zone_fields in zone_tools:
+        zone_tool = _canonical_coach_tool(zone_name, zone_description, zone_fields)
+        zone_tool["parameters"]["required"] = [next(iter(zone_fields))]
+        COACH_STRUCTURED_TOOLS.append(zone_tool)
 
     return COACH_STRUCTURED_TOOLS

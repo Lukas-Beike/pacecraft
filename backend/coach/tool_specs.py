@@ -326,6 +326,23 @@ TOOL_SPECS: tuple[ToolSpec, ...] = (
         requirements=("athlete-profile-and-checkins/Coach body entries", CA4),
     ),
     ToolSpec(
+        "save_zones",
+        ATHLETE_RECORDS,
+        domain=PROFILE,
+        done="Zonen gespeichert",
+        action="Zonen speichern",
+        requirements=("athlete-profile-and-checkins/Coach zone changes",),
+    ),
+    ToolSpec(
+        "delete_zones",
+        ATHLETE_RECORDS,
+        domain=PROFILE,
+        done="Zonen entfernt",
+        action="Zonen entfernen",
+        deletes=True,
+        requirements=("athlete-profile-and-checkins/Coach zone changes", CA4),
+    ),
+    ToolSpec(
         "save_equipment",
         ATHLETE_RECORDS,
         domain=PROFILE,

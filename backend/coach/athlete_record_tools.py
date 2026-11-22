@@ -8,6 +8,7 @@ from typing import Any
 from backend.activities.feedback import ActivityFeedbackService
 from backend.athlete.body_entry import BodyEntryService
 from backend.athlete.checkins import CheckinService
+from backend.canonical.first_threshold import FIRST_THRESHOLD_FIELD
 from backend.coach.authorization import (
     require_coach_scope,
     require_operation,
@@ -28,6 +29,20 @@ _NUTRITION_UNAVAILABLE = "NutritionService ist nicht verfügbar."
 # Körper's weight and body fat, recorded as the dialogs record them (#3640).
 _BODY_TOOLS = frozenset({"save_body_entry", "delete_body_entry"})
 _BODY_KEYS = {"weight": "kg", "body_fat": "pct"}
+# Zonen & Schwellen, through the use cases of its routes (#3956).
+_ZONE_TOOLS = frozenset({"save_zones", "delete_zones"})
+_ZONE_FIELDS = (
+    "sport",
+    "metric",
+    "environment",
+    "limits",
+    "percent_limits",
+    "threshold",
+    "maximum",
+    "valid_from",
+    "from_beginning",
+)
+_LT2_FIELDS = ("sport", "source", "value", "shown", "confirm_deviation", "activity_id")
 
 
 class CoachAthleteRecordToolService:
@@ -44,7 +59,16 @@ class CoachAthleteRecordToolService:
         equipment: Any = None,
         session_corrections: Any = None,
         body_entries: Callable[[str], BodyEntryService] | None = None,
+        zones: Callable[[], Any] | None = None,
+        first_threshold: Callable[[], Any] | None = None,
+        second_threshold: Callable[[], Any] | None = None,
+        step_test: Callable[[str], Any] | None = None,
     ) -> None:
+        # Zonen & Schwellen's services and the step-test read of one session.
+        self._zones = zones
+        self._first_threshold = first_threshold
+        self._second_threshold = second_threshold
+        self._step_test = step_test
         # The Körper entry service of "weight" or "body_fat" (#3640).
         self._body_entries = body_entries
         self._checkins = checkins
@@ -64,6 +88,8 @@ class CoachAthleteRecordToolService:
             return self._execute_session(name, arguments, intent)
         if name in _BODY_TOOLS:
             return self._execute_body(name, arguments, intent)
+        if name in _ZONE_TOOLS:
+            return self._execute_zones(name, arguments, intent)
         if name in {
             "save_nutrition_template",
             "save_nutrition_product",
@@ -354,6 +380,75 @@ class CoachAthleteRecordToolService:
         value = next(e[_BODY_KEYS[kind]] for e in read["entries"] if e["date"] == day)
         return {"ok": True, "stored_locally": True, "kind": kind, "date": day,
                 "value": value, "remote": read.get("remote")}  # fmt: skip
+
+    def _execute_zones(
+        self, name: str, arguments: dict[str, Any], intent: dict[str, Any]
+    ) -> dict[str, Any]:
+        """Save, remove or adopt zones and thresholds as Zonen & Schwellen does.
+
+        ``replace`` stands for the UI's confirmation to replace a measured or
+        entered value; the write gate treats it, like a removal, as a delete.
+        """
+        self._authorize(
+            intent,
+            name,
+            "Die strukturierte Coach-Autorisierung erlaubt diese Zonenänderung nicht.",
+        )
+        require_coach_scope(intent, "local_zones")
+        zones, first, second = (
+            self._zones,
+            self._first_threshold,
+            self._second_threshold,
+        )
+        if zones is None or first is None or second is None:
+            raise AppError(503, "Die Zonen sind nicht verfügbar.")
+        # Only delete_zones removes: the write gate counts it as a delete.
+        action = "remove" if name == "delete_zones" else arguments.get("action")
+        replace = arguments.get("replace") is True
+        if name == "delete_zones":
+            result = zones().remove({"key": arguments.get("key"), "confirmed": True})
+        elif action == "save":
+            result = zones().save(
+                {key: arguments[key] for key in _ZONE_FIELDS if key in arguments}
+            )
+        elif action == "adopt_lt2":
+            result = second().adopt(
+                {
+                    **{key: arguments.get(key) for key in _LT2_FIELDS},
+                    "replace_local": replace,
+                },
+                self._step_test,
+            )
+        elif action == "adopt_first_threshold":
+            result = self._adopt_first_threshold(first(), arguments, replace)
+        else:
+            raise AppError(
+                400,
+                "Unbekannte Zonenaktion.",
+                reason="tool_arguments_invalid",
+            )
+        return {"ok": True, "stored_locally": True, "action": action, **result}
+
+    def _adopt_first_threshold(
+        self, service: Any, arguments: dict[str, Any], replace: bool
+    ) -> dict[str, Any]:
+        """The estimate's percent, or a step test's LT1 bpm (``activity_id``)."""
+        activity_id = str(arguments.get("activity_id") or "")
+        tested = (
+            self._step_test(activity_id) if activity_id and self._step_test else None
+        )
+        shown = (
+            {"step_test": activity_id, "heart_rate_bpm": arguments.get("shown")}
+            if activity_id
+            else {"percent_lthr": arguments.get("shown")}
+        )
+        result = service.adopt({**shown, "replace_measured": replace}, tested)
+        return {
+            # An adoption already stored writes nothing: no receipt (#3956).
+            **({} if result["adopted"] else {"status": "unchanged"}),
+            "first_threshold_bpm": result["profile"].get(FIRST_THRESHOLD_FIELD),
+            "first_threshold_estimate": result["first_threshold_estimate"],
+        }
 
     @staticmethod
     def _authorize(intent: dict[str, Any], operation: str, message: str) -> None:

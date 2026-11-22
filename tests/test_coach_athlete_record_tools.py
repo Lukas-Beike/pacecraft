@@ -166,6 +166,44 @@ class CoachAthleteRecordToolServiceTests(unittest.TestCase):
                 run(name, arguments, scope)
         self.assertEqual(4, len(pushed))
 
+    def test_the_zone_tools_refuse_without_scope_or_action(self):
+        # #3956: authorization, scope and the action are checked before any
+        # zone or threshold service is reached.
+        zones, first, second = Mock(), Mock(), Mock()
+        service = CoachAthleteRecordToolService(
+            Mock(), Mock(), Mock(),
+            zones=lambda: zones, first_threshold=lambda: first,
+            second_threshold=lambda: second, step_test=Mock(),
+        )  # fmt: skip
+        for name, arguments, operation, scope, status in (
+            ("save_zones", {"action": "save", "sport": "run"}, "save_checkin", "local_zones", 403),
+            ("save_zones", {"action": "save", "sport": "run"}, "save_zones", "local_profile", 403),
+            ("delete_zones", {"key": "k"}, "save_zones", "local_zones", 403),
+            ("save_zones", {"action": "remove", "key": "k"}, "save_zones", "local_zones", 400),
+            ("save_zones", {}, "save_zones", "local_zones", 400),
+        ):  # fmt: skip
+            with self.subTest(name=name, arguments=arguments, operation=operation):
+                with self.assertRaises(AppError) as refused:
+                    service.execute(
+                        name,
+                        arguments,
+                        {"operation": operation, "authorization_scope": [scope]},
+                    )
+                self.assertEqual(status, refused.exception.status)
+        for mock in (zones, first, second):
+            self.assertEqual([], mock.method_calls)
+        # The removal is the route's confirmed removal by key.
+        zones.remove.return_value = {"configuration": None, "change": None}
+        removed = service.execute(
+            "delete_zones",
+            {"key": "run|heart_rate"},
+            {"operation": "delete_zones", "authorization_scope": ["local_zones"]},
+        )
+        zones.remove.assert_called_once_with(
+            {"key": "run|heart_rate", "confirmed": True}
+        )
+        self.assertEqual("remove", removed["action"])
+
     def test_a_purpose_marking_reaches_the_feedback_service(self):
         for purpose in ("commute", None):
             with self.subTest(purpose=purpose):

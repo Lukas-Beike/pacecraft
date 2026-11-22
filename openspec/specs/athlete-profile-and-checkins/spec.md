@@ -232,7 +232,7 @@ Detailed contract: the records are JSON values under the keys `equipment:<uuid>`
 Evidence: `backend/athlete/equipment.py:_equipment_amounts`, `backend/athlete/equipment.py:_equipment_identity`, `backend/athlete/equipment.py:_equipment_parent`, `backend/athlete/equipment.py:EquipmentService.read`, `backend/athlete/equipment.py:EquipmentService.save`, `backend/athlete/equipment.py:EquipmentService.sync_garmin_snapshot`; `backend/coach/tool_schemas.py:build_structured_tool_schemas` (equipment fields); `tests/test_coach_tool_coverage.py:test_training_records_and_equipment_tools_use_confirmed_local_state`; `tests/test_training_record_features.py:test_empty_initial_gear_snapshot_does_not_finalize_import`, `tests/test_training_record_features.py:test_equipment_requires_initial_values_and_prevents_component_cycles`, `tests/test_training_record_features.py:test_open_sport_is_derived_at_three_quarters_with_three_activities`, `tests/test_training_record_features.py:test_legacy_empty_import_recovers_once_and_preserves_local_equipment`; `tests/test_coach_write_gate.py:test_archiving_equipment_is_a_delete`.
 
 ### Requirement: Estimated first threshold from chest-strap RR intervals
-The system SHALL show an estimated first threshold heart rate, derived from stored chest-strap RR results, as an estimate and SHALL store it only when the athlete explicitly adopts it. The Coach SHALL have no tool that adopts it.
+The system SHALL show an estimated first threshold heart rate, derived from stored chest-strap RR results, as an estimate and SHALL store it only when the athlete explicitly adopts it, in Zonen & Schwellen or through the Coach on the athlete's own request (Coach zone changes).
 
 #### Scenario: Athlete-level estimate
 - **WHEN** at least three good-quality run sessions of the last 60 days hold a DFA-a1 result
@@ -520,6 +520,20 @@ The Coach SHALL record the athlete's weight and body fat as Körper entries thro
 - **THEN** each day is put back as it was (the previous value, or no entry), the day is left pending for Garmin's next refresh and, for a weight, the Wahoo profile weight is left pending for Wahoo's next refresh; the undo itself writes to no provider.
 
 Evidence: `backend/coach/athlete_record_tools.py:CoachAthleteRecordToolService._execute_body`, `backend/athlete/body_entry.py:BodyEntryHistory`, `backend/coach/write_gate.py:_removes_records`; `tests/test_coach_athlete_record_tools.py::test_the_body_tools_record_through_the_koerper_entries`, `tests/test_body_entry.py::test_each_change_is_recorded_and_undo_puts_the_day_back`.
+
+### Requirement: Coach zone changes
+
+The Coach SHALL change Zonen & Schwellen through the same use cases as its routes (athlete decision, #3949): `save_zones` saves a local zone configuration (`action` `save`), adopts the first-threshold estimate or a step test's LT1 (`adopt_first_threshold`) or a local LT2 estimate (`adopt_lt2`); `delete_zones` removes a local configuration by the `key` the Coach reads in `training_zones`. Both run only in a turn started by the athlete's own message, under scope `local_zones` and write-gate domain `profile`.
+
+#### Scenario: Save or adopt
+- **WHEN** the athlete asks to save zones or to adopt a shown estimate
+- **THEN** the route's validation and refusals apply unchanged (an estimate changed since it was read, a deviation over 5 % without `confirm_deviation`), and the turn shows a receipt with whole-turn undo; an adoption already stored writes nothing and shows no receipt.
+
+#### Scenario: Replacing or removing
+- **WHEN** the call would remove a configuration or replace a measured or self-entered value (`replace: true`)
+- **THEN** the write gate needs the athlete's confirmed request to delete in `profile`; without `replace` such a value is refused as in the UI.
+
+Evidence: `backend/coach/athlete_record_tools.py:CoachAthleteRecordToolService._execute_zones`, `backend/coach/write_gate.py:_removes_records`; `tests/test_coach_tool_coverage.py:test_the_coach_saves_and_adopts_zones_like_the_zone_editor`, `tests/test_coach_athlete_record_tools.py:test_the_zone_tools_refuse_without_scope_or_action`.
 
 ### Requirement: Profile form save contract
 

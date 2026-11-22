@@ -13,7 +13,8 @@ from backend.planning.plan_checks import BLOCKING_CODES, FINDING_CODES
 # Write tools whose success leaves athlete records unchanged: previews and
 # drafts take effect only through a later, separately approved step.
 _NOT_A_CHANGE = frozenset({"preview_adaptive_replan", "stage_training_plan"})
-_WAITING_STATUSES = frozenset({"approval_required", "cancelled"})
+# "unchanged": a call that found its value already stored (#3956).
+_WAITING_STATUSES = frozenset({"approval_required", "cancelled", "unchanged"})
 # As in ``outcomes.coach_effect_label``: a card run reports "applied".
 _APPLIED_UNDO = frozenset({"applied", "undone"})
 # Tools whose every durable effect is a change-history record that undo restores.
@@ -44,6 +45,9 @@ _FULLY_TRACKED_TOOLS = frozenset(
         # Their Garmin and Wahoo writes follow the local value (#3640).
         "save_body_entry",
         "delete_body_entry",
+        # Zone saves and the first threshold's profile save (#3956).
+        "save_zones",
+        "delete_zones",
     }
 )
 

@@ -4,8 +4,8 @@ The estimate is derived from the stored per-session results of chest-strap RR
 intervals; it is never written to the profile on its own. The athlete adopts it
 with an explicit action, which stores it in bpm (#3915) with
 the origin ``estimated`` through the profile save path (change history, undo).
-A measured value is replaced only when that request says so. The Coach reads the
-estimate but has no tool that adopts it.
+A measured value is replaced only when that request says so. The Coach adopts it
+on the athlete's own request through the same path (#3956).
 """
 
 from __future__ import annotations
@@ -88,6 +88,16 @@ class FirstThresholdService:
         """
         if not isinstance(payload, dict):
             raise AppError(400, "Die Anfrage muss ein Objekt sein.")
+        # The shown value is checked and stored under one profile lease.
+        with (
+            self._profile_service.mutation_coordinator,
+            self._manager.unit_of_work(),
+        ):
+            return self._adopt(payload, step_test)
+
+    def _adopt(
+        self, payload: dict[str, Any], step_test: Mapping[str, Any] | None
+    ) -> dict[str, Any]:
         estimate, resolver = self._estimate()
         if payload.get("step_test") is not None:
             bpm = _step_test_bpm(payload, step_test)

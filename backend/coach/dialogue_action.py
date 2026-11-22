@@ -53,6 +53,8 @@ LOCAL_BROAD_SCOPES = frozenset(
         "local_activity_session",
         # Körper's weight and body fat (#3640).
         "local_body",
+        # Zonen & Schwellen (#3956).
+        "local_zones",
     }
 )
 
