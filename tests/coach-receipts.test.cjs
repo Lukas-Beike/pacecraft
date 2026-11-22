@@ -186,3 +186,18 @@ test("a Coach action announces itself in one toast with its failures first", () 
   toastCoachReceipts([]);
   assert.deepEqual(toasts, [["Plan: Konflikt am Montag · Profil aktualisiert", true], ["Nur Titel", true]]);
 });
+
+test("the toast keeps a success the receipt line under the answer does not list (#3934 G-04)", () => {
+  const cards = [];
+  const context = extractFunctions("coach.js", RECEIPT_TOOLS, { state: {}, toast() {}, invalidateEquipmentNotice() {} });
+  context.toastCoachReceipts = (receipts) => cards.push(...receipts.map((receipt) => receipt.title));
+  context.addStructuredCoachReceipts({
+    command_receipts: [
+      { tool: "update_profile", result: { ok: true } },
+      { tool: "save_checkin", result: { ok: true } },
+    ],
+    message: { coach_changes: { labels: ["Profil aktualisiert"] } },
+  });
+  // The profile change shows on the receipt line; the check-in it does not list still toasts.
+  assert.deepEqual(cards, ["Tages-Check-in gespeichert"]);
+});

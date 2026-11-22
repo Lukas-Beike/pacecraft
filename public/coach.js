@@ -735,7 +735,7 @@ async function resetCoachChat() {
     toast("Bitte warte, bis die wartenden Nachrichten gesendet sind. Danach kannst du den Chat zurücksetzen.", true);
     return;
   }
-  if (!button || !await requestConfirmation("Coach-Chat wirklich zurücksetzen und eine neue Unterhaltung beginnen?", { title: "Coach-Chat zurücksetzen?" })) return;
+  if (!button || !await requestConfirmation("Der Verlauf dieses Chats wird gelöscht, eine neue Unterhaltung beginnt. Profil, Pläne und Einträge bleiben.", { title: "Coach-Chat zurücksetzen?", confirmLabel: "Zurücksetzen" })) return;
   button.disabled = true;
   button.textContent = "Wird zurückgesetzt…";
   try {
@@ -987,9 +987,12 @@ function addStructuredCoachReceipts(payload) {
     || commands.some((entry) => entry.tool === "commit_training_plan");
   const finalCommit = commands.findLast((entry) => entry.tool === "commit_training_plan");
   // Read-only tools load information and change nothing, so only writes, jobs and failures are announced.
+  // The receipt line under the answer already names what changed, so the toast keeps failures and pending jobs.
+  const shownLabels = payload?.message?.coach_changes?.labels || [];
+  const receiptShows = (entry) => shownLabels.some((label) => label.startsWith(COACH_RECEIPT_LABELS[entry.tool]));
   toastCoachReceipts(commands.filter((entry) => receiptIsVisible(entry, planCommitRequested, finalCommit))
     .map((entry) => [entry, commandReceipt(entry)])
-    .filter(([entry, receipt]) => receipt.status !== "success" || COACH_RECEIPT_LABELS[entry.tool])
+    .filter(([entry, receipt]) => receipt.status !== "success" || (COACH_RECEIPT_LABELS[entry.tool] && !receiptShows(entry)))
     .map(([, receipt]) => receipt));
 }
 
@@ -1356,8 +1359,9 @@ async function executeCoachActionProposal(proposal, button) {
     state.coachActionProposals = (state.coachActionProposals || []).filter((item) => item.id !== proposal.id);
     renderCoachActionReview();
     const receipt = coachActionReceipt(proposal, result);
-    toast(receipt.message);
+    // The receipt shows on the screen it leads to: a route change hides the toast it follows.
     if (state.route === originalRoute) await showCoachReceiptArea(receipt);
+    toast(receipt.message);
     await load("/api/bootstrap?local=1", ["plan", "library", "profile", "feedback"]);
   } catch (error) {
     if (executeSent && !executeResponded && !isHttpClientRejection(error)) lockUnknownCoachActionOutcome(proposal);
@@ -1754,7 +1758,7 @@ function weekMonday(iso) {
 async function undoCoachTurn(clientTurnId, button) {
   if (button.disabled) return;
   button.disabled = true;
-  const confirmed = await requestConfirmation("Alle lokalen Änderungen dieser Coach-Antwort zurücknehmen? Intervals.icu bleibt unverändert.", { title: "Änderungen zurücknehmen?", confirmLabel: "Zurücknehmen" });
+  const confirmed = await requestConfirmation("Alle lokalen Änderungen dieser Coach-Antwort werden zurückgenommen. Intervals.icu bleibt unverändert.", { title: "Änderungen zurücknehmen?", confirmLabel: "Zurücknehmen" });
   if (!confirmed) {
     button.disabled = false;
     return;

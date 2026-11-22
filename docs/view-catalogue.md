@@ -159,30 +159,30 @@ texts.
 <!-- BEGIN GENERATED COPY -->
 | Where | Title | Message | Button |
 | --- | --- | --- | --- |
-| `public/activity-details.js` `renderBundle` | Aktivität löschen? | Diese Aktivität mit allen Aufzeichnungen lokal löschen? Bei den Anbietern bleibt sie erhalten. | Löschen |
-| `public/analysis.js` `bindBodyFatDialog` | (computed) `` `${name} löschen?` `` | (computed) `` `${name} vom ${dateLabel(day)} löschen?` `` | Löschen |
-| `public/analysis.js` `bindWeightDialog` | Gewicht löschen? | (computed) `` `Gewicht vom ${dateLabel(day)} löschen?` `` | Löschen |
-| `public/analysis.js` `retireEquipment` | Ausrüstung ausmustern? | (computed) `` `${item.name} ausmustern?` `` | Ausmustern |
-| `public/auth.js` `logout` | Abmelden? | (computed) `` `Du wirst auf diesem Gerät abgemeldet. Deine Daten bleiben verschlüsselt gespeichert.${outboxLossNote()}` `` | Bestätigen |
-| `public/coach.js` `resetCoachChat` | Coach-Chat zurücksetzen? | Coach-Chat wirklich zurücksetzen und eine neue Unterhaltung beginnen? | Bestätigen |
-| `public/coach.js` `undoCoachTurn` | Änderungen zurücknehmen? | Alle lokalen Änderungen dieser Coach-Antwort zurücknehmen? Intervals.icu bleibt unverändert. | Zurücknehmen |
-| `public/diagnostics.js` `deleteServerLogs` | Server-Logs löschen? | Server-Logs wirklich löschen? | Bestätigen |
-| `public/diagnostics.js` `deleteDiagnostics` | Diagnose löschen? | Diagnosedaten wirklich löschen? | Bestätigen |
-| `public/nutrition.js` `deleteNutritionEntry` | Mahlzeit löschen? | (computed) `` `Mahlzeit „${item.description}“ wirklich löschen?` `` | Löschen |
-| `public/nutrition.js` `deleteNutritionProduct` | Aktion bestätigen | (computed) ` question ` | Bestätigen |
+| `public/activity-details.js` `renderBundle` | Aktivität löschen? | Die Aktivität wird mit allen Aufzeichnungen lokal gelöscht. Bei den Anbietern bleibt sie erhalten. | Löschen |
+| `public/analysis.js` `bindBodyFatDialog` | (computed) `` `${name} löschen?` `` | (computed) `` `${name} vom ${dateLabel(day)} wird gelöscht.` `` | Löschen |
+| `public/analysis.js` `bindWeightDialog` | Gewicht löschen? | (computed) `` `Das Gewicht vom ${dateLabel(day)} wird gelöscht.` `` | Löschen |
+| `public/analysis.js` `retireEquipment` | Ausrüstung ausmustern? | (computed) `` `${item.name} wird ausgemustert.` `` | Ausmustern |
+| `public/auth.js` `logout` | Abmelden? | (computed) `` `Du wirst auf diesem Gerät abgemeldet. Deine Daten bleiben verschlüsselt gespeichert.${outboxLossNote()}` `` | Abmelden |
+| `public/coach.js` `resetCoachChat` | Coach-Chat zurücksetzen? | Der Verlauf dieses Chats wird gelöscht, eine neue Unterhaltung beginnt. Profil, Pläne und Einträge bleiben. | Zurücksetzen |
+| `public/coach.js` `undoCoachTurn` | Änderungen zurücknehmen? | Alle lokalen Änderungen dieser Coach-Antwort werden zurückgenommen. Intervals.icu bleibt unverändert. | Zurücknehmen |
+| `public/diagnostics.js` `deleteServerLogs` | Server-Logs löschen? | Alle gespeicherten Server-Logs werden gelöscht. | Löschen |
+| `public/diagnostics.js` `deleteDiagnostics` | Diagnose löschen? | Alle gespeicherten Diagnosedaten werden gelöscht. | Löschen |
+| `public/nutrition.js` `deleteNutritionEntry` | Mahlzeit löschen? | (computed) `` `Die Mahlzeit „${item.description}“ wird gelöscht.` `` | Löschen |
+| `public/nutrition.js` `deleteNutritionProduct` | (computed) ` database ? "Datenbankeintrag entfernen?" : "Produkt löschen?" ` | (computed) ` question ` | (computed) ` database ? "Entfernen" : "Löschen" ` |
 | `public/plan-views.js` `adoptStepTestValue` | Gemessenen Wert ersetzen? | Der gemessene Wert wird durch den Wert aus dem Stufentest ersetzt. | Ersetzen |
-| `public/provider-connections.js` `changeMetricExportField` | Intervals.icu-Abgleich | (computed) ` message ` | Bestätigen |
-| `public/provider-connections.js` `configureAutomaticMetricExport` | (computed) ` enabled ? "Automatischen Abgleich aktivieren?" : "Automatischen Abgleich deaktivieren?" ` | (computed) ` message ` | Bestätigen |
-| `public/provider-connections.js` `clearProviderCredential` | (computed) `` `${label} entfernen?` `` | (computed) `` `${label} aus der App entfernen? Danach gilt wieder der Wert aus der Server-Einstellung, falls dort einer gesetzt ist.` `` | Bestätigen |
-| `public/provider-connections.js` `disconnectGarmin` | Garmin trennen? | Garmin trennen? Die in der App gespeicherten Garmin-Tokens werden gelöscht. Bereits geladene Daten bleiben erhalten. | Bestätigen |
+| `public/provider-connections.js` `changeMetricExportField` | Intervals.icu-Abgleich ändern? | (computed) ` message ` | Ändern |
+| `public/provider-connections.js` `configureAutomaticMetricExport` | (computed) ` enabled ? "Automatischen Abgleich aktivieren?" : "Automatischen Abgleich deaktivieren?" ` | (computed) ` message ` | (computed) ` enabled ? "Aktivieren" : "Deaktivieren" ` |
+| `public/provider-connections.js` `clearProviderCredential` | (computed) `` `${label} entfernen?` `` | Danach gilt wieder der Wert aus der Server-Einstellung, falls dort einer gesetzt ist. | Entfernen |
+| `public/provider-connections.js` `disconnectGarmin` | Garmin trennen? | Die in der App gespeicherten Garmin-Tokens werden gelöscht. Bereits geladene Daten bleiben erhalten. | Trennen |
 | `public/settings.js` `adoptFirstThreshold` | Gemessenen Wert ersetzen? | Der gemessene Wert wird durch den Wert aus DFA-α1 ersetzt. | Ersetzen |
-| `public/settings.js` `restoreDatabaseBackup` | Datenbank-Backup wiederherstellen? | Das aktuelle Datenbank-Backup wird vorher gesichert und durch die ausgewählte Datei ersetzt. Fortfahren? | Bestätigen |
+| `public/settings.js` `restoreDatabaseBackup` | Datenbank-Backup wiederherstellen? | Das aktuelle Datenbank-Backup wird vorher gesichert und durch die ausgewählte Datei ersetzt. | Wiederherstellen |
 | `public/settings.js` `deleteGpsTracks` | GPS-Spuren löschen? | (computed) `` `Alle gespeicherten GPS-Spuren (${gpsTracksState.stored_tracks}) werden unwiderruflich lokal gelöscht. Streckenerkennung und Wetter am Ort nutzen sie nicht mehr. Die übrigen Aufzeichnungen bleiben.` `` | Löschen |
 | `public/settings.js` `deletePrivacyData` | Lokale Daten endgültig löschen? | (computed) ` scope ` | Endgültig löschen |
 | `public/settings.js` `confirmLt2Step` | Große Abweichung | (computed) `` `${error.message} Zonen in % der Schwelle verschieben sich mit.` `` | Trotzdem übernehmen |
 | `public/settings.js` `confirmLt2Step` | Eigenen Wert ersetzen? | (computed) ` error.message ` | Ersetzen |
-| `public/settings.js` `removeZones` | Lokale Zonen entfernen? | Lokale Zonen entfernen? Danach gelten wieder die Zonen des Anbieters. | Entfernen |
-| `public/shared.js` `confirmDiscardDraft` | Änderungen verwerfen? | Ungespeicherte Änderungen verwerfen? | Bestätigen |
-| `public/sync-actions.js` `fullResync` | (computed) ` confirmation.title ` | (computed) ` confirmation.message ` | Bestätigen |
-| `public/wahoo-connection.js` `disconnectWahoo` | (computed) `` `${label} trennen?` `` | (computed) `` `${label} trennen? Der Zugriff wird bei ${label} widerrufen und die lokalen Zugangsdaten werden gelöscht. Bereits geladene Einheiten bleiben erhalten.` `` | Bestätigen |
+| `public/settings.js` `removeZones` | Lokale Zonen entfernen? | Danach gelten wieder die Zonen des Anbieters. | Entfernen |
+| `public/shared.js` `confirmDiscardDraft` | Änderungen verwerfen? | Deine Eingaben auf dieser Seite gehen verloren. | Verwerfen |
+| `public/sync-actions.js` `fullResync` | (computed) ` confirmation.title ` | (computed) ` confirmation.message ` | Neu laden |
+| `public/wahoo-connection.js` `disconnectWahoo` | (computed) `` `${label} trennen?` `` | (computed) `` `Der Zugriff wird bei ${label} widerrufen und die lokalen Zugangsdaten werden gelöscht. Bereits geladene Einheiten bleiben erhalten.` `` | Trennen |
 <!-- END GENERATED COPY -->

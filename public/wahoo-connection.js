@@ -190,7 +190,7 @@ async function disconnectWahoo() {
   const button = $("#wahooDisconnectButton");
   if (!button) return;
   const label = wahooProviderLabel(state.data);
-  if (!await requestConfirmation(`${label} trennen? Der Zugriff wird bei ${label} widerrufen und die lokalen Zugangsdaten werden gelöscht. Bereits geladene Einheiten bleiben erhalten.`, { title: `${label} trennen?` })) return;
+  if (!await requestConfirmation(`Der Zugriff wird bei ${label} widerrufen und die lokalen Zugangsdaten werden gelöscht. Bereits geladene Einheiten bleiben erhalten.`, { title: `${label} trennen?`, confirmLabel: "Trennen" })) return;
   button.disabled = true;
   try {
     await api("/api/wahoo/disconnect", { method: "POST", body: "{}" });

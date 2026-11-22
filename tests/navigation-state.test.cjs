@@ -262,7 +262,7 @@ function scanPublicTexts() {
       FunctionDeclaration(item) {
         const { id, params } = item.node;
         if (id.name === "markValueMissing") defaults.text = argumentText(params[1].right, source);
-        if (id.name === "requestConfirmation") for (const property of params[1].left.properties) defaults[property.key.name] = argumentText(property.value.right, source);
+        if (id.name === "requestConfirmation") for (const property of params[1].left.properties) if (property.value.type === "AssignmentPattern") defaults[property.key.name] = argumentText(property.value.right, source);
       },
       CallExpression(item) {
         const { callee, arguments: args } = item.node;
@@ -343,10 +343,11 @@ test("the scan finds the state helper calls with their text and the confirmation
   const { states, confirmations, defaults } = scanPublicTexts();
   assert.deepEqual(states.find((row) => row.fn === "loadPanel" && row.helper === "createLoadingState"), { file: "activity-analysis.js", fn: "loadPanel", helper: "createLoadingState", texts: ["Details werden geladen …"] });
   assert.deepEqual(plain(states.find((row) => row.helper === "createEmptyState" && row.fn === "analysisEmptyCard").texts), ["(computed) ` ANALYSIS_EMPTY_TITLES[segment] `", "(computed) ` cause `"]);
-  assert.deepEqual([defaults.title, defaults.confirmLabel, defaults.text], ["Aktion bestätigen", "Bestätigen", "nicht erfasst"]);
+  // A confirmation has no default title or label: every call names both (#3934).
+  assert.deepEqual([defaults.title, defaults.confirmLabel, defaults.text], [undefined, undefined, "nicht erfasst"]);
   assert.deepEqual(plain(states.find((row) => row.fn === "nutritionTotalTile").texts), ["nicht erfasst"]);
   const discard = confirmations.find((row) => row.fn === "confirmDiscardDraft");
-  assert.deepEqual([discard.message, discard.options.title], ["Ungespeicherte Änderungen verwerfen?", "Änderungen verwerfen?"]);
+  assert.deepEqual([discard.message, discard.options.title], ["Deine Eingaben auf dieser Seite gehen verloren.", "Änderungen verwerfen?"]);
   assert.ok(confirmations.some((row) => row.message.startsWith("(computed)")));
 });
 

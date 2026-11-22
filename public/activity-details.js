@@ -228,7 +228,7 @@
     if (notice?.change?.id) status.append(undoButton(api, notice.change, status, reload));
     const remove = h("button", { className: "secondary-button", type: "button" }, "Aktivität löschen"); buttons.push(remove);
     remove.addEventListener("click", async () => {
-      const confirmed = await requestConfirmation("Diese Aktivität mit allen Aufzeichnungen lokal löschen? Bei den Anbietern bleibt sie erhalten.", { title: "Aktivität löschen?", confirmLabel: "Löschen" });
+      const confirmed = await requestConfirmation("Die Aktivität wird mit allen Aufzeichnungen lokal gelöscht. Bei den Anbietern bleibt sie erhalten.", { title: "Aktivität löschen?", confirmLabel: "Löschen" });
       if (!confirmed) return;
       buttons.forEach((item) => { item.disabled = true; }); status.textContent = "Speichere …";
       try {

@@ -268,7 +268,7 @@ async function changeMetricExportField(item, input) {
   }
   setMetricExportFieldsBusy(true);
   try {
-    if (!await requestConfirmation(message, { title: "Intervals.icu-Abgleich" })) {
+    if (!await requestConfirmation(message, { title: "Intervals.icu-Abgleich ändern?", confirmLabel: "Ändern" })) {
       input.checked = !enabled;
       return;
     }
@@ -289,8 +289,8 @@ function toggleMetricExport(button) {
 async function configureAutomaticMetricExport(enabled, button) {
   const message = enabled
     ? "Schwellenpuls (LSHF), maximale Herzfrequenz und Lauf-Schwellenpace künftig automatisch an Intervals.icu senden (lokale Zonen, sonst Garmin, sonst Wahoo)? Abweichende Werte dort werden überschrieben, die Herzfrequenzzonen neu berechnet."
-    : "Den automatischen Abgleich mit Intervals.icu deaktivieren?";
-  if (!await requestConfirmation(message, { title: enabled ? "Automatischen Abgleich aktivieren?" : "Automatischen Abgleich deaktivieren?" })) return;
+    : "Schwellenwerte werden nicht mehr automatisch an Intervals.icu gesendet.";
+  if (!await requestConfirmation(message, { title: enabled ? "Automatischen Abgleich aktivieren?" : "Automatischen Abgleich deaktivieren?", confirmLabel: enabled ? "Aktivieren" : "Deaktivieren" })) return;
   button.disabled = true;
   try {
     const receipt = await api("/api/metric-export/automatic", { method: "POST", body: JSON.stringify({ enabled, confirmed: true, source: providerIds().garmin, provider: providerIds().intervals }) });
@@ -383,8 +383,8 @@ async function saveProviderCredentials(event, provider) {
 async function clearProviderCredential(field, provider) {
   const label = CREDENTIAL_FIELD_LABELS[field];
   const confirmed = await requestConfirmation(
-    `${label} aus der App entfernen? Danach gilt wieder der Wert aus der Server-Einstellung, falls dort einer gesetzt ist.`,
-    { title: `${label} entfernen?` },
+    `Danach gilt wieder der Wert aus der Server-Einstellung, falls dort einer gesetzt ist.`,
+    { title: `${label} entfernen?`, confirmLabel: "Entfernen" },
   );
   if (!confirmed) return;
   if (provider === "yazio") invalidateYazioStatus();
@@ -488,8 +488,8 @@ function cancelGarminMfa() {
 
 async function disconnectGarmin() {
   const confirmed = await requestConfirmation(
-    "Garmin trennen? Die in der App gespeicherten Garmin-Tokens werden gelöscht. Bereits geladene Daten bleiben erhalten.",
-    { title: "Garmin trennen?" },
+    "Die in der App gespeicherten Garmin-Tokens werden gelöscht. Bereits geladene Daten bleiben erhalten.",
+    { title: "Garmin trennen?", confirmLabel: "Trennen" },
   );
   if (!confirmed) return;
   try {

@@ -215,7 +215,7 @@ function actionContext(responses) {
 test("deleting a database entry removes it from the database after its own confirmation", async () => {
   const { context, calls, status } = actionContext({});
   await context.deleteNutritionProduct({ id: "off:1", name: "Haferdrink", origin: "open_food_facts" });
-  assert.deepEqual(calls, [["confirm", "Eintrag „Haferdrink“ aus der Datenbank entfernen? Eigene Produkte bleiben erhalten."], ["/api/nutrition/products/database/delete", { id: "off:1", confirmed: true }]]);
+  assert.deepEqual(calls, [["confirm", "Der Eintrag „Haferdrink“ wird aus der Datenbank entfernt. Eigene Produkte bleiben erhalten."], ["/api/nutrition/products/database/delete", { id: "off:1", confirmed: true }]]);
   assert.equal(status.textContent, "Eintrag „Haferdrink“ aus der Datenbank entfernt.");
 });
 

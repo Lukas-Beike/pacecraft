@@ -104,6 +104,7 @@ async function fullResync(source) {
   const confirmation = fullResyncConfirmation(source, providerLabel);
   if (!await requestConfirmation(confirmation.message, {
     title: confirmation.title,
+    confirmLabel: "Neu laden",
     expectedText: confirmation.expectedText || "",
     inputLabel: "Name des Anbieters",
   })) return;
