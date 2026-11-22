@@ -2,7 +2,7 @@ const assert = require("node:assert/strict");
 const { test } = require("node:test");
 const { extractFunctions } = require("./frontend-harness.cjs");
 
-const context = extractFunctions("nutrition.js", ["nutritionSessionLabel", "nutritionMealTitle"], {
+const context = extractFunctions("nutrition.js", ["nutritionSessionLabel", "nutritionMealTitle", "NUTRITION_MEAL_LABELS"], {
   NUTRITION_SPORTS: { ride: "Rad", run: "Lauf" },
 });
 

@@ -106,7 +106,7 @@ handler's docstring. Regenerate it with
 | POST | `/api/nutrition/entry` | Session + CSRF | after access | Log a meal; returns a `change` undo reference. |
 | POST | `/api/nutrition/entry/add-product` | Session + CSRF | after access | Add a saved product to a logged meal as one more component. |
 | GET | `/api/nutrition/entry/components` | Session | no | The components of a logged meal, as the edit addresses them (#3948). |
-| POST | `/api/nutrition/entry/components` | Session + CSRF | after access | Remove, resize or swap components of a logged meal (#3948). |
+| POST | `/api/nutrition/entry/components` | Session + CSRF | after access | Remove, resize or swap components of a logged meal, and change its day, type or time (#3948, #3985). |
 | POST | `/api/nutrition/entry/delete` | Session + CSRF | after access | Delete a logged meal. |
 | POST | `/api/nutrition/entry/estimate` | Session + CSRF | after access | Mark a meal's amounts as estimated (restaurant, friends), or clear the mark. |
 | POST | `/api/nutrition/entry/session` | Session + CSRF | after access | Attach a "Vor/Während der Einheit" entry to the session the athlete chose. |
@@ -1443,7 +1443,13 @@ Errors: 400 "Ungültige Eintrags-ID."; 404 "Ernährungseintrag nicht gefunden."
 
 ### `POST /api/nutrition/entry/components`
 
-Request: JSON body `{"id": string, "revision": string, "edits": [...]}`; `id` is the
+Request: JSON body `{"id": string, "revision": string, "edits": [...], "meal": {...}}`;
+`edits` and `meal` are each optional, one is required. `meal` changes the meal
+itself: `meal_date` (YYYY-MM-DD, both days are marked for the next Intervals.icu
+synchronization), `meal_type` (a new type moves a default time to the type's
+default), and `meal_time` (HH:MM) or `logged_time_known: false` (the time is
+unknown, only the type stays); a `meal` without `edits` leaves the components and
+the origin as stored. `id` is the
 entry id, `revision` the one `GET /api/nutrition/entry/components` returned, and
 each edit names a component by its `index` (see
 `GET /api/nutrition/entry/components`) and is one of `{"index", "remove": true}`,
