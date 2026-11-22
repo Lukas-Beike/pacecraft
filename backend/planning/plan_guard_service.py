@@ -13,9 +13,7 @@ from backend.activities.strength_progress import strength_progress
 from backend.athlete.checkins import reports_complaint
 from backend.athlete.local_date import iso_date_prefix
 from backend.canonical.first_threshold import (
-    FIRST_THRESHOLD_FIELD,
     first_threshold_estimated,
-    first_threshold_percent,
 )
 from backend.canonical.stored_sports import resolve_competition_sport
 from backend.canonical.vocabulary import Sport
@@ -467,6 +465,8 @@ class PlanGuardService:
         self._infection_hint: Callable[[], Mapping[str, Any] | None] = lambda: None
         self._return_stage: Callable[[], int | None] = lambda: None
         self._profile = profile
+        # The stored first threshold as percent of today's run threshold HR (#3915).
+        self._first_threshold_percent: Callable[[], float | None] = lambda: None
         self._planned_units = planned_units
         self._completed = completed_activities
         self._competitions = competitions
@@ -536,7 +536,7 @@ class PlanGuardService:
         profile = self._profile()
         return plan_checks.hr_cap_invalid(
             units,
-            first_threshold_percent(profile.get(FIRST_THRESHOLD_FIELD)),
+            self._first_threshold_percent(),
             first_threshold_estimated(profile),
         )
 
@@ -558,6 +558,13 @@ class PlanGuardService:
     ) -> PlanGuardService:
         """Check that units come from these library templates (#2379)."""
         self._templates = templates
+        return self
+
+    def with_first_threshold_percent(
+        self, percent: Callable[[], float | None]
+    ) -> PlanGuardService:
+        """Check the heart-rate caps against the stored first threshold (#3915)."""
+        self._first_threshold_percent = percent
         return self
 
     def with_return_stage(

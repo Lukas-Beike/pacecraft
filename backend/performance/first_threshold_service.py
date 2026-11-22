@@ -2,7 +2,7 @@
 
 The estimate is derived from the stored per-session results of chest-strap RR
 intervals; it is never written to the profile on its own. The athlete adopts it
-with an explicit action, which stores it as percent of the run threshold HR with
+with an explicit action, which stores it in bpm (#3915) with
 the origin ``estimated`` through the profile save path (change history, undo).
 A measured value is replaced only when that request says so. The Coach reads the
 estimate but has no tool that adopts it.
@@ -15,12 +15,12 @@ from datetime import date, timedelta
 from typing import Any
 
 from backend.canonical.first_threshold import (
-    FIRST_THRESHOLD_FIELD,
     ORIGIN_ESTIMATED,
     ORIGIN_MEASURED,
+    first_threshold_bpm,
     first_threshold_origin,
     first_threshold_percent,
-    percent_of_lthr,
+    stored_bpm,
 )
 from backend.canonical.vocabulary import DfaQuality, Sport
 from backend.db import activity_detail_store
@@ -90,7 +90,7 @@ class FirstThresholdService:
             raise AppError(400, "Die Anfrage muss ein Objekt sein.")
         estimate, resolver = self._estimate()
         if payload.get("step_test") is not None:
-            percent = _step_test_percent(payload, step_test, resolver(None))
+            bpm = _step_test_bpm(payload, step_test)
         elif estimate is None:
             raise AppError(409, "Es liegt keine Schätzung der ersten Schwelle vor.")
         elif (
@@ -101,13 +101,12 @@ class FirstThresholdService:
                 409, "Die Schätzung hat sich geändert. Bitte die Anzeige aktualisieren."
             )
         else:
-            percent = estimate.percent_lthr
+            bpm = _estimate_bpm(estimate.percent_lthr, resolver(None))
         profile = self._profile_service.get()
         origin = first_threshold_origin(profile)
         view = estimate_view(estimate, resolver(None))
         if (
-            origin == ORIGIN_ESTIMATED
-            and first_threshold_percent(profile.get(FIRST_THRESHOLD_FIELD)) == percent
+            origin == ORIGIN_ESTIMATED and stored_bpm(profile) == bpm
         ):
             # Already stored: no profile write and no history entry.
             return {
@@ -121,17 +120,23 @@ class FirstThresholdService:
                 "Ein gemessener Wert ist gespeichert. Zum Ersetzen bitte bestätigen.",
             )
         saved = self._profile_service.set_first_threshold(
-            f"{percent:g}", ORIGIN_ESTIMATED
+            f"{bpm:g}", ORIGIN_ESTIMATED
         )
         return {"profile": saved, "first_threshold_estimate": view, "adopted": True}
 
 
-def _step_test_percent(
-    payload: Mapping[str, Any],
-    tested: Mapping[str, Any] | None,
-    run_lthr: float | None,
+def _estimate_bpm(percent: float, run_lthr: float | None) -> float:
+    """The estimate's percent of LTHR in bpm of today's run threshold HR (#3915)."""
+    bpm = None if not run_lthr else first_threshold_bpm(round(percent * run_lthr / 100))
+    if bpm is None:
+        raise AppError(409, "Ohne Schwellenpuls lässt sich der Wert nicht speichern.")
+    return bpm
+
+
+def _step_test_bpm(
+    payload: Mapping[str, Any], tested: Mapping[str, Any] | None
 ) -> float:
-    """The step test's good LT1 as percent of today's run threshold HR (#3833)."""
+    """The step test's good LT1 heart rate (#3833), stored in bpm (#3915)."""
     value = (tested or {}).get("lt1") or {}
     if value.get("status") != "ok" or value.get("quality") != DfaQuality.GOOD.value:
         raise AppError(
@@ -141,11 +146,7 @@ def _step_test_percent(
         raise AppError(
             409, "Die Schätzung hat sich geändert. Bitte die Anzeige aktualisieren."
         )
-    percent = (
-        None
-        if not run_lthr
-        else percent_of_lthr(float(value["heart_rate_bpm"]), run_lthr)
-    )
-    if percent is None:
-        raise AppError(409, "Ohne Schwellenpuls lässt sich der Wert nicht speichern.")
-    return percent
+    bpm = first_threshold_bpm(value.get("heart_rate_bpm"))
+    if bpm is None:
+        raise AppError(409, "Der Wert der ersten Schwelle ist nicht plausibel.")
+    return bpm

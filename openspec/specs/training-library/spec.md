@@ -728,11 +728,15 @@ A run unit whose focus has a cap in `HR_CAP_PERCENT` (`backend/activities/hr_cap
 
 #### Scenario: Measured first threshold
 - **WHEN** the athlete enters a measured first-threshold heart rate in bpm (profile form or API, never by the Coach)
-- **THEN** it is stored as percent of the run threshold HR in effect on the measurement date (`first_threshold_pct`), the easy and long cap becomes that percent minus a fixed margin and the recovery cap the lower of its default and the easy cap minus a fixed gap (constants in `backend/activities/hr_cap.py`), the cap source is `measured`, and a cap with another source than the current one is rejected like a wrong value.
+- **THEN** it is stored in bpm (`first_threshold_hr`, #3915), so a later change of the threshold HR never moves it; the easy and long cap becomes its percent of today's run threshold HR minus a fixed margin and the recovery cap the lower of its default and the easy cap minus a fixed gap (constants in `backend/activities/hr_cap.py`), the cap source is `measured`, and a cap with another source than the current one is rejected like a wrong value.
+
+#### Scenario: First threshold stored before the bpm field
+- **WHEN** a stored profile still holds only the percent of LTHR (`first_threshold_pct`, before #3915)
+- **THEN** the profile read gives it in bpm with the run threshold HR in effect on the day that percent was last changed (change history), else today, writes nothing, and the next profile save or adoption stores the bpm and drops the percent
 
 #### Scenario: Adopted first threshold estimate
 - **WHEN** the athlete adopts the first threshold estimate from chest-strap RR intervals (`POST /api/profile/first-threshold/adopt`, never by the Coach)
-- **THEN** it is stored as `first_threshold_pct` with the origin `estimated` (`first_threshold_origin`) through the profile save path with change receipt and undo, the caps follow it like a measured value, the cap source is `estimated` (label `geschätzt`), a stored measured value is replaced only when the request says so, and a later manual entry sets the origin back to `measured`.
+- **THEN** it is stored in bpm of today's run threshold HR as `first_threshold_hr` with the origin `estimated` (`first_threshold_origin`) through the profile save path with change receipt and undo, the caps follow it like a measured value, the cap source is `estimated` (label `geschätzt`), a stored measured value is replaced only when the request says so, and a later manual entry sets the origin back to `measured`.
 
 #### Scenario: Cap values
 - **WHEN** a cap is derived

@@ -6,29 +6,8 @@ function profileFormValues(form) {
   return values;
 }
 
-// Entry-only fields: the server turns them into first_threshold_pct and never echoes them.
-const PROFILE_ENTRY_FIELDS = ["first_threshold_hr", "first_threshold_on"];
-
 function profileSaveConfirmed(changed, saved) {
-  // An entered bpm value must come back as the stored percent.
-  if (profileFieldText(changed.first_threshold_hr) && typeof saved.first_threshold_pct !== "string") return false;
-  return Object.keys(changed)
-    .filter((key) => !PROFILE_ENTRY_FIELDS.includes(key))
-    .every((key) => Object.hasOwn(saved, key) && typeof saved[key] === "string");
-}
-
-function clearProfileEntryFields(form) {
-  for (const key of PROFILE_ENTRY_FIELDS) {
-    const field = form.elements?.[key];
-    if (field) field.value = "";
-  }
-}
-
-// After a confirmed save: clear the entry and show the stored percent.
-function resetProfileEntryFields(form, savedPercent) {
-  clearProfileEntryFields(form);
-  const field = form.elements?.first_threshold_pct;
-  if (savedPercent !== undefined && field) field.value = savedPercent;
+  return Object.keys(changed).every((key) => Object.hasOwn(saved, key) && typeof saved[key] === "string");
 }
 
 function profileFieldText(value) {
@@ -36,12 +15,12 @@ function profileFieldText(value) {
 }
 
 // The adopted value reaches the open form even while it holds unsaved edits: only the
-// stored-percent input and the estimate block change, every other edit stays.
+// stored bpm input and the estimate block change, every other edit stays.
 function applyAdoptedFirstThreshold(result) {
   const form = $("#profileForm");
-  const stored = profileFieldText(result.profile?.first_threshold_pct);
-  if (form?.elements.first_threshold_pct) form.elements.first_threshold_pct.value = stored;
-  if (state.profileBaseline) state.profileBaseline = { ...state.profileBaseline, first_threshold_pct: stored };
+  const stored = profileFieldText(result.profile?.first_threshold_hr);
+  if (form?.elements.first_threshold_hr) form.elements.first_threshold_hr.value = stored;
+  if (state.profileBaseline) state.profileBaseline = { ...state.profileBaseline, first_threshold_hr: stored };
   if (state.data) state.data = { ...state.data, profile: { ...state.data.profile, ...result.profile }, first_threshold_estimate: result.first_threshold_estimate };
   renderFirstThresholdEstimate(result.first_threshold_estimate, result.profile);
   if (state.profileDirty && form && state.profileBaseline) {
@@ -55,7 +34,7 @@ async function adoptFirstThreshold(event) {
   const percent = Number($("#firstThresholdEstimate").dataset.percent);
   if (!Number.isFinite(percent) || button.disabled) return;
   const profile = state.data?.profile || {};
-  const replacesMeasured = Boolean(profile.first_threshold_pct) && profile.first_threshold_origin === "measured";
+  const replacesMeasured = Boolean(profile.first_threshold_hr) && profile.first_threshold_origin === "measured";
   if (replacesMeasured && !(await requestConfirmation("Der gemessene Wert wird durch den Wert aus DFA-α1 ersetzt.", { title: "Gemessenen Wert ersetzen?", confirmLabel: "Ersetzen" }))) return;
   button.disabled = true;
   try {
@@ -98,12 +77,10 @@ async function saveProfile(event) {
     if (!profileSaveConfirmed(changed, saved)) {
       throw new Error("Die Profilbestätigung ist unvollständig. Der Entwurf bleibt erhalten.");
     }
-    const entryReset = Object.fromEntries(PROFILE_ENTRY_FIELDS.map((key) => [key, ""]));
-    const savedPercent = typeof saved.first_threshold_pct === "string" ? { first_threshold_pct: saved.first_threshold_pct } : {};
-    state.profileBaseline = { ...state.profileBaseline, ...changed, ...entryReset, ...savedPercent };
+    state.profileBaseline = { ...state.profileBaseline, ...changed };
     if (generation !== state.sessionGeneration) return;
     state.profileDirty = JSON.stringify([...new FormData(form)]) !== submittedForm;
-    if (!state.profileDirty) resetProfileEntryFields(form, savedPercent.first_threshold_pct);
+    if (!state.profileDirty) renderFirstThresholdEstimate(state.data?.first_threshold_estimate, saved);
     setDirtyIndicator("profileDirtyIndicator", state.profileDirty);
     invalidateContextPreview();
     // The birth year and the sex decide the skinfold body fat and sites (#3099).

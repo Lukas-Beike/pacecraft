@@ -281,7 +281,10 @@ def build_planning_workflows(ctx: AppContext) -> PlanningWorkflowServices:
                 planning_adaptive.DEFAULT_ILLNESS_PAUSE_DAYS,
                 planning_adaptive.WEATHER_ADAPTIVE_MAX_MINUTES,
             ),
-            lambda: profile_run_caps(ctx.athlete.profile().get()),
+            lambda: profile_run_caps(
+                ctx.athlete.profile().get(),
+                ctx.athlete.profile().first_threshold_percent(),
+            ),
             overnight_reader(ctx.database(), observation_reader, local_date),
         )
 
@@ -381,6 +384,9 @@ def build_plan_guard(ctx: AppContext) -> PlanGuardServices:
             lambda: (
                 ctx.planning_workflows.adaptive_replan_preview_service().enforced_return_stage()
             )
+        )
+        guard.with_first_threshold_percent(
+            lambda: ctx.athlete.profile().first_threshold_percent()
         )
         # Recurring or worsening complaints become non-blocking notes (#3766).
         guard.with_complaints(

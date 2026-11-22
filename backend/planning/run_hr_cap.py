@@ -28,9 +28,7 @@ from backend.activities.hr_cap import (
     percent_text,
 )
 from backend.canonical.first_threshold import (
-    FIRST_THRESHOLD_FIELD,
     first_threshold_estimated,
-    first_threshold_percent,
 )
 from backend.canonical.planning_fields import SESSION_FOCUS
 from backend.canonical.vocabulary import Sport
@@ -126,9 +124,12 @@ def message(problem: Mapping[str, Any]) -> str:
     )
 
 
-def profile_run_caps(profile: Mapping[str, Any]) -> dict[str, dict[str, Any]]:
-    """The cap value to store per capped type for the athlete's profile."""
-    return effective_caps(
-        first_threshold_percent(profile.get(FIRST_THRESHOLD_FIELD)),
-        first_threshold_estimated(profile),
-    )
+def profile_run_caps(
+    profile: Mapping[str, Any], percent: float | None
+) -> dict[str, dict[str, Any]]:
+    """The cap value to store per capped type for the athlete's profile.
+
+    ``percent`` is its stored first threshold as percent of today's run
+    threshold HR (``ProfileService.first_threshold_percent``).
+    """
+    return effective_caps(percent, first_threshold_estimated(profile))

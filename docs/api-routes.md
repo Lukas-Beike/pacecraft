@@ -2035,12 +2035,10 @@ characters. Fields: `name`, `goals`, `sports`, `training_background`,
 day, 0 to 1500, required for `lose` and `build`, empty for `hold`),
 `learned_everyday_checked` (`YYYY-MM-DD` the athlete took the learned
 everyday term over, or empty; the Coach cannot set it, #3577),
-`first_threshold_pct` (40 to 100, percent of the run threshold HR),
-`first_threshold_origin` (`measured`, `estimated` or empty) and
-`preferred_source_thresholds`, `_body`, `_hrv`, `_resting_hr`, `_sleep`
-(`garmin` or empty). Instead of the percent, `first_threshold_hr` (bpm, 60
-to 220) with optional `first_threshold_on` (`YYYY-MM-DD`) is converted with
-the run threshold HR of that day and stored as `measured`. `weight_kg` and
+`first_threshold_hr` (bpm, 60 to 220, stored as entered, #3915; a changed
+value without an origin is `measured`), `first_threshold_origin`
+(`measured`, `estimated` or empty) and `preferred_source_thresholds`,
+`_body`, `_hrv`, `_resting_hr`, `_sleep` (`garmin` or empty). `weight_kg` and
 `body_fat_pct` are no profile fields (#3640): Körper enters them
 (`/api/body/weight`, `/api/body/body-fat`, skinfolds); a sent value is
 ignored and the stored one stays as data.
