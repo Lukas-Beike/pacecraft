@@ -3031,7 +3031,7 @@ async function loadArchivedLibrary() {
 // The training plans at the top of the Bibliothek (#3950): "+ Plan", "Bearbeiten", "Archivieren", "Löschen" (the
 // plan only; its units stay) and, among the archived, "Wiederherstellen". Receipts offer "Rückgängig".
 const planReceipts = new Map();
-const PLAN_STATUS_LABELS = { draft: "Entwurf", planned: "Geplant", active: "Aktiv", paused: "Pausiert", completed: "Abgeschlossen", cancelled: "Abgebrochen", archived: "Archiviert" };
+const PLAN_STATUS_LABELS = { draft: "Entwurf", planned: "Geplant", active: "Aktiv", paused: "Pausiert", completed: "Beendet", cancelled: "Abgebrochen", archived: "Archiviert" };
 
 async function planChanged(text, result) {
   planReceipts.clear();

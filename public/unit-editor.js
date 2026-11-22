@@ -351,7 +351,7 @@ function openUnitEditor({ kind, entry = null, dateKey = "", onSaved }) {
 
 // The form of a training plan (#3950): name, goal, period and status. Its units are planned one by one with the
 // unit editor, which offers the plan; the server keeps the plan's period at the days of its units.
-const PLAN_STATUSES = [["planned", "Geplant"], ["active", "Aktiv"], ["paused", "Pausiert"], ["completed", "Abgeschlossen"], ["cancelled", "Abgebrochen"]];
+const PLAN_STATUSES = [["planned", "Geplant"], ["active", "Aktiv"], ["paused", "Pausiert"], ["completed", "Beendet"], ["cancelled", "Abgebrochen"]];
 
 function openPlanEditor({ plan = null, onSaved }) {
   const dialog = document.querySelector("#unitEditDialog");
