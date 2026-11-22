@@ -12,8 +12,16 @@ from backend.canonical.sports import is_outdoor_endurance
 from backend.canonical.stored_sports import parse_environment, resolve_workout_sport
 from backend.canonical.vocabulary import Environment, Sport
 from backend.weather import projection as weather_projection
+from backend.weather.activity_weather import HEAT_APPARENT_C
 
 WEATHER_RECOMMENDATION_DAYS = 5
+# The recommendation names the air quality from this European AQI on; the
+# warning starts above it, where the app's category is "schlecht".
+AIR_QUALITY_POOR_FROM = 60
+# Weather codes from thunderstorm on are severe (the window score's own cut).
+SEVERE_WEATHER_CODE = 95
+# The DWD pollen index runs 0 to 3; 3 is a high load (#3914).
+POLLEN_HIGH_LEVEL = 3
 WORKDAY_TIME_LABEL = "vor der Arbeit"
 PLANNED_WORKOUT_LABEL = "Geplante Einheit"
 DATE_ONLY_PATTERN = r"\d{4}-\d{2}-\d{2}"
@@ -173,9 +181,9 @@ def _weather_window_score(event: dict[str, Any], summary: dict[str, Any]) -> flo
     candidate filter. Optional wind, rain, and air-quality terms add no penalty
     when unknown.
     """
-    severe_weather = sum(25 for code in summary["weather_codes"] if code >= 95) + sum(
-        8 for code in summary["weather_codes"] if 61 <= code <= 86
-    )
+    severe_weather = sum(
+        25 for code in summary["weather_codes"] if code >= SEVERE_WEATHER_CODE
+    ) + sum(8 for code in summary["weather_codes"] if 61 <= code <= 86)
     # The same sport resolution as the eligibility check (``is_outdoor_activity``).
     sport, environment = _event_sport(event)
     running = sport is Sport.RUN
@@ -313,11 +321,51 @@ def weather_recommendation(
     reason += f" und {precipitation_avg} % Regenwahrscheinlichkeit"
     if gust_max is not None:
         reason += f", Böen bis {gust_max} km/h"
-    if air_quality_max is not None and air_quality_max >= 60:
+    if air_quality_max is not None and air_quality_max >= AIR_QUALITY_POOR_FROM:
         category = weather_projection.european_aqi_category(air_quality_max)
         reason += f", Luftqualität {category} (AQI {air_quality_max})"
     recommendation["reason"] = reason + "."
     return recommendation
+
+
+def day_warning(day: Any) -> bool:
+    """Whether a daily forecast row has heat, poor air, high pollen or a storm (#3914)."""
+    if not isinstance(day, dict):
+        return False
+    air = day.get("air_quality")
+    pollen = day.get("pollen")
+    levels = pollen.get("levels") if isinstance(pollen, dict) else None
+    checks = (
+        (
+            weather_projection.weather_number(day.get("apparent_temperature_max")),
+            HEAT_APPARENT_C,
+        ),
+        (
+            weather_projection.weather_number(
+                air.get("european_aqi_max") if isinstance(air, dict) else None
+            ),
+            AIR_QUALITY_POOR_FROM,
+        ),
+        (
+            weather_projection.weather_number(day.get("weather_code")),
+            SEVERE_WEATHER_CODE,
+        ),
+    )
+    heat, air, storm = (value for value, _limit in checks)
+    return (
+        (heat is not None and heat >= HEAT_APPARENT_C)
+        or (air is not None and air > AIR_QUALITY_POOR_FROM)
+        or (storm is not None and storm >= SEVERE_WEATHER_CODE)
+    ) or any(
+        _pollen_level(level) >= POLLEN_HIGH_LEVEL
+        for level in (levels.values() if isinstance(levels, dict) else ())
+    )
+
+
+def _pollen_level(level: Any) -> int:
+    """The DWD index of a single level ("3"); a range such as "2-3" counts as its lower end."""
+    digits = re.findall(r"\d", str(level))
+    return int(digits[0]) if digits else 0
 
 
 def weather_recommendations(

@@ -7,6 +7,7 @@ stateless instance per process.
 
 from __future__ import annotations
 
+import threading
 import time
 import uuid
 from collections.abc import Callable, Collection
@@ -41,6 +42,7 @@ from backend.coach.turn_failures import (
 from backend.coach.turn_opening import CoachTurnOpeningService
 from backend.coach.turn_outcome import CoachStructuredOutcomeService
 from backend.db.repositories import ChatRepository
+from backend.push.events import coach_answer_event
 from backend.runtime import clock as runtime_clock
 from backend.runtime import events as runtime_events
 from backend.runtime import maintenance as runtime_maintenance
@@ -126,6 +128,18 @@ def build_coach_background_jobs(
             utc_now,
         )
 
+    def announce_answer(client_turn_id: str) -> None:
+        # The push checks are wired after the context is built (#3914). The
+        # delivery runs on its own thread, so the Coach worker never waits on a
+        # push service; it is sent once and not retried (the answer is in the app).
+        if ctx.push_checks is not None:
+            threading.Thread(
+                target=ctx.push_checks.notify,
+                args=(coach_answer_event(client_turn_id),),
+                name="coach-answer-push",
+                daemon=True,
+            ).start()
+
     def background_job_runner() -> CoachBackgroundJobRunner:
         return CoachBackgroundJobRunner(
             job_store(),
@@ -138,6 +152,7 @@ def build_coach_background_jobs(
             runtime_maintenance.MAINTENANCE_GATE,
             ctx.redactor,
             ctx.logger,
+            on_answer=announce_answer,
         )
 
     return CoachBackgroundJobServices(

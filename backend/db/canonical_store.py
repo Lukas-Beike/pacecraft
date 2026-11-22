@@ -818,6 +818,18 @@ def observation_metric_windows(
     )
 
 
+def observed_on_day(db: Any, day: str, metrics: Sequence[str]) -> bool:
+    """Whether an active observation of one of ``metrics`` is dated ``day``."""
+    marks = ",".join("?" for _ in metrics)
+    row = _fetch_row(
+        db,
+        "SELECT 1 AS found FROM observations WHERE observed_on = ? "
+        f"AND metric IN ({marks}) AND {_ACTIVE_OBSERVATION} LIMIT 1",
+        (day, *metrics),
+    )
+    return row is not None
+
+
 def provider_totals(db: Any, provider: str) -> dict[str, Any]:
     """Return how many active activities and observations one provider holds in the tables.
 
