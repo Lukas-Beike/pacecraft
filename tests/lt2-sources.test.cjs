@@ -3,7 +3,7 @@ const assert = require("node:assert/strict");
 const { test } = require("node:test");
 const { extractFunctions } = require("./frontend-harness.cjs");
 
-const NAMES = ["zoneValueText", "thresholdMainText", "LT2_METRICS", "LT2_SOURCE_NAMES", "lt2ProviderValue", "lt2Duration", "lt2AdoptValues", "lt2EstimateBasis", "lt2ProviderRow", "lt2EstimateRow", "lt2SourceRows", "lt2NoticeValues", "LT2_NOTICE_MIN", "LT2_NOTICE_UNITS", "LT2_NOTICE_LABELS", "lt2NoticeChanges", "lt2NoticeValueText", "lt2NoticeDetail"];
+const NAMES = ["zoneValueText", "thresholdMainText", "LT2_METRICS", "LT2_SOURCE_NAMES", "lt2ProviderValue", "lt2Duration", "lt2AdoptValues", "lt2RangeText", "lt2EstimateBasis", "lt2ProviderRow", "lt2EstimateRow", "lt2SourceRows", "lt2NoticeValues", "LT2_NOTICE_MIN", "LT2_NOTICE_UNITS", "LT2_NOTICE_LABELS", "lt2NoticeChanges", "lt2NoticeValueText", "lt2NoticeDetail"];
 const plain = (value) => JSON.parse(JSON.stringify(value));
 
 const METRICS = {
@@ -58,6 +58,22 @@ test("an adopted estimate is the one in effect and Garmin's value comes from its
   // B2 (#3919): CS/CP name that they usually lie above the sustainable threshold.
   assert.equal(rows[2].basis, "Bestwerte 3, 7, 12 und 20 min aus 42 Tagen · meist einige Prozent über der Dauerschwelle");
   assert.equal(rows[2].quality, "low");
+});
+
+test("the DFA-α1 heart rate shows its cited limits of agreement, other values and sources none (#3920 C7)", () => {
+  const { lt2SourceRows } = lt2();
+  const range = { heart_rate_bpm: [-24, 16], basis: "Limits of Agreement gegen VT2, Rogers et al. 2021 (R76)" };
+  const withRange = { ...ESTIMATES.run, dfa_alpha1: { ...ESTIMATES.run.dfa_alpha1, range } };
+  const rows = plain(lt2SourceRows("run", METRICS, withRange, () => null));
+  // The range belongs to the heart rate only, not to the pace read from it; the adopt labels stay plain.
+  assert.equal(rows[1].values, "169 bpm (−24/+16) · 4:16 /km");
+  assert.deepEqual(rows[1].adopt.map((item) => item.label), ["Herzfrequenz 169 bpm", "Pace 4:16 /km"]);
+  // Without a range in the estimate, and for the Garmin and CP rows, nothing is added.
+  assert.equal(plain(lt2SourceRows("run", METRICS, ESTIMATES.run, () => null))[1].values, "169 bpm · 4:16 /km");
+  assert.equal(rows[0].values, "4:12 /km · 171 bpm");
+  assert.equal(plain(lt2SourceRows("ride", METRICS, ESTIMATES.ride, () => null))[2].values, "271 W");
+  const { lt2RangeText } = lt2();
+  assert.equal(lt2RangeText({ value: "heart_rate" }, { range: { heart_rate_bpm: [-5, 0] } }), " (−5/+0)");
 });
 
 test("the notice needs 2 bpm, 3 s/km or 5 W, or a switch to or from unbekannt", () => {

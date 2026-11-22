@@ -883,6 +883,7 @@ a.message-retry { display: grid; place-items: center; text-decoration: none; }
 /* The value columns keep their header word whole; the name column takes the rest and wraps. */
 .zone-thresholds { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 4px 12px; font-size: .88rem; }
 .zone-thresholds b { font-weight: 600; font-variant-numeric: tabular-nums; }
+.zone-note { grid-column: 1 / -1; margin: 4px 0 0; color: var(--muted); font-size: .78rem; font-variant-numeric: tabular-nums; }
 /* rem follows the text size: with bigger text each row names its threshold on its own line above the two values. */
 @container (max-width: 15rem) {
   .zone-thresholds { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px 8px; }

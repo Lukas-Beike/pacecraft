@@ -547,6 +547,21 @@ function thresholdMainText(metric, value) {
   return metric === "pace" && value != null ? `${zoneValueText("pace", value)} /km` : zoneValueText(metric, value);
 }
 
+// Pure: the line under the threshold row when no recorded effort of the window supports the value
+// (#3920, C5); never a claim that the value is wrong. Null without a best effort or when it holds.
+function thresholdEffortNote(sport, thresholds = state.data?.performance?.thresholds) {
+  const found = thresholds?.unsupported_by_recent_effort?.[sport];
+  if (!found) return null;
+  const best = sport === "ride" ? `20-min-Bestwert ${Math.round(found.best_w)} W` : `5-km-Bestwert ${thresholdMainText("pace", found.best_pace_seconds_per_km)}`;
+  return `${best} (${found.window_days} T.) · Test empfohlen`;
+}
+
+// Pure: the line under Z5 of the heart-rate zones when a chest-strap recording exceeds the stored max HR (#3920, C6).
+function recordedMaxHrNote(thresholds = state.data?.performance?.thresholds) {
+  const found = thresholds?.recorded_max_hr_above;
+  return found ? `Brustgurt ${Math.round(found.value)} bpm am ${dateLabel(found.date)}` : null;
+}
+
 function zoneEditButton(label, attributes) {
   return h("button", { type: "button", className: "zone-edit", dataset: attributes }, label);
 }
@@ -571,6 +586,8 @@ function thresholdBox(sport) {
       h("b", { dataset: { threshold: names.main } }, thresholdMainText(rows.metric, values.main)),
       h("b", { dataset: { threshold: names.hr } }, values.hr == null ? "—" : `${Math.round(values.hr)} bpm`));
   }
+  const effort = thresholdEffortNote(sport);
+  if (effort) grid.append(h("p", { className: "zone-note", dataset: { thresholdNote: "effort" } }, effort));
   const foot = h("p", "zone-source", zoneEditButton("Bearbeiten", { zoneEdit: "lt1" }));
   const sources = lt2SourceRows(sport);
   const list = sources.length ? h("div", "lt2-sources", h("h4", null, lt2Label), h("ul", null, ...sources.map((row) => lt2SourceItem(sport, row)))) : null;
@@ -603,6 +620,13 @@ function lt2AdoptValues(source, estimate) {
   if (estimate.pace_seconds_per_km != null) values.push({ value: "pace", shown: estimate.pace_seconds_per_km, label: `Pace ${thresholdMainText("pace", estimate.pace_seconds_per_km)}` });
   if (estimate.power_w != null) values.push({ value: "power", shown: estimate.power_w, label: `Leistung ${estimate.power_w} W` });
   return values;
+}
+
+// The cited limits of agreement after the value they belong to (#3920, C7): "(−24/+16)" for the DFA-α1 heart rate.
+function lt2RangeText(item, estimate) {
+  const range = item.value === "heart_rate" ? estimate.range?.heart_rate_bpm : null;
+  const signed = (number) => (number < 0 ? `−${-number}` : `+${number}`);
+  return range ? ` (${signed(range[0])}/${signed(range[1])})` : "";
 }
 
 function lt2EstimateBasis(source, estimate) {
@@ -645,7 +669,7 @@ function lt2EstimateRow(source, estimate, origins) {
     source,
     name: LT2_SOURCE_NAMES[source] || source,
     quality: known ? estimate.quality : null,
-    values: known ? adopt.map((item) => item.label.replace(/^\S+ /, "")).join(" · ") : "unbekannt",
+    values: known ? adopt.map((item) => item.label.replace(/^\S+ /, "") + lt2RangeText(item, estimate)).join(" · ") : "unbekannt",
     unknown: !known,
     basis: known ? lt2EstimateBasis(source, estimate) : String(estimate?.reason || ""),
     inEffect: origins.has(source),
@@ -828,7 +852,9 @@ function zoneKindBox(sport, metric, environment = null) {
     return box;
   }
   const rows = zoneRows(item, metric === "pace" ? zoneMetricValue(ZONE_SPORTS[sport].lt2[0]) : null);
+  const recorded = metric === "heart_rate" && !environment ? recordedMaxHrNote() : null;
   box.append(h("ul", "zone-list", ...rows.map((row) => h("li", { dataset: { zone: row.zone } }, h("i"), h("span", null, row.name), h("em", null, row.range)))),
+    recorded ? h("p", { className: "zone-note", dataset: { zoneNote: "max-hr" } }, recorded) : null,
     h("p", "zone-source", zoneSourceText(item), zoneEditButton(item.source === "default" ? "Anpassen" : "Bearbeiten", attributes)));
   return box;
 }

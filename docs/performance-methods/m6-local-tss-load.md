@@ -312,6 +312,14 @@ hour, or a mix of branches on one scale.
   Each value keeps its source (local or Garmin) in the stored thresholds.
   The max HR of Garmin's default zone set (no sport) stands for every sport
   unless a sport-specific value of the same day exists (v6).
+- Max HR against recordings (#3920, C6; a display note, the load formulas are
+  unchanged): when the highest max HR of a chest-strap recording of the last
+  12 months (the stored streams name a chest strap as heart-rate source,
+  `canonical_store.chest_strap_max_hr_row`) exceeds the max HR in effect by at
+  least 3 bpm, the heart-rate zones show "Brustgurt N bpm am date" under Z5
+  and the Coach context carries `recorded_max_hr_above`. Optical recordings
+  never count. The 3 bpm margin is a product assumption (athlete decision,
+  #3920); no source states it. The stored value is never changed by it.
 - Resting HR comes from the recovery family on the session day or up to 7
   days earlier, else the earliest later value, flagged.
 - Each value covers one session; no history window is needed.

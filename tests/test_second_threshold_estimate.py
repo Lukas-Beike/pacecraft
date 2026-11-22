@@ -164,6 +164,13 @@ class AthleteLevelTests(unittest.TestCase):
         )
         self.assertEqual(result["status"], "unknown")
 
+    def test_the_dfa_value_carries_the_cited_limits_of_agreement(self) -> None:
+        # #3920 C7: Rogers et al. 2021 (R76), -24 to +16 bpm; unknown values carry none.
+        result = lt2.dfa_second_threshold(self.runs(3), TODAY)
+        self.assertEqual(result["range"]["heart_rate_bpm"], [-24, 16])
+        self.assertIn("R76", result["range"]["basis"])
+        self.assertNotIn("range", lt2.dfa_second_threshold(self.runs(2), TODAY))
+
 
 def fit(sport, environment, value, *, residual=0.01, loo=()):
     key = "cs_mps" if sport == "run" else "cp_watts"
@@ -188,6 +195,8 @@ class CriticalTests(unittest.TestCase):
         self.assertEqual(result["quality"], "good")
         self.assertEqual(result["window_days"], 42)
         self.assertNotIn("heart_rate_bpm", result)
+        # No verified source states a CP/CS range (#3920 C7): none is shown.
+        self.assertNotIn("range", result)
 
     def test_rides_take_the_outdoor_fit_before_the_indoor_one(self) -> None:
         fits = [fit("ride", "indoor", 240.0), fit("ride", "outdoor", 250.0)]

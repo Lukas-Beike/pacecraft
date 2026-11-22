@@ -12,6 +12,7 @@ from performance_day_support import canonical_from_snapshot
 
 from backend.canonical.coverage import ProviderCoverage
 from backend.canonical.vocabulary import MetricKind, ProviderId
+from backend.performance import threshold_evidence
 from backend.performance.canonical_body import CanonicalBodyInputs
 from backend.performance.canonical_inputs import (
     EMPTY_PERFORMANCE_INPUTS,
@@ -482,6 +483,144 @@ class PerformanceContextTests(unittest.TestCase):
         self.assertNotIn("w_prime_j", result["thresholds"])
         self.assertNotIn("intervals_load_history", result)
         self.assertEqual(result["current_load"]["source"], "Lokal berechnet (M7)")
+
+    def test_the_thresholds_carry_the_recorded_evidence_of_the_window(self):
+        # #3920 C5 and C6: the context reads 90 days of sessions once and the
+        # chest-strap maximum of the last 12 months; no value in effect, no note.
+        today = date(2026, 9, 20)
+        windows, since = [], []
+        canonical = CanonicalPerformanceInputs(
+            recovery=recovery_inputs(
+                [
+                    recovery_observation(
+                        MetricKind.RESTING_HR, 48, today.isoformat(), record_id="r"
+                    )
+                ]
+            )
+        )
+
+        result = current_performance_context(
+            GarminSyncStatus.from_state({}),
+            {},
+            today,
+            canonical=canonical,
+            lt1_session_records=lambda days: windows.append(days) or [],
+            chest_strap_max_hr=lambda day: since.append(day) or (191.0, "2026-09-14"),
+        )
+
+        thresholds = result["thresholds"]
+        self.assertEqual(thresholds["unsupported_by_recent_effort"], {})
+        self.assertIsNone(thresholds["recorded_max_hr_above"])
+        self.assertEqual(set(windows), {90})
+        self.assertEqual(since, [date(2025, 9, 20)])
+
+    def test_a_threshold_above_its_best_recorded_effort_is_named(self):
+        ride = {
+            "sport": "ride",
+            "date": "2026-09-10",
+            "power_profile": {
+                "duration_curve": [
+                    {"duration_seconds": 300, "watts": 330.0},
+                    {"duration_seconds": 1200, "watts": 241.0},
+                ]
+            },
+        }
+        weaker = {
+            "sport": "ride",
+            "date": "2026-09-12",
+            "power_profile": {
+                "duration_curve": [{"duration_seconds": 1200, "watts": 236.0}]
+            },
+        }
+        # 1,390 s over 5 km is 278 s/km (4:38 /km).
+        run = {
+            "sport": "run",
+            "date": "2026-09-11",
+            "running_profile": {
+                "distance": [
+                    {"distance_meters": 1000, "seconds": 200.0},
+                    {"distance_meters": 5000, "seconds": 1390.0},
+                ]
+            },
+        }
+        records = [ride, weaker, run]
+        cases = (
+            (250, 270, {"ride", "run"}),
+            (241, 278, set()),  # equal to the best effort: supported
+            (230, 290, set()),
+            (None, None, set()),
+        )
+        for ftp, pace, named in cases:
+            with self.subTest(ftp=ftp, pace=pace):
+                found = threshold_evidence.unsupported_by_recent_effort(
+                    records, ftp_w=ftp, run_pace_seconds_per_km=pace
+                )
+                self.assertEqual(set(found), named)
+        found = threshold_evidence.unsupported_by_recent_effort(
+            records, ftp_w=250, run_pace_seconds_per_km=270
+        )
+        self.assertEqual(
+            found["ride"],
+            {
+                "threshold_w": 250,
+                "best_w": 241,
+                "duration_seconds": 1200,
+                "window_days": 90,
+                "date": "2026-09-10",
+            },
+        )
+        self.assertEqual(found["run"]["best_pace_seconds_per_km"], 278)
+        self.assertEqual(found["run"]["date"], "2026-09-11")
+
+    def test_without_a_recorded_20_minute_or_5_km_effort_nothing_is_named(self):
+        short_ride = {
+            "sport": "ride",
+            "date": "2026-09-10",
+            "power_profile": {
+                "duration_curve": [{"duration_seconds": 300, "watts": 330.0}]
+            },
+        }
+        unknown_ride = {
+            "sport": "ride",
+            "date": "2026-09-10",
+            "power_profile": {
+                "duration_curve": [{"duration_seconds": 1200, "watts": None}]
+            },
+        }
+        unknown_run = {
+            "sport": "run",
+            "date": "2026-09-11",
+            "running_profile": {
+                "distance": [{"distance_meters": 5000, "seconds": None}]
+            },
+        }
+        for records in (
+            [],
+            [short_ride, unknown_ride, unknown_run],
+            [{"sport": "swim"}],
+        ):
+            self.assertEqual(
+                threshold_evidence.unsupported_by_recent_effort(
+                    records, ftp_w=400, run_pace_seconds_per_km=200
+                ),
+                {},
+            )
+
+    def test_a_chest_strap_maximum_counts_from_three_bpm_above_the_stored_one(self):
+        recorded = (191.0, "2026-09-14")
+        above = threshold_evidence.recorded_max_hr_above(188, recorded)
+        self.assertEqual(
+            above,
+            {
+                "value": 191,
+                "date": "2026-09-14",
+                "stored_max_hr": 188,
+                "window_days": 365,
+            },
+        )
+        self.assertIsNone(threshold_evidence.recorded_max_hr_above(189, recorded))
+        self.assertIsNone(threshold_evidence.recorded_max_hr_above(None, recorded))
+        self.assertIsNone(threshold_evidence.recorded_max_hr_above(180, None))
 
 
 if __name__ == "__main__":

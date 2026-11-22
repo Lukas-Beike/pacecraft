@@ -24,7 +24,7 @@ const METRICS = {
   run_threshold_hr_bpm: { value: 158, unit: "bpm", source: "Garmin", source_provider: "garmin", observed_at: "2026-11-03" },
 };
 
-async function openRunThresholds(page, baselines) {
+async function openRunThresholds(page, baselines, { estimates = ESTIMATES, thresholds = {} } = {}) {
   await page.route("**/api/zones", (route) => (route.request().method() === "GET" ? route.fulfill({ json: ZONES }) : route.fallback()));
   const seen = [];
   await page.route("**/api/zones/lt2/notice-baseline", async (route) => {
@@ -35,11 +35,12 @@ async function openRunThresholds(page, baselines) {
   await page.goto("/#more/profile");
   await expect(page.locator("#appShell")).toBeVisible();
   await page.waitForFunction(() => state.initialStateLoaded);
-  await page.evaluate(({ estimates, metrics, baselines: stored }) => {
-    state.data.performance = { ...state.data.performance, metrics: { ...state.data.performance?.metrics, ...metrics } };
-    state.data.lt2_estimates = estimates;
+  await page.evaluate(({ estimates: shown, metrics, thresholds: extra, baselines: stored }) => {
+    const performance = state.data.performance;
+    state.data.performance = { ...performance, metrics: { ...performance?.metrics, ...metrics }, thresholds: { ...performance?.thresholds, ...extra } };
+    state.data.lt2_estimates = shown;
     state.data.lt2_notice_baselines = stored;
-  }, { estimates: ESTIMATES, metrics: METRICS, baselines });
+  }, { estimates, metrics: METRICS, thresholds, baselines });
   await page.locator("#zoneSettings > summary").click();
   await page.locator('#zoneSportTabs [data-zone-sport="run"]').click();
   return seen;
@@ -60,6 +61,22 @@ test("@responsive Schwellen lists the provider, DFA-α1 and CS with their basis 
   await expect(sources.nth(2)).toContainText("unbekannt");
   await expect(sources.nth(2).getByRole("button", { name: "Übernehmen" })).toHaveCount(0);
   const results = await new AxeBuilder({ page }).include('[data-zone-box="thresholds"]').analyze();
+  expect(results.violations).toEqual([]);
+});
+
+test("@responsive the notes sit under the value they concern (#3920)", async ({ page }) => {
+  const estimates = { run: { ...ESTIMATES.run, dfa_alpha1: { ...ESTIMATES.run.dfa_alpha1, range: { heart_rate_bpm: [-24, 16], basis: "Limits of Agreement gegen VT2, Rogers et al. 2021 (R76)" } } } };
+  const thresholds = {
+    unsupported_by_recent_effort: { run: { threshold_pace_seconds_per_km: 252, best_pace_seconds_per_km: 278, distance_meters: 5000, window_days: 90, date: "2026-11-01" } },
+    recorded_max_hr_above: { value: 191, date: "2026-09-14", stored_max_hr: 186, window_days: 365 },
+  };
+  await openRunThresholds(page, { run: { provider_hr: 158, provider_pace: 252, dfa_hr: 169, dfa_pace: 256, cs_pace: null } }, { estimates, thresholds });
+  const box = page.locator('[data-zone-box="thresholds"]');
+  await expect(box.locator('[data-threshold-note="effort"]')).toHaveText("5-km-Bestwert 4:38 /km (90 T.) · Test empfohlen");
+  await expect(box.locator('[data-lt2-source="dfa_alpha1"] .lt2-source-values')).toHaveText("169 bpm (−24/+16) · 4:16 /km");
+  await expect(box.locator('[data-lt2-source="critical_speed"] .lt2-source-values')).toHaveText("unbekannt");
+  await expect(page.locator('[data-zone-box="heart_rate"] [data-zone-note="max-hr"]')).toContainText("Brustgurt 191 bpm am ");
+  const results = await new AxeBuilder({ page }).include("#zoneOverview").analyze();
   expect(results.violations).toEqual([]);
 });
 

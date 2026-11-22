@@ -474,6 +474,13 @@ Profil SHALL order its closed sections Person, Ziele & Woche, Zonen & Schwellen,
 - **WHEN** the athlete opens a sport's page
 - **THEN** the rows "Aerob (LT1)" and "Anaerob (LT2)" ("Anaerob (LT2) / FTP" for cycling) show the power or pace and the heart rate, LT2 from the current performance values with the date they apply from, LT1 from the performance thresholds; a small yellow "i" on each row opens its origin (LT2's provider, per value when they differ; LT1's "gemessen", "aus der Herzfrequenzvariabilität", "aus eigenen Einheiten" or "Standardwert" per value), and the box offers "Bearbeiten"; a missing value shows "—".
 
+#### Scenario: Notes from the recordings and the cited range (#3920)
+- **WHEN** the FTP in effect exceeds the best 20-minute power of the last 90 days, or the run threshold pace is faster than the best 5 km pace of the same window
+- **THEN** one muted line under that threshold row reads "20-min-Bestwert 241 W (90 T.) · Test empfohlen" or "5-km-Bestwert 4:38 /km (90 T.) · Test empfohlen"; without a recorded 20-minute or 5 km effort nothing is shown, and the line never says the value is wrong
+- **WHEN** a chest-strap recording of the last 12 months exceeds the max HR in effect by at least 3 bpm
+- **THEN** one muted line under Z5 of the heart-rate zones reads "Brustgurt 191 bpm am 14.09.2026"; optical recordings never count
+- **THEN** the DFA-α1 LT2 row shows its heart rate with the cited limits of agreement "(−24/+16)" (Rogers et al. 2021, R76); CS, CP, the LT1 adoption and the step test show no range, and the Coach receives `unsupported_by_recent_effort`, `recorded_max_hr_above` and `range` with the same facts
+
 #### Scenario: LT1 without a measured value or zones
 - **WHEN** no first threshold is stored and the sport has no heart-rate, pace or power zones
 - **THEN** "Aerob (LT1)" shows the fixed shares of LT2, and Analyse lists the same values as "Aerobe Schwelle (LT1)", as it does for a value from own sessions; saving or removing zones reloads the thresholds.

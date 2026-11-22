@@ -151,6 +151,9 @@ class EvaluationTests(unittest.TestCase):
         self.assertTrue(163 <= lt2["heart_rate_bpm"] <= 175)
         self.assertGreater(lt2["heart_rate_bpm"], lt1["heart_rate_bpm"])
         self.assertLess(lt2["pace_seconds_per_km"], lt1["pace_seconds_per_km"])
+        # #3920 C7: no cited limit of agreement exists for the step test, so none is shown.
+        self.assertNotIn("range", lt1)
+        self.assertNotIn("range", lt2)
 
     def test_a_run_stopped_early_says_which_threshold_it_did_not_reach(self) -> None:
         # Four stages reach 153 bpm: alpha1 never reaches 0.5, LT1 gives nothing good.

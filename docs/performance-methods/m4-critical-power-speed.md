@@ -1,7 +1,7 @@
 # M4 — Critical Power and Critical Speed
 
 - **Card:** M4
-- **Card version:** 6
+- **Card version:** 7
 - **Method ID:** critical-power-speed v3 (`backend/performance/critical_power.py`)
 - **Status:** implemented as an experimental model estimate (#1431) on the local mean-maximal curve (#1430, `mean-max-curve` v3)
 - **Classification:** model estimate
@@ -210,6 +210,8 @@ athlete's power meter or GPS.
 | Plausible running range | CS 1.5-7 m/s, D′ 10-500 m | product assumption | Outside these ranges a fit is treated as a data or effort error. |
 | Primary fit | work or distance on time | product assumption | Chosen in advance per #1431; the power-versus-1/t fit and, for cycling, the 3/7/12-min fit are shown as sensitivity. |
 | Curve cycling windows | 5, 15, 30, 60, 120, 180, 300, 420, 600, 720, 1200, 1800, 3600 s | product assumption | `backend/performance/power_profile.py:POWER_DURATIONS`; 180/420/720 s follow R4, the rest are display windows. |
+| Unsupported-threshold window | 90 days, 20-min power (ride), 5 km pace (run) | product assumption | Athlete decision #3920 C5: the longest curve window, the efforts a threshold test would repeat. `backend/performance/threshold_evidence.py`. |
+| DFA-α1 range | −24 to +16 bpm | source | R76 limits of agreement of the 0.5 crossing against VT2. `second_threshold_estimate.DFA_LIMITS_OF_AGREEMENT_BPM`. |
 | Curve running windows | 60, 180, 300, 420, 720, 1200 s; 1,000 and 5,000 m | product assumption | `backend/performance/power_profile.py:RUNNING_DURATIONS`, `RUNNING_DISTANCES`. |
 
 ## Allowed statements
@@ -233,6 +235,21 @@ athlete's power meter or GPS.
   `low` (shown as "mittel"). A withheld fit is unknown with its reason.
 - Note (athlete decision B2, #3919): the row says the value usually lies a
   few percent above the sustainable threshold; adoption itself is unchanged.
+- Range at adoption (#3920, C7): the DFA-α1 heart rate shows the cited limits
+  of agreement in brackets, "(−24/+16)" bpm (R76, group error against VT2, not
+  an individual interval). CS and CP show no range: no verified source states
+  one (R4 reports standard errors of estimate of 4.5 to 5.8 % and limits of
+  agreement in watts for cycling only; R5 gives no pooled agreement for
+  running), so none is invented. The LT1 adoption and the step test show none
+  either.
+- Unsupported threshold (#3920, C5): the line under the FTP (rides) or the
+  threshold pace (runs) reads "no recorded effort supports the value" when the
+  value in effect exceeds the best 20-minute power, or is faster than the best
+  5 km pace, of the last 90 days of the mean-maximal curves
+  (`threshold_evidence.py`), with "Test empfohlen". It states that the
+  recorded efforts do not reach the value, not that the value is wrong: only a
+  minority of sessions carry full streams and no effort is known to be maximal.
+  Without a recorded 20-minute or 5 km effort in the window nothing is shown.
 
 ## Forbidden statements
 

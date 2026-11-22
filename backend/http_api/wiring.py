@@ -199,6 +199,7 @@ def build_public_state(
             ),
             now=ctx.clock.now,
             lt1_session_records=lambda days: ctx.performance.curve_records(days),
+            chest_strap_max_hr=ctx.performance.chest_strap_max_hr,
             lt1_history_records=ctx.performance.all_time_records,
         )
 
