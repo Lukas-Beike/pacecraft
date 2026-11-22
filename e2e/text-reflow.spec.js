@@ -96,8 +96,7 @@ function boxProblems() {
   // Inside a scroll box the table may be wider than the box, but no cell or button may cut its own text.
   const cutInScroll = (element) => inScroll(element) && !hidden(element) && getComputedStyle(element).overflowX !== "visible" && element.scrollWidth > element.clientWidth + 1 && !element.matches(".sr-only, pre");
   const exempt = (element) => hidden(element) || inScroll(element) || element.matches(".sr-only, pre, input, textarea, select, .threshold-info");
-  // A trailing control may pull into its card's padding (a negative margin of 8 px); that is no clip.
-  const clipped = (element, style) => element.scrollWidth > element.clientWidth + 8 && !scrolls(element) && style.textOverflow !== "ellipsis" && style.display !== "inline";
+  const clipped = (element, style) => element.scrollWidth > element.clientWidth + 1 && !scrolls(element) && style.textOverflow !== "ellipsis" && style.display !== "inline";
   const clipDetail = (element, box) => {
     const edge = box.right + 1;
     const over = [...element.querySelectorAll("*")].filter((inner) => [...inner.getClientRects()].some((rect) => rect.right > edge));
