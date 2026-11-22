@@ -65,6 +65,7 @@ handler's docstring. Regenerate it with
 | POST | `/api/chat/reset` | Session + CSRF | after access | Reset the Coach conversation. |
 | GET | `/api/chat/status` | Session | no | Status of this session's Coach work. |
 | POST | `/api/chat/stream` | Session + CSRF | after access | Stream one Coach turn as server-sent events. |
+| POST | `/api/checkins` | Session + CSRF | after access | Enter or correct the daily check-in of one day. |
 | POST | `/api/coach/actions/cancel` | Session + CSRF | after access | Cancel a Coach proposal. |
 | POST | `/api/coach/actions/confirm` | Session + CSRF | after access | Confirm a Coach proposal. |
 | POST | `/api/coach/actions/execute` | Session + CSRF | after access | Execute a confirmed Coach proposal. |
@@ -800,6 +801,27 @@ when another turn of the session is queued or running;
 Sitzung."; `attachment_storage_quota` "Der lokale Speicher für Chat-Anhänge
 ist ausgeschöpft. Entferne alte Chat-Daten, bevor du weitere Bilder
 sendest."; `internal_error` "Interner Serverfehler.".
+
+### `POST /api/checkins`
+
+Request: JSON body like the Coach tool `save_checkin`: `checkin_date`
+(`YYYY-MM-DD`, default today, never later than today), `day_status`
+(`unknown`, `rest` or `pause`), `tag_answers` (`travel`, `late_meal`,
+`high_stress`, each `true` or `false`), `complaints` (up to 8 of `area`,
+`side` and `severity` 0 to 10; an empty list removes them), the whole
+numbers `soreness`, `stress`, `motivation`, `session_rpe` (0 to 10) and
+`available_minutes` (0 to 1440), and the texts `day_form`, `illness`,
+`pain`, `availability_notes`, `notes`. An omitted field keeps its stored
+value; `clear_fields` lists the fields (scores, minutes and texts) to
+empty. Nothing is written remotely; planning reads illness and rest from
+the check-in as before.
+
+Response: 200 `{"status": "ok", "stored_locally": true, "checkin",
+"change"}`; `checkin` is the stored day, `change` the undo reference
+(`null` when nothing changed).
+
+Errors: 400 for a value outside its limits or an unknown field value,
+with the German text of the Coach tool.
 
 ### `POST /api/coach/actions/cancel`
 

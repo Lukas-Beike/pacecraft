@@ -13,7 +13,7 @@ from backend.http_api.feedback_post import FeedbackPostRoutes
 
 class FeedbackPostRoutesTests(unittest.TestCase):
     def test_athlete_feedback_post_is_not_registered(self) -> None:
-        # Check-ins are saved by the Coach and read from GET /api/feedback.
+        # Activity feedback has its own path; check-ins post to /api/checkins.
         handler = SimpleNamespace(read_json=Mock(), send_json=Mock())
         routes = FeedbackPostRoutes()
 
@@ -55,6 +55,19 @@ class FeedbackPostRoutesTests(unittest.TestCase):
             dispatch_route(routes, handler, "/api/infection-hint/ill", method="POST")
         )
         service.report_illness.assert_called_once_with("2026-11-21", ["fieber"])
+
+    def test_check_in_post_saves_through_the_coach_use_case(self) -> None:
+        # #3953: the form keeps omitted fields and clears only the named ones.
+        service = Mock()
+        service.save_coach.return_value = {"status": "ok", "change": {"id": "1"}}
+        routes = FeedbackPostRoutes(checkin_service=lambda: service)
+        body = {"checkin_date": "2026-11-21", "stress": 4, "clear_fields": ["notes"]}
+        handler = SimpleNamespace(read_json=Mock(return_value=body), send_json=Mock())
+
+        self.assertTrue(dispatch_route(routes, handler, "/api/checkins", method="POST"))
+
+        service.save_coach.assert_called_once_with(body)
+        handler.send_json.assert_called_once_with(200, service.save_coach.return_value)
 
 
 class ActivityFeedbackPostRouteTests(unittest.TestCase):
