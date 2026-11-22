@@ -764,6 +764,7 @@ SYNC_COMMANDS = build_sync_commands(
     after_refresh=DERIVED_PASS_HOOK,
     training_change_limit=coach_limits.COACH_TRAINING_CHANGE_LIMIT,
 )
+APP.sync_commands = SYNC_COMMANDS
 
 
 CHAT_PAGE_MAX = 100
