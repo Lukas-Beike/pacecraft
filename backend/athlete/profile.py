@@ -469,15 +469,22 @@ class ProfileService:
         return {**stored, FIRST_THRESHOLD_FIELD: "" if bpm is None else f"{bpm:g}"}
 
     def _kept_legacy(
-        self, stored: Mapping[str, Any], normalized: Mapping[str, str]
+        self,
+        stored: Mapping[str, Any],
+        normalized: Mapping[str, str],
+        shown: str = "",
     ) -> dict[str, Any]:
         """``normalized`` as stored: a legacy percent no bpm replaced yet is kept.
 
         Without a known run threshold HR the percent cannot become bpm; it stays
         in the stored JSON (not in the profile) until a bpm is written (#3915).
+        A bpm the profile ``shown`` before that the save empties is a clear, so
+        the percent goes too.
         """
-        if normalized[FIRST_THRESHOLD_FIELD] or (
-            first_threshold_percent(stored.get(LEGACY_PERCENT_FIELD)) is None
+        if (
+            normalized[FIRST_THRESHOLD_FIELD]
+            or shown
+            or first_threshold_percent(stored.get(LEGACY_PERCENT_FIELD)) is None
         ):
             return dict(normalized)
         return {
@@ -523,7 +530,9 @@ class ProfileService:
                 previous=previous,
             )
         )
-        kept = self._kept_legacy(self._stored(db), normalized)
+        kept = self._kept_legacy(
+            self._stored(db), normalized, previous.get(FIRST_THRESHOLD_FIELD, "")
+        )
         self._profile_repository.set(db, json.dumps(kept, ensure_ascii=False))
         self._on_location_changed(
             previous,

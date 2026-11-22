@@ -447,8 +447,9 @@ function renderFirstThresholdEstimate(estimate, profile = {}) {
 // Pure: the stored bpm as percent of today's run threshold HR, display only (#3915).
 function firstThresholdPercentText(bpm, lthr) {
   const value = Number(bpm);
-  if (!bpm || !Number.isFinite(value) || !(Number(lthr) > 0)) return "";
-  return `${String(Math.round((value / Number(lthr)) * 1000) / 10).replace(".", ",")} % LSHF`;
+  const reference = Number(lthr);
+  if (!bpm || !Number.isFinite(value) || !Number.isFinite(reference) || reference <= 0) return "";
+  return `${String(Math.round((value / reference) * 1000) / 10).replace(".", ",")} % LSHF`;
 }
 
 const MODEL_PROVIDER_GROUPS = Object.freeze({ openai: "OpenAI", anthropic: "Claude" });

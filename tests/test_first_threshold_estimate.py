@@ -930,6 +930,16 @@ class LegacyPercentTests(unittest.TestCase):
         self.assertEqual("150", raw[FIRST_THRESHOLD_FIELD])
         self.assertNotIn("first_threshold_pct", raw)
 
+    def test_clearing_a_legacy_derived_bpm_drops_the_percent(self) -> None:
+        service = self.profile_service(lambda _day: 170.0)
+        self.store(
+            {"first_threshold_pct": "88", FIRST_THRESHOLD_ORIGIN_FIELD: "measured"}
+        )
+        self.assertEqual("150", service.get()[FIRST_THRESHOLD_FIELD])
+        service.patch({FIRST_THRESHOLD_FIELD: ""})
+        self.assertNotIn("first_threshold_pct", self.raw())
+        self.assertEqual("", service.get()[FIRST_THRESHOLD_FIELD])
+
     def test_rows_recorded_before_the_bpm_field_still_match_for_undo(self) -> None:
         stored = {
             "first_threshold_pct": "88",
