@@ -209,7 +209,7 @@ async function expectContrast(page, view, theme, scopes = SCOPES) {
     by: (node.any[0]?.relatedNodes || []).map((related) => related.target.join(" ")).join(", "),
   })))
     .filter(({ target, message }) => !INCOMPLETE_ALLOWED.some((allowed) => allowed.target.test(target) && allowed.message.test(message)))
-    .map(({ target, message, by }) => `${view} [${theme}] ${target}: ${message}${by ? ` (by ${by})` : ""}`);
+    .map(({ target, message, by }) => `${view} [${theme}] ${target}: ${message}` + (by ? " (by " + by + ")" : ""));
   expect(undecided, `colour contrast axe could not decide: ${undecided.join(" | ")}`).toEqual([]);
 }
 
