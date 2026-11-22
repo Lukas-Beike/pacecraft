@@ -845,7 +845,7 @@ Evidence: `public/plan-views.js::plannedDayNoteSpecs`; `public/plan-views.js::re
 
 ### Requirement: Analysis chart reading aids
 
-Every analysis chart SHALL pad its value axis by 12 % of the span (at least a unit-specific minimum), label only the latest, highest, lowest and first reading, and offer "Werte ansehen" with a table of the plotted values. Each day with a value SHALL be one inspectable marker; the chart is one tab stop on the latest day and arrow keys, Home and End move between days.
+Every analysis chart SHALL pad its value axis by 12 % of the span (at least a unit-specific minimum), label only the latest, highest, lowest and first reading, and offer "Werte ansehen" with a table of the plotted values: columns "Woche ab" or "Tag", "Wert", and for one series "Messungen" and "Quelle", newest first, the last six rows shown and the rest behind "Alle N Wochen anzeigen". Beyond 3 months every Erholung chart plots the mean of each calendar week and says "Wochenmittel" in its caption; the readiness axis runs from 0 to 100. Each day with a value SHALL be one inspectable marker; the chart is one tab stop on the latest day and arrow keys, Home and End move between days.
 
 #### Scenario: Weekly values
 - **WHEN** a period of 3, 6 or 12 months is shown

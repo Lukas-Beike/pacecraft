@@ -80,7 +80,7 @@
   <details>
     <summary>
       "Werte ansehen"
-    <div aria-label="Schlaf: Einzelwerte" class="analysis-chart-table" role="region" tabIndex="0">
+    <div aria-label="Schlaf: Einzelwerte" class="analysis-chart-table analysis-series-table" role="region" tabIndex="0">
       <table>
         <caption>
           "Schlaf · h · nur vorhandene Werte"
@@ -89,13 +89,13 @@
             <th scope="col">
               "Tag"
             <th scope="col">
-              "Schlafdauer"
+              "Wert"
         <tbody>
           <tr>
             <th scope="row">
-              "05.10.2026"
+              "07.10.2026"
             <td>
-              "7:30 h"
+              "8:12 h"
           <tr>
             <th scope="row">
               "06.10.2026"
@@ -103,6 +103,6 @@
               "6:48 h"
           <tr>
             <th scope="row">
-              "07.10.2026"
+              "05.10.2026"
             <td>
-              "8:12 h"
+              "7:30 h"

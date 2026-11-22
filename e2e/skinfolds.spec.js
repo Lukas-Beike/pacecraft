@@ -133,7 +133,8 @@ test("@responsive a weight is entered and removed through the weight dialog", as
   await expect(chart.locator("circle[data-series='0']").last()).toBeAttached();
   await expect(chart.locator("circle[data-series='1']")).toHaveCount(0);
   await chart.locator("details > summary", { hasText: "Werte ansehen" }).click();
-  await expect(chart.locator(".analysis-chart-table tbody tr").last()).toContainText("eingetragen");
+  // Newest first: today's entry is the first row.
+  await expect(chart.locator(".analysis-chart-table tbody tr").first()).toContainText("eingetragen");
 
   await row.getByRole("button", { name: "Gewicht eintragen" }).click();
   await expect(page.locator("#weightDialogDate")).toHaveValue(today);

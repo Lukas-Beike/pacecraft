@@ -473,10 +473,13 @@ test("@responsive performance keeps dated FTP values and weekly medians independ
   await expect(ftp.locator("tbody tr")).toHaveCount(5);
   await expect(ftp.locator("tbody")).toContainText("03.09.2026");
   await expect(ftp.locator("tbody")).toContainText("09.09.2026");
-  await expect(ftp.locator("tbody td:nth-child(2)")).toHaveText([/200 W/, /220 W/, /210 W/, /220 W/, /210 W/]);
+  // Newest first (#3928).
+  await expect(ftp.locator("tbody td:nth-child(2)")).toHaveText([/210 W/, /220 W/, /210 W/, /220 W/, /200 W/]);
   const vo2max = root.locator("[data-analysis-section='development-Rad'] .analysis-subchart").filter({ has: page.getByRole("heading", { name: "VO₂max", exact: true }) });
   await vo2max.getByText("Werte ansehen", { exact: true }).click();
-  await expect(vo2max.locator("tbody td:nth-child(2)")).toHaveText([/50 ml\/kg\/min.*3 Messungen/, /55 ml\/kg\/min.*2 Messungen/]);
+  await expect(vo2max.locator("tbody td:nth-child(2)")).toHaveText([/55 ml\/kg\/min/, /50 ml\/kg\/min/]);
+  await expect(vo2max.locator("tbody td:nth-child(3)")).toHaveText(["2", "3"]);
+  await expect(vo2max.getByRole("columnheader")).toHaveText(["Woche ab", "Wert", "Messungen", "Quelle"]);
   await page.evaluate(async () => { await AppRouter.navigate("analysis/running", { historyMode: "replace" }); });
   const pace = root.locator(".analysis-subchart").filter({ has: page.getByRole("heading", { name: "Schwellenpace", exact: true }) });
   await pace.getByText("Werte ansehen", { exact: true }).click();

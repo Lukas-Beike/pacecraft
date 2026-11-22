@@ -103,7 +103,7 @@ function bindAnalysisPopover(button, info) {
 }
 
 function analysisChart(title, series, unit, start, end, note, {
-  sparse = false, zeroCentered = false, showLegend = true, calendarWeeks = false, caption = analysisAxisCaption(unit),
+  sparse = false, zeroCentered = false, showLegend = true, calendarWeeks = false, caption = analysisAxisCaption(unit), domain = null,
 } = {}) {
   if (!analysisHasData(series)) return null;
   const heading = h("h3", null, title);
@@ -149,7 +149,7 @@ function analysisChart(title, series, unit, start, end, note, {
   if (fewReadings) section.querySelectorAll(".analysis-info-tooltip").forEach((info) => info.append(h("p", "analysis-sparse-note", "Wenige Messungen · kein belastbarer Trend.")));
   const weekTicks = calendarWeeks && series.length > 0 && series.every((item) => item.cadenceDays === 7);
   // A week's mark sits on its week start; half a week of room keeps the first mark off the value axis.
-  const scales = analysisPlotScales(shown, weekTicks ? addDateKey(start, -3) : start, end, { unit, zeroCentered });
+  const scales = analysisPlotScales(shown, weekTicks ? addDateKey(start, -3) : start, end, { unit, zeroCentered, domain });
   const svg = svgNode("svg", { viewBox: `0 0 ${scales.chartWidth} 200`, role: "group", "aria-label": `${title}: datierter Verlauf. Tageswerte auswählen oder Werte ansehen öffnen.` });
   svg.append(svgNode("title", {}, `${title} · ${dateLabel(start)} bis ${dateLabel(end)}`));
   svg.append(svgNode("desc", {}, `Eigene Skala: ${caption}. Fehlende Messungen bleiben unbekannt.`));
@@ -243,22 +243,47 @@ function collectAnalysisChart(missing, title, ...chartArguments) {
   return chart;
 }
 
+// One value per week or day, newest first: the last rows show, the rest opens on request (#3928).
+const ANALYSIS_TABLE_ROWS = 6;
+
+// The week's own date and the count have their columns; a later reading date is only worth naming on a daily row.
+function analysisTableValue(item, point, unit, { weekly, counted }) {
+  if (!analysisValidPoint(point)) return "–";
+  const shown = { ...point, observedDate: weekly ? point.date : point.observedDate, ...(counted ? { count: 0, weekReadings: 0 } : {}) };
+  return analysisPointValue(item, point, unit) + analysisReadingDetails(shown, item.unit || unit);
+}
+
 function appendAnalysisTable(section, title, series, unit, caption = analysisAxisCaption(unit)) {
-  const scroll = makeScrollRegionFocusable(h("div", "analysis-chart-table"), `${title}: Einzelwerte`);
-  const dates = [...new Set(series.flatMap((item) => item.points.filter(analysisValidPoint).map((point) => point.date)))].sort((a, b) => a.localeCompare(b));
-  const rows = dates.map((date) => [h("th", { scope: "row" }, dateLabel(date)), ...series.map((item) => {
-    const point = item.points.find((candidate) => candidate.date === date);
-    let value = analysisValidPoint(point) ? analysisPointValue(item, point, unit) : "–";
-    if (analysisValidPoint(point) && (point.count || point.weekReadings || point.observedDate)) value += analysisReadingDetails(point, item.unit || unit);
-    // A merged body series names each day's source (#3464).
-    if (analysisValidPoint(point) && point.source_label) value += ` · ${point.source_label}`;
-    return value;
-  })]);
-  scroll.append(table(["Tag", ...series.map((item) => item.label)], rows, { caption: `${title} · ${caption} · nur vorhandene Werte` }));
+  const scroll = makeScrollRegionFocusable(h("div", "analysis-chart-table analysis-series-table"), `${title}: Einzelwerte`);
+  const weekly = series.every((item) => item.cadenceDays === 7);
+  const dates = [...new Set(series.flatMap((item) => item.points.filter(analysisValidPoint).map((point) => point.date)))].sort((a, b) => b.localeCompare(a));
+  const single = series.length === 1;
+  const known = series.flatMap((item) => item.points.filter(analysisValidPoint));
+  const counted = single && known.some((point) => point.count || point.weekReadings);
+  const sourced = single && Boolean(series[0].source || known.some((point) => point.source_label));
+  const columns = [weekly ? "Woche ab" : "Tag", ...(single ? ["Wert"] : series.map((item) => item.label)), ...(counted ? ["Messungen"] : []), ...(sourced ? ["Quelle"] : [])];
+  const rows = dates.map((date) => {
+    const points = series.map((item) => item.points.find((candidate) => candidate.date === date));
+    const values = series.map((item, index) => analysisTableValue(item, points[index], unit, { weekly, counted }));
+    const point = points.find(analysisValidPoint);
+    const count = point?.count || point?.weekReadings;
+    return [h("th", { scope: "row" }, dateLabel(date)), ...values,
+      ...(counted ? [count ? String(count) : "–"] : []), ...(sourced ? [point?.source_label || series[0].source || "–"] : [])];
+  });
+  const grid = table(columns, rows, { caption: `${title} · ${caption} · nur vorhandene Werte` });
+  const hidden = [...[...grid.children].at(-1).children].slice(ANALYSIS_TABLE_ROWS);
+  hidden.forEach((row) => { row.hidden = true; });
+  scroll.append(grid);
+  if (hidden.length) {
+    const more = h("button", { type: "button", className: "secondary-button" }, `Alle ${rows.length} ${weekly ? "Wochen" : "Tage"} anzeigen`);
+    more.addEventListener("click", () => { hidden.forEach((row) => { row.hidden = false; }); more.remove(); });
+    scroll.append(more);
+  }
   section.append(h("details", null, h("summary", null, "Werte ansehen"), scroll));
 }
 
-function analysisPlotScales(series, start, end, { unit = "", zeroCentered = false } = {}) {
+// `domain` is a scale with fixed ends, such as 0 to 100 points: { min, max, step }.
+function analysisPlotScales(series, start, end, { unit = "", zeroCentered = false, domain = null } = {}) {
   const values = series.flatMap((item) => [
     ...(analysisPlottable(item) ? item.points.filter(analysisValidPoint) : []).flatMap((point) => [Number(point.value), point.lower, point.upper].filter((v) => v != null && Number.isFinite(Number(v))).map(Number)),
     ...(item.range ? [item.range.lower, item.range.upper] : []),
@@ -275,8 +300,9 @@ function analysisPlotScales(series, start, end, { unit = "", zeroCentered = fals
   let step = [1, 2, 5, 10].find((factor) => factor * magnitude >= rawStep) * magnitude;
   if (unit === "s/km") step = Math.max(5, Math.ceil(step / 5) * 5);
   if (analysisCountUnit(unit)) step = Math.max(1, step);
-  const min = series.some((item) => item.bars) ? 0 : Math.floor((low - padding) / step) * step;
-  const max = Math.ceil((high + padding) / step) * step;
+  if (domain) step = domain.step;
+  const min = domain ? domain.min : (series.some((item) => item.bars) ? 0 : Math.floor((low - padding) / step) * step);
+  const max = domain ? domain.max : Math.ceil((high + padding) / step) * step;
   // Wide screens place two charts per row, so the plot is drawn at the column width and keeps its text size.
   let chartWidth = 680;
   if (globalThis.innerWidth < 600) chartWidth = Math.max(220, globalThis.innerWidth - 80);
@@ -1388,15 +1414,20 @@ function providerMetricValue(metric, values) {
   return undefined;
 }
 
-function renderProviderMetrics(metrics, root, start, end, missing) {
+function renderProviderMetrics(metrics, root, start, end, missing, { weeklyReadiness = false } = {}) {
   Object.entries(metrics || {}).forEach(([key, item], index) => {
     const projected = key === "training_readiness_history" || key === "weekly_training_status";
     const raw = (Array.isArray(item?.points) ? item.points : []).map((point) => ({ date: point?.date, value: projected ? point?.value : providerMetricValue(key, point?.values) })).filter((point) => point.date && typeof point.value === "number" && Number.isFinite(point.value));
     if (!raw.some(analysisValidPoint)) { missing.push(providerMetricLabel(key)); return; }
-    const daily = key === "training_readiness_history";
-    const points = daily ? raw.filter((point) => point.date >= start && point.date <= end) : analysisWeeklyPerformancePoints(raw, start, end, false);
+    const daily = key === "training_readiness_history" && !weeklyReadiness;
+    const readiness = key === "training_readiness_history";
+    const inPeriod = raw.filter((point) => point.date >= start && point.date <= end);
+    let points = analysisWeeklyPerformancePoints(raw, start, end, false);
+    if (readiness) points = daily ? inPeriod : analysisWeeklyMeanPoints(inPeriod, start, end);
     const series = [{ label: providerMetricLabel(key), legendLabel: providerMetricLabel(key), source: item.source, unit: providerMetricUnit(key), color: index, cadenceDays: daily ? 1 : 7, points, currentPoint: raw.filter((point) => point.date <= end).findLast(analysisValidPoint) }];
-    const chart = collectAnalysisChart(missing, providerMetricLabel(key), series, providerMetricUnit(key), start, end, "", { sparse: true, showLegend: false, calendarWeeks: true });
+    // The readiness score runs from 0 to 100; a week plots the mean of its days.
+    const options = { sparse: true, showLegend: false, calendarWeeks: true, ...(readiness ? { domain: { min: 0, max: 100, step: 25 } } : {}), ...(readiness && weeklyReadiness ? { caption: analysisBasisCaption("Punkte", true, "mean") } : {}) };
+    const chart = collectAnalysisChart(missing, providerMetricLabel(key), series, providerMetricUnit(key), start, end, "", options);
     if (!chart) return;
     chart.querySelector(".analysis-chart-legend")?.remove();
     root.append(chart);
@@ -2924,15 +2955,11 @@ function recoveryRollingNote(rolling) {
   return `7-Tage-Mittel ${analysisValue(rolling.mean_ms, "ms")} (${rolling.window_nights} Nächte) · ${position} deinem Bereich ${range}${spread}${provisional}`;
 }
 
-// Daily values on `dates`, or the weekly mean of each 7-day block when `weekly`; missing values stay gaps.
+// Daily values on `dates`, or the mean of each calendar week when `weekly`; missing values stay gaps.
 function recoveryPeriodPoints(history, dates, today, weekly) {
+  if (weekly) return analysisWeeklyMeanPoints(history.filter((point) => point.date >= dates[0] && point.date <= today), dates[0], today);
   const values = new Map(history.filter((point) => point.date <= today).map((point) => [point.date, point.value]));
-  if (!weekly) return dates.map((date) => ({ date, value: values.get(date) ?? null }));
-  return Array.from({ length: dates.length / 7 }, (_, weekIndex) => {
-    const weekDates = dates.slice(weekIndex * 7, weekIndex * 7 + 7);
-    const weekValues = weekDates.map((date) => values.get(date)).filter((value) => Number.isFinite(Number(value))).map(Number);
-    return { date: weekDates.at(-1), value: weekValues.length ? weekValues.reduce((sum, value) => sum + value, 0) / weekValues.length : null };
-  });
+  return dates.map((date) => ({ date, value: values.get(date) ?? null }));
 }
 
 function renderRecoveryCharts(report, root) {
@@ -2944,10 +2971,12 @@ function renderRecoveryCharts(report, root) {
   const today = report?.as_of || timezoneDateKey(state.data?.profile?.timezone, new Date());
   const period = analysisPeriod(recoveryHistoryPeriod);
   const weekly = analysisPeriodWeekly(recoveryHistoryPeriod);
-  // Whole weeks of 7 days each, so 12 Monate end on 52 weeks.
-  const dayCount = weekly ? period.weeks * 7 : period.days;
-  const dates = Array.from({ length: dayCount }, (_, index) => addDateKey(today, index - dayCount + 1));
-  const start = dates[0], end = today;
+  // Whole calendar weeks, so 12 Monate end on 52 weeks and every week is dated at its Monday.
+  const weekStart = addDateKey(today, -((new Date(`${today}T12:00:00Z`).getUTCDay() + 6) % 7));
+  const start = weekly ? addDateKey(weekStart, -7 * (period.weeks - 1)) : addDateKey(today, 1 - period.days);
+  const dayCount = Math.round((Date.parse(today) - Date.parse(start)) / 86400000) + 1;
+  const dates = Array.from({ length: dayCount }, (_, index) => addDateKey(start, index));
+  const end = today;
   const series = metrics.map(([metric, title, unit, color]) => {
     const item = baselines.find((candidate) => candidate.metric === metric);
     if (!item) return { label: title, legendLabel: title, unit, color, points: dates.map((date) => ({ date, value: null })) };
@@ -2974,12 +3003,12 @@ function renderRecoveryCharts(report, root) {
     const values = item.points.filter(analysisValidPoint).map((point) => Number(point.value));
     const average = values.length ? values.reduce((sum, value) => sum + value, 0) / values.length : null;
     const title = average == null ? item.legendLabel : `${item.legendLabel} · Ø ${analysisValue(average, item.unit)}`;
-    return collectAnalysisChart(missing, title, [item], item.unit, start, end, "", { compactInfo: true, includeCoverage: false, showLegend: false });
+    return collectAnalysisChart(missing, title, [item], item.unit, start, end, "", { showLegend: false, calendarWeeks: weekly, ...(weekly ? { caption: analysisBasisCaption(item.unit, true, "mean") } : {}) });
   }).filter(Boolean);
   const readiness = state.data?.performance?.history?.provider_metrics?.training_readiness_history;
   if (readiness) {
     const readinessCharts = document.createDocumentFragment();
-    renderProviderMetrics({ training_readiness_history: readiness }, readinessCharts, start, end, missing);
+    renderProviderMetrics({ training_readiness_history: readiness }, readinessCharts, start, end, missing, { weeklyReadiness: weekly });
     charts.unshift(...readinessCharts.children);
   }
   root.append(analysisPeriodControls("Zeitraum für Erholung", recoveryHistoryPeriod, (choice) => { recoveryHistoryPeriod = choice; renderPersonalRecovery(report); }, { trend: true }));
@@ -3476,7 +3505,7 @@ function analysisWeeklySumPoints(points, start, end) {
 
 function analysisWeeklyMeanPoints(points, start, end) {
   return analysisWeeklyPoints(points, start, end, (known) => ({
-    value: Math.round(known.reduce((sum, point) => sum + Number(point.value), 0) / known.length * 10) / 10, observedDate: known.at(-1).date,
+    value: Math.round(known.reduce((sum, point) => sum + Number(point.value), 0) / known.length * 10) / 10, observedDate: known.at(-1).date, count: known.length,
   }));
 }
 
