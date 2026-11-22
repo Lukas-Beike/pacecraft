@@ -254,6 +254,7 @@ accessible text, not a declared absence.
 | R79 | Mountjoy et al. 2023, "2023 International Olympic Committee's (IOC) consensus statement on Relative Energy Deficiency in Sport (REDs)", Br J Sports Med 57(17):1073-1097, DOI `10.1136/bjsports-2023-106994`, PMID 37752011 | abstract | Consensus: REDs are health and performance impairments in female and male athletes exposed to low energy availability, defined as too little intake relative to exercise energy expenditure. The abstract names no cut-off. |
 | R80 | Garthe, Raastad, Refsnes, Koivisto & Sundgot-Borgen 2011, "Effect of two different weight-loss rates on body composition and strength and power-related performance in elite athletes", Int J Sport Nutr Exerc Metab 21(2):97-104, DOI `10.1123/ijsnem.21.2.97`, PMID 21558571 | abstract | 24 elite athletes with strength training, randomized to a target loss of 0.7 % (n = 13) or 1.4 % (n = 11) of body weight per week: lean mass rose about 2.1 % in the slow group and was unchanged in the fast group. |
 | R81 | Hector & Phillips 2018, "Protein recommendations for weight loss in elite athletes: a focus on body composition and performance", Int J Sport Nutr Exerc Metab 28(2):170-177, DOI `10.1123/ijsnem.2017-0273`, PMID 29182451 | abstract | Narrative review: current recommendations for athletes losing weight are 1.6-2.4 g protein/kg/day. |
+| R82 | Galbraith, Hopker, Lelliott, Diddams & Passfield 2014, "A single-visit field test of critical speed", IJSPP 9(6):931-935, PMID 24664950, DOI `10.1123/ijspp.2013-0507` | abstract (PubMed record) | 10 male distance runners; three outdoor-track runs of 3600, 2400 and 1200 m in one visit with 30 or 60 min recovery against treadmill runs at 100, 105 and 110 % of vVO2max. CS did not differ between tests (r = .89 and .82); D′ differed and did not correlate; typical error 0.14 m/s for CS and 88 m for D′; repeat variation 0.4 % (CS) and 13 % (D′). |
 | L1 | Phillips & Steven 2026, "Perspective: sleep regularity—where do we go from here?", Sleep 49(8), PMID 42023690, DOI `10.1093/sleep/zsag114` | full text | Perspective without new data, formula, threshold or wearable/athlete content. Background only; not decision evidence. |
 
 ### Vendor documentation (not peer-reviewed)
@@ -309,6 +310,8 @@ R76 and R77 were added on 2026-11-21 (#3833) for the M10 running step test
 from bibliographic records (Crossref, publisher abstracts); their correction
 status was not checked. No study comparing stage lengths of a running step
 test for DFA-α1 was found.
+R82 was added on 2026-11-22 (#3919) from a PubMed record (E-utilities); its
+correction status was not checked.
 R52 was added on 2026-11-08 (#1773) from a PubMed search
 (`Manzi individualized training impulse`); its correction status was not
 checked.

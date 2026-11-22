@@ -71,16 +71,20 @@ every named number the code fixes. A test fails when it is out of date.
 | `STORED_PROVIDERS_SOURCE` | `'Gespeicherte Provider-Daten'` | `backend/performance/context.py` | The source of a context built from the stored provider values. |
 | `LT1_HISTORY_WEEKS` | `12` | `backend/performance/context.py` | The threshold charts' twelve calendar weeks (#2693). |
 | `METHOD_ID` | `'critical-power-speed'` | `backend/performance/critical_power.py` |  |
-| `METHOD_VERSION` | `2` | `backend/performance/critical_power.py` |  |
+| `METHOD_VERSION` | `3` | `backend/performance/critical_power.py` |  |
 | `WINDOW_DAYS` | `28` | `backend/performance/critical_power.py` |  |
 | `EFFORT_SECONDS` | `{'ride': (180, 420, 720, 1200), 'run': (180, 420, 720)}` | `backend/performance/critical_power.py` |  |
 | `THREE_POINT_SECONDS` | `(180, 420, 720)` | `backend/performance/critical_power.py` | The card 3 protocol, kept for cycling as a sensitivity fit. |
 | `INTERCEPT_RELIABILITY` | `'low'` | `backend/performance/critical_power.py` | Hunter 2023: W′/D′ from everyday training agree only weakly with tests. |
 | `MIN_RECOVERY_SECONDS` | `1800` | `backend/performance/critical_power.py` | Efforts in one session count separately only with this much recovery between. |
 | `MAX_RELATIVE_RESIDUAL` | `0.03` | `backend/performance/critical_power.py` |  |
+| `TEST_DURATION_SECONDS` | `(120, 1200)` | `backend/performance/critical_power.py` | A test effort lap lasts 2 to 20 min (card M4 v6, #3919). |
 | `PLAUSIBLE` | `{'ride': {'intercept': (1000.0, 50000.0), 'slope': (50.0, 600.0)}, 'run': {'intercept': (10.0, 50... (sha256 5065712a)` | `backend/performance/critical_power.py` |  |
 | `SCOPE` | `'Experimentelle Modellschätzung aus den besten Belastungen der letzten 28 Tage (Rad 3, 7, 12 und ... (sha256 3da99455)` | `backend/performance/critical_power.py` |  |
 | `POWER_SOURCE_UNCHECKED` | `'unchecked'` | `backend/performance/critical_power.py` | Garmin and Wahoo deliver no measured-versus-estimated power signal. |
+| `METHOD` | `'critical-speed-test-laps'` | `backend/performance/critical_speed_test.py` |  |
+| `TEST_METERS` | `(1200, 2400, 3600)` | `backend/performance/critical_speed_test.py` |  |
+| `DISTANCE_TOLERANCE` | `0.03` | `backend/performance/critical_speed_test.py` |  |
 | `VO2MAX_UNIT` | `'ml/kg/min'` | `backend/performance/current_metrics.py` |  |
 | `LOCAL_SOURCE_LABEL` | `'Lokal'` | `backend/performance/current_metrics.py` | The label of a locally confirmed zone configuration's value. |
 | `PROFILE_SOURCE_LABEL` | `'Manuell'` | `backend/performance/current_metrics.py` | The label of a profile value. |
@@ -151,7 +155,7 @@ every named number the code fixes. A test fails when it is out of date.
 | `CALIBRATION_TABLE_RPES` | `tuple(range(1, 11))` | `backend/performance/local_tss.py` | The RPE values of the detail table (factor per RPE of its +-1 band). |
 | `LOCAL_SOURCE` | `'local'` | `backend/performance/local_tss.py` |  |
 | `LOCAL_INDOOR_SOURCE` | `'local_indoor'` | `backend/performance/local_tss.py` |  |
-| `CURVE_FORMAT_VERSION` | `2` | `backend/performance/mean_max_curve.py` | The curve computation's own version (#2821): it covers the inputs without a method version of their own (merge_details, analysis_input, grade_adjustment) and the stored payload fields. Bump it whenever any of them changes the curves, so stored curves are computed again; the golden-curve test pins it. |
+| `CURVE_FORMAT_VERSION` | `3` | `backend/performance/mean_max_curve.py` | The curve computation's own version (#2821): it covers the inputs without a method version of their own (merge_details, analysis_input, grade_adjustment) and the stored payload fields. Bump it whenever any of them changes the curves, so stored curves are computed again; the golden-curve test pins it. |
 | `SLEEP_SECTION` | `'sleep'` | `backend/performance/morning_battery.py` |  |
 | `MORNING_RETRY_SECONDS` | `15 * 60` | `backend/performance/morning_battery_service.py` |  |
 | `MORNING_MAX_ATTEMPTS` | `3` | `backend/performance/morning_battery_service.py` |  |
