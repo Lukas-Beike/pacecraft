@@ -3,7 +3,7 @@ const { test } = require("node:test");
 const { extractFunctions } = require("./frontend-harness.cjs");
 
 // checkinChanges sends only what differs from the stored day (#3953), so an omitted field keeps its value.
-const { checkinChanges } = extractFunctions("checkin-form.js", ["CHECKIN_SCORES", "CHECKIN_TAGS", "checkinComplaintKey", "checkinSorted", "checkinFilled", "checkinChanges"], {});
+const { checkinChanges } = extractFunctions("checkin-form.js", ["CHECKIN_SCORES", "CHECKIN_TAGS", "checkinComplaintKey", "checkinSorted", "checkinEntries", "checkinFilled", "checkinChanges"], {});
 
 // Objects built inside the harness context compare by value after a JSON round trip.
 const plain = (value) => JSON.parse(JSON.stringify(value));

@@ -10,6 +10,7 @@ const checkinReceipts = new Map();
 
 const checkinComplaintKey = (item) => `${item.area}|${item.side}`;
 const checkinSorted = (items) => [...items].sort((a, b) => checkinComplaintKey(a).localeCompare(checkinComplaintKey(b)));
+const checkinEntries = (object) => Object.entries(object).sort(([a], [b]) => a.localeCompare(b));
 const checkinFilled = (value) => value !== null && value !== undefined && value !== "";
 
 // Today's row: what is stored and the way into the form. A saved earlier day keeps its receipt row, without
@@ -21,8 +22,11 @@ function checkinRow(dateKey, todayKey, checkin) {
   const scores = stored ? CHECKIN_SCORES.filter(([key]) => Number.isFinite(stored[key])).map(([key, label]) => `${label} ${stored[key]}`) : [];
   const status = h("p", { className: "planned-move-status", role: "status" });
   if (receipt) status.append(receipt.text, ...(receipt.change?.id ? plannedMoveUndo(dateKey, receipt, status, checkinReceipts) : []));
-  const open = dateKey === todayKey ? h("button", { type: "button", className: "secondary-button" }, stored ? "Ändern" : "Check-in") : null;
-  open?.addEventListener("click", () => void openCheckinForm(dateKey));
+  let open = null;
+  if (dateKey === todayKey) {
+    open = h("button", { type: "button", className: "secondary-button" }, stored ? "Ändern" : "Check-in");
+    open.addEventListener("click", () => void openCheckinForm(dateKey));
+  }
   return h("div", { className: "planned-day-context planned-day-checkin", dataset: { checkin: dateKey } },
     h("span", null, stored ? scores.join(" · ") || "Check-in" : "Noch kein Check-in"), open, status.childNodes.length ? status : null);
 }
@@ -35,13 +39,14 @@ function checkinSelect(name, label, options, value) {
   return h("select", { name, "aria-label": label }, options.map(([key, text]) => h("option", { value: key, selected: key === value }, text)));
 }
 
-function checkinComplaintRow(item = { area: "other", side: "none", severity: "" }) {
+// One complaint row; `onRemove` runs after the row is gone.
+function checkinComplaintRow({ area = "other", side = "none", severity = "" }, onRemove) {
   const remove = h("button", { type: "button", className: "secondary-button", "aria-label": "Beschwerde entfernen" }, "×");
-  remove.addEventListener("click", () => remove.closest(".checkin-complaint").remove());
+  remove.addEventListener("click", () => { remove.closest(".checkin-complaint").remove(); onRemove(); });
   return h("div", "checkin-complaint",
-    checkinSelect("area", "Bereich", Object.entries(COMPLAINT_AREA_LABELS), item.area),
-    checkinSelect("side", "Seite", CHECKIN_SIDES, item.side),
-    h("input", { name: "severity", type: "number", min: 0, max: 10, step: 1, inputMode: "numeric", required: true, "aria-label": "Stärke 0 bis 10", value: item.severity }),
+    checkinSelect("area", "Bereich", Object.entries(COMPLAINT_AREA_LABELS), area),
+    checkinSelect("side", "Seite", CHECKIN_SIDES, side),
+    h("input", { name: "severity", type: "number", min: 0, max: 10, step: 1, inputMode: "numeric", required: true, "aria-label": "Stärke 0 bis 10", value: severity }),
     remove);
 }
 
@@ -75,20 +80,20 @@ function checkinChanges(values, stored, dateKey) {
   // A tag is answered once it was checked or already stored; an unchecked stored tag is a "no".
   const before = stored.tag_answers || {};
   const answers = Object.fromEntries(Object.entries(values.tags).filter(([key, on]) => on || key in before));
-  if (JSON.stringify(Object.entries(answers).sort()) !== JSON.stringify(Object.entries(before).sort())) body.tag_answers = answers;
+  if (JSON.stringify(checkinEntries(answers)) !== JSON.stringify(checkinEntries(before))) body.tag_answers = answers;
   if (JSON.stringify(checkinSorted(values.complaints)) !== JSON.stringify(checkinSorted(stored.complaints || []))) body.complaints = values.complaints;
   if (clear.length) body.clear_fields = clear;
   return Object.keys(body).length > 1 ? body : null;
 }
 
 function checkinFormNodes(stored) {
-  const complaints = h("div", "checkin-complaints", (stored.complaints || []).map(checkinComplaintRow));
   const add = h("button", { type: "button", className: "secondary-button" }, "+ Beschwerde");
-  add.addEventListener("click", () => {
-    complaints.append(checkinComplaintRow());
-    add.hidden = complaints.childElementCount >= CHECKIN_MAX_COMPLAINTS;
-  });
-  add.hidden = complaints.childElementCount >= CHECKIN_MAX_COMPLAINTS;
+  const complaints = h("div", "checkin-complaints");
+  // "+ Beschwerde" shows while another complaint fits.
+  const refresh = () => { add.hidden = complaints.childElementCount >= CHECKIN_MAX_COMPLAINTS; };
+  complaints.append(...(stored.complaints || []).map((item) => checkinComplaintRow(item, refresh)));
+  add.addEventListener("click", () => { complaints.append(checkinComplaintRow({}, refresh)); refresh(); });
+  refresh();
   const dayStatus = h("fieldset", "appearance-control", h("legend", null, "Tagesstatus"), h("div", "segmented-control", CHECKIN_DAY_STATUS.map(([key, label]) =>
     h("label", null, h("input", { type: "radio", name: "day_status", value: key, checked: key === (stored.day_status || "unknown") }), label))));
   return [

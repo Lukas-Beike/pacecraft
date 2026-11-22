@@ -89,3 +89,15 @@ test("@responsive the reminder link opens the form, an earlier day is chosen by 
   expect(await day.evaluate((input) => input.validity.rangeOverflow)).toBe(true);
   await expect(dialog).toBeVisible();
 });
+
+test("@responsive the add button for a complaint follows the limit of eight", async ({ page }) => {
+  await page.goto("/#plan");
+  await page.locator(".planned-day.is-today [data-checkin] button").click();
+  const dialog = page.locator("#checkinDialog");
+  const add = dialog.getByRole("button", { name: "+ Beschwerde" });
+  for (let count = 0; count < 8; count += 1) await add.click();
+  await expect(dialog.locator(".checkin-complaint")).toHaveCount(8);
+  await expect(add).toBeHidden();
+  await dialog.getByRole("button", { name: "Beschwerde entfernen" }).first().click();
+  await expect(add).toBeVisible();
+});

@@ -104,7 +104,7 @@ class FeedbackPostRoutes:
         or malformed `date`.
         """
         assert self._checkin_service is not None
-        given = request.query.get("date") or [None]
+        given = request.query.get("date") or [""]
         handler.send_json(200, {"checkin": self._checkin_service().day(given[0])})
 
     def _checkin(self, handler: Any, _request: RouteRequest) -> None:
