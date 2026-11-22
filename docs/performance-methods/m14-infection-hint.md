@@ -143,6 +143,10 @@ athlete for this one athlete and is not validated for anyone.
 
 ## Open points
 
+- Validation check (#3920): after three months, the shown hints that
+  were followed within 3 days by "Ich bin krank" or an illness
+  check-in, and the illness check-ins without a hint before them. Both
+  counts are recorded here.
 - Validation figures for Garmin's breathing rate during sleep.
 - Athlete review of this card before release.
 

@@ -389,6 +389,10 @@ bias that is the same on every day is not visible in the band.
 
 ## Open points
 
+- Validation check (#3920): after 12 weeks, the own total from intake
+  and the weight trend against the formula rows in `fit_scale`. Whether a
+  best-fitting source is named, and the mean errors with their bands,
+  are recorded here.
 - The reader (`backend/nutrition/energy_inputs.py`) reads the diary, the
   canonical weigh-ins, daily steps and floors, the sessions and their streams
   (`backend/nutrition/wiring.py`); the diagnostics show its counts under

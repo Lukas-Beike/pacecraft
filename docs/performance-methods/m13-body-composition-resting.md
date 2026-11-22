@@ -139,6 +139,10 @@ None of these is a validation in this athlete or in trained endurance athletes a
 
 ## Open points
 
+- Validation check (#3920): after 12 weeks, the Katch-McArdle and
+  Cunningham rows (this card's lean mass) against the own total from the
+  weight trend (M12 `fit_scale`). Their mean errors with bands are
+  recorded here.
 - The athlete's method review is pending. The orchestrator is running an independent cross-check before the energy table is shown (#3180).
 - The textbook origin of the name "Katch-McArdle" is not verified; the coefficients are verified through R73's abstract.
 - R70's abstract was not read: its coefficients match a secondary reference, and the women's fitted age range of 18–55 is from the code comment, not verified.
