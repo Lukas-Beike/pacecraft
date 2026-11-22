@@ -279,21 +279,27 @@ class PruneWorktreesTests(unittest.TestCase):
 
         out = io.StringIO()
         with mock.patch.object(prune, "run", run), redirect_stdout(out):
-            self.assertEqual(prune.schedule("C:/repo", windows=True), 0)
+            self.assertEqual(prune.schedule("C:/repo", 3.0, windows=True), 0)
         (args,) = calls
         self.assertEqual(args[:9], ["schtasks", "/Create", "/F", "/SC", "DAILY", "/ST", "04:00", "/TN", prune.TASK])  # fmt: skip
         self.assertEqual(
             args[10],
-            'cmd /c cd /d "C:/repo" && py -3 scripts/prune_worktrees.py --apply',
+            'cmd /c cd /d "C:/repo" && py -3 scripts/prune_worktrees.py --apply --idle-days 3',
         )
         out = io.StringIO()
         with redirect_stdout(out):
-            self.assertEqual(prune.schedule("/srv/repo", windows=False), 0)
+            self.assertEqual(prune.schedule("/srv/repo", 5.5, windows=False), 0)
         self.assertIn('0 4 * * * cd "/srv/repo" && python3 scripts/', out.getvalue())
         repo = self.make()
         with mock.patch.object(prune, "schedule", return_value=0) as scheduled:
             self.assertEqual(self.run_main(repo, ["--schedule"])[0], 0)
-        scheduled.assert_called_once_with(str(repo.tmp / "primary"))
+        scheduled.assert_called_once_with(
+            str(repo.tmp / "primary"), 3.0, "origin/develop"
+        )
+        # The task keeps the chosen idle days; another base is refused.
+        self.assertIn("--apply --idle-days 5.5", out.getvalue())
+        with redirect_stdout(io.StringIO()):
+            self.assertEqual(prune.schedule("/srv/repo", 3.0, "origin/main"), 2)
 
     def test_outside_a_repository_exits_nonzero(self):
         err = io.StringIO()
