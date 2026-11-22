@@ -78,6 +78,8 @@ CSS_NO_SELECTORS = ("@keyframes", "@-webkit-keyframes", "@font-face", "@page")
 # A Python file `ruff format` would rewrite (#3061). The files unformatted when
 # the check arrived are baseline debt; one a push leaves unformatted is new.
 FORMAT = "format"
+# Instruction files may not grow (#3925): their line counts are recorded too.
+INSTRUCTION_GLOBS = ("AGENTS.md", "*/AGENTS.md", ".agents/skills/*/SKILL.md")
 # Line and column are reported for humans but are not debt identity, so an
 # unrelated edit that moves a known diagnostic does not fail the ratchet.
 IDENTITY_FIELDS = ("tool", "path", "code", "message_sha256")
@@ -847,6 +849,34 @@ def collect(root: Path, notes: dict[str, str]) -> tuple[dict[str, str], list[dic
     )
 
 
+def instruction_lines(root: Path) -> dict[str, int]:
+    """Line count per instruction file (AGENTS.md and skill files)."""
+    return {
+        path.relative_to(root).as_posix(): len(
+            path.read_text(encoding="utf-8").splitlines()
+        )
+        for pattern in INSTRUCTION_GLOBS
+        for path in sorted(root.glob(pattern))
+    }
+
+
+def size_findings(
+    recorded: Mapping[str, int], sizes: Mapping[str, int]
+) -> tuple[list[str], list[str]]:
+    """Grown or unrecorded instruction files, and shrunk or removed ones."""
+    grown = [
+        f"size {path}: {recorded.get(path, 0)} -> {lines} lines"
+        for path, lines in sorted(sizes.items())
+        if lines > recorded.get(path, 0)
+    ]
+    shrunk = [
+        f"size {path}: {lines} -> {sizes.get(path, 0)} lines"
+        for path, lines in sorted(recorded.items())
+        if sizes.get(path, 0) < lines
+    ]
+    return grown, shrunk
+
+
 def identity(item: dict) -> dict:
     return {field: item[field] for field in IDENTITY_FIELDS}
 
@@ -915,6 +945,7 @@ def check(
     diagnostics: list[dict],
     skipped: tuple[str, ...] = (),
     notes: Mapping[str, str] = MappingProxyType({}),
+    sizes: Mapping[str, int] | None = None,
 ) -> int:
     if baseline["schema"] != 1:
         raise RuntimeError("Quality baseline schema does not match")
@@ -937,16 +968,31 @@ def check(
     for label, items in (("NEW", added), ("OBSOLETE", obsolete)):
         for item in items:
             print(f"{label} {finding(item)}{notes.get(note_key(item), '')}")
-    print(
-        f"Quality ratchet: {len(diagnostics)} existing, {len(added)} new, {len(obsolete)} obsolete"
+    grown, shrunk = (
+        ([], [])
+        if sizes is None
+        else size_findings(baseline.get("instruction_lines", {}), sizes)
     )
-    if obsolete:
+    print(*(f"NEW {line}" for line in grown), sep="\n", end="\n" if grown else "")
+    print(*(f"OBSOLETE {line}" for line in shrunk), sep="\n", end="\n" if shrunk else "")
+    if grown:
+        print(
+            "An instruction file may not grow: remove as many lines as you add "
+            "(#3925); a reviewed exception is recorded with --snapshot."
+        )
+    added_count = len(added) + len(grown)
+    obsolete_count = len(obsolete) + len(shrunk)
+    print(
+        f"Quality ratchet: {len(diagnostics)} existing, {added_count} new, "
+        f"{obsolete_count} obsolete"
+    )
+    if obsolete or shrunk:
         print(
             "Obsolete baseline entries must be removed. Regenerate with "
             "`python tools/quality_baseline.py --snapshot --base <commit>`, which "
             "rewrites tests/fixtures/quality_baseline.json."
         )
-    return 1 if added or obsolete else 0
+    return 1 if added_count or obsolete_count else 0
 
 
 def main() -> int:
@@ -984,6 +1030,7 @@ def main() -> int:
                         identity(item) for item in sorted(diagnostics, key=identity_key)
                     ],
                     "coverage_evidence": current.get("coverage_evidence"),
+                    "instruction_lines": instruction_lines(ROOT),
                 },
                 indent=2,
             )
@@ -999,6 +1046,7 @@ def main() -> int:
         diagnostics,
         () if eslint_script() else ("eslint",),
         notes,
+        instruction_lines(ROOT),
     )
 
 
