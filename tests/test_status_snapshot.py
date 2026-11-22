@@ -4,6 +4,7 @@ import importlib.util
 import io
 import json
 import subprocess
+import tempfile
 import unittest
 from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
@@ -23,6 +24,9 @@ def fake_gh(responses):
         key = " ".join(args[1:3])
         if key == "pr list":
             key = "pr list merged" if "merged" in args else "pr list open"
+            key = "pr list search" if "--search" in args else key
+        if key == "run list" and "--branch" in args:
+            key = "run list develop"
         if key == "api repos/o/n/compare/abc123...develop":
             key = "compare"
         body = responses[key]
@@ -72,6 +76,21 @@ RESPONSES = {
         {"event": "schedule", "status": "completed", "conclusion": "", "createdAt": "t"}
     ],
     "issue list": [{"number": 3, "title": "Blocker"}],
+    "run list develop": [
+        {
+            "workflowName": "Tests",
+            "status": "completed",
+            "conclusion": "success",
+            "headSha": "f" * 40,
+        },
+        {
+            "workflowName": "Tests",
+            "status": "completed",
+            "conclusion": "failure",
+            "headSha": "e" * 40,
+        },
+    ],
+    "pr list search": [{"number": 30, "title": "fix: y", "mergedAt": "t2"}],
 }
 
 
@@ -157,6 +176,38 @@ class StatusSnapshotTests(unittest.TestCase):
         self.assertIn("  chore: direct commit (", text)
         self.assertNotIn("#None", text)
         self.assertIn("Release blockers:\n  #3 Blocker", text)
+        # Develop push runs of the newest commit only, and open issues (#3926).
+        self.assertIn("Develop push runs:\n  fffffffff Tests: success\n", text)
+        self.assertNotIn("failure", text)
+        self.assertIn("Open issues (1): #3", text)
+
+    def test_since_lists_merged_prs_and_the_state_file_reports_changes(self):
+        # A scheduled check wakes the orchestrator only on a change (#3926).
+        responses = dict(RESPONSES)
+        with tempfile.TemporaryDirectory() as directory:
+            state = Path(directory) / "snapshot.sha256"
+            argv = [
+                "--repo",
+                "o/n",
+                "--since",
+                "2026-01-05",
+                "--state-file",
+                str(state),
+            ]
+            codes, outputs = [], []
+            for issues in ([{"number": 3, "title": "Blocker"}],) * 2 + ([],):
+                responses["issue list"] = issues
+                out = io.StringIO()
+                with (
+                    mock.patch.object(snapshot.subprocess, "run", fake_gh(responses)),
+                    redirect_stdout(out),
+                ):
+                    codes.append(snapshot.main(argv))
+                outputs.append(out.getvalue())
+        self.assertEqual(codes, [3, 0, 3])
+        self.assertIn("Merged since the given time (1):\n  #30 fix: y (t2)", outputs[0])
+        self.assertEqual(outputs[1], "status_snapshot: unchanged\n")
+        self.assertIn("Open issues (0)", outputs[2])
 
     def test_gh_failure_exits_nonzero_with_clear_message(self):
         err = io.StringIO()
