@@ -1210,7 +1210,9 @@ a.message-retry { display: grid; place-items: center; text-decoration: none; }
   .race-plan-table thead { display: none; }
   .race-plan-table, .race-plan-table tbody { display: block; }
   .race-plan-table tr { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px 8px; padding: 6px 0; border-top: 1px solid var(--line); }
-  .race-plan-table td { display: block; padding: 0; border: 0; text-align: left; }
+  .race-plan-table td { display: block; padding: 0; border: 0; }
+  /* As specific as the right-aligned value columns above, and later. */
+  .race-plan-table :is(th, td):not(:first-child) { text-align: left; }
   .race-plan-table td::before { content: attr(data-label); display: block; color: var(--subtle); font-size: .72rem; }
 }
 .race-plan-rows > div { display: flex; justify-content: space-between; gap: 12px; padding: 6px 0; border-top: 1px solid var(--line); }
