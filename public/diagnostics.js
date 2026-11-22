@@ -10,6 +10,8 @@ async function loadLogs() {
   const output = $("#logsOutput");
   const button = $("#logsRefreshButton");
   if (!output || !button) return;
+  // The box scrolls, so the keyboard must reach it.
+  makeScrollRegionFocusable(output, "Server-Logs");
   button.disabled = true;
   output.textContent = "Logs werden geladen…";
   try {
