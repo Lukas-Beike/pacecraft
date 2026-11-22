@@ -343,7 +343,7 @@ class YazioClient:
             if not self._config().yazio_configured:
                 raise AppError(
                     409,
-                    "Yazio ist nicht konfiguriert.",
+                    "Yazio ist nicht eingerichtet.",
                     reason="not_configured",
                 )
             if (cached := self._cached(path)) is not None:

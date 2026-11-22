@@ -38,15 +38,15 @@ Default route: `#coach`. Navigation items: `#coach`, `#plan`, `#nutrition`, `#an
 | `#more/connections` | `settingsPanel` | `more` | `/api/context-preview`, `/api/logs?limit=250`, `/api/providers/connections`, `/api/nutrition/yazio/status` | Verbindung prüfen, Mit Garmin anmelden, Garmin trennen, Wahoo verbinden, Synchronisieren, Speichern, Entfernen | loading, error, notConfigured, offline |
 | `#more/equipment` | `settingsPanel` | `more` | `/api/context-preview`, `/api/logs?limit=250`, `/api/analysis/training-records` | Fahrrad, Laufschuhe, Wartung erledigt, Rückgängig | loading, empty, error, offline |
 | `#more/operations` | `settingsPanel` | `more` | `/api/context-preview`, `/api/logs?limit=250`, `/api/privacy/gps` | Logs herunterladen, Benachrichtigungen aktivieren, Daten exportieren, Lokale Daten löschen, Backup herunterladen, Backup wiederherstellen, Diagnose herunterladen, Diagnose löschen, Abmelden | loading, empty, error, offline |
-| `#more/profile` | `profilePanel` | `more` | `/api/context-preview`, `/api/logs?limit=250`, `/api/profile`, `/api/zones` | Athletenkontext speichern, Lokal speichern, Übernehmen | empty, offline |
+| `#more/profile` | `profilePanel` | `more` | `/api/context-preview`, `/api/logs?limit=250`, `/api/profile`, `/api/zones` | Profil speichern, Lokal speichern, Übernehmen | empty, offline |
 | `#nutrition` | `nutritionPanel` | `nutrition` | `/api/nutrition/day`, `/api/body/energy` | Ernährung aktualisieren, Vorheriger Tag, Nächster Tag, Heute, Als geschätzt markieren, Nicht geschätzt, Löschen, Rückgängig, Erneut laden | loading, empty, error, offline |
 | `#nutrition/body` | `nutritionPanel` | `nutrition` | `/api/performance`, `/api/body/skinfolds`, `/api/body/energy` | Ernährung aktualisieren, 4 Wochen, 3 Monate, 6 Monate, 12 Monate, Gewicht eintragen, Körperfett eintragen, Prozent, Hautfalten, Speichern, Löschen, Abbrechen | loading, empty, error, offline |
 | `#nutrition/diary` | `nutritionPanel` | `nutrition` | `/api/nutrition/day`, `/api/body/energy` | Ernährung aktualisieren, Vorheriger Tag, Nächster Tag, Heute, Als geschätzt markieren, Nicht geschätzt, Löschen, Rückgängig, Erneut laden | loading, empty, error, offline |
 | `#nutrition/products` | `nutritionPanel` | `nutrition` | `/api/nutrition/products?scope=all`, `/api/nutrition/products/refresh-all` | Barcode scannen, Nährwerttabelle fotografieren, Produkt manuell erfassen, Suchen, Alle aktualisieren, Aufräumen | loading, empty, error, offline |
 | `#nutrition/week` | `nutritionPanel` | `nutrition` | `/api/nutrition/week` | Ernährung aktualisieren, 4 Wochen, 3 Monate, 6 Monate, 12 Monate, Tageswerte anzeigen | loading, empty, error, offline |
-| `#plan` | `workoutsPanel` | `plan` | `/api/plan`, `/api/library?limit=100`, `/api/activities?limit=100`, `/api/analysis/week-review` | Kalender aktualisieren, Woche, Monat, Woche synchronisieren, Verschieben, Feedback, Mit dem Coach analysieren, Mit Coach lösen | loading, empty, error, notConfigured, offline |
+| `#plan` | `workoutsPanel` | `plan` | `/api/plan`, `/api/library?limit=100`, `/api/activities?limit=100`, `/api/analysis/week-review` | Kalender aktualisieren, Woche, Monat, Woche synchronisieren, Verschieben, Feedback, Mit Coach besprechen, Mit Coach besprechen | loading, empty, error, notConfigured, offline |
 | `#plan/library` | `workoutsPanel` | `plan` | `/api/plan`, `/api/library?limit=100` | Kalender aktualisieren, Weitere Bibliothekseinheiten laden, Erneut senden | loading, empty, error, offline |
-| `#plan/overview` | `workoutsPanel` | `plan` | `/api/plan`, `/api/library?limit=100`, `/api/activities?limit=100`, `/api/analysis/week-review` | Kalender aktualisieren, Woche, Monat, Woche synchronisieren, Verschieben, Feedback, Mit dem Coach analysieren, Mit Coach lösen | loading, empty, error, notConfigured, offline |
+| `#plan/overview` | `workoutsPanel` | `plan` | `/api/plan`, `/api/library?limit=100`, `/api/activities?limit=100`, `/api/analysis/week-review` | Kalender aktualisieren, Woche, Monat, Woche synchronisieren, Verschieben, Feedback, Mit Coach besprechen, Mit Coach besprechen | loading, empty, error, notConfigured, offline |
 | `#plan/season` | `workoutsPanel` | `plan` | `/api/plan`, `/api/library?limit=100`, `/api/profile` | Kalender aktualisieren, Erneut laden | loading, empty, error, offline |
 
 Kalender segments: `overview`, `library`, `season`.
@@ -128,6 +128,25 @@ expression. Other inline status lines are not listed.
 | `renderCompetitions` | `h(.context-empty)` | Noch keine Wettkämpfe gespeichert. |  |
 <!-- END GENERATED STATES -->
 
+## Terms
+
+One word per thing (athlete decision, #3933). `tests/copy-labels.test.cjs`
+fails when the client source holds a word on the right.
+
+| Thing | Term | Not |
+| --- | --- | --- |
+| Heart rate | Herzfrequenz, Herzfrequenzzonen | Puls, HF, Pulszonen, HF-Zonen |
+| Cadence | Trittfrequenz (bike), Schrittfrequenz (run) | Kadenz |
+| Speed | Geschwindigkeit | Tempo (Pace stays for pace sports) |
+| Power zones | Leistungszonen | Power-Zonen |
+| Training load (TSS, Garmin) | Belastung | Trainingsbelastung |
+| Session-RPE metric | RPE-Belastung, in RPE-Punkten | Session-RPE-Last, Kurzzeitbelastung, Langzeitbelastung, AU |
+| Value the athlete entered | Eingetragen | Lokal |
+| Strength | Kraft | Krafttraining |
+| Profile | Profil, Profil speichern | Athletenkontext |
+| Hand-over to the Coach | Mit Coach besprechen | Mit Coach lösen, Mit Coach strukturieren, Mit dem Coach analysieren |
+| Not set up | Nicht eingerichtet (setup), Nicht verbunden (connection), Nicht geprüft (check) | nicht konfiguriert, Nicht gesetzt, Noch nicht getestet |
+
 ## Copy deck
 
 Every confirmation the app asks for through `requestConfirmation`, the single
@@ -153,7 +172,7 @@ texts.
 | `public/plan-views.js` `adoptStepTestValue` | Gemessenen Wert ersetzen? | Der gemessene Wert wird durch den Wert aus dem Stufentest ersetzt. | Ersetzen |
 | `public/provider-connections.js` `changeMetricExportField` | Intervals.icu-Abgleich | (computed) ` message ` | Bestätigen |
 | `public/provider-connections.js` `configureAutomaticMetricExport` | (computed) ` enabled ? "Automatischen Abgleich aktivieren?" : "Automatischen Abgleich deaktivieren?" ` | (computed) ` message ` | Bestätigen |
-| `public/provider-connections.js` `clearProviderCredential` | (computed) `` `${label} entfernen?` `` | (computed) `` `${label} aus der App entfernen? Danach gilt wieder der Wert aus der Serverumgebung, falls dort einer gesetzt ist.` `` | Bestätigen |
+| `public/provider-connections.js` `clearProviderCredential` | (computed) `` `${label} entfernen?` `` | (computed) `` `${label} aus der App entfernen? Danach gilt wieder der Wert aus der Server-Einstellung, falls dort einer gesetzt ist.` `` | Bestätigen |
 | `public/provider-connections.js` `disconnectGarmin` | Garmin trennen? | Garmin trennen? Die in der App gespeicherten Garmin-Tokens werden gelöscht. Bereits geladene Daten bleiben erhalten. | Bestätigen |
 | `public/settings.js` `adoptFirstThreshold` | Gemessenen Wert ersetzen? | Der gemessene Wert wird durch den Wert aus DFA-α1 ersetzt. | Ersetzen |
 | `public/settings.js` `restoreDatabaseBackup` | Datenbank-Backup wiederherstellen? | Das aktuelle Datenbank-Backup wird vorher gesichert und durch die ausgewählte Datei ersetzt. Fortfahren? | Bestätigen |

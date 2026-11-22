@@ -342,7 +342,7 @@ test.describe("critical browser states", { tag: "@responsive" }, () => {
     const profileName = page.locator("#profileForm").getByLabel("Name", { exact: true });
     await profileName.fill("Fixture Athlete");
     await expect(page.locator("#profileDirtyIndicator")).toBeVisible();
-    await expect(page.getByRole("button", { name: "Athletenkontext speichern" })).toBeEnabled();
+    await expect(page.getByRole("button", { name: "Profil speichern" })).toBeEnabled();
 
     await expectNoBrowserErrorsOrOverflow(page, browserErrors);
   });

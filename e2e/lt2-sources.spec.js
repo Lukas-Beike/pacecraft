@@ -70,7 +70,7 @@ test("adopting DFA-α1 offers each value and asks once more above 5 %", async ({
     const body = route.request().postDataJSON();
     requests.push(body);
     if (!body.confirm_deviation) {
-      await route.fulfill({ status: 409, json: { error: "Puls 169 bpm weicht 7 % vom geltenden Wert ab.", reason: "lt2_deviation" } });
+      await route.fulfill({ status: 409, json: { error: "Herzfrequenz 169 bpm weicht 7 % vom geltenden Wert ab.", reason: "lt2_deviation" } });
       return;
     }
     await route.fulfill({ json: { configuration: { threshold: 169 }, change: { id: "change-1", entity_type: "zone_configuration", action: "create", after_hash: "x" } } });
@@ -78,7 +78,7 @@ test("adopting DFA-α1 offers each value and asks once more above 5 %", async ({
   await page.locator('[data-lt2-source="dfa_alpha1"]').getByRole("button", { name: "Übernehmen" }).click();
   const dialog = page.locator("#lt2AdoptDialog");
   await expect(dialog).toBeVisible();
-  await expect(dialog.locator(".chip")).toHaveText(["Puls 169 bpm", "Pace 4:16 /km"]);
+  await expect(dialog.locator(".chip")).toHaveText(["Herzfrequenz 169 bpm", "Pace 4:16 /km"]);
   // F8: only the pulse is adopted.
   // The chip's checkbox lies over its label, so the checkbox itself is unchecked.
   await dialog.getByRole("checkbox", { name: "Pace 4:16 /km" }).uncheck();
@@ -87,7 +87,7 @@ test("adopting DFA-α1 offers each value and asks once more above 5 %", async ({
   await expect(confirmation.locator("#confirmationDialogTitle")).toHaveText("Große Abweichung");
   await expect(confirmation.locator("#confirmationDialogMessage")).toContainText("weicht 7 %");
   await confirmation.getByRole("button", { name: "Trotzdem übernehmen" }).click();
-  await expect(page.locator("#zoneReceipt")).toContainText("DFA-α1: Puls 169 bpm übernommen");
+  await expect(page.locator("#zoneReceipt")).toContainText("DFA-α1: Herzfrequenz 169 bpm übernommen");
   expect(requests.map((body) => [body.value, body.shown, Boolean(body.confirm_deviation)])).toEqual([["heart_rate", 169, false], ["heart_rate", 169, true]]);
 });
 

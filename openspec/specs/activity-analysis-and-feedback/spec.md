@@ -745,11 +745,11 @@ The system SHALL store when the athlete last set a feedback row's session RPE, k
 
 #### Scenario: Detail shows the load
 - **WHEN** the activity detail of a session with local RPE 6.5 and 62 elapsed minutes is opened or its feedback is saved
-- **THEN** it shows `Session-RPE-Last: 403 AU · RPE 6,5 (Athletenfeedback) × 62 min`; a session without a summary shows no load line.
+- **THEN** it shows `RPE-Belastung: 403 RPE-Punkte · RPE 6,5 (Athletenfeedback) × 62 min`; a session without a summary shows no load line.
 
 #### Scenario: Open or interrupted load line
 - **WHEN** a session's load has no value or a long interruption
-- **THEN** the line reads "Session-RPE-Last: offen · <reason>" with "widersprüchliche Provider-RPE", "keine Gesamtdauer" or "ungültige Dauer", nothing is shown for `no_rating`, and a marked session adds " · lange Unterbrechung, <min> min in Bewegung".
+- **THEN** the line reads "RPE-Belastung: offen · <reason>" with "widersprüchliche Provider-RPE", "keine Gesamtdauer" or "ungültige Dauer", nothing is shown for `no_rating`, and a marked session adds " · lange Unterbrechung, <min> min in Bewegung".
 
 Evidence: `backend/db/repositories.py:ActivityFeedbackRepository.upsert`, `backend/performance/detail_envelope.py:DetailEnvelopeReader`, `public/activity-details.js:rpeSelect`; `tests/test_activity_feedback.py::test_rating_time_is_recorded_only_on_an_rpe_change`, `tests/test_detail_envelope.py`, `e2e/activity-details.spec.js`.
 

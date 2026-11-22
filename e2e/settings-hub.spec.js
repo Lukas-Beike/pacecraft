@@ -37,7 +37,7 @@ test("@responsive sports are toggle chips of at least 44 px and need no hint", a
   await expect(page).toHaveURL(/#more\/profile$/);
   expect(await box.isChecked()).toBe(!before);
   const saved = page.waitForResponse((response) => response.url().endsWith("/api/profile") && response.request().method() === "PUT");
-  await page.getByRole("button", { name: "Athletenkontext speichern" }).click();
+  await page.getByRole("button", { name: "Profil speichern" }).click();
   const request = (await saved).request().postDataJSON();
   expect(request.sports.includes("Running")).toBe(!before);
   await expect(page.locator(".save-clean")).toBeVisible();
@@ -72,7 +72,7 @@ test("@responsive a closed profile section opens when it holds the invalid value
   await expect(sources).not.toHaveAttribute("open", "");
   await sources.evaluate((node) => { node.querySelector('[name="sleep_target_hours"]').value = "99"; });
   await page.locator("#profileForm").evaluate((form) => form.dispatchEvent(new Event("input", { bubbles: true })));
-  await page.getByRole("button", { name: "Athletenkontext speichern" }).click();
+  await page.getByRole("button", { name: "Profil speichern" }).click();
   await expect(sources).toHaveAttribute("open", "");
 });
 

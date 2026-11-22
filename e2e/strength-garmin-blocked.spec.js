@@ -53,7 +53,7 @@ test("@responsive a strength unit says why it does not reach Garmin and offers t
   });
   await blocked.scrollIntoViewIfNeeded();
   await expect(blocked).toBeVisible();
-  const coach = blocked.getByRole("button", { name: "Mit Coach strukturieren" });
+  const coach = blocked.getByRole("button", { name: "Mit Coach besprechen" });
   await expect(coach).toBeVisible();
   expect((await coach.boundingBox()).height).toBeGreaterThanOrEqual(32);
   await showCalendarDay(page, markedDates[1]);

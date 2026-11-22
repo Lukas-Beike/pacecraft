@@ -41,7 +41,7 @@ test("@responsive activity details preserve calendar without Coach shortcuts", a
   await dialog.getByLabel("Notizen").fill("Synthetic feedback");
   await dialog.getByRole("button", { name: "Feedback speichern" }).click();
   await expect(dialog.locator('[role="status"]').filter({ hasText: "Feedback gespeichert" })).toBeVisible();
-  await expect(dialog.getByText("Session-RPE-Last: 403 AU · RPE 6,5 (Athletenfeedback) × 62 min")).toBeVisible();
+  await expect(dialog.getByText("RPE-Belastung: 403 RPE-Punkte · RPE 6,5 (Athletenfeedback) × 62 min")).toBeVisible();
   await dialog.getByRole("button", { name: "Zurück zum Kalender" }).click();
   await page.reload();
   const response = await request.get("/api/activities/9000001");
@@ -58,7 +58,7 @@ test("@responsive activity details preserve calendar without Coach shortcuts", a
 test("@responsive load tab shows the session-RPE load with its coverage", async ({ page }) => {
   await page.goto("/#analysis/load");
   await expect(page.locator("#appShell")).toBeVisible();
-  const heading = page.locator("#analysisLoadCharts").getByRole("heading", { name: /^Session-RPE-Last · \d+\/\d+ bewertet/ });
+  const heading = page.locator("#analysisLoadCharts").getByRole("heading", { name: /^RPE-Belastung · \d+\/\d+ bewertet/ });
   await expect(heading).toBeVisible();
 });
 
@@ -182,7 +182,7 @@ test("@responsive running cadence shows step frequency of both legs", async ({ p
     return result;
   });
   expect(headings.Run.find((text) => text.startsWith("Schrittfrequenz (spm)"))).toContain("180");
-  expect(headings.Ride.find((text) => text.startsWith("Kadenz (rpm)"))).toContain("90");
+  expect(headings.Ride.find((text) => text.startsWith("Trittfrequenz (rpm)"))).toContain("90");
 });
 
 test("@responsive calendar details show running step frequency and cycling cadence", async ({ page }) => {
@@ -207,8 +207,8 @@ test("@responsive calendar details show running step frequency and cycling caden
   await expect(run.locator(".activity-analysis-stats div").filter({ hasText: "Ø Schrittfrequenz" })).toContainText("172 spm");
   await expect(run.getByRole("img", { name: /^Schrittfrequenz: Ø 172/ })).toBeVisible();
   const ride = await openSessionDetails(page, "Synthetic ride cadence");
-  await expect(ride.locator(".activity-analysis-stats div").filter({ hasText: "Ø Kadenz" })).toContainText("86 rpm");
-  await expect(ride.getByRole("img", { name: /^Kadenz: Ø 86/ })).toBeVisible();
+  await expect(ride.locator(".activity-analysis-stats div").filter({ hasText: "Ø Trittfrequenz" })).toContainText("86 rpm");
+  await expect(ride.getByRole("img", { name: /^Trittfrequenz: Ø 86/ })).toBeVisible();
 });
 
 test("@responsive calendar details show the route history chart first and every visit below it", async ({ page }) => {
@@ -438,12 +438,12 @@ test("@responsive calendar details expand Garmin-style charts", async ({ page, r
   const box = await power.boundingBox();
   await power.dispatchEvent("pointerdown", { clientX: box.x + box.width * 0.6, clientY: box.y + box.height / 2 });
   await expect(item.locator(".is-power .activity-analysis-readout")).toContainText("200 W");
-  await expect(item.locator(".activity-analysis-zones").filter({ hasText: "Zeit in HF-Zonen" })).toContainText("Z2");
+  await expect(item.locator(".activity-analysis-zones").filter({ hasText: "Zeit in Herzfrequenzzonen" })).toContainText("Z2");
   // The session detail and the report overview share one zone order and palette (#1782).
-  const zoneRows = await item.locator(".activity-analysis-zones").filter({ hasText: "Zeit in HF-Zonen" }).locator("li").evaluateAll((rows) => {
+  const zoneRows = await item.locator(".activity-analysis-zones").filter({ hasText: "Zeit in Herzfrequenzzonen" }).locator("li").evaluateAll((rows) => {
     const color = (node) => getComputedStyle(node).getPropertyValue("--zone-color").trim();
     const detail = rows.map((row) => ({ zone: row.dataset.zone, color: color(row), track: row.querySelector(".activity-analysis-zone-bar").getBoundingClientRect().width }));
-    const overview = trainingFocusDistribution("HF-Zonen", trainingFocusZoneSeconds([{ seconds: Object.fromEntries(detail.map(({ zone }, index) => [zone, (index + 1) * 600])) }]), "seconds", "");
+    const overview = trainingFocusDistribution("Herzfrequenzzonen", trainingFocusZoneSeconds([{ seconds: Object.fromEntries(detail.map(({ zone }, index) => [zone, (index + 1) * 600])) }]), "seconds", "");
     rows[0].closest(".activity-analysis-panel").append(overview);
     const result = { detail, overview: [...overview.querySelectorAll(".training-focus-row")].map((row) => ({ zone: row.dataset.zone, color: color(row), track: row.querySelector("progress").getBoundingClientRect().width })) };
     overview.remove();
@@ -481,7 +481,7 @@ test("@responsive feedback save and undo show the returned load without a detail
   const dialog = page.getByRole("dialog", { name: "Synthetic load ride" });
   await dialog.getByLabel("Session-RPE (0–10)").selectOption("5");
   await dialog.getByRole("button", { name: "Feedback speichern" }).click();
-  await expect(dialog.locator("[data-session-rpe-load]")).toContainText("300 AU");
+  await expect(dialog.locator("[data-session-rpe-load]")).toContainText("300 RPE-Punkte");
   await dialog.getByRole("button", { name: "Rückgängig" }).click();
   await expect(dialog.locator("[data-session-rpe-load]")).toBeHidden();
   expect(await page.evaluate(() => undoBody.activity_id)).toBe("load-1");

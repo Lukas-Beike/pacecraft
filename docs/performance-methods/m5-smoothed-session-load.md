@@ -105,7 +105,7 @@ when treated as zero, which this method does not do.
 
 ## Allowed statements
 
-- "Kurzzeitbelastung 210 AU, Langzeitbelastung 180 AU (aus deinen bewerteten
+- "RPE-Belastung kurz 210 RPE-Punkte, RPE-Belastung lang 180 RPE-Punkte (aus deinen bewerteten
   Einheiten, τ 7 und 42 Tage)."
 - "Zwei Tage ohne Bewertung sind Lücken, dafür gibt es keinen Wert."
 - "Die Kurven sind noch in der Einlaufphase."

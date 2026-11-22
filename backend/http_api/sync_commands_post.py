@@ -75,7 +75,7 @@ class SyncCommandPostRoute:
 
         Errors: 400 "Zum vollständigen Resync muss FULL_RESYNC bestätigt werden."
         when `confirm` is not `FULL_RESYNC`; 503 `not_configured` when the
-        provider is not set up: "Garmin ist nicht konfiguriert. Unter Mehr →
+        provider is not set up: "Garmin ist nicht eingerichtet. Unter Mehr →
         Anbindungen bei Garmin anmelden oder einen Schlüssel der Garmin Personal
         API hinterlegen." or "Wahoo ist nicht verbunden. Bitte Wahoo in den
         Einstellungen verbinden."
@@ -101,7 +101,7 @@ class SyncCommandPostRoute:
         Errors: 400 "Der Synchronisationszeitraum muss eine ganze Zahl sein." when
         `days` is not an integer, or "Der Zeitraum für garmin muss -1 oder
         zwischen 1 und 90 Tagen liegen." when it is out of range; 409
-        `not_configured` for Garmin ("Garmin ist nicht konfiguriert. Unter Mehr →
+        `not_configured` for Garmin ("Garmin ist nicht eingerichtet. Unter Mehr →
         Anbindungen bei Garmin anmelden oder einen Schlüssel der Garmin Personal
         API hinterlegen.") and Wahoo ("Wahoo ist nicht verbunden. Bitte Wahoo in
         den Einstellungen verbinden.") when the provider is not set up.

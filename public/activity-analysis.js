@@ -256,7 +256,7 @@
       ["Effizienzfaktor", efficiencyText(metrics)],
       ["Variabilitätsindex", finite(metrics.variability_index) ? numberText(metrics.variability_index, 2) : null],
       ["Decoupling", finite(metrics.decoupling_pct) ? AppFormat.percent(metrics.decoupling_pct) : null],
-      ["Trainingsbelastung", measure(metrics.load)],
+      ["Belastung", measure(metrics.load)],
       // Intensity arrives as a fraction or in percent; the calendar helper normalizes both.
       ["Intensität", calendarIntensityLabel(metrics.intensity)],
       ...(dynamicsShown ? [] : ActivityDetails.runningDynamics(metrics)),
@@ -305,7 +305,7 @@
 
   // Planned steps against the session (#2830): score, step strip, one row per step and zone times.
   const STEP_ROLES = { warmup: "Einlaufen", recovery: "Pause", cooldown: "Auslaufen" };
-  const ZONE_TITLES = { speed: "Zeit je Pace-Zone", heartrate: "Zeit je HF-Zone", watts: "Zeit je Leistungszone" };
+  const ZONE_TITLES = { speed: "Zeit je Pace-Zone", heartrate: "Zeit je Herzfrequenzzone", watts: "Zeit je Leistungszone" };
   const TARGET_CHANNELS = { speed: "speed_mps", heartrate: "heart_rate_bpm", watts: "power_w" };
 
   function boundsText([low, high], unit, format = numberText) {
@@ -396,7 +396,7 @@
     const streams = payload?.streams && { ...payload.streams, channels: { ...payload.streams.channels, ...payload.running_dynamics_streams } };
     const charts = streams ? channels(activity, metrics, streams).map((channel) => chart(streams, channel, chartTargets(planned, channel))).filter(Boolean) : [];
     if (charts.length) panel.append(h("div", "activity-analysis-charts", charts));
-    for (const section of [zones("Zeit in HF-Zonen", payload?.zones?.heart_rate), zones("Zeit in Leistungszonen", payload?.zones?.power), laps(activity, payload?.laps)]) {
+    for (const section of [zones("Zeit in Herzfrequenzzonen", payload?.zones?.heart_rate), zones("Zeit in Leistungszonen", payload?.zones?.power), laps(activity, payload?.laps)]) {
       if (section) panel.append(section);
     }
     if (!payload) return;

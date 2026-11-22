@@ -189,7 +189,7 @@ class WahooConnectionServiceTests(unittest.TestCase):
             self.service.start_authorization()
         self.assertEqual(caught.exception.status, 503)
         self.assertEqual(caught.exception.message, NOT_CONFIGURED_MESSAGE)
-        self.assertIn("nicht konfiguriert", caught.exception.message)
+        self.assertIn("nicht eingerichtet", caught.exception.message)
         self.assertEqual(self.values.data, {})
 
     def test_redirect_must_be_https(self):

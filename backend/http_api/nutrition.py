@@ -731,7 +731,7 @@ class NutritionPostRoutes:
         aktualisiert."; 400 `nutrition_product_barcode_missing` "Zum Aktualisieren
         braucht das Produkt eine EAN. Trage sie beim Bearbeiten ein."; 404
         `food_not_found` "Datenbankeintrag nicht gefunden."; 409 `not_configured` "Yazio
-        ist nicht konfiguriert." for a Yazio food without credentials; 502
+        ist nicht eingerichtet." for a Yazio food without credentials; 502
         `food_database_unavailable` "Der Datenbankeintrag konnte nicht aktualisiert
         werden."
         """

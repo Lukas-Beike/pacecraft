@@ -173,7 +173,7 @@ class WahooHttpTests(ServerTestCase):
         ):
             response, data = self.call("POST", "/api/wahoo/connect")
         self.assertEqual(response.status, 503)
-        self.assertIn("nicht konfiguriert", data.decode())
+        self.assertIn("nicht eingerichtet", data.decode())
 
     def test_callback_code_and_state_never_reach_logs(self):
         state = self.start()

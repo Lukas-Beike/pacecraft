@@ -140,12 +140,14 @@ const TEXT_FORMATS = [
   [/\b1 (Einheiten|Messungen|Sätze|Wiederholungen|Aktivitäten|Portionen)\b/, "a plural after one"],
   [/\d{2}\.\d{2}\.\d{4},? \d{2}:\d{2}:\d{2}/, "a timestamp with seconds"],
   [/\bPortion\(en\)/, "an either-or plural"],
+  [/\b[A-Z][A-Z0-9]+_[A-Z0-9_]+\b/, "an internal setting name"],
+  [/\b(Ø Puls|Pulszonen|HF-Zonen|Kadenz|Power-Zonen|Kurzzeitbelastung|Session-RPE-Last|Athletenkontext|Nicht gesetzt|nicht konfiguriert)\b/, "a word the term list replaced"],
 ];
 
 async function expectTextFormats(page, view) {
   // The Coach context preview shows the raw JSON the Coach receives and the changelog the release notes; neither is a displayed value.
   const text = await page.locator(".panel.active").evaluate((panel) => {
-    const raw = [...panel.querySelectorAll("pre, .release-changelog")];
+    const raw = [...panel.querySelectorAll("pre, .release-changelog, .context-preview-content")];
     raw.forEach((node) => { node.hidden = true; });
     const shown = panel.innerText;
     raw.forEach((node) => { node.hidden = false; });

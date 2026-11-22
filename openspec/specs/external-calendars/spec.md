@@ -190,7 +190,7 @@ Evidence: `backend/providers/calendar.py::_unfold_lines`, `backend/providers/cal
 
 #### Scenario: Not configured
 - **WHEN** no feed URL is configured
-- **THEN** the sync fails with 503 `not_configured` ("Der Kalender-Link ist nicht konfiguriert.") before it takes the lock.
+- **THEN** the sync fails with 503 `not_configured` ("Der Kalender-Link ist nicht eingerichtet.") before it takes the lock.
 
 #### Scenario: Recorded error
 - **WHEN** a sync fails with a known error

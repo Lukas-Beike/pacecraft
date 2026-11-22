@@ -21,7 +21,7 @@ test("@responsive provider sync actions are disabled with a setup hint without c
 
   const intervalsHint = page.locator("#intervalsSetupHint");
   await expect(intervalsHint).toBeVisible();
-  await expect(intervalsHint).toContainText("Intervals.icu ist nicht konfiguriert");
+  await expect(intervalsHint).toContainText("Intervals.icu ist nicht eingerichtet");
   await expect(intervalsHint).toContainText("Server-Einstellungen");
   await expect(intervalsHint).not.toContainText("INTERVALS_API_KEY");
   await expect(page.locator("#garminSetupHint")).toBeVisible();

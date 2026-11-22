@@ -350,7 +350,7 @@ test("@responsive Löschen asks once in the card, deletes a planned unit and Rü
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBeTruthy();
 });
 
-test("@responsive Mit dem Coach besprechen puts the planned unit into the Coach field without sending", async ({ page, request }) => {
+test("@responsive Mit Coach besprechen puts the planned unit into the Coach field without sending", async ({ page, request }) => {
   await openCalendar(page, request);
   const days = await renderSyntheticCalendar(page);
   const sent = [];
@@ -367,7 +367,7 @@ test("@responsive Mit dem Coach besprechen puts the planned unit into the Coach 
   await showCalendarDay(page, days.next);
   const card = page.locator('.planned-entry[data-entry-key="local:22222222-2222-4222-8222-222222222222"]');
   if (!await card.evaluate((element) => element.open)) await card.locator(":scope > summary").click();
-  await card.locator(":scope > .planned-entry-details").getByRole("button", { name: "Mit dem Coach besprechen" }).click();
+  await card.locator(":scope > .planned-entry-details").getByRole("button", { name: "Mit Coach besprechen" }).click();
   await expect(page.locator("#chatPanel")).toHaveClass(/active/);
   const input = page.locator("#messageInput");
   await expect(input).toBeFocused();

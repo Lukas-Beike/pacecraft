@@ -44,7 +44,7 @@ test("@responsive compact calendar week shows one week, groups repeats and keeps
   const conflict = planned.locator(".planned-conflict");
   await expect(conflict).toContainText("Konflikt: Kein Training");
   await expect(conflict.getByRole("button")).toHaveCount(1);
-  await expect(conflict.getByRole("button")).toHaveText("Mit Coach lösen");
+  await expect(conflict.getByRole("button")).toHaveText("Mit Coach besprechen");
   const result = await conflict.evaluate((element) => {
     let sent = null;
     const original = globalThis.askCoach;
@@ -84,8 +84,8 @@ test("@responsive compact calendar week shows one week, groups repeats and keeps
   await showCalendarDay(page, yesterday);
   const facts = await page.evaluate(() => [...document.querySelectorAll(".planned-actual-facts")].map((node) => [...node.children].map((item) => item.textContent)));
   expect(facts).toEqual([
-    ["Pace 5:00 /km", "Ø Puls 150 bpm", "Schrittfrequenz 172 spm", "Ø Leistung 270 W", "Belastung 80", "Bodenkontaktzeit 249 ms", "Höhenmeter 40 m"],
-    ["Normalized Power 225 W", "Ø Leistung 210 W", "Intensitätsfaktor 0,86", "Ø Puls 140 bpm", "Trittfrequenz 90 rpm", "Belastung 70", "RPE 6/10", "Ø Tempo 30,0 km/h", "Höhenmeter 0 m"],
+    ["Pace 5:00 /km", "Ø Herzfrequenz 150 bpm", "Schrittfrequenz 172 spm", "Ø Leistung 270 W", "Belastung 80", "Bodenkontaktzeit 249 ms", "Höhenmeter 40 m"],
+    ["Normalized Power 225 W", "Ø Leistung 210 W", "Intensitätsfaktor 0,86", "Ø Herzfrequenz 140 bpm", "Trittfrequenz 90 rpm", "Belastung 70", "RPE 6/10", "Ø Geschwindigkeit 30,0 km/h", "Höhenmeter 0 m"],
   ]);
 });
 
