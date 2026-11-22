@@ -30,16 +30,6 @@ class AdaptiveReplanPostRoutesTests(unittest.TestCase):
         self.assertTrue(dispatch_route(self.routes, handler, path, method="POST"))
         return handler.send_json.call_args.args
 
-    def test_preview_takes_an_empty_body(self) -> None:
-        self.service.preview.return_value = {"id": ID, "changes": []}
-
-        self.assertEqual(
-            (200, {"id": ID, "changes": []}),
-            self.post("/api/planning/replan/preview", {}),
-        )
-        with self.assertRaises(AppError):
-            self.post("/api/planning/replan/preview", {"x": 1})
-
     def test_apply_needs_the_confirmation_and_returns_one_undo_batch(self) -> None:
         path = "/api/planning/replan/apply"
         with self.assertRaises(AppError) as raised:

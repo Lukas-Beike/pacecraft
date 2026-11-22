@@ -18,7 +18,7 @@ from backend.planning.plan_guard_service import PlanGuardService
 
 
 class AdaptiveReplanActionService:
-    """Apply the shown preview locally under the plan checks, or recalculate it."""
+    """Apply the shown preview locally under the plan checks."""
 
     def __init__(
         self,
@@ -31,10 +31,6 @@ class AdaptiveReplanActionService:
         self._preview_service = preview_service
         self._illness_sync = illness_sync
         self._plan_guard = plan_guard
-
-    def preview(self) -> dict[str, Any]:
-        """Recalculate the preview from today's state; nothing changes."""
-        return self._preview_service().preview()
 
     def apply(
         self, adjustment_id: Any, accept: list[str] | None = None

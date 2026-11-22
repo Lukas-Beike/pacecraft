@@ -35,6 +35,22 @@ class HistoryUndoPostRoutesTests(unittest.TestCase):
         self.handler.read_json.assert_called_once_with()
         self.handler.send_json.assert_called_once_with(200, result)
 
+    def test_undo_batch_passes_the_changes_and_sends_the_result(self) -> None:
+        payload = {"changes": [{"id": "c1", "after_hash": "h1"}]}
+        result = {"status": "undone", "count": 1, "remote_untouched": True}
+        self.handler.read_json.return_value = payload
+        self.undo.apply_batch.return_value = result
+
+        dispatch_route(
+            self.routes,
+            self.handler,
+            "/api/change-history/undo-batch",
+            method="POST",
+        )
+
+        self.undo.apply_batch.assert_called_once_with(payload)
+        self.handler.send_json.assert_called_once_with(200, result)
+
     def test_feedback_undo_returns_the_session_load_of_the_named_activity(self) -> None:
         load = Mock(return_value={"value": 120})
         routes = HistoryUndoPostRoutes(self.undo_factory, self.turn_undo, load)

@@ -50,9 +50,9 @@ added a row conflicted on it (#4092).
 | Planning | Create a multi-week training plan | Bibliothek › Pläne "+ Plan" `POST /api/training-plans`, its units in the unit editor | `stage_training_plan`, `commit_training_plan` | receipt, plan checks | both | |
 | Planning | Replace a period of the plan | — | `replace_training_plan` | receipt, plan checks | Coach only | #4024 |
 | Planning | Change, archive or delete a training plan | Bibliothek › Pläne `POST /api/training-plans/{id}/update`, `POST /api/training-plans/{id}/delete` | `update_training_plan` | confirmed request, undo | both | |
-| Planning | Preview and apply an adaptive replan | — | `preview_adaptive_replan`, `apply_adaptive_replan` | approved preview | Coach only | #4020 |
+| Planning | Preview and apply an adaptive replan | Kalender card "Plananpassung" shows the stored preview, "Übernehmen" `POST /api/planning/replan/apply` | `preview_adaptive_replan`, `apply_adaptive_replan` | approved preview, undo | both | |
 | Planning | Read the week review and training report | Analyse `GET /api/analysis/week-review` | `get_training_report` | — | both | |
-| History | Undo a change | receipt "Rückgängig" `POST /api/change-history/undo`, `POST /api/change-history/undo-turn` | `undo_training_change` | bound preview, confirmation | both | |
+| History | Undo a change | receipt "Rückgängig" `POST /api/change-history/undo`, `POST /api/change-history/undo-turn`, `POST /api/change-history/undo-batch` | `undo_training_change` | bound preview, confirmation | both | |
 | History | Read the change history | — | `list_change_history` | — | Coach only | #3954 |
 | Library | List library workouts | Bibliothek `GET /api/library` | `list_workout_library` | — | both | |
 | Library | Create a library workout | Bibliothek "+ Einheit" `POST /api/library` | `manage_training_templates` (`create`) | receipt, undo | both | |

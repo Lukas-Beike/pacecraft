@@ -289,6 +289,8 @@ export const STEPS = [
   { view: "plan", name: "Bibliothek: Einplanen, Trainingsplan", covers: "#4054 Einplanen plan choice", pre: [tab("plan", "library")], opens: ["#library details.library-sport > summary", '#library .library-card .planned-activity-actions .secondary-button[aria-expanded="false"]'], ready: "#library .library-card .library-plan-field:not([hidden]) select", kind: "text", optional: true, post: [tab("plan", "overview")] },
   // Read-only: the walk checks that the plans block with "+ Plan" is there, it opens no form (#3950).
   { view: "plan", name: "Bibliothek: Pläne", covers: "#3950 training plans", pre: [tab("plan", "library")], ready: "#library .library-toolbar > strong", kind: "text", post: [tab("plan", "overview")] },
+  // Only a stored adaptive preview with changes shows the card, so the step is optional; "Übernehmen" is never pressed (#4020).
+  { view: "plan", name: "Kalender: Plananpassung", covers: "#4020 replan card", pre: ['.planned-view-switch button[data-view="week"]'], ready: ".planned-replan .planned-activity-actions .push-button", kind: "text", optional: true },
   // Read-only: the walk checks that "Hinzufügen" is there, it opens no dialog and saves nothing (#3837).
   { view: "plan", name: "Wettkämpfe: Hinzufügen", covers: "#3837 competition entry", pre: [tab("plan", "season")], ready: "#competitionAdd", kind: "text", post: [tab("plan", "overview")] },
   // Completed units: on a Monday the current week has none yet, so each step looks back for a unit that

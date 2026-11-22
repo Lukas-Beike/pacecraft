@@ -1,4 +1,4 @@
-"""Authenticated POST routes that recalculate and apply the adaptive replan preview (#4020)."""
+"""Authenticated POST route that applies the shown adaptive replan preview (#4020)."""
 
 from __future__ import annotations
 
@@ -12,7 +12,7 @@ from backend.planning.plan_guard_service import PlanCheckError
 
 
 class AdaptiveReplanPostRoutes:
-    """The Coach's `preview_adaptive_replan` and `apply_adaptive_replan` for the athlete."""
+    """The Coach's `apply_adaptive_replan` for the athlete; the preview comes from the stored one."""
 
     def __init__(self, replan_service: Callable[[], Any]):
         self._replan_service = replan_service
@@ -21,30 +21,11 @@ class AdaptiveReplanPostRoutes:
         return [
             Route(
                 "POST",
-                "/api/planning/replan/preview",
-                Access.SESSION_CSRF,
-                self._preview,
-            ),
-            Route(
-                "POST",
                 "/api/planning/replan/apply",
                 Access.SESSION_CSRF,
                 self._apply,
             ),
         ]
-
-    def _preview(self, handler: Any, _request: RouteRequest) -> None:
-        """Recalculate the adaptive preview; no unit changes.
-
-        Request: JSON body `{}` and no other field.
-
-        Response: 200 with the preview (`id`, `status`, `message`, `changes`,
-        `illness_pause`, `illness_return`); it replaces the pending one.
-
-        Errors: 409 when more than 500 future local units exist.
-        """
-        _read_fields(handler, set())
-        handler.send_json(200, self._replan_service().preview())
 
     def _apply(self, handler: Any, _request: RouteRequest) -> None:
         """Apply the shown preview to future local units; nothing is written remotely.

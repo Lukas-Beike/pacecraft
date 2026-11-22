@@ -83,12 +83,6 @@ class AdaptiveReplanActionTests(unittest.TestCase):
 
         self.sync.complete.assert_not_called()
 
-    def test_preview_only_recalculates(self) -> None:
-        self.previews.preview.return_value = {"changes": []}
-
-        self.assertEqual({"changes": []}, self.service.preview())
-        self.sync.apply_local.assert_not_called()
-
 
 if __name__ == "__main__":
     unittest.main()

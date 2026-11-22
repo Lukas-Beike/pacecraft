@@ -57,6 +57,7 @@ handler's docstring. Regenerate it with
 | PUT | `/api/body/weight/remove` | Session + CSRF | before access | Remove the entered weight of one day. |
 | GET | `/api/bootstrap` | Session | no | Initial authenticated client state. |
 | POST | `/api/change-history/undo` | Session + CSRF | after access | Apply an undo from the change history. |
+| POST | `/api/change-history/undo-batch` | Session + CSRF | after access | Undo the changes of one write together, as a period replacement returns them. |
 | POST | `/api/change-history/undo-turn` | Session + CSRF | after access | Undo every tracked write of one Coach turn. |
 | POST | `/api/chat/cancel` | Session + CSRF | no | Cancel running Coach work of this session. |
 | GET | `/api/chat/history` | Session | no | Coach conversation history page, optionally searched. |
@@ -142,6 +143,7 @@ handler's docstring. Regenerate it with
 | POST | `/api/planned-units/{id}/focus` | Session + CSRF | after access | Set or clear the focus of a planned unit without a remote write. |
 | POST | `/api/planned-units/{id}/garmin-exercise` | Session + CSRF | after access | Assign the Garmin catalogue exercise of one strength exercise of a unit. |
 | POST | `/api/planned-units/{id}/update` | Session + CSRF | after access | Change a unit's content or day without a remote write. |
+| POST | `/api/planning/replan/apply` | Session + CSRF | after access | Apply the shown preview to future local units; nothing is written remotely. |
 | GET | `/api/privacy/backup` | Session | no | Download the encrypted database backup. |
 | POST | `/api/privacy/delete` | Session + CSRF | after access | Delete the local athlete data after the typed confirmation (`confirm`). |
 | GET | `/api/privacy/delete/preview` | Session | no | Preview of the local data deletion. |
@@ -655,6 +657,17 @@ werden."; 400 "Ein Export an einen Anbieter lässt sich nicht zurücknehmen.";
 400 "Diese Änderung lässt sich nicht mehr zurücknehmen."; 409 "Die lokale
 Änderung wurde inzwischen weiter geändert; Undo wurde abgebrochen."; 400
 "Unbekannte lokale Änderung.".
+
+### `POST /api/change-history/undo-batch`
+
+Request: JSON body `{"changes": [{"id": string, "after_hash": string}]}`, 1
+to 400 entries as the write's response listed them.
+
+Response: 200 `{"status": "undone", "count", "remote_untouched": true}`. All
+changes are restored in one transaction or none.
+
+Errors: 400 "Ungültige Änderungsliste."; the errors of the single undo for a
+change that is gone or was edited since (409, nothing is restored).
 
 ### `POST /api/change-history/undo-turn`
 
@@ -2000,6 +2013,23 @@ Response: 200 `{"status": "local", "local_id", "plan_check_notes",
 Errors: as the create route; 409 `planning_revision_conflict` for a
 missing hash; 409 `payload_hash_conflict` for an outdated hash or an
 unknown id.
+
+### `POST /api/planning/replan/apply`
+
+Request: JSON body `{"adjustment_id": string, "confirmed": true,
+"accept_plan_findings": [string]}` (the codes of blocking plan checks the
+athlete accepts, `illness_hard`). During an illness pause applying also
+records today's check-in as ill; the Intervals.icu entry of the pause goes
+only with the athlete's named sync.
+
+Response: 200 `{"status", "id", "updated", "updated_checkins", "stale",
+"illness_pause", "planning", "plan_check_notes", "changes"}`; `changes` is
+one undo batch for `POST /api/change-history/undo-batch`.
+
+Errors: 409 `confirmation_required` without `confirmed: true`; 409
+`preview_outdated` when a newer preview replaced it; 409 `illness_hard` for
+a hard or long unit within days of a reported illness; 400 for an id that
+is no UUID; 404 "Plananpassung nicht gefunden.".
 
 ### `GET /api/privacy/backup`
 

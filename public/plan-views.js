@@ -929,6 +929,88 @@ function announcePlanChange(message) {
   if (region) region.textContent = message;
 }
 
+// The adaptive replan preview as a card above the week (#4020): every changed unit before and after, "Übernehmen" applies
+// it to the future local units (an illness pause names the check-in it writes), "Verwerfen" hides it until a newer
+// preview. The receipt offers "Rückgängig" for the whole change; nothing goes to a provider.
+let dismissedReplanId = "";
+let replanReceipt = null;
+const REPLAN_UNDO_KEY = "pacecraft.replanDismissed";
+
+function replanDismissed() {
+  try { return dismissedReplanId || localStorage.getItem(REPLAN_UNDO_KEY) || ""; } catch { return dismissedReplanId; }
+}
+
+function replanMinutes(value) {
+  return Number(value) > 0 ? `${Math.round(Number(value))} min` : "entfällt";
+}
+
+function replanRow(change) {
+  const day = MOVE_DAY_FORMAT.format(dateFromKey(String(change.date).slice(0, 10)));
+  const reason = String(change.after?.rationale || "").split(".")[0];
+  return h("li", "replan-row", h("strong", null, day), h("span", null, [`${change.name || "Einheit"} ${replanMinutes(change.before?.duration_minutes)} → ${replanMinutes(change.after?.duration_minutes)}`, reason].filter(Boolean).join(" · ")));
+}
+
+async function applyReplan(preview, button, status, accept = false) {
+  button.disabled = true;
+  status.textContent = "";
+  try {
+    const body = { adjustment_id: preview.id, confirmed: true, ...(accept ? { accept_plan_findings: ["illness_hard"] } : {}) };
+    const result = await api("/api/planning/replan/apply", { method: "POST", body: JSON.stringify(body) });
+    replanReceipt = { previewId: preview.id, text: `Angepasst: ${result.updated ?? 0} Einheit${result.updated === 1 ? "" : "en"}`, changes: result.changes || [] };
+    await globalThis.load?.();
+    announcePlanChange(replanReceipt.text);
+  } catch (error) {
+    status.textContent = error.message;
+    button.disabled = false;
+    if (error.reason === "illness_hard") { button.textContent = "Trotzdem übernehmen"; button.onclick = () => applyReplan(preview, button, status, true); }
+  }
+}
+
+function replanReceiptLine() {
+  const receipt = replanReceipt;
+  const status = h("p", { className: "planned-move-status", role: "status" }, receipt.text);
+  if (receipt.changes.length) {
+    const undo = h("button", { type: "button", className: "message-undo" }, "Rückgängig");
+    undo.addEventListener("click", async () => {
+      undo.disabled = true;
+      try {
+        await api("/api/change-history/undo-batch", { method: "POST", body: JSON.stringify({ changes: receipt.changes }) });
+        replanReceipt = { previewId: receipt.previewId, text: "Zurückgenommen.", changes: [] };
+        await globalThis.load?.();
+      } catch (error) {
+        undo.disabled = false;
+        status.firstChild.textContent = `${error.message} `;
+      }
+    });
+    status.append(" ", undo);
+  }
+  return status;
+}
+
+function plannedReplanCard() {
+  // A newer preview ends the receipt of the one applied.
+  if (replanReceipt && state.data?.planning?.latest_replan?.id !== replanReceipt.previewId) replanReceipt = null;
+  if (replanReceipt) return replanReceiptLine();
+  const preview = state.data?.planning?.latest_replan;
+  const changes = Array.isArray(preview?.changes) ? preview.changes : [];
+  if (preview?.status !== "preview" || !changes.length || replanDismissed() === preview.id) return null;
+  const pause = preview.illness_pause && !preview.illness_pause.approved ? preview.illness_pause : null;
+  const apply = h("button", { type: "button", className: "push-button" }, "Übernehmen");
+  const discard = h("button", { type: "button", className: "secondary-button" }, "Verwerfen");
+  const status = h("p", { className: "planned-delete-note", role: "status" });
+  apply.addEventListener("click", () => void applyReplan(preview, apply, status));
+  discard.addEventListener("click", () => {
+    dismissedReplanId = preview.id;
+    try { localStorage.setItem(REPLAN_UNDO_KEY, preview.id); } catch { /* The choice then holds until the next load. */ }
+    renderPlanned(state.data?.training_calendar || []);
+  });
+  return h("section", "library-card planned-replan",
+    h("div", null, h("h4", null, "Plananpassung"), h("span", null, `${changes.length} Einheit${changes.length === 1 ? "" : "en"}`)),
+    h("ul", "replan-rows", changes.map(replanRow)),
+    pause ? h("p", null, `Krankheitspause bis ${dateLabel(pause.end_date)}: Übernehmen trägt den heutigen Check-in als krank ein.`) : null,
+    h("div", "planned-activity-actions", apply, discard), status);
+}
+
 function renderAdaptivePlanning(data) {
   const planning = data.planning || {};
   const preview = planning.latest_replan;
@@ -2940,7 +3022,7 @@ function renderPlanned(trainingCalendar) {
   plannedLastDateKey = lastDateKey;
   keepPlannedSelection(todayKey, lastDateKey);
   dropDeleteReceiptsOutsideWeek();
-  const snapshot = JSON.stringify([calendar, todayKey, selectedWeekKey, calendarView, calendarSport, selectedDayKey, state.data?.daily_planning_context, state.data?.planning_compliance, state.data?.competitions, state.data?.weather, (state.data?.external_calendar?.events || []).map((event) => [event?.uid, event?.start_local, event?.impact, event?.name]), state.data?.external_calendar?.undecided_upcoming]);
+  const snapshot = JSON.stringify([calendar, todayKey, selectedWeekKey, calendarView, calendarSport, selectedDayKey, state.data?.daily_planning_context, state.data?.planning_compliance, state.data?.competitions, state.data?.weather, (state.data?.external_calendar?.events || []).map((event) => [event?.uid, event?.start_local, event?.impact, event?.name]), state.data?.external_calendar?.undecided_upcoming, state.data?.planning?.latest_replan?.id, state.data?.planning?.latest_replan?.status, replanDismissed(), replanReceipt?.text]);
   if (snapshot === plannedRenderSnapshot && root.childElementCount) {
     if (state.plannedTodayFocusPending) requestAnimationFrame(() => focusPlannedToday());
     refreshWeekReview(root);
@@ -2957,6 +3039,8 @@ function renderPlanned(trainingCalendar) {
   root.replaceChildren();
   const banner = plannedUndecidedBanner();
   if (banner) root.append(banner);
+  const replan = plannedReplanCard();
+  if (replan) root.append(replan);
   const weeklyCompliance = new Map(
     (Array.isArray(state.data?.planning_compliance) ? state.data.planning_compliance : [])
       .filter((item) => item?.week_start)
