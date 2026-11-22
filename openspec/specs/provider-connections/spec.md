@@ -615,7 +615,7 @@ Evidence: `backend/providers/connection_check_probes.py:build_probes`, `public/i
 
 ### Requirement: Connection status in the PWA
 
-A configured provider SHALL ask for manual attention when its error is `auth_required`, `invalid_configuration` or `approval_stale`, or its state is error, stale or partial without a retry in the future; a busy local database SHALL never count. The freshness list SHALL name each state ("Frisch", "Teilweise erfolgreich", "Veraltet, aber nutzbar", "Wird aktualisiert", "Fehler", "Noch nie geladen", "Nicht konfiguriert").
+A configured provider SHALL ask for manual attention when its error is `auth_required`, `invalid_configuration` or `approval_stale`, or its state is error, stale or partial without a retry in the future; a busy local database SHALL never count. The freshness list SHALL name each state ("Frisch", "Teilweise erfolgreich", "Veraltet, aber nutzbar", "Wird aktualisiert", "Fehler", "Noch nie geladen", "Nicht eingerichtet").
 
 #### Scenario: Stale competition approval
 - **WHEN** the Intervals.icu competitions fail with `approval_stale`

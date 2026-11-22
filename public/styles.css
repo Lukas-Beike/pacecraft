@@ -883,7 +883,7 @@ a.message-retry { display: grid; place-items: center; text-decoration: none; }
 .zone-thresholds { display: grid; grid-template-columns: auto repeat(2, minmax(0, 1fr)); gap: 4px 12px; font-size: .88rem; }
 .zone-thresholds b { font-weight: 600; font-variant-numeric: tabular-nums; }
 /* rem follows the text size: with bigger text each row names its threshold on its own line above the two values. */
-@container (max-width: 18rem) {
+@container (max-width: 15rem) {
   .zone-thresholds { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px 8px; }
   .zone-thresholds > .zone-muted { font-size: .72rem; }
   .zone-thresholds > :nth-child(3n + 1) { grid-column: 1 / -1; }
@@ -1191,7 +1191,7 @@ a.message-retry { display: grid; place-items: center; text-decoration: none; }
 .competition-archive > .competition-card { margin-top: 12px; }
 .competition-read-state { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; color: var(--muted); font-size: .85rem; }
 .competition-read-state output:empty { display: none; }
-.competition-card-facts { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 9rem), 1fr)); gap: 10px 12px; margin-top: 12px; }
+.competition-card-facts { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, max(9rem, calc(50% - 6px))), 1fr)); gap: 10px 12px; margin-top: 12px; }
 .competition-card-facts > div { display: grid; gap: 3px; min-width: 0; }
 .competition-card-facts span { color: var(--subtle); font-size: .72rem; }
 .competition-card-facts strong { color: var(--muted); font-size: .78rem; font-weight: 500; overflow-wrap: anywhere; }
@@ -1218,12 +1218,12 @@ a.message-retry { display: grid; place-items: center; text-decoration: none; }
 .task-model h3 { margin: 0 0 8px; font-size: .8rem; font-weight: 600; }
 .task-model-heading { display: flex; flex-wrap: wrap; align-items: center; margin: 0 0 8px; }
 .task-model-heading h3 { margin: 0; }
-.task-model-pair { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 9rem), 1fr)); gap: 10px; }
+.task-model-pair { display: grid; grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); gap: 10px; }
 .task-model-pair select { width: 100%; }
 .model-notice { display: block; margin-top: 8px; color: var(--orange); font-size: .74rem; }
 .model-notice[hidden], .model-selector[hidden] { display: none; }
 .calendar-display-form { display: grid; gap: 14px; padding: 18px 0 10px; }
-.calendar-display-fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 9rem), 1fr)); gap: 12px; }
+.calendar-display-fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, max(9rem, calc(50% - 6px))), 1fr)); gap: 12px; }
 .calendar-display-fields label { display: grid; gap: 6px; color: var(--subtle); font-size: .73rem; font-weight: 500; }
 .calendar-display-fields input { width: 100%; padding: 9px 10px; font-size: .8rem; }
 .calendar-display-fields small { color: var(--subtle); font-size: .72rem; font-weight: 400; }
@@ -1608,7 +1608,7 @@ body:has(#profilePanel.active .dirty-indicator:not([hidden])) .toast { bottom: c
   .context-preview-heading .secondary-button { width: 100%; }
   .calendar-display-fields { grid-template-columns: 1fr; }
   .calendar-display-form > .secondary-button { width: 100%; }
-  .connection-card .connection-actions { grid-template-columns: repeat(auto-fit, minmax(min(100%, 8rem), 1fr)); }
+  .connection-card .connection-actions { grid-template-columns: repeat(auto-fit, minmax(min(100%, max(9rem, calc(50% - 6px))), 1fr)); }
   .connection-actions .secondary-button { min-width: 0; padding-right: 10px; padding-left: 10px; white-space: normal; }
   .connection-card .sync-period input { width: 82px; }
   .settings-message { overflow-wrap: anywhere; }
@@ -1749,7 +1749,7 @@ button:focus-visible, a:focus-visible, summary:focus-visible {
 .nutrition-card p.nutrition-session-pending { border-style: dashed; }
 .nutrition-session-choices { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 8px; }
 .nutrition-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 12px; }
-.nutrition-tools > .nutrition-actions { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 10rem), 1fr)); }
+.nutrition-tools > .nutrition-actions { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, max(9rem, calc(50% - 6px))), 1fr)); }
 .nutrition-tools > .nutrition-actions > .push-button { grid-column: 1 / -1; }
 #nutritionWeekDetails > summary { display: flex; align-items: center; min-height: 44px; cursor: pointer; }
 .nutrition-week-chart-day.is-empty { grid-template-columns: auto minmax(0, 1fr); padding: 6px 0; color: var(--muted); }
@@ -1837,7 +1837,7 @@ button:focus-visible, a:focus-visible, summary:focus-visible {
 .nutrition-product-form { display: grid; gap: 10px; }
 .nutrition-total-note { grid-column: 1 / -1; margin: 0; color: var(--muted); }
 .nutrition-warning-checklist { margin: 8px 0 0; padding-left: 1.25em; }
-.nutrition-product-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 9rem), 1fr)); gap: 10px; }
+.nutrition-product-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, max(9rem, calc(50% - 6px))), 1fr)); gap: 10px; }
 .nutrition-product-card { display: grid; gap: 7px; }
 .nutrition-product-head { display: flex; flex-wrap: wrap; gap: 8px; align-items: flex-start; justify-content: space-between; }
 .nutrition-product-head h3 { margin: 0; min-width: 0; }
@@ -1852,7 +1852,7 @@ button:focus-visible, a:focus-visible, summary:focus-visible {
 .nutrition-product-section > summary { min-height: 44px; display: flex; align-items: center; gap: 6px; cursor: pointer; color: var(--ink); font-weight: 650; list-style: none; }
 .nutrition-product-section > summary::-webkit-details-marker { display: none; }
 .nutrition-product-section > .nutrition-list { margin: 0 0 18px; }
-.nutrition-product-card .nutrition-actions { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 10rem), 1fr)); margin-top: 5px; }
+.nutrition-product-card .nutrition-actions { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, max(9rem, calc(50% - 6px))), 1fr)); margin-top: 5px; }
 .nutrition-product-marks { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
 .nutrition-origin { padding: 2px 8px; border: 1px solid var(--line-strong); border-radius: 999px; color: var(--muted); font-size: .75rem; }
 .nutrition-incomplete { color: var(--orange); font-size: .8rem; font-weight: 650; overflow-wrap: anywhere; }
