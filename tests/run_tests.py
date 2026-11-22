@@ -12,7 +12,8 @@ full run, for example inside the image used by run_sqlcipher_tests.ps1.
 CONTAINER_SUITE_PATTERNS. The default ``--suite all`` runs everything.
 ``--changed`` keeps only the modules changed_tests.py finds affected by the
 diff against ``--base``; it falls back to the whole suite where that selector
-says so; CI uses it, with ``--with-heavy``, only on a documentation-only pull
+says so (``--skip-full-fallback`` names that fallback and stops, #3924); CI
+uses it, with ``--with-heavy``, only on a documentation-only pull
 request. For a changed ``public/*.js`` file it also prints the ``node --test``
 command of the harness tests that load it (#3496). ``--module`` (repeatable) runs only the named
 test modules, for focused runs in the SQLCipher container.
@@ -337,6 +338,11 @@ def parse_args() -> argparse.Namespace:
         help="ref whose merge base --changed compares against",
     )
     parser.add_argument(
+        "--skip-full-fallback",
+        action="store_true",
+        help="with --changed, name a full-suite fallback and stop; CI runs it (#3924)",
+    )
+    parser.add_argument(
         "--with-heavy",
         action="store_true",
         help="keep the slow tooling modules --changed selects (CI docs-only runs)",
@@ -439,6 +445,15 @@ def main(args: argparse.Namespace | None = None) -> int:
             evidence["status"] = "empty"
             save()
             print("No Python tests are affected.")
+            return 0
+        if modules is None and args.skip_full_fallback:
+            evidence["status"] = "fallback_skipped"
+            save()
+            print(
+                "Full-suite fallback skipped: CI runs the full suite on the PR; "
+                "check_changed.py --full runs it here.",
+                flush=True,
+            )
             return 0
     try:
         discovered = discover_tests() if modules is None else load_modules(modules)

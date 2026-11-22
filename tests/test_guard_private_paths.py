@@ -52,6 +52,25 @@ class GuardPrivatePathsTests(unittest.TestCase):
                 self.assertEqual(run_hook(command), 2)
         self.assertEqual(run_hook(f"cat {ENV}", bom=True), 2)
 
+    def test_a_block_names_its_match_and_the_grep_tool(self) -> None:
+        # A refused source search named no word to adapt (#3924).
+        for command, word in (
+            (f"rg -n {TOKENS}/ backend", f"{TOKENS}/"),
+            (f"cat '{ENV}'", ENV),
+        ):
+            body = json.dumps({"tool_name": "Bash", "tool_input": {"command": command}})
+            result = subprocess.run(
+                [sys.executable, str(HOOK)],
+                input=body.encode("utf-8"),
+                capture_output=True,
+                check=False,
+            )
+            with self.subTest(command=command):
+                self.assertEqual(result.returncode, 2)
+                message = result.stderr.decode("utf-8")
+                self.assertIn(f"(matched `{word}`)", message)
+                self.assertIn("use the Grep tool", message)
+
     def test_ordinary_commands_pass(self) -> None:
         bare = DATA.rstrip("/")
         for command in (
