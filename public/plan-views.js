@@ -273,7 +273,7 @@ function plannedConflictLabels(conflicts) {
 }
 
 // Day context is plain text lines in one neutral style; conflicts belong to the planned session itself.
-function plannedDayNoteSpecs(dayContext, competitions, dateKey) {
+function plannedDayNoteSpecs(dayContext, competitions, dateKey, hasSession = false) {
   const context = dayContext && typeof dayContext === "object" ? dayContext : {};
   const appointments = (Array.isArray(context.appointments) ? context.appointments : [])
     .filter((event) => event && (event.training_relevant !== false || calendarMarkerKeys(event).length > 0));
@@ -284,8 +284,9 @@ function plannedDayNoteSpecs(dayContext, competitions, dateKey) {
       icon: "🏁",
       text: `${competition.priority || "B"}-Wettkampf: ${String(competition.name || "").trim() || "Wettkampf"}`,
     }));
+  // A rest day is only planned while no session stands on it, whatever the sport filter hides.
   const dayStatus = plannedDayStatusLabel(context.day_status);
-  if (dayStatus) specs.push({ kind: "day-status", icon: "", text: dayStatus });
+  if (dayStatus && !(hasSession && context.day_status === "rest")) specs.push({ kind: "day-status", icon: "", text: context.day_status === "rest" ? "Ruhetag geplant" : dayStatus });
   const markerKeys = new Set(appointments.concat([context]).flatMap((source) => calendarMarkerKeys(source)));
   const calendarParts = [
     ...appointments.map(plannedAppointmentLabel).filter(Boolean),
@@ -398,10 +399,12 @@ function countLabel(count, one, many) {
 }
 
 // Load sums only the sessions that carry a value and names the rest; no value at all hides the cell.
-function calendarWeekLoad(items) {
+// A planned load (`all`) is one value of the whole week or none: a partial sum would read as the week's plan.
+function calendarWeekLoad(items, { all = false } = {}) {
   const known = items.filter((item) => item.training_load != null && item.training_load !== "" && Number.isFinite(Number(item.training_load)));
   if (!known.length) return null;
   const missing = items.length - known.length;
+  if (all && missing) return { value: "–", note: `${countLabel(missing, "Einheit", "Einheiten")} ohne Belastung` };
   return {
     value: calendarMetricNumber(known.reduce((sum, item) => sum + Math.max(0, Number(item.training_load)), 0)),
     note: missing ? `${countLabel(missing, "Einheit", "Einheiten")} ohne Belastung` : null,
@@ -522,7 +525,7 @@ function calendarEntryStatus(entry, dateKey, todayKey) {
 
 function calendarStatusLabel(entry, dateKey, todayKey) {
   const status = calendarEntryStatus(entry, dateKey, todayKey);
-  if (status === "completed") return entry.is_completed_activity ? "✓ Zusätzlich" : "✓ Absolviert";
+  if (status === "completed") return entry.is_completed_activity ? "✓ Ungeplant" : "✓ Absolviert";
   if (status === "missed") return "✕ Nicht absolviert";
   return status === "today" ? "Heute geplant" : "Geplant";
 }
@@ -541,9 +544,9 @@ function complaintLabel(item) {
   return [COMPLAINT_AREA_LABELS[item.area] || item.area, COMPLAINT_SIDE_LABELS[item.side] ?? ""].filter(Boolean).join(" ");
 }
 
-function plannedDayNotes(dayContext, competitions, dateKey) {
+function plannedDayNotes(dayContext, competitions, dateKey, hasSession = false) {
   const notes = h("div", "planned-day-notes");
-  for (const { kind, icon, text } of plannedDayNoteSpecs(dayContext, competitions, dateKey)) {
+  for (const { kind, icon, text } of plannedDayNoteSpecs(dayContext, competitions, dateKey, hasSession)) {
     notes.append(h("p", `planned-day-context planned-day-${kind}`,
       icon ? h("span", { "aria-hidden": "true" }, `${icon} `) : null,
       kind === "calendar" ? h("span", "sr-only", "Kalender: ") : null,
@@ -873,7 +876,7 @@ function plannedWeekMetrics(planned, actual) {
   const rows = [
     ["Dauer", { planned: plannedSeconds > 0 ? { value: calendarHours(plannedSeconds) } : null, actual: { value: calendarHours(actualSeconds) } }],
     ["Distanz", { planned: plannedDistance > 0 ? { value: AppFormat.distance(plannedDistance) } : null, actual: calendarWeekDistance(actual) }],
-    ["Belastung", { planned: calendarWeekLoad(planned), actual: calendarWeekLoad(actual) }],
+    ["Belastung", { planned: calendarWeekLoad(planned, { all: true }), actual: calendarWeekLoad(actual) }],
   ];
   totals.append(h("span"));
   for (const column of columns) totals.append(h("span", "planned-week-column", column === "planned" ? "Geplant" : "Absolviert"));
@@ -2209,8 +2212,11 @@ function renderPlannedDay(view, dateKey, weekHasPlan) {
   const heading = plannedDayHeading(plannedDayWeather(dayContext, dateKey), dateKey, todayKey);
   // The band names the day's events and their impact, so the calendar note line leaves them out.
   const noteContext = plannedNoteContext(dayContext, dayEvents);
-  const notes = plannedDayNotes(noteContext, state.data?.competitions, dateKey);
-  const emptyText = dateKey < todayKey ? "Keine Aktivität" : "Keine Einheit geplant";
+  const daySessions = (view.allEventsByDate?.get(dateKey) || []).length;
+  const hiddenByFilter = daySessions > dayEntries.length;
+  const notes = plannedDayNotes(noteContext, state.data?.competitions, dateKey, daySessions > 0);
+  let emptyText = dateKey < todayKey ? "Keine Aktivität" : "Keine Einheit geplant";
+  if (hiddenByFilter) emptyText = "Keine Einheit dieser Sportart";
   const deleted = [...plannedDeleteReceipts].filter(([, receipt]) => receipt.day === dateKey).map(([id, receipt]) => {
     const status = h("p", { className: "planned-move-status", role: "status" }, receipt.text);
     if (receipt.change?.id) status.append(...plannedMoveUndo(id, receipt, status, plannedDeleteReceipts));
@@ -2412,7 +2418,7 @@ function renderPlannedWeek(view) {
     plannedWeekStep(1, weekKey < lastWeekKey ? addDateKey(weekKey, 7) : ""),
     calendarView === "week" ? plannedViewSwitch() : null,
     calendarView === "week" ? plannedSportFilter() : null,
-    h("span", "planned-week-summary", calendarCountLabel(weekEntries, todayKey) || "Keine Einheiten"));
+    h("span", "planned-week-summary", [calendarSport === "all" ? "" : `Gefiltert: ${CALENDAR_SPORTS[calendarSport][0]} · `, calendarCountLabel(weekEntries, todayKey) || "Keine Einheiten"]));
   const planned = weekEntries.filter((entry) => !entry.is_completed_activity);
   const actual = weekEntries.map(calendarActualActivity).filter(Boolean);
   const totals = plannedWeekMetrics(planned, actual);
@@ -2476,7 +2482,7 @@ function weekReviewChange(text, up) {
 function weekReviewPercent(value, before) {
   if (!Number.isFinite(value) || !Number.isFinite(before) || before <= 0) return null;
   const percent = Math.round((value / before - 1) * 100);
-  return weekReviewChange(`${percent >= 0 ? "+" : "−"}${Math.abs(percent)} %`, percent >= 0);
+  return weekReviewChange(`${percent >= 0 ? "+" : "−"}${Math.abs(percent)} % ggü. Vorwoche`, percent >= 0);
 }
 
 function weekReviewTile(label, value, change = null, note = "") {
@@ -2508,7 +2514,7 @@ function weekReviewRecoveryTiles(recovery) {
   if (sleep) {
     const minutes = Number.isFinite(sleep.week_before) ? Math.round((sleep.mean - sleep.week_before) * 60) : 0;
     const sign = minutes > 0 ? "+" : "−";
-    const change = minutes ? weekReviewChange(`${sign}${weekReviewHours(minutes * 60)}`, minutes > 0) : null;
+    const change = minutes ? weekReviewChange(`${sign}${weekReviewHours(minutes * 60)} ggü. Vorwoche`, minutes > 0) : null;
     tiles.push(weekReviewTile("Schlaf Ø", `${weekReviewHours(sleep.mean * 3600)} h`, change, sleep.source));
   }
   for (const [key, label] of [["resting_hr", "Ruhepuls Ø"], ["hrv", "HRV Ø"]]) {
@@ -3115,12 +3121,13 @@ function competitionCard(competition, todayKey, openIds) {
       h("strong", null, `${competitionDate(competition, todayKey) ? dateLabel(competition.event_date) : "Datum unbekannt"} · ${competition.name || "Wettkampf"}`),
       h("span", "competition-summary-facts", [sport, competitionDistance(competition.distance), `Priorität ${competition.priority || "B"}`, when].filter(Boolean).join(" · "))),
     edit);
-  const source = h("small", "competition-sync-state", competition.external_id ? "Intervals.icu" : "Lokal");
+  const source = h("small", "competition-sync-state", competition.external_id ? "Intervals.icu" : "Nicht an Intervals.icu gesendet");
   if (competition.sync_state === "local_override") source.textContent = "Lokal geändert";
   const optional = [
     ["Ergebnis", competitionResult(competition.result)],
-    ["Startzeit", competition.starts_at_local ? formatLocalCompetitionTime(competition.starts_at_local) : null],
-    ["Ziel", competition.target],
+    // Midnight is no start time, as in the dialog; a goal is shown as a time only when it is one.
+    ["Startzeit", plannedUnitStartTime(competition.starts_at_local) ? formatLocalCompetitionTime(competition.starts_at_local) : null],
+    ["Ziel", competitionGoal(competition.target)],
     ["Erwartete Dauer", competition.planned_duration_s == null ? null : AppFormat.duration(competition.planned_duration_s)],
     ["Ort", competition.location],
     ["Streckenprofil", competition.course_profile],
@@ -3190,6 +3197,13 @@ function renderCompetitionReadStatus(status) {
   }
   node.textContent = message;
   retry.hidden = status !== "error";
+}
+
+// "Unter 45 Minuten" and "3:30" stay as written; only "h:mm:ss" reads as a duration.
+function competitionGoal(value) {
+  const match = /^\s*(\d{1,2}):(\d{2}):(\d{2})\s*$/.exec(String(value ?? ""));
+  if (!match) return value;
+  return AppFormat.duration((Number(match[1]) * 60 + Number(match[2])) * 60 + Number(match[3]));
 }
 
 function formatLocalCompetitionTime(value) {

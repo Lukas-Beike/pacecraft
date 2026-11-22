@@ -89,9 +89,9 @@ test("a past week shows every tile with its change and source, in the approved o
   assert.deepEqual(weekReviewTileTexts(review, 1), [
     "Plan|5 von 6|verpasst: Do Kraft",
     "Einheiten|6|davon 1 zusätzlich",
-    "Zeit|7:40 h|+12 %",
-    "Belastung|412|+8 %",
-    "Schlaf Ø|7:05 h|−0:10|Garmin",
+    "Zeit|7:40 h|+12 % ggü. Vorwoche",
+    "Belastung|412|+8 % ggü. Vorwoche",
+    "Schlaf Ø|7:05 h|−0:10 ggü. Vorwoche|Garmin",
     "Ruhepuls Ø|46 bpm|unter Normalbereich · Wahoo",
     "HRV Ø|62 ms|im Normalbereich · Garmin",
     "Check-ins|6 von 7|Ø Motivation 7 · Stress 3",
@@ -111,7 +111,7 @@ test("a running week shows no change in time and load, and a week without data s
   // On its Sunday the review already reaches the week's end, but the week still runs (CI pinned day, #3298).
   const sunday = { ...review, effective_end: review.week_end };
   assert.deepEqual(weekReviewTileTexts(sunday, 0, true), ["Plan|1 von 5|4 noch offen", "Einheiten|1", "Zeit|0:45 h", "Belastung|38"]);
-  assert.deepEqual(weekReviewTileTexts(sunday, 0, false).slice(2), ["Zeit|0:45 h|−90 %", "Belastung|38|−91 %"]);
+  assert.deepEqual(weekReviewTileTexts(sunday, 0, false).slice(2), ["Zeit|0:45 h|−90 % ggü. Vorwoche", "Belastung|38|−91 % ggü. Vorwoche"]);
   const empty = { ...review, plan: { planned: 0 }, load: { this_week: { sessions: 0 }, week_before: {} } };
   assert.deepEqual(weekReviewTileTexts(empty, 0, true), []);
 });

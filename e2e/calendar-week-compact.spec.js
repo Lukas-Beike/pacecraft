@@ -164,7 +164,7 @@ test("the desktop detail pane starts at the top of the week for its top and bott
   expect(paneBox.y + paneBox.height).toBeLessThanOrEqual(weekBox.y + weekBox.height + 1);
 });
 
-test("extra activities show no Zusätzlich badge in a week without a plan", async ({ page, request }) => {
+test("extra activities show no Ungeplant badge in a week without a plan", async ({ page, request }) => {
   await openCalendar(page, request);
   await page.evaluate(() => {
     const today = timezoneDateKey(state.data?.profile?.timezone, new Date());
@@ -177,7 +177,7 @@ test("extra activities show no Zusätzlich badge in a week without a plan", asyn
     renderPlanned(entries);
   });
   const day = page.locator(".planned-day.is-today");
-  await expect(day).not.toContainText("Zusätzlich");
+  await expect(day).not.toContainText("Ungeplant");
   await expect(day.locator(".planned-group > summary .planned-session-title")).toHaveText("2× Trainingseinheit");
   // A week without a plan counts no session as extra.
   await expect(page.locator(".week-review")).not.toContainText("zusätzlich");
@@ -363,7 +363,7 @@ test("@responsive the week review sits under a past or running week and follows 
   await expect(review.locator(".week-review-head span")).toHaveText(/^KW \d+$/);
   await expect(labels).toHaveText(["Plan", "Einheiten", "Zeit", "Belastung", "Schlaf Ø", "HRV Ø", "Check-ins", "Besondere Einheiten", "Beschwerden"]);
   await expect(review.locator(".week-review-tile").first()).toHaveText(/^Plan5 von 6verpasst: Mi Kraft$/);
-  await expect(review.locator(".week-review-change")).toHaveText(["+12 %", "+8 %", "−0:10", "3 → 5"]);
+  await expect(review.locator(".week-review-change")).toHaveText(["+12 % ggü. Vorwoche", "+8 % ggü. Vorwoche", "−0:10 ggü. Vorwoche", "3 → 5"]);
   await expect(review.getByText("im Normalbereich · Garmin")).toBeVisible();
   await expect(review.locator(".week-review-wide").first().locator("li")).toHaveText(/^So Langer Lauf · höchste Belastung \(120\)$/);
   // #3766 (athlete: layout A): one line per body area and side, a worsening in the danger colour.
