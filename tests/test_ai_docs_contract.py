@@ -3,6 +3,7 @@
 import json
 import os
 import re
+import string
 import unittest
 from pathlib import Path
 
@@ -146,6 +147,22 @@ class AiDocsContractTests(unittest.TestCase):
         ).read_text(encoding="utf-8")
         self.assertNotIn("tests/test_server.py", validation)
         self.assertTrue((ROOT / "tests" / "run_tests.py").is_file())
+
+    def test_the_lane_brief_template_renders_every_placeholder(self) -> None:
+        # #3926: the binding brief lived only in a session's temp folder.
+        template = SKILL_ROOT / "pacecraft-orchestrator" / "lane-brief.md"
+        names = set(re.findall(r"\$([A-Z_]+)", template.read_text(encoding="utf-8")))
+        self.assertEqual(
+            names,
+            {"LANE", "ORCHESTRATOR", "MACHINE", "ORCHESTRATOR_THREAD"}
+            | {"ENVIRONMENT_ID", "QUEUE", "QUEUE_RULES"},
+        )
+        brief = string.Template(template.read_text(encoding="utf-8")).substitute(
+            {name: f"<{name.lower()}>" for name in names}
+        )
+        self.assertNotIn("$", brief)
+        self.assertIn("thread <orchestrator_thread> with environmentId", brief)
+        self.assertIn("deliver-issue", brief)
 
     def test_delivery_skills_require_a_ui_walk_step_for_a_visible_function(
         self,

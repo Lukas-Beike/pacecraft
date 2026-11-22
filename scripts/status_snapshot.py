@@ -1,16 +1,29 @@
-"""Print a compact, read-only repository status from the GitHub CLI."""
+"""Print a compact, read-only repository status from the GitHub CLI.
+
+With --changes, the snapshot's digest is compared with the one in STATE_FILE:
+exit 0 and one line when nothing changed, else the snapshot is printed with the
+PRs merged since the last reported change, the new state stored, and the exit
+code is 3, so a small scheduled task can wake the orchestrator only on a change
+(#3926). The state file is fixed, so no command-line text reaches a path or a
+gh argument.
+"""
 
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import re
 import subprocess
 import sys
+from datetime import UTC, datetime
+from pathlib import Path
 
 PASSING = {"SUCCESS", "SKIPPED", "NEUTRAL"}
 NONE = "  none"
 SUBJECT_PR = re.compile(r"\(#(\d+)\)\s*$")
+CHANGED = 3
+STATE_FILE = Path.home() / ".pacecraft" / "status-snapshot.json"
 
 
 class SnapshotError(RuntimeError):
@@ -129,6 +142,44 @@ def release_runs(repo: str) -> list[dict]:
     ]
 
 
+def develop_runs(repo: str) -> list[dict]:
+    """The push runs of the newest develop commit that has any."""
+    data = gh_json(
+        "run", "list", "--repo", repo, "--branch", "develop", "--event", "push",
+        "--limit", "20", "--json", "workflowName,status,conclusion,headSha",
+    )  # fmt: skip
+    head = data[0]["headSha"] if data else None
+    return [
+        {
+            "workflow": run["workflowName"],
+            "status": run["status"],
+            "conclusion": run["conclusion"] or None,
+            "head": run["headSha"][:9],
+        }
+        for run in data
+        if run["headSha"] == head
+    ]
+
+
+def merged_after(repo: str, since: str) -> list[dict]:
+    data = gh_json(
+        "pr", "list", "--repo", repo, "--state", "merged", "--search",
+        f"merged:>={since}", "--limit", "100", "--json", "number,title,mergedAt",
+    )  # fmt: skip
+    return [
+        {"number": pr["number"], "title": pr["title"], "merged_at": pr["mergedAt"]}
+        for pr in data
+    ]
+
+
+def open_issues(repo: str) -> list[int]:
+    data = gh_json(
+        "issue", "list", "--repo", repo, "--state", "open", "--limit", "500",
+        "--json", "number",
+    )  # fmt: skip
+    return sorted(issue["number"] for issue in data)
+
+
 def labelled_issues(repo: str, label: str) -> list[dict]:
     data = gh_json(
         "issue", "list", "--repo", repo, "--state", "open", "--label", label,
@@ -137,10 +188,11 @@ def labelled_issues(repo: str, label: str) -> list[dict]:
     return [{"number": issue["number"], "title": issue["title"]} for issue in data]
 
 
-def collect(repo: str) -> dict:
+def collect(repo: str, since: str | None = None) -> dict:
     release = latest_release(repo)
     promotion = release_promotion(repo, release["tag"])
-    return {
+    extra = {"merged_since": merged_after(repo, since)} if since else {}
+    return extra | {
         "repo": repo,
         "release": release,
         "promotion_pr": promotion["number"] if promotion else None,
@@ -149,6 +201,8 @@ def collect(repo: str) -> dict:
         "release_runs": release_runs(repo),
         "release_blockers": labelled_issues(repo, "release-blocker"),
         "in_progress": labelled_issues(repo, "in progress"),
+        "develop_runs": develop_runs(repo),
+        "open_issues": open_issues(repo),
     }
 
 
@@ -182,13 +236,65 @@ def render(snapshot: dict) -> str:
     ):
         lines.append(f"{title}:")
         lines += [f"  #{i['number']} {i['title']}" for i in snapshot[key]] or [NONE]
+    lines.append("Develop push runs:")
+    lines += [
+        f"  {run['head']} {run['workflow']}: {run['conclusion'] or run['status']}"
+        for run in snapshot["develop_runs"]
+    ] or [NONE]
+    if "merged_since" in snapshot:
+        lines.append(f"Merged since the last change ({len(snapshot['merged_since'])}):")
+        lines += [
+            f"  #{pr['number']} {pr['title']} ({pr['merged_at']})"
+            for pr in snapshot["merged_since"]
+        ] or [NONE]
+    issues = snapshot["open_issues"]
+    lines.append(f"Open issues ({len(issues)}): " + " ".join(f"#{n}" for n in issues))
     return "\n".join(lines)
+
+
+def read_states() -> dict:
+    try:
+        states = json.loads(STATE_FILE.read_text(encoding="utf-8"))
+    except OSError, ValueError:
+        return {}
+    return states if isinstance(states, dict) else {}
+
+
+def last_state(repo: str) -> tuple[str, str | None]:
+    """The repository's stored digest and the time of its last reported change."""
+    try:
+        state = read_states()[repo]
+        at = datetime.fromtimestamp(int(state["at"]), UTC)
+        return str(state["digest"]), at.strftime("%Y-%m-%dT%H:%M:%SZ")
+    except OSError, ValueError, KeyError, TypeError:
+        return "", None
+
+
+def digest(snapshot: dict) -> str:
+    """The snapshot without the time-window list, which moves with every change."""
+    stable = {key: value for key, value in snapshot.items() if key != "merged_since"}
+    text = json.dumps(stable, sort_keys=True).encode("utf-8")
+    return hashlib.sha256(text).hexdigest()
+
+
+def store_state(repo: str, value: str, started: int) -> None:
+    """Keep each repository's state apart; ``started`` precedes the reads, so a
+    PR merged while they ran falls into the next window."""
+    states = read_states()
+    states[repo] = {"digest": value, "at": started}
+    STATE_FILE.parent.mkdir(parents=True, exist_ok=True)
+    STATE_FILE.write_text(json.dumps(states), encoding="utf-8")
 
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--json", action="store_true", help="machine-readable output")
     parser.add_argument("--repo", help="OWNER/NAME (default: current repository)")
+    parser.add_argument(
+        "--changes",
+        action="store_true",
+        help="exit 0 when unchanged since the last change, else print and exit 3",
+    )
     args = parser.parse_args(argv)
     try:
         repo = (
@@ -197,12 +303,19 @@ def main(argv: list[str] | None = None) -> int:
                 "repo", "view", "--json", "nameWithOwner", "--jq", ".nameWithOwner"
             ).strip()
         )
-        snapshot = collect(repo)
+        started = int(datetime.now(UTC).timestamp())
+        stored, since = last_state(repo) if args.changes else ("", None)
+        snapshot = collect(repo, since)
     except SnapshotError as exc:
         print(f"status_snapshot: {exc}", file=sys.stderr)
         return 1
+    if args.changes:
+        if digest(snapshot) == stored:
+            print("status_snapshot: unchanged")
+            return 0
+        store_state(repo, digest(snapshot), started)
     print(json.dumps(snapshot, indent=2) if args.json else render(snapshot))
-    return 0
+    return CHANGED if args.changes else 0
 
 
 if __name__ == "__main__":
