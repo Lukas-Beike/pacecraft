@@ -11,11 +11,15 @@ themselves, not the best windows inside them. Pure; stdlib only.
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
+from itertools import pairwise
 from typing import Any, Final
 
 METHOD: Final = "critical-speed-test-laps"
 TEST_METERS: Final = (1200, 2400, 3600)
 DISTANCE_TOLERANCE: Final = 0.03
+# Galbraith rested 30 or 60 min between the runs; a ladder workout with short
+# jogs between 3.6, 2.4 and 1.2 km is no test (Gitar, #3919).
+MIN_RECOVERY_SECONDS: Final = 1200
 _NOT_EFFORT: Final = frozenset({"warmup", "cooldown", "recovery"})
 
 
@@ -31,11 +35,12 @@ def session_test_efforts(
     """The three effort laps (distance m, duration s), shortest first, or None.
 
     None unless every test distance is matched by exactly one effort lap, so a
-    session of repeated 1200 m intervals is no test.
+    session of repeated 1200 m intervals is no test, and unless at least
+    ``MIN_RECOVERY_SECONDS`` lie between consecutive efforts.
     """
-    efforts: list[dict[str, Any]] = []
+    efforts: list[tuple[float, float, float]] = []
     for nominal in TEST_METERS:
-        matches = []
+        matches: list[tuple[float, float, float]] = []
         for lap in laps:
             distance = _number(lap.get("distance_m"))
             start = _number(lap.get("start_time"))
@@ -48,10 +53,17 @@ def session_test_efforts(
                 and end > start
                 and abs(distance - nominal) <= nominal * DISTANCE_TOLERANCE
             ):
-                matches.append(
-                    {"distance_m": distance, "duration_seconds": end - start}
-                )
+                matches.append((start, end, distance))
         if len(matches) != 1:
             return None
         efforts.append(matches[0])
-    return efforts
+    ordered = sorted(efforts)
+    if any(
+        later[0] - earlier[1] < MIN_RECOVERY_SECONDS
+        for earlier, later in pairwise(ordered)
+    ):
+        return None
+    return [
+        {"distance_m": distance, "duration_seconds": end - start}
+        for start, end, distance in efforts
+    ]

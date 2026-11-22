@@ -85,6 +85,7 @@ every named number the code fixes. A test fails when it is out of date.
 | `METHOD` | `'critical-speed-test-laps'` | `backend/performance/critical_speed_test.py` |  |
 | `TEST_METERS` | `(1200, 2400, 3600)` | `backend/performance/critical_speed_test.py` |  |
 | `DISTANCE_TOLERANCE` | `0.03` | `backend/performance/critical_speed_test.py` |  |
+| `MIN_RECOVERY_SECONDS` | `1200` | `backend/performance/critical_speed_test.py` | Galbraith rested 30 or 60 min between the runs; a ladder workout with short jogs between 3.6, 2.4 and 1.2 km is no test (Gitar, #3919). |
 | `VO2MAX_UNIT` | `'ml/kg/min'` | `backend/performance/current_metrics.py` |  |
 | `LOCAL_SOURCE_LABEL` | `'Lokal'` | `backend/performance/current_metrics.py` | The label of a locally confirmed zone configuration's value. |
 | `PROFILE_SOURCE_LABEL` | `'Manuell'` | `backend/performance/current_metrics.py` | The label of a profile value. |

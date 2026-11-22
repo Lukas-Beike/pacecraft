@@ -120,8 +120,11 @@ understates D′ by about 40 %. A test is therefore read from its laps.
   `cs_test_efforts`, `CURVE_FORMAT_VERSION` 3): one session whose laps hold
   exactly one effort lap of each test distance, within 3 %. Warm-up, cool-down
   and recovery laps never count, and a second lap of a distance (repeated
-  1200 m intervals) makes the session no test. No planned workout is needed.
-  The three runs belong to one session, as in R82.
+  1200 m intervals) makes the session no test. At least 20 min must lie
+  between consecutive efforts (`MIN_RECOVERY_SECONDS`, product assumption
+  below R82's 30 or 60 min), so a 3.6/2.4/1.2 km ladder with short jogs is no
+  test. No planned workout is needed. The three runs belong to one session,
+  as in R82.
 - Fit: `distance = CS × t + D′` by least squares over the three laps (lap
   distance in m, lap time in s), reported as CS (m/s, pace on the LT2 row) and
   D′ (m) with the relative residuals, R² and the standard error of the

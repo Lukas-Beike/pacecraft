@@ -75,6 +75,22 @@ class RecognitionTests(unittest.TestCase):
     def test_a_missing_distance_is_no_test(self):
         self.assertIsNone(session_test_efforts(_laps()[:-2]))
 
+    def test_a_ladder_with_short_jogs_is_no_test(self):
+        # 3.6, 2.4 and 1.2 km with 3 min jogs: a workout, not a rested test.
+        laps, start = [], 0
+        for distance in (3600, 2400, 1200):
+            laps.append(_lap(distance, TIMES[distance], start))
+            start += TIMES[distance]
+            laps.append(_lap(500, 180, start, kind="recovery"))
+            start += 180
+        self.assertIsNone(session_test_efforts(laps))
+        # Twenty minutes between the efforts are enough.
+        laps, start = [], 0
+        for distance in (3600, 2400, 1200):
+            laps.append(_lap(distance, TIMES[distance], start))
+            start += TIMES[distance] + 1200
+        self.assertIsNotNone(session_test_efforts(laps))
+
     def test_recovery_laps_never_count(self):
         laps = _laps()
         laps[-2]["kind"] = "recovery"
