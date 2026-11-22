@@ -1046,10 +1046,14 @@ test("the fit scale names the own value, sorts the sources nearest first and sig
   assert.match(textOf(short.children.at(-1)), /^kcal pro Tag, Ø 4 Wochen\. .* 1 von 4 Wochen mit Daten\.$/);
   const half = energyFitScale({ best: null, outlined: "device", fit_scale: { "182d": { ...scale, days: 182, own_days: 182, weeks: 26, span_start: null, span_end: null } } }, "182d");
   assert.match(textOf(half.children[1]), /^In den letzten 6 Monaten verbrauchst du rund 2726 kcal/);
-  // Without an own estimate the verdict says what is missing; the sources still show, unsigned.
+  // Without an own estimate the sources still show, unsigned, with no sentence that denies them and no green band
+  // in the note (#3930); the sentence stands only where nothing is drawn.
   const none = energyFitScale({ best: null, fit_scale: { "91d": { ...scale, own_kcal: null, own_band_kcal: null } } }, "91d");
-  assert.equal(textOf(none.children[1]), "Für einen Vergleich fehlen noch genug vollständig erfasste Tage und Wiegungen.");
-  assert.deepEqual(none.children[3].children.map((row) => textOf(row.children[2])), ["3157", "3768", "3930"]);
+  assert.doesNotMatch(textOf(none), /Für einen Vergleich fehlen/);
+  assert.doesNotMatch(textOf(none.children.at(-1)), /Grünes Band/);
+  assert.deepEqual(none.children[2].children.map((row) => textOf(row.children[2])), ["3157", "3768", "3930"]);
+  const empty = energyFitScale({ best: null, fit_scale: { "91d": { ...scale, own_kcal: null, own_band_kcal: null, sources: [] } } }, "91d");
+  assert.equal(textOf(empty.children[1]), "Für einen Vergleich fehlen noch genug vollständig erfasste Tage und Wiegungen.");
   // #3723: a formula row with a learned everyday adds "mit Alltag ≈", ranked and signed on the raw
   // total; the legend says "vorläufig" until every shown term qualifies.
   const withLearned = (qualified) => ({ ...scale, sources: [{ source: "katch_mcardle", total_kcal: 3768, learned_total_kcal: 3948, learned_qualified: qualified }, ...scale.sources.slice(1)] });

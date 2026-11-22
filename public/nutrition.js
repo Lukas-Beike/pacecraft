@@ -350,12 +350,23 @@ function renderNutritionHistoryPeriod() {
   document.querySelector("#nutritionRefreshButton").setAttribute("aria-label", `Ernährung aktualisieren: Verlauf, ${verlaufPeriod().label}`);
 }
 
-// Up to 4 weeks show a row per day; 3, 6 and 12 months a row per week, so the list stays short (#3704).
+// The Monday of a date: a week of the Verlauf is a calendar week, as in Körper (#3930).
+function nutritionWeekStart(date) {
+  const day = new Date(`${date}T12:00:00Z`);
+  return new Date(day.getTime() - ((day.getUTCDay() + 6) % 7) * 86400000).toISOString().slice(0, 10);
+}
+
+// Up to 4 weeks show a row per day; 3, 6 and 12 months a row per calendar week, so the list stays short (#3704).
 function nutritionChartDays(days) {
   if (days.length <= 28) return days;
-  return Array.from({ length: Math.ceil(days.length / 7) }, (_, index) => {
-    const week = days.slice(index * 7, index * 7 + 7);
-    const point = { date: week[0].date, end_date: week.at(-1).date };
+  const weeks = [];
+  for (const day of days) {
+    const start = nutritionWeekStart(day.date);
+    if (weeks.at(-1)?.start === start) weeks.at(-1).days.push(day);
+    else weeks.push({ start, days: [day] });
+  }
+  return weeks.map(({ start, days: week }) => {
+    const point = { date: week[0].date, end_date: week.at(-1).date, week_start: start, week_days: week.length };
     for (const key of ["intake_kcal", "expenditure_kcal", "balance_kcal"]) {
       const values = week.map((day) => day[key]).filter(Number.isFinite);
       point[`${key}_days`] = values.length;
@@ -389,10 +400,15 @@ function nutritionChartRows(chartDays) {
   return rows;
 }
 
-function nutritionEmptyRunRow({ start, end }) {
+// "22.11.–13.11." for a run of days, one date for a run of one.
+function nutritionRunLabel({ start, end }) {
   const first = nutritionDayLabel(start);
   const last = nutritionDayLabel(end);
-  return h("div", "nutrition-week-chart-day is-empty", h("strong", null, first === last ? first : `${first}–${last}`), h("span", null, "keine Daten"));
+  return first === last ? first : `${first}–${last}`;
+}
+
+function nutritionEmptyRunRow(run) {
+  return h("div", "nutrition-week-chart-day is-empty", h("strong", null, nutritionRunLabel(run)), h("span", null, "keine Daten"));
 }
 
 // One bar of a row: Aufnahme blue, Verbrauch green, with its amount.
@@ -405,7 +421,7 @@ function nutritionChartSeries(day, [key, label, kind], scale) {
     track.append(bar);
   } else track.classList.add("is-missing");
   const amountText = value == null ? "–" : nutritionWeekValue(value, "kcal");
-  const coverage = day.end_date ? `${day[key + "_days"]} von 7 Tagen` : "";
+  const coverage = day.end_date ? `${day[key + "_days"]} von ${day.week_days} Tagen` : "";
   let ariaLabel = `${label}: ${amountText}${value == null ? " (keine Daten)" : ""}`;
   if (coverage) ariaLabel = `${label}: ${amountText}, ${coverage}`;
   return h("div", { className: `nutrition-week-chart-series is-${kind}`, "aria-label": ariaLabel },
@@ -420,12 +436,25 @@ function nutritionChartBalance(balance, goal) {
     balance == null ? "–" : nutritionWeekValue(balance, "", true));
 }
 
+// "Woche ab 16.11." for a week row, "Diese Woche" for the one that holds today, else the day.
+function nutritionRowLabel(day) {
+  if (!day.end_date) return nutritionDayLabel(day.date);
+  if (day.week_start <= todayIso() && todayIso() <= day.end_date) return "Diese Woche";
+  const start = nutritionDayLabel(day.week_start);
+  return "Woche ab " + (start.length === 5 ? start + "." : start);
+}
+
+// The names of a row's three columns, drawn once above the rows.
+function nutritionChartHead(weekly) {
+  return h("div", "nutrition-week-chart-head", h("strong", null, weekly ? "Woche" : "Tag"), h("span", null, "Aufnahme · Verbrauch"), h("span", null, "Bilanz"));
+}
+
 // A row of the Tagesverlauf: the day, its two bars and, right, its balance.
 function nutritionChartDayRow(day, scale, goal = null) {
   const bars = h("div", "nutrition-week-chart-bars",
     ...[["intake_kcal", "Aufnahme", "intake"], ["expenditure_kcal", "Verbrauch", "expenditure"]].map((series) => nutritionChartSeries(day, series, scale)));
   return h("div", "nutrition-week-chart-day",
-    h("strong", { "aria-label": (day.end_date && `${nutritionExpenditureDate(day.date)} bis ${nutritionExpenditureDate(day.end_date)}`) || null }, nutritionDayLabel(day.date)),
+    h("strong", { "aria-label": (day.end_date && `${nutritionExpenditureDate(day.date)} bis ${nutritionExpenditureDate(day.end_date)}`) || null }, nutritionRowLabel(day)),
     bars, nutritionChartBalance(day.balance_kcal, goal));
 }
 
@@ -442,7 +471,7 @@ function nutritionStatTile(label, value, unit, note, signed = false) {
 function nutritionMacroCard(week) {
   const tiles = NUTRITION_WEEK_MACROS
     .filter(([, key]) => !["sugar_g", "salt_g"].includes(key) || week.averages[key].days > 0)
-    .map(([label, key]) => nutritionStatTile(label, week.averages[key].value, "g", `${week.averages[key].days}/${week.days.length} Tage`));
+    .map(([label, key]) => nutritionStatTile(label, week.averages[key].value, "g", `an ${week.averages[key].days} von ${week.days.length} Tagen`));
   return h("section", { className: "analysis-chart-card", dataset: { verlaufCard: "macros" } }, verlaufHead("Makros", `${verlaufPeriod().label} · Ø pro Tag`), h("div", "stat-tiles", tiles));
 }
 
@@ -465,9 +494,9 @@ function nutritionBalanceCard(week, goal) {
   if (average == null) markValueMissing(number); else setValueWithUnit(number, nutritionWeekValue(average, "kcal", true));
   const aim = nutritionGoalText(goal);
   const hero = h("p", { className: "verlauf-hero", dataset: distance ? { goalDistance: distance } : {} }, number, h("small", null, "Ø pro Tag"), aim ? h("small", "verlauf-goal", aim) : null);
-  const period = `${nutritionPeriodText(week.start_date, week.end_date)} · ${week.balance_days}/${dayCount} Tage erfasst`;
+  const period = `${nutritionPeriodText(week.start_date, week.end_date)} · Bilanz an ${week.balance_days} von ${dayCount} Tagen`;
   // The period balance's expenditure is the own day total (athlete decision, #3600).
-  const tiles = [nutritionStatTile("Aufnahme", week.averages.intake_kcal.value, "kcal", "Ø pro Tag"),
+  const tiles = [nutritionStatTile("Aufnahme", week.averages.intake_kcal.value, "kcal", `Ø pro Tag · an ${week.averages.intake_kcal.days} Tagen`),
     nutritionStatTile("Verbrauch", week.averages.expenditure_kcal.value, "kcal", week.expenditure_source === "own" ? "Ø pro Tag · aus deinen Daten" : "Ø pro Tag"),
     nutritionStatTile("Summe", balance, "kcal", null, true)];
   return h("section", { className: "analysis-chart-card", dataset: { verlaufCard: "balance" } }, verlaufHead("Bilanz", period), hero, h("div", "stat-tiles is-three", tiles));
@@ -479,7 +508,8 @@ function renderNutritionGoalParts(week) {
   document.querySelector("#nutritionWeekBalance").replaceChildren(nutritionBalanceCard(week, goal));
   const chartDays = nutritionChartDays(week.days);
   const scale = Math.max(1, ...chartDays.flatMap((day) => [day.intake_kcal, day.expenditure_kcal].filter((value) => Number.isFinite(value) && value >= 0)));
-  document.querySelector("#nutritionWeekChart").replaceChildren(...nutritionChartRows(chartDays).map((entry) => (entry.empty ? nutritionEmptyRunRow(entry) : nutritionChartDayRow(entry.day, scale, goal))));
+  document.querySelector("#nutritionWeekChart").replaceChildren(nutritionChartHead(week.days.length > 28),
+    ...nutritionChartRows(chartDays).map((entry) => (entry.empty ? nutritionEmptyRunRow(entry) : nutritionChartDayRow(entry.day, scale, goal))));
 }
 
 let nutritionWeekShown = null;
@@ -493,9 +523,13 @@ function renderNutritionWeek(week) {
   document.querySelector("#nutritionWeekChartSection").hidden = false;
   // The fit cards, the Bilanz and the rows, which take the goal from the same read.
   renderNutritionFit();
-  document.querySelector("#nutritionWeekDays").replaceChildren(...week.days.map((day) => h("tr", null,
-    h("th", { scope: "row" }, nutritionDayLabel(day.date)),
-    ...["intake_kcal", "expenditure_kcal", "balance_kcal"].map((key) => h("td", null, day[key] == null ? "–" : nutritionWeekValue(day[key], "", key === "balance_kcal"))))));
+  // Days without data are one row per run, as in the chart: a year is not 365 rows of "–".
+  document.querySelector("#nutritionWeekDays").replaceChildren(...nutritionChartRows(week.days).map((entry) => {
+    if (entry.empty) return h("tr", null, h("th", { scope: "row" }, nutritionRunLabel(entry)), h("td", { colSpan: 3 }, "keine Daten"));
+    const { day } = entry;
+    return h("tr", null, h("th", { scope: "row" }, nutritionDayLabel(day.date)),
+      ...["intake_kcal", "expenditure_kcal", "balance_kcal"].map((key) => h("td", null, day[key] == null ? "–" : nutritionWeekValue(day[key], "", key === "balance_kcal"))));
+  }));
   document.querySelector("#nutritionWeekDetails").hidden = false;
 }
 

@@ -3,7 +3,7 @@ const { test } = require("node:test");
 const { extractFunctions, fakeDocument, textOf } = require("./frontend-harness.cjs");
 
 
-const WEEK = ["nutritionChartDays", "nutritionChartRows", "nutritionEmptyRunRow", "nutritionWeekValue"];
+const WEEK = ["nutritionWeekStart", "nutritionChartDays", "nutritionChartRows", "nutritionRunLabel", "nutritionEmptyRunRow", "nutritionWeekValue"];
 const context = extractFunctions("nutrition.js", WEEK);
 
 // Gitar #3269: the energy table lives in the diary since #3252.
@@ -75,9 +75,10 @@ test("weekly chart averages observed days independently and preserves empty week
   days[1].balance_kcal = -400;
   days[90].expenditure_kcal = 2100;
   const weeks = context.nutritionChartDays(days);
-  // 3 months are 13 weeks and 6 months 26; 4 weeks keep their days (#3704).
-  assert.equal(weeks.length, 13);
-  assert.equal(context.nutritionChartDays(Array.from({ length: 182 }, () => ({ date: "2026-01-01" }))).length, 26);
+  // Calendar weeks (#3930): 91 days from a Thursday are 14 weeks, the first and the last partial; 4 weeks keep their days (#3704).
+  assert.equal(weeks.length, 14);
+  assert.deepEqual([weeks[0].week_start, weeks[1].week_start, weeks[0].end_date], ["2025-12-29", "2026-01-05", "2026-01-04"]);
+  assert.equal(context.nutritionChartDays(Array.from({ length: 182 }, (_, index) => ({ date: new Date(Date.UTC(2026, 0, 5 + index)).toISOString().slice(0, 10) }))).length, 26);
   assert.equal(weeks[0].balance_kcal_days, 1);
   assert.equal(weeks[0].balance_kcal, -400);
   assert.equal(weeks[1].balance_kcal, null);
@@ -88,13 +89,13 @@ test("weekly chart averages observed days independently and preserves empty week
   assert.equal(weeks[0].expenditure_kcal, 2400);
   assert.equal(weeks[1].intake_kcal, null);
   assert.equal(weeks[1].expenditure_kcal, null);
-  assert.equal(weeks[12].expenditure_kcal, 2100);
+  assert.equal(weeks[13].expenditure_kcal, 2100);
   assert.equal(weeks[0].date, days[0].date);
-  assert.equal(weeks[12].end_date, days[90].date);
+  assert.equal(weeks[13].end_date, days[90].date);
   assert.equal(context.nutritionChartDays(days.slice(0, 28)).length, 28);
 });
 
-const BALANCE = ["NUTRITION_WEEK_MACROS", "nutritionStatTile", "nutritionMacroCard", "nutritionGoalText", "nutritionBalanceCard", "nutritionPeriodText", "nutritionDayLabel", "nutritionWeekShown", "nutritionWeekValue", "nutritionChartSeries", "nutritionChartBalance", "nutritionChartDayRow"];
+const BALANCE = ["NUTRITION_WEEK_MACROS", "nutritionStatTile", "nutritionMacroCard", "nutritionGoalText", "nutritionBalanceCard", "nutritionPeriodText", "nutritionDayLabel", "nutritionWeekShown", "nutritionWeekValue", "nutritionChartSeries", "nutritionChartBalance", "nutritionRowLabel", "nutritionChartDayRow"];
 
 // #3704: the Bilanz card's hero is the mean balance per day, coloured by its distance to the goal.
 test("the Bilanz and Makros cards: hero by goal distance, three tiles, no empty Zucker or Salz tile", () => {
@@ -112,11 +113,11 @@ test("the Bilanz and Makros cards: hero by goal distance, three tiles, no empty 
   const lose = { goal: "lose", goal_kcal: 300 };
   // −8,400 over 28 days is −300 a day: the goal itself, "near".
   const card = ctx.nutritionBalanceCard(week(-8400, 28), lose);
-  assert.equal(textOf(card.children[0]), "Bilanz22.10.–18.11.2026 · 28/28 Tage erfasst");
+  assert.equal(textOf(card.children[0]), "Bilanz22.10.–18.11.2026 · Bilanz an 28 von 28 Tagen");
   const hero = card.children[1];
   assert.equal(hero.dataset.goalDistance, "near");
   assert.equal(textOf(hero), "-300 kcalØ pro TagZiel −300");
-  assert.deepEqual(card.children[2].children.map(textOf), ["Aufnahme2.200 kcalØ pro Tag", "Verbrauch2.500 kcalØ pro Tag · aus deinen Daten", "Summe-8.400 kcal"]);
+  assert.deepEqual(card.children[2].children.map(textOf), ["Aufnahme2.200 kcalØ pro Tag · an 28 Tagen", "Verbrauch2.500 kcalØ pro Tag · aus deinen Daten", "Summe-8.400 kcal"]);
   // 200 off the goal is "mid", more than 350 "far"; a surplus against a loss goal is far.
   assert.equal(ctx.nutritionBalanceCard(week(-2800, 28), lose).children[1].dataset.goalDistance, "mid");
   assert.equal(ctx.nutritionBalanceCard(week(11200, 28), lose).children[1].dataset.goalDistance, "far");
@@ -125,7 +126,7 @@ test("the Bilanz and Makros cards: hero by goal distance, three tiles, no empty 
   const free = ctx.nutritionBalanceCard(week(-600, 3), null);
   assert.deepEqual(free.children[1].dataset, {});
   assert.equal(textOf(free.children[1]), "-200 kcalØ pro Tag");
-  assert.match(textOf(free.children[0]), /3\/28 Tage erfasst$/);
+  assert.match(textOf(free.children[0]), /Bilanz an 3 von 28 Tagen$/);
   assert.equal(ctx.nutritionBalanceCard(week(null, 0), lose).children[1].children[0].missing, true);
   // Zucker and Salz show only when logged on any day of the period: no empty tile.
   const macros = ctx.nutritionMacroCard(week(-8400, 28));
@@ -179,4 +180,14 @@ test("the confidence line is hidden for a manual product and shown, with its war
   assert.match(line.textContent, /^Erkennungssicherheit: 0 %\. Geringe Erkennungssicherheit/);
   setNutritionProductConfidence(form, { confidence: 0.9 });
   assert.match(line.textContent, /^Erkennungssicherheit: 90 %\. Erkannte Werte/);
+});
+
+// #3930 N-02: a week row names its Monday, the week that holds today says so, and an empty run is one label.
+test("a Verlauf week row reads Woche ab with its Monday, the current one Diese Woche, a run of empty days one range", () => {
+  const ctx = extractFunctions("nutrition.js", ["nutritionExpenditureDate", "nutritionDayLabel", "nutritionWeekShown", "nutritionRowLabel", "nutritionRunLabel"], { todayIso: () => "2026-03-31" });
+  assert.equal(ctx.nutritionRowLabel({ date: "2026-01-01", end_date: "2026-01-04", week_start: "2025-12-29" }), "Woche ab 29.12.");
+  assert.equal(ctx.nutritionRowLabel({ date: "2026-03-30", end_date: "2026-04-01", week_start: "2026-03-30" }), "Diese Woche");
+  assert.equal(ctx.nutritionRowLabel({ date: "2026-03-30" }), "30.03");
+  assert.equal(ctx.nutritionRunLabel({ start: "2026-02-01", end: "2026-02-09" }), "01.02–09.02");
+  assert.equal(ctx.nutritionRunLabel({ start: "2026-02-01", end: "2026-02-01" }), "01.02");
 });

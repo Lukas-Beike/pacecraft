@@ -65,7 +65,7 @@ test("@responsive Verlauf is five cards in one layout that follow the period (#3
   await expect(root.locator(".analysis-chart-card")).toHaveCount(5);
   // The order, and one title row each: the title left, the period small and muted right.
   await expect(root.locator(".analysis-chart-card > .verlauf-head > h3")).toHaveText(["Bilanz", "Makros", "Defizit aus Gewicht und Körperfett", "Welche Quelle trifft dein Gewicht?", "Tagesverlauf"]);
-  await expect(root.locator(".analysis-chart-card > .verlauf-head > .verlauf-period")).toHaveText([/^\d{2}\.\d{2}\.–\d{2}\.\d{2}\.2026 · \d+\/28 Tage erfasst$/, "4 Wochen · Ø pro Tag", "4 Wochen", "4 Wochen", "4 Wochen"]);
+  await expect(root.locator(".analysis-chart-card > .verlauf-head > .verlauf-period")).toHaveText([/^\d{2}\.\d{2}\.–\d{2}\.\d{2}\.2026 · Bilanz an \d+ von 28 Tagen$/, "4 Wochen · Ø pro Tag", "4 Wochen", "4 Wochen", "4 Wochen"]);
   // One card class and the same look: no other tile or tool class, one width, one radius.
   await expect(root.locator(".nutrition-total, .nutrition-tools")).toHaveCount(0);
   const looks = await root.locator(".analysis-chart-card").evaluateAll((cards) => cards.map((card) => { const style = getComputedStyle(card); return [Math.round(card.getBoundingClientRect().width), style.borderRadius, style.backgroundColor]; }));
@@ -109,17 +109,17 @@ test("@responsive Verlauf is five cards in one layout that follow the period (#3
   await expect(root.getByRole("button", { name: "4 Wochen", exact: true })).toHaveAttribute("aria-pressed", "true");
   await root.getByRole("button", { name: "3 Monate", exact: true }).click();
   await expect(root.locator("#nutritionWeekChartHeading")).toHaveText("Wochendurchschnitte");
-  await expect(root.locator(".nutrition-week-chart-day")).toHaveCount(13);
+  await expect(root.locator(".nutrition-week-chart-day")).toHaveCount(14);
   await expect(root.locator(".analysis-chart-card > .verlauf-head > .verlauf-period").nth(2)).toHaveText("3 Monate");
   await expect(deficit.locator(".energy-deficit-hero strong")).toHaveText("≈ 480 kcal");
   await expect(root.locator("[data-energy-fit]")).toHaveAttribute("data-energy-fit", "91d");
   expect(periods.filter(Boolean)).toEqual([]);
   await root.getByRole("button", { name: "6 Monate", exact: true }).click();
-  await expect(root.locator(".nutrition-week-chart-day")).toHaveCount(26);
+  await expect(root.locator(".nutrition-week-chart-day")).toHaveCount(27);
   await expect(deficit.locator(".energy-deficit-hero strong")).toHaveText("≈ 410 kcal");
   await expect(root.locator("[data-energy-fit]")).toHaveAttribute("data-energy-fit", "182d");
   expect(periods.filter(Boolean)).toEqual(["182d"]);
-  await expect(root.locator('[data-verlauf-card="balance"] .verlauf-period')).toContainText(/\/182 Tage erfasst$/);
+  await expect(root.locator('[data-verlauf-card="balance"] .verlauf-period')).toContainText(/ von 182 Tagen$/);
   await root.getByText("Tageswerte anzeigen", { exact: true }).click();
   await expect(root.locator("#nutritionWeekDays tr")).toHaveCount(182);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
@@ -130,7 +130,7 @@ test("@responsive Verlauf is five cards in one layout that follow the period (#3
   await expect(deficit.locator(".energy-deficit-hero strong")).toHaveText("≈ 380 kcal");
   await expect(root.locator("[data-energy-fit]")).toHaveAttribute("data-energy-fit", "365d");
   expect(periods.filter(Boolean)).toEqual(["182d", "365d"]);
-  await expect(root.locator('[data-verlauf-card="balance"] .verlauf-period')).toContainText(/\/365 Tage erfasst$/);
+  await expect(root.locator('[data-verlauf-card="balance"] .verlauf-period')).toContainText(/ von 365 Tagen$/);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   await root.screenshot({ path: test.info().outputPath("Verlauf-12-Monate.png") });
 });
@@ -152,7 +152,7 @@ test("@responsive nutrition week shows coverage, signed balance and missing days
   await expect(week).toBeVisible();
   await expect(page.locator("#nutritionDiary")).toBeHidden();
   const balance = week.locator('[data-verlauf-card="balance"]');
-  await expect(balance.locator(".verlauf-period")).toHaveText("09.09.–06.10.2026 · 5/28 Tage erfasst");
+  await expect(balance.locator(".verlauf-period")).toHaveText("09.09.–06.10.2026 · Bilanz an 5 von 28 Tagen");
   await expect(balance.locator(".verlauf-hero strong")).toHaveText("+100 kcal");
   await expect(balance.locator(".stat-tile").nth(0)).toContainText("2.200 kcal");
   await expect(balance.locator(".stat-tile").nth(1)).toContainText("2.100 kcal");
@@ -161,7 +161,7 @@ test("@responsive nutrition week shows coverage, signed balance and missing days
   const boxes = await balance.locator(".stat-tile").evaluateAll((tiles) => tiles.map((tile) => tile.getBoundingClientRect().y));
   expect(new Set(boxes.map(Math.round)).size).toBe(1);
   const macros = week.locator('[data-verlauf-card="macros"] .stat-tile');
-  await expect(macros.filter({ hasText: "Kohlenhydrate" })).toContainText("4/28 Tage");
+  await expect(macros.filter({ hasText: "Kohlenhydrate" })).toContainText("an 4 von 28 Tagen");
   await expect(macros.filter({ hasText: "Fett" }).locator("strong.value-missing")).toHaveText("nicht erfasst");
   await expect(macros.filter({ hasText: "Zucker" })).toContainText("25 g");
   // Salz was never logged: no tile instead of an empty one.
@@ -174,8 +174,8 @@ test("@responsive nutrition week shows coverage, signed balance and missing days
   await expect(week.locator(".nutrition-week-chart-track.is-missing")).toHaveCount(1);
   await week.getByText("Tageswerte anzeigen", { exact: true }).click();
   // The day table's rows.
-  await expect(week.locator("#nutritionWeekDays tr")).toHaveCount(28);
-  await expect(week.locator("#nutritionWeekDays tr").last().locator("td")).toHaveText(["–", "–", "–"]);
+  await expect(week.locator("#nutritionWeekDays tr")).toHaveCount(7);
+  await expect(week.locator("#nutritionWeekDays tr").last().locator("td")).toHaveText(["keine Daten"]);
   await expect(page.locator("#nutritionFueling, #trainingFueling")).toHaveCount(0);
   expect(fuelingRequests).toBe(0);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
@@ -210,13 +210,13 @@ test("@responsive nutrition history switches between 4 weeks, 3, 6 and 12 months
   await expect(root.locator("#nutritionWeekChartHeading")).toHaveText("Wochendurchschnitte");
   await expect(root.locator("#nutritionWeekChartPeriod")).toHaveText("3 Monate");
   await root.getByText("Tageswerte anzeigen", { exact: true }).click();
-  await expect(root.locator("#nutritionWeekDays tr")).toHaveCount(91);
+  await expect(root.locator("#nutritionWeekDays tr")).toHaveCount(1);
   await root.getByRole("button", { name: "6 Monate", exact: true }).click();
   await expect(root.locator("#nutritionWeekChartPeriod")).toHaveText("6 Monate");
-  await expect(root.locator("#nutritionWeekDays tr")).toHaveCount(182);
+  await expect(root.locator("#nutritionWeekDays tr")).toHaveCount(1);
   await root.getByRole("button", { name: "12 Monate", exact: true }).click();
   await expect(root.locator("#nutritionWeekChartPeriod")).toHaveText("12 Monate");
-  await expect(root.locator("#nutritionWeekDays tr")).toHaveCount(365);
+  await expect(root.locator("#nutritionWeekDays tr")).toHaveCount(1);
   await page.reload();
   await expect(root.locator("#nutritionWeekChartHeading")).toHaveText("Tagesverlauf");
   await root.getByRole("button", { name: "4 Wochen", exact: true }).click();
@@ -234,19 +234,19 @@ test("@responsive nutrition gaps keep expenditure visible without inventing inta
   await page.goto("/#nutrition/week");
   const root = page.locator("#nutritionWeek");
   const balance = root.locator('[data-verlauf-card="balance"]');
-  await expect(balance.locator(".verlauf-period")).toContainText("1/28 Tage erfasst");
+  await expect(balance.locator(".verlauf-period")).toContainText("Bilanz an 1 von 28 Tagen");
   await expect(balance.locator(".stat-tile").nth(1)).toContainText("2.400 kcal");
   await expect(root.locator(".is-expenditure .is-missing")).toHaveCount(0);
   await expect(root.locator(".is-intake .is-missing")).toHaveCount(27);
   await root.getByRole("button", { name: "3 Monate", exact: true }).click();
-  await expect(root.locator(".nutrition-week-chart-day")).toHaveCount(13);
+  await expect(root.locator(".nutrition-week-chart-day")).toHaveCount(14);
   const first = root.locator(".nutrition-week-chart-day").first();
-  await expect(first.locator(".is-intake")).toContainText("1 von 7 Tagen");
-  await expect(first.locator(".is-expenditure")).toContainText("7 von 7 Tagen");
+  await expect(first.locator(".is-intake")).toContainText("1 von 4 Tagen");
+  await expect(first.locator(".is-expenditure")).toContainText("4 von 4 Tagen");
   await expect(root.locator(".is-expenditure .is-missing")).toHaveCount(0);
-  await expect(root.locator(".is-intake .is-missing")).toHaveCount(12);
+  await expect(root.locator(".is-intake .is-missing")).toHaveCount(13);
   await expect(balance.locator(".stat-tile").nth(2)).toContainText("−300 kcal");
-  await expect(balance.locator(".verlauf-period")).toContainText("1/91 Tage erfasst");
+  await expect(balance.locator(".verlauf-period")).toContainText("Bilanz an 1 von 91 Tagen");
   await expect(root).not.toContainText("Kaloriendefizit");
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
 });

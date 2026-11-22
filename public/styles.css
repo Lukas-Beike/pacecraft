@@ -1846,8 +1846,10 @@ button:focus-visible, a:focus-visible, summary:focus-visible {
 .nutrition-week-legend span::before { display: inline-block; width: 10px; height: 10px; margin-right: 6px; border-radius: 2px; background: var(--energy-intake); content: ""; }
 .nutrition-week-legend span + span::before { background: var(--energy-expenditure); }
 .nutrition-week-chart-days { display: grid; margin-top: 12px; }
-.nutrition-week-chart-day { display: grid; grid-template-columns: minmax(40px, auto) minmax(0, 1fr) minmax(40px, auto); align-items: center; gap: 4px 10px; padding: 9px 0; border-top: 1px solid var(--line); font-size: .78rem; }
+.nutrition-week-chart-day, .nutrition-week-chart-head { display: grid; grid-template-columns: minmax(40px, auto) minmax(0, 1fr) minmax(40px, auto); align-items: center; gap: 4px 10px; padding: 9px 0; border-top: 1px solid var(--line); font-size: .78rem; }
 .nutrition-week-chart-bars { display: grid; gap: 4px; min-width: 0; }
+.nutrition-week-chart-head { padding: 0 0 6px; border-top: 0; color: var(--subtle); font-size: .72rem; }
+.nutrition-week-chart-head > :last-child { text-align: right; }
 .nutrition-week-chart-balance { text-align: right; font-weight: 700; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .nutrition-week-chart-balance[data-goal-distance] { color: var(--goal-colour); }
 .nutrition-week-chart-series { display: grid; grid-template-columns: minmax(0, 1fr) minmax(76px, auto); align-items: center; gap: 8px; }
