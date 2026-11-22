@@ -73,6 +73,18 @@ def zone_source_name(configuration: ZoneConfiguration | None) -> str:
     return LOCAL_ZONE_SOURCE if provider is None else _PROVIDER_ZONE_SOURCES[provider]
 
 
+def own_lt1_share(bpm: float | None, lthr: float | None) -> float | None:
+    """The stored first threshold as a share of a threshold HR, if plausible.
+
+    Outside 40 to 100 % (an old session's lower threshold HR, a typo) the
+    stand-in applies, so the moderate band never vanishes (#3915).
+    """
+    if not bpm or not lthr or lthr <= 0:
+        return None
+    share = bpm / lthr
+    return share if 0.4 <= share < 1.0 else None
+
+
 def intensity_band(kind: str, intensity: float, lt1_share: float | None = None) -> str:
     """The 3-zone band of an intensity (fraction of the threshold) of one sensor.
 

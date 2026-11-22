@@ -14,6 +14,7 @@ from unittest.mock import MagicMock, Mock
 
 from support import dispatch_route
 
+from backend import change_history
 from backend.activities.hr_cap import (
     SOURCE_ESTIMATED,
     SOURCE_MEASURED,
@@ -24,10 +25,13 @@ from backend.activities.hr_cap import (
     hr_cap,
     normalize_hr_cap,
 )
+from backend.activities.zone_settings import own_lt1_share
 from backend.athlete.profile import (
     COACH_READ_ONLY_FIELDS,
     DEFAULT_PROFILE,
     ProfileService,
+    audit_view,
+    normalize_profile,
 )
 from backend.canonical.activity_detail import (
     ActivityDfaAlpha1,
@@ -850,6 +854,121 @@ class AdoptFlowTests(unittest.TestCase):
         with self.manager.unit_of_work() as db:
             self.kv.set(db, "profile", json.dumps(legacy))
         self.assertEqual(blind.get()[FIRST_THRESHOLD_FIELD], "")
+
+
+class LegacyPercentTests(unittest.TestCase):
+    """A profile stored before #3915 keeps working until a bpm is written."""
+
+    manager: DatabaseManager
+    counter: int
+    kv: KeyValueRepository
+    lthr: float
+    profile: ProfileService
+    service: FirstThresholdService
+
+    def setUp(self) -> None:
+        open_database(self)
+        open_service(self)
+
+    def profile_service(self, run_lthr_on: Any) -> ProfileService:
+        return ProfileService(
+            self.manager,
+            ProfileRepository(self.kv),
+            self.kv,
+            on_location_changed=lambda *args, **kwargs: None,
+            mutation_coordinator=threading.RLock(),
+            run_lthr_on=run_lthr_on,
+        )
+
+    def store(self, profile: dict[str, Any]) -> None:
+        with self.manager.unit_of_work() as db:
+            self.kv.set(db, "profile", json.dumps(profile))
+
+    def raw(self) -> dict[str, Any]:
+        with self.manager.reader() as db:
+            return json.loads(self.kv.get(db, "profile"))
+
+    def test_the_threshold_lookup_reading_the_profile_never_recurses(self) -> None:
+        # The run threshold lookup reads the athlete's local date, which reads
+        # the profile again (the real wiring); the inner read sees no LT1.
+        inner: list[str] = []
+
+        def run_lthr_on(_day: Any) -> float:
+            inner.append(service.get()[FIRST_THRESHOLD_FIELD])
+            return 170.0
+
+        service = self.profile_service(run_lthr_on)
+        self.store(
+            {"first_threshold_pct": "90", FIRST_THRESHOLD_ORIGIN_FIELD: "measured"}
+        )
+        self.assertEqual("153", service.get()[FIRST_THRESHOLD_FIELD])
+        self.assertEqual([""], inner)
+
+    def test_without_a_threshold_hr_the_percent_survives_an_unrelated_save(
+        self,
+    ) -> None:
+        service = self.profile_service(lambda _day: None)
+        self.store(
+            {"first_threshold_pct": "88", FIRST_THRESHOLD_ORIGIN_FIELD: "measured"}
+        )
+        self.assertEqual("", service.get()[FIRST_THRESHOLD_FIELD])
+        service.patch({"name": "Ada"})
+        raw = self.raw()
+        self.assertEqual(
+            ("Ada", "88", "measured"),
+            (
+                raw["name"],
+                raw["first_threshold_pct"],
+                raw[FIRST_THRESHOLD_ORIGIN_FIELD],
+            ),
+        )
+        # Once a threshold HR is known the read gives the bpm and a save stores it.
+        known = self.profile_service(lambda _day: 170.0)
+        self.assertEqual("150", known.get()[FIRST_THRESHOLD_FIELD])
+        known.patch({"name": "Ada B."})
+        raw = self.raw()
+        self.assertEqual("150", raw[FIRST_THRESHOLD_FIELD])
+        self.assertNotIn("first_threshold_pct", raw)
+
+    def test_rows_recorded_before_the_bpm_field_still_match_for_undo(self) -> None:
+        stored = {
+            "first_threshold_pct": "88",
+            FIRST_THRESHOLD_ORIGIN_FIELD: "measured",
+            "name": "Ada",
+        }
+        # How a pre-#3915 save projected this profile (no bpm field yet).
+        old = normalize_profile({**stored, FIRST_THRESHOLD_FIELD: ""})
+        old.pop(FIRST_THRESHOLD_FIELD)
+        old["first_threshold_pct"] = "88"
+        old[FIRST_THRESHOLD_ORIGIN_FIELD] = "measured"
+        recorded = change_history.audit_hash(
+            change_history.audit_projection("profile", old)
+        )
+        current = change_history.audit_projection("profile", audit_view(stored))
+        self.assertIn(
+            recorded, change_history.accepted_audit_hashes("profile", current)
+        )
+
+    def test_undoing_to_a_state_without_a_percent_clears_the_bpm(self) -> None:
+        service = self.profile_service(lambda _day: 170.0)
+        service.patch({FIRST_THRESHOLD_FIELD: "150"})
+        with self.manager.unit_of_work() as db:
+            restored = service.restore_in_transaction(
+                db, service.get_from_db(db), {"first_threshold_pct": "", "name": "Ada"}
+            )
+        self.assertEqual("", restored[FIRST_THRESHOLD_FIELD])
+
+    def test_an_implausible_share_keeps_the_stand_in(self) -> None:
+        self.assertEqual(0.9, own_lt1_share(153.0, 170.0))
+        for bpm, lthr in (
+            (150.0, 148.0),
+            (150.0, 150.0),
+            (60.0, 170.0),
+            (None, 170.0),
+            (150.0, None),
+        ):
+            with self.subTest(bpm=bpm, lthr=lthr):
+                self.assertIsNone(own_lt1_share(bpm, lthr))
 
 
 class ProfileReadTests(unittest.TestCase):

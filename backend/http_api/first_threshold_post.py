@@ -38,12 +38,12 @@ class FirstThresholdPostRoutes:
         `GET /api/profile`; `replace_measured: true` is needed to replace a value
         stored with origin `measured`. Or `{"step_test": string, "heart_rate_bpm":
         number, "replace_measured": boolean}` adopts the good LT1 of the run step
-        test with that session id (#3833) as percent of today's run threshold HR;
+        test with that session id (#3833) in bpm (#3915);
         `heart_rate_bpm` must equal `step_test.lt1.heart_rate_bpm` of
         `GET /api/activities/{id}`.
 
         Response: 200 `{"profile": object, "first_threshold_estimate": object,
-        "adopted": boolean}`. The estimate is stored as percent of the run
+        "adopted": boolean}`. The estimate is stored in bpm of today's run
         threshold HR with origin `estimated`; `adopted` is `false` without a profile
         write when that value is already stored.
 
@@ -52,7 +52,8 @@ class FirstThresholdPostRoutes:
         `percent_lthr` differs from the current estimate; 409 "Ein gemessener Wert
         ist gespeichert. Zum Ersetzen bitte bestätigen." without
         `replace_measured`; 409 "Dieser Stufentest liefert keinen guten Wert der
-        ersten Schwelle."; 409 "Ohne Schwellenpuls lässt sich der Wert nicht
+        ersten Schwelle."; 409 "Der Wert der ersten Schwelle ist nicht
+        plausibel."; 409 "Ohne Schwellenpuls lässt sich der Wert nicht
         speichern."; 404 for an unknown session.
         """
         payload = handler.read_json()

@@ -6,7 +6,7 @@ from datetime import date
 from typing import Any
 
 from backend.activities.workout_load import WorkoutEstimate, estimate_workout
-from backend.activities.zone_settings import ZoneSettings
+from backend.activities.zone_settings import ZoneSettings, own_lt1_share
 from backend.athlete.local_date import iso_date_prefix
 from backend.athlete.measurements import number
 from backend.canonical.domain_records import ZoneConfiguration
@@ -95,8 +95,10 @@ class PlannedUnitEstimator:
         first_threshold_bpm: Callable[[], float | None] = lambda: None,
     ) -> None:
         self._database_manager = database_manager
-        # The stored first threshold moves the heart-rate band split (#3915).
+        # The stored first threshold moves the heart-rate band split (#3915);
+        # read once with the thresholds.
         self._first_threshold_bpm = first_threshold_bpm
+        self._bpm: float | None = None
         self._today = today
         self._observation_reader = observation_reader
         self._read_configurations = zone_configurations
@@ -126,9 +128,10 @@ class PlannedUnitEstimator:
         """
         if self._inputs is None:
             self._inputs = self._read_inputs()
+            self._bpm = self._first_threshold_bpm()
         settings = unit_thresholds(unit, *self._inputs)
-        bpm = self._first_threshold_bpm()
-        if not bpm:
+        if not self._bpm:
             return settings
         run = unit_thresholds({**unit, "sport": "Run"}, *self._inputs).lthr
-        return replace(settings, lt1_share=bpm / run) if run else settings
+        share = own_lt1_share(self._bpm, run)
+        return settings if share is None else replace(settings, lt1_share=share)

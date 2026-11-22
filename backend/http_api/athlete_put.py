@@ -370,11 +370,7 @@ class AthletePutRoutes:
         zwischen 50 und 250 cm liegen.", "Das Schlafziel muss zwischen 4 und 12
         Stunden liegen."; 400
         "Die Herkunft der ersten Schwelle muss gemessen oder geschätzt sein."; 400
-        "Die gemessene erste Schwelle muss zwischen 40 und 100 % LSHF liegen."; 400
-        "Die gemessene erste Schwelle muss zwischen 60 und 220 bpm liegen."; 400
-        "Das Messdatum muss das Format JJJJ-MM-TT haben."; 400 "Zu diesem Datum ist
-        keine Laktatschwelle (LSHF) bekannt, mit der die erste Schwelle in Prozent
-        gespeichert werden kann.".
+        "Die gemessene erste Schwelle muss zwischen 60 und 220 bpm liegen.".
         """
         payload = handler.read_json()
         profile = self._profile_service()

@@ -23,6 +23,7 @@ from backend.athlete.profile import ProfileService
 from backend.athlete.skinfolds import SkinfoldService
 from backend.athlete.zones import ZoneConfigurationService
 from backend.canonical.activity_summary import ActivitySummary
+from backend.canonical.first_threshold import FIRST_THRESHOLD_FIELD
 from backend.canonical.vocabulary import ProviderId
 from backend.db.manager import kept_until_change
 from backend.db.repositories import CheckinRepository, ProfileRepository
@@ -253,7 +254,9 @@ def build_athlete_data(
         """
         invalidate_for_location_change(previous, current, **kwargs)
         if any(
-            previous.get(field) != current.get(field) for field in ("timezone", "sex")
+            previous.get(field) != current.get(field)
+            # The first threshold moves the stored band times (#3915).
+            for field in ("timezone", "sex", FIRST_THRESHOLD_FIELD)
         ):
             load_inputs_changed()
 

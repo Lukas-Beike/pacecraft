@@ -15,7 +15,7 @@ from dataclasses import replace
 from datetime import date
 from typing import Any
 
-from backend.activities.zone_settings import ZoneSettings
+from backend.activities.zone_settings import ZoneSettings, own_lt1_share
 from backend.canonical.activity_summary import summary_local_date
 from backend.canonical.domain_records import ZoneConfiguration
 from backend.canonical.records import Observation
@@ -86,9 +86,8 @@ def with_own_lt1(
     if settings is None or not first_threshold_bpm:
         return settings
     run = thresholds.threshold(MetricKind.THRESHOLD_HR, Sport.RUN, day)
-    if run is None or run.value <= 0:
-        return settings
-    return replace(settings, lt1_share=first_threshold_bpm / run.value)
+    share = own_lt1_share(first_threshold_bpm, None if run is None else run.value)
+    return settings if share is None else replace(settings, lt1_share=share)
 
 
 def zone_settings_for(

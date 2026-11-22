@@ -65,6 +65,7 @@ METHOD_VERSION: Final = 2
 ZONE_TIMES_VERSION: Final = 3
 LABEL: Final = "Zoneneinstellungen"
 BAND_SOURCE: Final = "LT1-Standardwert und Schwelle"
+OWN_BAND_SOURCE: Final = "eigene erste Schwelle und Schwelle"
 MIN_GAP_S: Final = 30.0
 GAP_FACTOR: Final = 3.0
 # Metric -> stream channel and the unit ``ZoneSettings.absolute_zone`` reads.
@@ -120,7 +121,7 @@ def zone_sources(settings: ZoneSettings) -> dict[str, str]:
     """
     return {
         "heart_rate": settings.hr_source,
-        "heart_rate_bands": BAND_SOURCE,
+        "heart_rate_bands": OWN_BAND_SOURCE if settings.lt1_share else BAND_SOURCE,
         "power": settings.power_source,
         "power_bands": BAND_SOURCE,
         "pace": settings.pace_source,

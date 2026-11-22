@@ -3,6 +3,7 @@
 import json
 import math
 import os
+import threading
 from collections.abc import Callable, Mapping
 from datetime import UTC, date, datetime, time
 from typing import Any
@@ -376,6 +377,23 @@ def _origin_after_edit(
     }
 
 
+def audit_view(stored: Mapping[str, Any]) -> dict[str, str]:
+    """The profile as change history projects it, legacy percent included.
+
+    Rows recorded before #3915 were hashed with ``first_threshold_pct`` and its
+    origin; a stored legacy percent stays in the view so they still match.
+    """
+    value = normalize_profile(dict(stored))
+    percent = first_threshold_percent(stored.get(LEGACY_PERCENT_FIELD))
+    if LEGACY_PERCENT_FIELD in stored:
+        value[LEGACY_PERCENT_FIELD] = "" if percent is None else f"{percent:g}"
+    if percent is not None and not value[FIRST_THRESHOLD_FIELD]:
+        value[FIRST_THRESHOLD_ORIGIN_FIELD] = (
+            stored.get(FIRST_THRESHOLD_ORIGIN_FIELD) or ORIGIN_MEASURED
+        )
+    return value
+
+
 def _legacy_percent_day(db: Any) -> date | None:
     """The day the legacy percent of the first threshold was last changed, if recorded."""
     rows = db.execute(
@@ -412,14 +430,21 @@ class ProfileService:
         self._key_value_repository = key_value_repository
         self._on_location_changed = on_location_changed
         self._run_lthr_on = run_lthr_on
+        # The run threshold lookup reads the athlete's local date, which reads
+        # this profile: a legacy conversion never starts a second one (#3915).
+        self._converting = threading.local()
 
-    def get_from_db(self, db: Any) -> dict[str, str]:
+    def _stored(self, db: Any) -> dict[str, Any]:
+        """The stored profile JSON as written, or an empty one when unreadable."""
         payload = self._profile_repository.get(db)
         try:
             stored = json.loads(payload or "{}")
-            return normalize_profile(self._with_legacy_bpm(stored, db))
-        except TypeError, AttributeError, json.JSONDecodeError:
-            return dict(DEFAULT_PROFILE)
+        except TypeError, json.JSONDecodeError:
+            return {}
+        return stored if isinstance(stored, dict) else {}
+
+    def get_from_db(self, db: Any) -> dict[str, str]:
+        return normalize_profile(self._with_legacy_bpm(self._stored(db), db))
 
     def _with_legacy_bpm(self, stored: dict[str, Any], db: Any) -> dict[str, Any]:
         """A profile stored before #3915 read with its first threshold in bpm.
@@ -427,13 +452,40 @@ class ProfileService:
         Its percent of LTHR becomes bpm with the run threshold HR in effect on
         the day the percent was last changed (change history), else today. The
         read writes nothing; the next save stores the bpm and drops the percent.
+        A read inside the threshold lookup itself sees no first threshold.
         """
         percent = first_threshold_percent(stored.get(LEGACY_PERCENT_FIELD))
         if percent is None or first_threshold_bpm(stored.get(FIRST_THRESHOLD_FIELD)):
             return stored
-        lthr = self._run_lthr_on(_legacy_percent_day(db)) or self._run_lthr_on(None)
+        if getattr(self._converting, "active", False):
+            return stored
+        self._converting.active = True
+        try:
+            day = _legacy_percent_day(db)
+            lthr = (self._run_lthr_on(day) if day else None) or self._run_lthr_on(None)
+        finally:
+            self._converting.active = False
         bpm = None if not lthr else first_threshold_bpm(round(percent * lthr / 100))
         return {**stored, FIRST_THRESHOLD_FIELD: "" if bpm is None else f"{bpm:g}"}
+
+    def _kept_legacy(
+        self, stored: Mapping[str, Any], normalized: Mapping[str, str]
+    ) -> dict[str, Any]:
+        """``normalized`` as stored: a legacy percent no bpm replaced yet is kept.
+
+        Without a known run threshold HR the percent cannot become bpm; it stays
+        in the stored JSON (not in the profile) until a bpm is written (#3915).
+        """
+        if normalized[FIRST_THRESHOLD_FIELD] or (
+            first_threshold_percent(stored.get(LEGACY_PERCENT_FIELD)) is None
+        ):
+            return dict(normalized)
+        return {
+            **normalized,
+            LEGACY_PERCENT_FIELD: stored[LEGACY_PERCENT_FIELD],
+            FIRST_THRESHOLD_ORIGIN_FIELD: stored.get(FIRST_THRESHOLD_ORIGIN_FIELD)
+            or ORIGIN_MEASURED,
+        }
 
     def get(self) -> dict[str, str]:
         with self._manager.reader() as db:
@@ -471,7 +523,8 @@ class ProfileService:
                 previous=previous,
             )
         )
-        self._profile_repository.set(db, json.dumps(normalized, ensure_ascii=False))
+        kept = self._kept_legacy(self._stored(db), normalized)
+        self._profile_repository.set(db, json.dumps(kept, ensure_ascii=False))
         self._on_location_changed(
             previous,
             normalized,
@@ -491,17 +544,16 @@ class ProfileService:
     ) -> dict[str, str]:
         restored = dict(current or DEFAULT_PROFILE)
         restored.update(target or DEFAULT_PROFILE)
-        if (
-            first_threshold_percent((target or {}).get(LEGACY_PERCENT_FIELD))
-            is not None
-        ):
-            # A state from before #3915: its percent, not the current bpm, is restored.
+        if LEGACY_PERCENT_FIELD in (target or {}):
+            # A state from before #3915: its percent (or none), not the current
+            # bpm, is restored.
             restored[FIRST_THRESHOLD_FIELD] = (target or {}).get(
                 FIRST_THRESHOLD_FIELD, ""
             )
         normalized = normalize_profile(self._with_legacy_bpm(restored, db))
         previous = self.get_from_db(db)
-        self._profile_repository.set(db, json.dumps(normalized, ensure_ascii=False))
+        kept = self._kept_legacy(restored, normalized)
+        self._profile_repository.set(db, json.dumps(kept, ensure_ascii=False))
         self._on_location_changed(
             previous,
             normalized,
