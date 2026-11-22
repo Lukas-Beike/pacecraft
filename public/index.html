@@ -28,6 +28,7 @@
       <symbol id="icon-refresh" viewBox="0 0 24 24"><path d="M20 11a8 8 0 0 0-14.5-4L4 9M4 5v4h4M4 13a8 8 0 0 0 14.5 4L20 15m0 4v-4h-4"/></symbol>
       <symbol id="icon-copy" viewBox="0 0 24 24"><rect x="8.5" y="8.5" width="12" height="12" rx="2.5"/><path d="M15.5 8.5V6a2.5 2.5 0 0 0-2.5-2.5H6A2.5 2.5 0 0 0 3.5 6v7A2.5 2.5 0 0 0 6 15.5h2.5"/></symbol>
       <symbol id="icon-edit" viewBox="0 0 24 24"><path d="M4 20h4L19 9l-4-4L4 16z"/><path d="m13.5 6.5 4 4"/></symbol>
+      <symbol id="icon-trash" viewBox="0 0 24 24"><path d="M5 7h14M10 7V4.5h4V7M7 7l1 13h8l1-13M10 11v6M14 11v6"/></symbol>
     </svg>
     <aside class="desktop-nav" aria-label="Hauptnavigation">
       <a class="nav-item active" href="#coach" aria-current="page" aria-controls="chatPanel" aria-label="Coach" data-panel="chatPanel" data-route="coach" aria-keyshortcuts="Alt+1"><svg class="nav-icon" aria-hidden="true"><use href="#icon-coach"></use></svg><span>Coach</span></a>
@@ -741,6 +742,26 @@
       <div class="dialog-actions"><button type="button" id="nutritionProductUseCancel" class="secondary-button">Abbrechen</button><button type="button" id="nutritionProductUseCoach" class="secondary-button">Zur Coach-Nachricht</button><button type="submit" id="nutritionProductUseAdd" class="adaptive-planning-button">Erfassen</button></div>
     </form>
   </dialog>
+  <dialog id="nutritionMealEditDialog" aria-labelledby="nutritionMealEditTitle">
+    <div class="confirmation-dialog nutrition-meal-edit">
+      <h2 id="nutritionMealEditTitle">Mahlzeit bearbeiten</h2>
+      <p id="nutritionMealEditSubtitle"></p>
+      <form id="nutritionMealEditMain">
+        <ul id="nutritionMealEditList" class="edit-list"></ul>
+        <output id="nutritionMealEditStatus" class="tab-sync-detail" aria-live="polite"></output>
+        <div class="dialog-actions"><button type="button" id="nutritionMealEditCancel" class="secondary-button">Abbrechen</button><button type="submit" id="nutritionMealEditSave" class="push-button">Speichern</button></div>
+      </form>
+      <div id="nutritionMealEditSwap" hidden>
+        <form id="nutritionMealEditSearch" class="nutrition-search">
+          <label for="nutritionMealEditQuery" class="sr-only">Datenbank durchsuchen</label>
+          <div class="nutrition-search-row"><input id="nutritionMealEditQuery" type="search" autocomplete="off" placeholder="Name, Marke oder EAN"><button type="submit" class="secondary-button">Suchen</button></div>
+        </form>
+        <output id="nutritionMealEditSwapStatus" class="tab-sync-detail" aria-live="polite"></output>
+        <ul id="nutritionMealEditResults" class="swap-results"></ul>
+        <div class="dialog-actions"><button type="button" id="nutritionMealEditBack" class="secondary-button">Zurück</button></div>
+      </div>
+    </div>
+  </dialog>
   <dialog id="bodyFatDialog" aria-labelledby="bodyFatDialogTitle">
     <form id="bodyFatDialogForm" class="confirmation-dialog">
       <h2 id="bodyFatDialogTitle">Körperfett eintragen</h2>
@@ -847,6 +868,7 @@
   <script src="/view-refresh.js" defer></script>
   <script src="/notifications.js" defer></script>
   <script src="/nutrition.js" defer></script>
+  <script src="/nutrition-meal-edit.js" defer></script>
   <script src="/analysis.js" defer></script>
   <script src="/activity-details.js" defer></script>
   <script src="/activity-analysis.js" defer></script>

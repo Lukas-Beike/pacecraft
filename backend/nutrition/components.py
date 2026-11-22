@@ -98,7 +98,7 @@ class MealComponentCalculator:
         }
 
     @staticmethod
-    def _validated_quantity(amount: Any) -> float:
+    def validated_quantity(amount: Any) -> float:
         if isinstance(amount, bool) or not isinstance(amount, (int, float, str)):
             raise AppError(400, "Ung\u00fcltige Komponentenmenge.")
         try:
@@ -119,7 +119,7 @@ class MealComponentCalculator:
             key = "product_id" if kind == "local_product" else "food_id"
             if not isinstance(item.get(key), str) or not item[key].strip():
                 raise AppError(400, "Komponentenreferenz muss eine Zeichenkette sein.")
-        quantity = MealComponentCalculator._validated_quantity(item.get("amount"))
+        quantity = MealComponentCalculator.validated_quantity(item.get("amount"))
         unit = item.get("unit")
         if not isinstance(unit, str) or unit not in {"g", "ml", "portion", "package"}:
             raise AppError(400, "Einheit muss g, ml, portion oder package sein.")

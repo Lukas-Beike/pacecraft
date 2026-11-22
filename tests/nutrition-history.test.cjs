@@ -34,9 +34,11 @@ test("a diary card marks an estimated meal and its button flips the flag", async
   const calls = [];
   let resets = 0;
   const receipts = [];
+  const opened = [];
   const status = { textContent: "" };
-  const ctx = extractFunctions("nutrition.js", ["nutritionMealTitle", "NUTRITION_SOURCE_LABELS", "nutritionCard", "nutritionEstimateChip", "nutritionEntryActions", "markNutritionEstimate"], {
+  const ctx = extractFunctions("nutrition.js", ["nutritionMealTitle", "NUTRITION_SOURCE_LABELS", "nutritionCard", "nutritionEstimateChip", "nutritionEntryActions", "nutritionEditButton", "markNutritionEstimate"], {
     h, document: { querySelector: () => status },
+    messageActionButton: (icon, label) => h("button", { "aria-label": label }, icon), openNutritionMealEdit: (item) => opened.push(item.id),
     createStatusChip: (label) => h("span", null, label),
     nutritionBasisLabel: () => "", nutritionSessionBlock: () => null, nutritionComponentDetails: () => null,
     nutritionNumber: (value) => String(value), AppFormat: { number: String },
@@ -53,6 +55,12 @@ test("a diary card marks an estimated meal and its button flips the flag", async
   const plain = ctx.nutritionCard(meal, false);
   assert.doesNotMatch(textOf(plain.children[0]), /geschätzt/);
   assert.deepEqual(buttons(plain), ["Als geschätzt markieren", "Löschen"]);
+  // The pencil in the head opens the meal's components; a template has none.
+  const pencil = plain.children[0].children[1];
+  assert.equal(pencil.attributes["aria-label"], "Mahlzeit bearbeiten: Pizza");
+  pencil.fire("click");
+  assert.deepEqual(opened, ["m1"]);
+  assert.equal(ctx.nutritionCard({ ...meal, name: "Vorlage" }, true).children[0].tagName, "H3");
   await ctx.markNutritionEstimate(meal);
   assert.deepEqual(JSON.parse(JSON.stringify(calls)), [["/api/nutrition/entry/estimate", { id: "m1", estimate_uncertain: true }]]);
   assert.equal(resets, 1, "the energy table reads again");
