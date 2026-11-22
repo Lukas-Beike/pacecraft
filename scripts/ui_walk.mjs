@@ -291,6 +291,8 @@ export const STEPS = [
   { view: "plan", name: "Bibliothek: Einplanen, Trainingsplan", covers: "#4054 Einplanen plan choice", pre: [tab("plan", "library")], opens: ["#library details.library-sport > summary", '#library .library-card .planned-activity-actions .secondary-button[aria-expanded="false"]'], ready: "#library .library-card .library-plan-field:not([hidden]) select", kind: "text", optional: true, post: [tab("plan", "overview")] },
   // Read-only: the walk checks that the plans block with "+ Plan" is there, it opens no form (#3950).
   { view: "plan", name: "Bibliothek: Pläne", covers: "#3950 training plans", pre: [tab("plan", "library")], ready: "#library .library-toolbar > strong", kind: "text", post: [tab("plan", "overview")] },
+  // Only a unit with a Garmin copy offers "Aus Garmin entfernen" and the fixture sends nothing to Garmin, so the step is optional; it is never pressed (#4022).
+  { view: "plan", name: "Kalender: Aus Garmin entfernen", covers: "#4022 Garmin removal", each: PLANNED, ...LATER, ready: ".planned-entry[open] .planned-activity-actions button:nth-child(4)", kind: "text", optional: true },
   // Only a competition with a sync conflict shows its choices and the fixture holds none, so the step is optional; neither is pressed (#4021).
   { view: "plan", name: "Wettkämpfe: Konflikt", covers: "#4021 competition conflict", pre: [tab("plan", "season")], ready: ".competition-conflict .planned-activity-actions button", kind: "text", optional: true, post: [tab("plan", "overview")] },
   // Only a plan card offers "Zeitraum ersetzen" and the fixture holds no plan, so the step is optional; the dialog is never opened (#4024).
