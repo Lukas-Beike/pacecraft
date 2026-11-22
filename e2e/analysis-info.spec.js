@@ -951,3 +951,20 @@ test("a bare history redraw keeps each sport tab to its own sport", async ({ pag
     expect(shown, route).toEqual({ own: true, other: false });
   }
 });
+
+// #3928 A-01: at 12 months the date labels of a daily chart stay apart; the weekly caption sits clear of the first label.
+test("@responsive date labels do not overprint at 12 months", async ({ page, request }) => {
+  test.setTimeout(120_000);
+  expect((await request.get("/api/fixture/demo")).ok()).toBeTruthy();
+  for (const segment of ["recovery", "cycling", "running"]) {
+    await page.goto(`/#analysis/${segment}`);
+    await expect(page.locator("#dataPanel.active")).toBeVisible();
+    await page.locator("#dataPanel .analysis-period-controls:visible").getByRole("button", { name: "12 Monate", exact: true }).first().click();
+    await expect(page.locator("#dataPanel .loading-state")).toHaveCount(0);
+    const overlaps = await page.locator("#dataPanel svg").evaluateAll((charts) => charts.flatMap((chart) => {
+      const boxes = [...chart.querySelectorAll(".analysis-date-tick, .analysis-week-caption")].map((node) => node.getBoundingClientRect()).filter((box) => box.width).sort((a, b) => a.left - b.left);
+      return boxes.slice(1).map((box, index) => (box.left < boxes[index].right - 0.5 && box.top < boxes[index].bottom && box.bottom > boxes[index].top ? `${Math.round(boxes[index].left)}-${Math.round(boxes[index].right)} meets ${Math.round(box.left)}` : "")).filter(Boolean);
+    }));
+    expect(overlaps, segment).toEqual([]);
+  }
+});
