@@ -76,10 +76,26 @@ async function enablePush() {
 
 // On each app start the browser's subscription is sent again, so a server that lost it
 // (a restore, a purge, a replaced endpoint) receives it before the status says "Aktiv".
+// A subscription made with another server key (a restored or new database) is renewed,
+// because the push service refuses messages signed with a key it was not made for.
 async function syncPushSubscription() {
   if (!pushSupported() || Notification.permission !== "granted") return;
-  const subscription = await currentPushSubscription().catch(() => null);
-  if (subscription) await storePushSubscription(subscription).catch(() => {});
+  try {
+    const registration = await pushRegistration();
+    let subscription = registration && await registration.pushManager.getSubscription();
+    if (subscription) {
+      const { public_key: key } = await api("/api/push/key", { method: "POST", body: "{}" });
+      const current = pushKeyBytes(key);
+      const bound = new Uint8Array(subscription.options?.applicationServerKey || new ArrayBuffer(0));
+      if (bound.length !== current.length || bound.some((byte, index) => byte !== current[index])) {
+        await subscription.unsubscribe();
+        subscription = await registration.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: current });
+      }
+      await storePushSubscription(subscription);
+    }
+  } catch {
+    // The status below shows what the browser holds; the next start tries again.
+  }
   await renderNotificationStatus();
 }
 

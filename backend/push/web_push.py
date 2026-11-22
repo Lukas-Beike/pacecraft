@@ -9,6 +9,7 @@ Firefox (Mozilla autopush, #3914). Keys and endpoints never reach a log.
 from __future__ import annotations
 
 import base64
+import http.client
 import json
 import os
 import struct
@@ -200,5 +201,5 @@ def send(
             return int(response.status)
     except urllib.error.HTTPError as error:
         return int(error.code)
-    except OSError, ValueError:
+    except OSError, ValueError, http.client.HTTPException:
         return 0

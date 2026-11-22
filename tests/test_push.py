@@ -303,6 +303,16 @@ class PushServiceTests(unittest.TestCase):
         self.assertFalse(self.service.notify(event))
         self.assertEqual(len(self.sender.sent), 4)
 
+    def test_a_refusal_is_not_retried(self):
+        event = Notification("upcoming", "competition:c1:2026-11-25", "T", "B", "#p")
+        self.service.subscribe(SUBSCRIPTION)
+        self.sender.status = 403
+        with self.assertLogs("intervals_coach", "WARNING"):
+            self.assertFalse(self.service.notify(event))
+        self.assertFalse(self.service.notify(event))
+        self.assertEqual(len(self.sender.sent), 1)
+        self.assertTrue(self.service.state()["subscribed"])
+
     def test_an_unusable_subscription_is_dropped_without_stopping_delivery(self):
         def opener(request, timeout):
             raise AssertionError("an unusable subscription is never sent")
@@ -411,7 +421,31 @@ class PushChecksTests(unittest.TestCase):
             operation=Gate,
         )
         self.assertEqual(checks.check(), 1)
-        self.assertEqual(events, ["enter", "exit", ("send", False), "enter", "exit"])
+        # Events read, then claim, send and settle per event.
+        self.assertEqual(
+            events,
+            ["enter", "exit", "enter", "exit", ("send", False), "enter", "exit"],
+        )
+
+    def test_a_delivery_that_raises_is_retried_on_the_next_check(self):
+        calls = {"n": 0}
+
+        def sender(subscription, message, private, *, ttl):
+            calls["n"] += 1
+            if calls["n"] == 1:
+                raise RuntimeError("protocol error")
+            return 201
+
+        service = _service(self, sender=sender)
+        service.subscribe(SUBSCRIPTION)
+        self.connection.execute("INSERT INTO competitions VALUES ('c1', '2026-11-23')")
+        checks = PushChecks(
+            service, lambda: FakeManager(self.connection), lambda: self.local["now"]
+        )
+        with self.assertLogs("intervals_coach", "WARNING"):
+            self.assertEqual(checks.check(), 0)
+        self.assertEqual(checks.check(), 1)
+        self.assertEqual(checks.check(), 0)
 
     def test_an_expired_sign_in_is_announced_at_once(self):
         self._refresh(

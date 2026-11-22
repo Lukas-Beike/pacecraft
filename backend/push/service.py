@@ -250,8 +250,11 @@ class PushService:
                         if item.get("endpoint") not in gone
                     ],
                 )
-            if not delivered and len(gone) < len(statuses):
-                # No device got it and one may later (network down, 5xx, 429).
+            if not delivered and any(
+                _transient(status) for status in statuses.values()
+            ):
+                # No device got it and one may later (network down, 5xx, 429);
+                # a refusal such as 401/403 stays handled, so it never repeats.
                 sent = self._read(db, PUSH_SENT_KEY, {})
                 for key in claim.new_keys:
                     sent.pop(key, None)
@@ -334,6 +337,11 @@ def _subscription(payload: Any) -> dict[str, str]:
             400, "Das Push-Abonnement ist ungültig.", reason="invalid_push_keys"
         )
     return {"endpoint": str(endpoint), "p256dh": str(p256dh), "auth": str(auth)}
+
+
+def _transient(status: int) -> bool:
+    """No answer, a server error or a rate limit: a later attempt may succeed."""
+    return status == 0 or status == 429 or status >= 500
 
 
 def _parse(value: Any) -> datetime | None:

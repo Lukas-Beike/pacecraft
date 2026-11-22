@@ -400,9 +400,10 @@ test("tapping a notification opens its screen in the open app or a new window", 
 });
 
 // Runs the push subscription of public/notifications.js against stubbed browser and API.
-function pushPage({ refuse = false, registered = true } = {}) {
+function pushPage({ refuse = false, registered = true, boundKey = [1, 2, 3, 255, 239] } = {}) {
   const calls = [];
   const subscription = {
+    options: { applicationServerKey: new Uint8Array(boundKey).buffer },
     endpoint: "https://fcm.googleapis.com/fcm/send/fake",
     toJSON: () => ({ endpoint: "https://fcm.googleapis.com/fcm/send/fake", keys: { p256dh: "p", auth: "a" } }),
     unsubscribe: async () => { calls.push(["browser-unsubscribe"]); return true; },
@@ -458,6 +459,18 @@ test("each app start sends the browser's subscription to the server again", asyn
   const { context, calls } = pushPage();
   await context.syncPushSubscription();
   assert.deepEqual(JSON.parse(JSON.stringify(calls)), [
+    ["/api/push/key", {}],
+    ["/api/push/subscribe", { endpoint: "https://fcm.googleapis.com/fcm/send/fake", keys: { p256dh: "p", auth: "a" } }],
+  ]);
+});
+
+test("a subscription made with another server key is renewed at the app start", async () => {
+  const { context, calls } = pushPage({ boundKey: [9, 9, 9] });
+  await context.syncPushSubscription();
+  assert.deepEqual(JSON.parse(JSON.stringify(calls)), [
+    ["/api/push/key", {}],
+    ["browser-unsubscribe"],
+    ["subscribe", true, [1, 2, 3, 255, 239]],
     ["/api/push/subscribe", { endpoint: "https://fcm.googleapis.com/fcm/send/fake", keys: { p256dh: "p", auth: "a" } }],
   ]);
 });

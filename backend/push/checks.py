@@ -57,14 +57,24 @@ class PushChecks:
         if not DAY_START_HOUR <= local.hour < DAY_END_HOUR:
             return 0
         with self._operation():
-            claims = [
-                claim
-                for event in self._events(local)
-                if (claim := self._push.claim(event)) is not None
-            ]
-        delivered = [(claim, self._push.deliver(claim)) for claim in claims]
-        with self._operation():
-            return sum(self._push.settle(claim, status) for claim, status in delivered)
+            events = self._events(local)
+        # Each event is claimed, delivered and settled on its own, so a failure
+        # never leaves an earlier claim recorded as sent without its settle.
+        delivered = 0
+        for event in events:
+            with self._operation():
+                claim = self._push.claim(event)
+            if claim is None:
+                continue
+            try:
+                statuses = self._push.deliver(claim)
+            except Exception:  # noqa: BLE001 - an unsettled claim must be retried
+                statuses = dict.fromkeys(
+                    (item["endpoint"] for item in claim.subscriptions), 0
+                )
+            with self._operation():
+                delivered += self._push.settle(claim, statuses)
+        return delivered
 
     def _events(self, local: datetime) -> list[Notification]:
         since = self._push.subscribed_since()
