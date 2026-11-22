@@ -281,15 +281,27 @@ class ChangeSummaryTests(unittest.TestCase):
         self.assertNotIn("undo_note", tracked)
 
     def test_a_removal_that_was_not_carried_out_says_so(self) -> None:
-        refused = change_summary(
-            [_step("delete_nutrition_entry", {"ok": False, "error": "x"})]
-        )
+        waiting = {"ok": True, "status": "approval_required"}
+        refused = change_summary([_step("delete_nutrition_entry", waiting)])
         beside_change = change_summary(
             [
                 _step("update_profile", changes=[_PROFILE_CHANGE]),
-                _step("delete_nutrition_entry", {"ok": False, "error": "x"}),
+                _step("delete_nutrition_entry", waiting),
             ]
         )
+        # A delete that failed, or failed and then succeeded, was not waiting for a confirmation.
+        failed = change_summary(
+            [_step("delete_nutrition_entry", {"ok": False, "error": "x"})]
+        )
+        retried = change_summary(
+            [
+                {**_step("delete_nutrition_entry", waiting), "resolved": True},
+                _step("update_profile", changes=[_PROFILE_CHANGE]),
+            ]
+        )
+        self.assertIsNone(failed)
+        assert retried is not None
+        self.assertNotIn("not_done", retried)
 
         self.assertEqual(
             refused,

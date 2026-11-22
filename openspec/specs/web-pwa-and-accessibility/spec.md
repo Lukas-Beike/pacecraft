@@ -761,7 +761,7 @@ Under a Coach reply the client SHALL show its change labels joined by " · ", th
 
 #### Scenario: Receipt lines
 - **WHEN** a Coach reply carries a change summary
-- **THEN** the labels are struck after "Zurückgenommen: " once undone and the reply text is muted; one line per changed record follows when the receipt has them (for example "Langer Lauf, So 22.11.: Dauer 80 → 85 min"), then why no undo is offered ("Rückgängig im Kalender" or "Nicht rückgängig zu machen: <changes>", after a refused undo "Nicht mehr rückgängig zu machen: seitdem geändert"), "Löschen nicht ausgeführt – bitte bestätigen" for a removal not carried out, and plan notes as "Warnung|Hinweis: <label> am <dates> (<evidence>)." with the dates of all notes merged; an intensity distribution note names its week by its Monday ("in der Woche ab <date>", several "in den Wochen ab <dates>")
+- **THEN** the labels are struck after "Zurückgenommen: " once undone and the reply text is muted; one line per changed record follows when the receipt has them (for example "Langer Lauf, So 22.11.: Dauer 80 → 85 min"), then why no undo is offered ("Rückgängig im Kalender" or "Nicht rückgängig zu machen: <changes>", after a refused undo "Nicht mehr rückgängig zu machen"), "Löschen nicht ausgeführt – bitte bestätigen" for a removal not carried out, and plan notes as "Warnung|Hinweis: <label> am <dates> (<evidence>)." with the dates of all notes merged; an intensity distribution note names its week by its Monday ("in der Woche ab <date>", several "in den Wochen ab <dates>")
 
 #### Scenario: Receipt toast
 - **WHEN** a turn reports command receipts

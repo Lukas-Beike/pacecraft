@@ -223,6 +223,8 @@ class CoachTurnFailureService:
     ) -> dict[str, Any]:
         """What the chat reads off a stopped or failed reply: kind, reason (#3931)."""
         if status == "cancelled":
+            # Stored on the receipt: a finished turn that only cleared a pending request is no stop.
+            receipt["stopped"] = True
             return {"coach_cancelled": True}
         if status != "failed":
             return {}

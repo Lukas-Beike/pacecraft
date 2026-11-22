@@ -252,7 +252,7 @@ test("an undo refused because a record changed says so on the receipt", async ()
   state.data.messages = [{ role: "assistant", client_turn_id: "turn-1", coach_changes: changes() }];
   await context.undoCoachTurn("turn-1", { disabled: false });
   assert.equal(state.data.messages[0].coach_changes.undoable, false);
-  assert.match(state.data.messages[0].coach_changes.undo_note, /^Nicht mehr rückgängig zu machen/);
+  assert.match(state.data.messages[0].coach_changes.undo_note, /^Nicht mehr rückgängig zu machen$/);
   assert.equal(calls.renders, 1);
 });
 

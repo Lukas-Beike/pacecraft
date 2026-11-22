@@ -1776,7 +1776,7 @@ async function undoCoachTurn(clientTurnId, button) {
     if (error.status === 409) {
       (state.data?.messages || []).forEach((item) => {
         if (item.role === "assistant" && item.client_turn_id === clientTurnId && item.coach_changes) {
-          item.coach_changes = { ...item.coach_changes, undoable: false, undo_note: "Nicht mehr rückgängig zu machen: seitdem geändert" };
+          item.coach_changes = { ...item.coach_changes, undoable: false, undo_note: "Nicht mehr rückgängig zu machen" };
         }
       });
       renderMessages(state.data?.messages || [], false, true);
@@ -1789,7 +1789,7 @@ async function undoCoachTurn(clientTurnId, button) {
 const FAILURE_NEEDS_CONNECTIONS = new Set([
   "authentication_or_permission", "insufficient_quota", "credit_balance_exhausted", "organization_spend_limit_exceeded",
   "project_spend_limit_exceeded", "organization_usage_limit_exceeded", "openai_not_configured", "anthropic_not_configured",
-  "not_configured", "not_found",
+  "not_configured",
 ]);
 
 // A failed or stopped reply keeps its status style; the newest one offers the fitting action.
@@ -1800,6 +1800,11 @@ function appendFailedTurnActions(node, message, latest) {
   if (!latest || !message.client_turn_id) return;
   if (FAILURE_NEEDS_CONNECTIONS.has(message.coach_failure_reason)) {
     node.append(h("a", { className: "secondary-button message-retry", href: "#more/connections" }, "Anbindungen öffnen"));
+    return;
+  }
+  // The model setting names a model the provider does not know.
+  if (message.coach_failure_reason === "not_found") {
+    node.append(h("a", { className: "secondary-button message-retry", href: "#more/coach" }, "Modell prüfen"));
     return;
   }
   const request = (state.data?.messages || []).find((entry) => entry.role === "user" && entry.client_turn_id === message.client_turn_id);

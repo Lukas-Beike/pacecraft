@@ -123,7 +123,8 @@ for (const [scenario, prompt, message] of [
     await expect(page.locator("#coachWorking")).toHaveCount(0);
     // The failure shows at its message, not in the global toast: a retry where one can work, the connections where the athlete must act.
     const retryable = scenario === "timeout";
-    const action = retryable ? failures.last().getByRole("button", { name: "Erneut senden" }) : failures.last().getByRole("link", { name: "Anbindungen öffnen" });
+    const linkName = scenario === "model" ? "Modell prüfen" : "Anbindungen öffnen";
+    const action = retryable ? failures.last().getByRole("button", { name: "Erneut senden" }) : failures.last().getByRole("link", { name: linkName });
     await expect(action).toBeVisible();
     await expect(failures.last()).toHaveClass(/is-failed/);
     await expect(page.locator("#toast")).not.toContainText(message);

@@ -505,7 +505,7 @@ The client SHALL show the working state of a turn, offer a retry on a failed ans
 
 #### Scenario: Failed answer
 - **WHEN** the newest answer belongs to a failed turn whose request had text and no attachments
-- **THEN** it offers "Erneut senden", which sends the text with its quick-action kind as a new turn; a failure the athlete must resolve (key, balance, model, not configured) offers "Anbindungen öffnen" instead
+- **THEN** it offers "Erneut senden", which sends the text with its quick-action kind as a new turn; a failure the athlete must resolve (key, balance, model, not configured) offers "Anbindungen öffnen" (a model the provider does not know: "Modell prüfen") instead
 
 #### Scenario: Queue limits
 - **WHEN** queued follow-ups would hold more than 16,000,000 characters of encoded attachment data, or the athlete resets the chat while messages are queued

@@ -207,12 +207,18 @@ def change_summary(command_receipts: list[dict[str, Any]]) -> dict[str, Any] | N
     details: list[str] = []
     blockers: list[tuple[Any, str]] = []
     notes: list[dict[str, Any]] = []
-    # A removal the athlete has not confirmed in its own request (AGENTS.md).
+    # A removal that waits for the athlete's confirmation (AGENTS.md): not done, not failed.
     refused = False
     for entry in command_receipts:
         tool = entry.get("tool")
         if not _is_change(tool, entry.get("result")):
-            refused |= tool in DELETE_TOOLS
+            result = entry.get("result")
+            refused |= (
+                tool in DELETE_TOOLS
+                and not entry.get("resolved")
+                and isinstance(result, dict)
+                and result.get("status") == "approval_required"
+            )
             continue
         label = coach_effect_label(entry)
         if not (tool in _FULLY_TRACKED_TOOLS and entry.get("changes")):

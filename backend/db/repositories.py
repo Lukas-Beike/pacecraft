@@ -1405,7 +1405,7 @@ _MESSAGE_COLUMNS = (
     "WHERE messages.role='assistant' "
     "AND coach_commands.client_turn_id=messages.client_turn_id "
     "AND json_valid(receipt)) AS coach_failed, "
-    "(SELECT json_extract(receipt, '$.status')='cancelled' FROM coach_commands "
+    "(SELECT json_extract(receipt, '$.stopped') FROM coach_commands "
     "WHERE messages.role='assistant' "
     "AND coach_commands.client_turn_id=messages.client_turn_id "
     "AND json_valid(receipt)) AS coach_cancelled, "
