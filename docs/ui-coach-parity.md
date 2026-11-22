@@ -7,7 +7,8 @@ issue that closes a missing side. `—` marks a missing side.
 
 Parity values: `both`; `UI only` or `Coach only` (a gap with its issue);
 `neither`; `UI by rule` (the Coach must not do it: credentials, logins,
-backups, purges and device permissions stay in the UI).
+backups, purges and device permissions stay in the UI, and so do the
+settings the athlete kept there on #3960).
 
 Guards stay as they are on both sides: Coach writes keep the server-side impact
 gate (receipt, whole-turn undo when every write is tracked, a confirmed request
@@ -21,7 +22,7 @@ case on both sides, so the guards match.
 tool and route exists, the parity value matches the two columns, each gap names
 its issue and the counts below match the table.
 
-Counts: both 69, UI only 7, Coach only 10, neither 0, UI by rule 8.
+Counts: both 71, UI only 0, Coach only 10, neither 0, UI by rule 13.
 
 ## Matrix
 
@@ -106,13 +107,13 @@ Counts: both 69, UI only 7, Coach only 10, neither 0, UI by rule 8.
 | Syncs | Send planned units to Intervals.icu or Garmin | Kalender week sync `POST /api/sync/jobs` (`plan_push`) | `start_intervals_plan_sync`, `push_strength_to_garmin` (`push`) | named sync | both | |
 | Syncs | Remove the app's own Garmin workouts of a unit | — | `push_strength_to_garmin` (`remove`) | Garmin removal card | Coach only | #4022 |
 | Syncs | Resolve a training sync conflict | — | `resolve_training_sync_conflict` | receipt | Coach only | #4021 |
-| Syncs | Start a full Garmin or Wahoo resync | Anbindungen `POST /api/garmin/full-resync`, `POST /api/wahoo/full-resync` | — | confirmation | UI only | #3960 |
-| Syncs | Check a provider connection | Anbindungen `POST /api/providers/{provider}/check`, `POST /api/nutrition/yazio/check` | — | read-only | UI only | #3960 |
-| Syncs | Switch the automatic metric export | Anbindungen `POST /api/metric-export/automatic` | — | consent per field | UI only | #3960 |
-| Settings | Select model, thinking level and service tier | Coach & Modell `PUT /api/settings/model`, `PUT /api/settings/thinking-level`, `PUT /api/settings/service-tier` | — | — | UI only | #3960 |
-| Settings | Switch a notification type on or off | App `POST /api/push/preferences` | — | — | UI only | #3960 |
-| Settings | Turn GPS-track storage on or off | Datenschutz `POST /api/privacy/gps` | — | — | UI only | #3960 |
-| Settings | Reset the Coach conversation | Coach & Modell `POST /api/chat/reset` | — | confirmation | UI only | #3960 |
+| Syncs | Start a full Garmin or Wahoo resync | Anbindungen `POST /api/garmin/full-resync`, `POST /api/wahoo/full-resync` | `start_provider_refresh` (`full_resync`) | confirmation; the Coach: the athlete's own request naming the provider | both | |
+| Syncs | Check a provider connection | Anbindungen `POST /api/providers/{provider}/check`, `POST /api/nutrition/yazio/check` | `check_provider_connection` | read-only | both | |
+| Syncs | Switch the automatic metric export | Anbindungen `POST /api/metric-export/automatic` | — | consent per field; athlete decision #3960 | UI by rule | |
+| Settings | Select model, thinking level and service tier | Coach & Modell `PUT /api/settings/model`, `PUT /api/settings/thinking-level`, `PUT /api/settings/service-tier` | — | athlete decision #3960 | UI by rule | |
+| Settings | Switch a notification type on or off | App `POST /api/push/preferences` | — | athlete decision #3960 | UI by rule | |
+| Settings | Turn GPS-track storage on or off | Datenschutz `POST /api/privacy/gps` | — | athlete decision #3960 | UI by rule | |
+| Settings | Reset the Coach conversation | Coach & Modell `POST /api/chat/reset` | — | confirmation; athlete decision #3960 | UI by rule | |
 | Settings | Save or clear provider credentials | Anbindungen `PUT /api/settings/credentials` | — | secrets stay server-side | UI by rule | |
 | Settings | Connect or disconnect Garmin | Anbindungen `POST /api/garmin/login`, `POST /api/garmin/login/mfa`, `POST /api/garmin/disconnect` | — | credentials | UI by rule | |
 | Settings | Connect or disconnect Wahoo | Anbindungen `POST /api/wahoo/connect`, `POST /api/wahoo/disconnect` | — | OAuth | UI by rule | |
@@ -133,5 +134,4 @@ Write routes that are no athlete action on data: `POST /api/login`,
 `POST /api/coach/actions/execute`, `POST /api/diagnostics/delete`,
 `POST /api/logs/delete`, `PUT /api/zones/lt2/notice-baseline`.
 
-A Coach path for the notification switches is part of #3960. G-14 in #3936 adds
-interim "Dem Coach sagen" hints on the screens with a Coach-only action.
+G-14 in #3936 adds interim "Dem Coach sagen" hints on the screens with a Coach-only action.

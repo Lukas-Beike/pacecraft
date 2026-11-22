@@ -1062,6 +1062,28 @@ def build_structured_tool_schemas(
                     "description": "Requested history window in days. Set to 30 for an explicitly requested Garmin catch-up.",
                 },
                 "reason": {"type": "string"},
+                "full_resync": {
+                    "type": "boolean",
+                    "description": "Garmin or Wahoo only: the full resync of Anbindungen (all history, existing data stays), only when the athlete asks for a full resync of that provider.",
+                },
+            },
+        ),
+        _canonical_coach_tool(
+            "check_provider_connection",
+            "Run one read-only connection check of Anbindungen on the athlete's request and report its status; it changes nothing and never shows credentials.",
+            {
+                "provider": {
+                    "type": "string",
+                    "enum": [
+                        "garmin",
+                        "wahoo",
+                        "intervals",
+                        "openai",
+                        "anthropic",
+                        "weather",
+                        "yazio",
+                    ],
+                }
             },
         ),
         _canonical_coach_tool(

@@ -31,6 +31,7 @@ generated from the `covers` declarations; regenerate it with
 | `assign_activity_equipment` | `activity`, `planned_unit` | `test_training_records_and_equipment_tools_use_confirmed_local_state` |
 | `calculate_food_nutrition` | `success` | `test_food_database_read_tools_calculate_without_writing` |
 | `cancel_coach_request` | `success` | `test_clarification_and_cancellation_preserve_athlete_data` |
+| `check_provider_connection` | `success` | `test_the_coach_checks_connections_and_starts_a_full_resync` |
 | `clarify_coach_request` | `success` | `test_clarification_and_cancellation_preserve_athlete_data` |
 | `classify_calendar_event` | `success` | `test_the_coach_classifies_a_calendar_event_like_einordnen` |
 | `commit_training_plan` | `success` | `test_requested_draft_commit_and_metadata_lifecycle` |

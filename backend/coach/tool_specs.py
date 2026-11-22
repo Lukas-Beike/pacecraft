@@ -148,6 +148,11 @@ TOOL_SPECS: tuple[ToolSpec, ...] = (
     _read("list_training_plans", requirements=("training-plans-and-adaptation/TP4",)),
     _read("get_sync_job", SYNC, requirements=("coach-context-and-provenance/CP6",)),
     _read(
+        "check_provider_connection",
+        SYNC,
+        requirements=("provider-connections/Coach connection checks and full resync",),
+    ),
+    _read(
         "read_nutrition",
         requirements=(CA1, CA2),
     ),

@@ -534,6 +534,19 @@ Evidence:
 - `tests/test_provider_connection_checks.py:test_unknown_intervals_athlete_is_a_misconfiguration`
 - `tests/test_provider_connection_checks.py`
 
+### Requirement: Coach connection checks and full resync
+The Coach SHALL run a connection check and start a Garmin or Wahoo full resync through the same use cases as Anbindungen on the athlete's own request (athlete decision on #3960); the other Anbindungen, model, notification, GPS, metric-export and conversation settings stay in the UI.
+
+#### Scenario: Connection check
+- **WHEN** the athlete asks the Coach whether a connection works
+- **THEN** `check_provider_connection` runs that provider's read-only check (or the Yazio check) outside the turn's write transaction and returns its status, never a credential.
+
+#### Scenario: Full resync
+- **WHEN** the athlete's own message names Garmin or Wahoo and asks for a full resync
+- **THEN** `start_provider_refresh` with `full_resync: true` starts the background resync the route starts (a run in progress is returned instead), under the named provider's refresh scope; any other provider is refused.
+
+Evidence: `backend/coach/sync_tools.py:CoachSyncToolService._check_connection`, `backend/coach/sync_tools.py:CoachSyncToolService._start_full_resync`; `tests/test_coach_tool_coverage.py:test_the_coach_checks_connections_and_starts_a_full_resync`.
+
 ### Requirement: Yazio connection status and explicit check
 The system SHALL present Yazio on the connections screen, distinguish missing configuration, an unchecked configuration, a successful check, and a safely classified failure, and provide an explicit authenticated connection check. Status SHALL describe the last check rather than promise current availability.
 

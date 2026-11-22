@@ -37,10 +37,12 @@ from backend.planning import library as planning_library
 from backend.planning.planned_units import plan_push_payload_hash
 from backend.providers import http as provider_http
 from backend.providers import openai_requests
+from backend.providers.connection_checks import ProviderConnectionChecks
 from backend.providers.open_food_facts import OpenFoodFactsClient
 from backend.providers.openai_responses_adapter import model_turn, request_payload
 from backend.sync import canonical_ingest
 from backend.sync.adaptive import IllnessPauseSyncService
+from backend.sync.full_resync import FullProviderResyncService
 from backend.sync.garmin_body_push import GarminBodyPushService
 from backend.sync.wahoo_weight_push import WahooWeightPushService
 
@@ -1707,6 +1709,44 @@ class CoachToolCoverageTests(DialogueHarness, unittest.TestCase):
             json.loads(server.key_value_service().get("coach_pending_request"))
         )
         self.assertEqual(self.athlete_state(), before)
+
+    @covers("check_provider_connection:success")
+    def test_the_coach_checks_connections_and_starts_a_full_resync(self):
+        # #3960: the read-only check and the full resync of Anbindungen; the
+        # provider request and the background run are stubbed at their owners.
+        with (
+            patch.object(
+                ProviderConnectionChecks,
+                "check",
+                autospec=True,
+                return_value={"status": "success", "checked_at": "now"},
+            ) as checked,
+            patch.object(
+                FullProviderResyncService,
+                "start",
+                autospec=True,
+                return_value={"status": "started", "source": "garmin",
+                              "operation_id": "op-1"},
+            ) as resynced,
+        ):  # fmt: skip
+            before = self.athlete_state()
+            status = self.run_tool("check_provider_connection", {"provider": "wahoo"})
+            self.assertEqual(
+                ("wahoo", "success"), (status["provider"], status["status"])
+            )
+            self.assertEqual("wahoo", checked.call_args.args[1])
+            self.assertEqual(before, self.athlete_state())
+            started = self.run_tool(
+                "start_provider_refresh",
+                {"full_resync": True},
+                ["garmin_refresh"],
+                target="garmin",
+                message="Mach einen vollständigen Garmin-Resync.",
+            )
+        self.assertEqual(
+            ("started", "op-1"), (started["status"], started["operation_id"])
+        )
+        self.assertEqual("garmin", resynced.call_args.args[1])
 
     @covers(
         "start_provider_refresh:garmin",
