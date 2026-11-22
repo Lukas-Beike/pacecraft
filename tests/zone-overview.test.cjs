@@ -2,7 +2,7 @@ const assert = require("node:assert/strict");
 const { test } = require("node:test");
 const { extractFunctions } = require("./frontend-harness.cjs");
 
-const NAMES = ["zoneMetricValue", "ZONE_METRIC_LABELS", "ZONE_SPORTS", "POWER_ZONE_NAMES", "zoneConfigurationFor", "zoneLimitsOf", "zoneLimitsText", "zoneLimitValue", "zoneValueText", "zoneRows", "zoneRange", "zoneSourceText", "zoneEditorValues", "defaultZoneItem", "THRESHOLD_ORIGINS", "lt2Origin", "thresholdRows"];
+const NAMES = ["zoneMetricValue", "ZONE_METRIC_LABELS", "ZONE_SPORTS", "POWER_ZONE_NAMES", "zoneConfigurationFor", "zoneLimitsOf", "zoneLimitsText", "zoneLimitValue", "zoneValueText", "zoneRows", "zoneRange", "zoneSourceText", "zoneEditorValues", "defaultZoneItem", "OPEN_ZONE_LIMIT", "THRESHOLD_ORIGINS", "lt2Origin", "thresholdRows"];
 
 // Garmin's heart-rate zones carry no sport: the server names their key for every sport (#2262).
 const GARMIN_HR = { key: "garmin|heart_rate|||2026-11-09", source: "garmin", label: "Garmin", sport: null, metric: "heart_rate", environment: null, threshold: 163, maximum: 186, limits: [130, 145, 155, 166, 186], percent_limits: null };
@@ -57,9 +57,12 @@ test("the standard zones show read-only once their threshold is known and prefil
   const power = defaultZoneItem("ride", "power", defaults, read);
   assert.equal(zoneSourceText(power), "Standardzonen");
   assert.deepEqual(plain(zoneRows(power).map((row) => row.range)).slice(0, 2), ["bis 110 W · 55 %", "111–150 W · 75 %"]);
+  // The open top zone stays: six limits are seven zones, four heart-rate limits five.
+  assert.deepEqual([zoneRows(power).length, zoneRows(defaultZoneItem("ride", "heart_rate", defaults, read)).length], [7, 5]);
+  assert.equal(zoneRows(power).at(-1).range, "ab 301 W");
   assert.equal(defaultZoneItem("run", "power", defaults, read), null, "no threshold, no read-only zones");
-  assert.deepEqual(plain(zoneEditorValues("ride", "power", null, read, defaults)).limits, "55, 75, 90, 105, 120, 150");
-  assert.deepEqual(plain(zoneEditorValues("ride", "heart_rate", null, read, defaults)).limits, "109, 133, 150, 168");
+  assert.deepEqual(plain(zoneEditorValues("ride", "power", null, read, defaults)).limits, "55, 75, 90, 105, 120, 150, 999");
+  assert.deepEqual(plain(zoneEditorValues("ride", "heart_rate", null, read, defaults)).limits, "109, 133, 150, 168, 176");
   assert.equal(zoneRows(defaultZoneItem("run", "pace", defaults, read), 240)[0].range, "langsamer als 5:00 · 80 %");
 });
 
