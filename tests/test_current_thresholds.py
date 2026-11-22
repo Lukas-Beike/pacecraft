@@ -422,6 +422,7 @@ class FirstThresholdTests(unittest.TestCase):
         "bike_threshold_hr_bpm": {"value": 160},
         "cycling_ftp_watts": {"value": 280},
     }
+
     def test_precedence_of_each_value(self) -> None:
         # Worked examples: 85 % of 172 and 160 bpm is 146 and 136 bpm; 4:30 /km at
         # 88 % speed is 5:07 /km; 75 % of 280 W is 210 W; 86 % of 172 and 160 bpm
@@ -482,6 +483,7 @@ class FirstThresholdTests(unittest.TestCase):
             {"ride": {"watts": 210, "power_origin": "fixed_share"}},
             first_thresholds({"cycling_ftp_watts": {"value": 280}}, None, ""),
         )
+
 
 if __name__ == "__main__":
     unittest.main()

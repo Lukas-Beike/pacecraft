@@ -63,7 +63,7 @@ test("@responsive each sport shows LT1 and LT2 and its zone kinds, and Bearbeite
   await expect(thresholds.locator(".zone-thresholds > .zone-muted")).toHaveText(["Leistung", "Puls", /^Aerob \(LT1\)/, /^Anaerob \(LT2\) \/ FTP/]);
   await expect(thresholds.locator(".zone-source")).toHaveText("Bearbeiten");
   await thresholds.getByRole("button", { name: "Herkunft Aerob (LT1)" }).click();
-  await expect(page.locator(".analysis-info-tooltip:popover-open")).toHaveText("Puls aus der Herzfrequenzvariabilität · Leistung aus festem Anteil von LT2");
+  await expect(page.locator(".analysis-info-tooltip:popover-open")).toHaveText("Puls aus der Herzfrequenzvariabilität · Leistung Standardwert");
   await page.keyboard.press("Escape");
   await thresholds.getByRole("button", { name: "Herkunft Anaerob (LT2) / FTP" }).click();
   await expect(page.locator(".analysis-info-tooltip:popover-open")).toHaveText("Von Garmin Connect");

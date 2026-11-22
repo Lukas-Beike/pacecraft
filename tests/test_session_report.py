@@ -1592,6 +1592,8 @@ _ZONES = {
     "metric": "heartrate",
     "zones": [{"zone": 2, "planned_s": 3000, "actual_s": 2000}],
 }
+
+
 # Each base and the report arguments it needs; every base makes checks notable.
 def _uncapped_easy_run() -> dict[str, Any]:
     return result(

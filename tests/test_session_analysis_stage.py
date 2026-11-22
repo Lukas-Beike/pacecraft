@@ -485,7 +485,10 @@ class SessionAnalysisStageTests(unittest.TestCase):
             read = read_zone_times(db, ["act_g1"])
         summary = with_zone_times([{"id": "act_g1", "sport": "ride"}], read)[0]
         self.assertEqual(zones["power"], summary["power_zone_times"])
-        self.assertEqual({"power_zone_times": "local"}, summary["zone_models"])
+        self.assertEqual(
+            {"power_zone_times": "local", "power_band_times": "local"},
+            summary["zone_models"],
+        )
         self.assertEqual(
             "Zoneneinstellungen: Standardzonen", summary["sources"]["power_zone_times"]
         )
