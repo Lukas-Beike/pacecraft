@@ -3294,11 +3294,11 @@ function equipmentForm(tab, item) {
     h("label", null, "Sportart", select("sport", sports, pair)),
     h("label", null, "Art", kind), parent,
     h("label", null, "Im Einsatz seit", h("input", { type: "date", name: "start_date", required: true, value: item?.start_date || timezoneDateKey(state.data?.profile?.timezone, new Date()) })),
-    h("label", null, "Kilometer vorher", number("initial_distance_km", item?.initial_distance_km, true)),
-    h("label", null, "Stunden vorher", number("initial_hours", item?.initial_hours, true)),
-    h("label", null, "Lebensdauer-Ziel km", number("lifetime_target_km", item?.lifetime_target_km)),
-    h("label", null, "Wartung alle km", number("maintenance_km", item?.maintenance_km)),
-    h("label", null, "Wartung alle Stunden", number("maintenance_hours", item?.maintenance_hours)),
+    h("label", null, "Bisherige Strecke (km)", number("initial_distance_km", item?.initial_distance_km, true)),
+    h("label", null, "Bisherige Zeit (h)", number("initial_hours", item?.initial_hours, true)),
+    h("label", null, "Lebensdauer-Ziel (km)", number("lifetime_target_km", item?.lifetime_target_km)),
+    h("label", null, "Wartung alle (km)", number("maintenance_km", item?.maintenance_km)),
+    h("label", null, "Wartung alle (h)", number("maintenance_hours", item?.maintenance_hours)),
     error, h("button", { className: "secondary-button", type: "submit" }, "Speichern"));
   form.addEventListener("submit", async (event) => {
     event.preventDefault();
