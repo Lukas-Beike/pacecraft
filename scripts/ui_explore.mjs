@@ -21,6 +21,9 @@ import { baseUrl, FRESH_OUT_DIR, login, logout, refusedLabel, rendered, scratchP
 
 // Login and logout are the only writes the explorer lets through.
 const SESSION_PATHS = new Set(["/api/login", "/api/logout"]);
+// Reads that hand over the whole database, the logs or an OAuth grant are aborted like writes.
+const WHOLE_DATA_PATHS = new Set(["/api/privacy/backup", "/api/privacy/export", "/api/logs/download", "/api/wahoo/callback"]);
+const own = (object, key) => Object.hasOwn(object ?? {}, key);
 // Beyond ui_walk.mjs's refused labels: sync, confirm, sign-out, transfer, archive and remove.
 const DENIED = /bestätig|confirm|sync|abgleich|abmeld|logout|übertrag|archiv|entfern|remove/i;
 const LABEL = /^[\w-]{1,60}$/;
@@ -37,14 +40,16 @@ const STEP_OPTIONS = { click: { nth: (value) => Number.isInteger(value) && value
 const TEXT_CAP = 4000;
 const SETTLE_MS = 15000;
 
-// Aborts every request except GET, HEAD and the app's own login and logout; returns the aborted ones' list.
+// Aborts every request except GET, HEAD (not the whole-data reads) and the app's own login and logout;
+// returns the aborted ones' list.
 export async function guardRequests(context, origin) {
   const aborted = [];
   await context.route("**/*", (route) => {
     const request = route.request();
     const url = new URL(request.url());
     const same = url.origin === origin;
-    if (["GET", "HEAD"].includes(request.method()) || (same && request.method() === "POST" && SESSION_PATHS.has(url.pathname))) return route.continue();
+    const read = ["GET", "HEAD"].includes(request.method()) && !(same && WHOLE_DATA_PATHS.has(url.pathname));
+    if (read || (same && request.method() === "POST" && SESSION_PATHS.has(url.pathname))) return route.continue();
     aborted.push(`${request.method()} ${same ? url.pathname : "(other origin)"}`);
     return route.abort("blockedbyclient");
   });
@@ -55,9 +60,10 @@ export async function exploreContext(browser, { url, viewport, colorScheme = "li
   const context = await browser.newContext({ baseURL: url, viewport: WIDTHS[viewport], colorScheme, serviceWorkers: "block" });
   if (textZoom !== 100) {
     await context.addInitScript((zoom) => {
+      // The init script runs before the document has a root element.
       const style = document.createElement("style");
       style.textContent = `html { font-size: ${zoom}% !important; }`;
-      document.documentElement.append(style);
+      document.addEventListener("DOMContentLoaded", () => document.head.append(style), { once: true });
     }, textZoom);
   }
   return { context, aborted: await guardRequests(context, new URL(url).origin) };
@@ -69,17 +75,20 @@ export function parsePlan(plan) {
   };
   if (!plan || typeof plan !== "object" || !Array.isArray(plan.steps) || !plan.steps.length || plan.steps.length > 300) fail("steps must be a list of 1 to 300 steps");
   const viewports = plan.viewports ?? Object.keys(WIDTHS);
-  if (!Array.isArray(viewports) || !viewports.length || viewports.some((name) => !(name in WIDTHS))) fail(`viewports are ${Object.keys(WIDTHS).join(" or ")}`);
+  if (!Array.isArray(viewports) || !viewports.length || viewports.some((name) => !own(WIDTHS, name)) || new Set(viewports).size !== viewports.length) fail(`viewports are ${Object.keys(WIDTHS).join(" and/or ")}, each once`);
   const colorScheme = plan.colorScheme ?? "light";
   if (!["light", "dark"].includes(colorScheme)) fail("colorScheme is light or dark");
   const textZoom = plan.textZoom ?? 100;
   if (!Number.isInteger(textZoom) || textZoom < 100 || textZoom > 200) fail("textZoom is a whole percent from 100 to 200");
   for (const [index, step] of plan.steps.entries()) {
     const keys = Object.keys(step || {});
-    const kind = keys.find((key) => key in STEPS);
-    if (!kind || keys.some((key) => key !== kind && !STEP_OPTIONS[kind]?.[key])) fail(`step ${index + 1} needs exactly one of ${Object.keys(STEPS).join(", ")}`);
+    const kind = keys.find((key) => own(STEPS, key));
+    if (!kind || keys.some((key) => key !== kind && !own(STEP_OPTIONS[kind], key))) fail(`step ${index + 1} needs exactly one of ${Object.keys(STEPS).join(", ")}`);
     if (!STEPS[kind](step[kind]) || keys.some((key) => key !== kind && !STEP_OPTIONS[kind][key](step[key]))) fail(`step ${index + 1} has a bad value`);
   }
+  // Each screenshot is written once under its name.
+  const shots = plan.steps.filter((step) => own(step, "shot")).map((step) => step.shot);
+  if (new Set(shots).size !== shots.length) fail("each shot name is used once");
   return { viewports, colorScheme, textZoom, steps: plan.steps };
 }
 
@@ -87,7 +96,9 @@ export function parsePlan(plan) {
 export async function refusedClick(target) {
   const control = await target.evaluate((el) => {
     const owner = el.closest("button, input, a, summary, select, [role=button]") || el;
-    const label = [owner.getAttribute("aria-label"), owner.getAttribute("title"), owner.value, owner.textContent].filter(Boolean).join(" ");
+    // A summary only expands its section; its text may carry a changing status line (as ui_walk.mjs).
+    const text = owner.tagName === "SUMMARY" ? "" : owner.textContent;
+    const label = [owner.getAttribute("aria-label"), owner.getAttribute("title"), owner.value, text].filter(Boolean).join(" ");
     const submits = owner.matches("input[type=submit], input[type=image]") || (owner.tagName === "BUTTON" && owner.type === "submit" && Boolean(owner.form));
     return { label, submits };
   });
@@ -103,9 +114,11 @@ async function step(page, item, shot) {
   if ("click" in item) {
     const target = page.locator(item.click).filter({ visible: true }).nth(item.nth ?? 0);
     await target.waitFor({ state: "visible", timeout: 3000 });
-    const why = await refusedClick(target);
+    // The element checked is the element clicked, even if the view re-renders in between.
+    const handle = await target.elementHandle({ timeout: 3000 });
+    const why = await refusedClick(handle);
     if (why) return { status: "fail", why };
-    await target.click();
+    await handle.click();
     await page.waitForFunction(settled, null, { timeout: SETTLE_MS, polling: 100 }).catch(() => null);
     await page.waitForTimeout(300);
     return { status: "ok" };
@@ -127,7 +140,7 @@ async function step(page, item, shot) {
 export async function runPlan(page, steps, shot = async () => null) {
   const results = [];
   for (const item of steps) {
-    const kind = Object.keys(item).find((key) => key in STEPS);
+    const kind = Object.keys(item).find((key) => own(STEPS, key));
     try {
       results.push({ step: `${kind} ${item[kind]}`, ...(await step(page, item, shot)) });
     } catch (error) {
@@ -138,7 +151,7 @@ export async function runPlan(page, steps, shot = async () => null) {
   return results;
 }
 
-export const exitCode = (runs) => (runs.some((run) => run.aborted.length || run.steps.some((item) => item.status === "fail")) ? 1 : 0);
+export const exitCode = (runs) => (runs.some((run) => run.aborted.length || run.logout !== 200 || run.steps.some((item) => item.status === "fail")) ? 1 : 0);
 
 async function explore({ chromium, url, password, outDir, plan }) {
   const runs = [];
@@ -153,16 +166,21 @@ async function explore({ chromium, url, password, outDir, plan }) {
       page.on("response", (response) => response.status() >= 500 && errors.push(`http ${response.status()}`));
       const run = { viewport, aborted, steps: [], errors };
       runs.push(run);
+      const tag = `${viewport}-${plan.colorScheme}`;
+      let loggedIn = false;
       try {
         await login(page, password);
+        loggedIn = true;
+        run.steps = await runPlan(page, plan.steps, async (label, full) => writeFresh(outDir, `${tag}-${label}.png`, await page.screenshot({ fullPage: full })));
       } catch (error) {
-        error.login = true;
+        error.login = !loggedIn;
         throw error;
+      } finally {
+        // The session ends however the run ended, from the app's own page.
+        if (new URL(page.url()).origin !== new URL(url).origin) await page.goto("/").catch(() => null);
+        run.logout = await logout(page).catch(() => "failed");
+        await context.close();
       }
-      const tag = `${viewport}-${plan.colorScheme}`;
-      run.steps = await runPlan(page, plan.steps, async (label, full) => writeFresh(outDir, `${tag}-${label}.png`, await page.screenshot({ fullPage: full })));
-      run.logout = await logout(page).catch(() => "failed");
-      await context.close();
     }
   } finally {
     await browser.close();
