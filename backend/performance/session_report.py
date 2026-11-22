@@ -74,7 +74,8 @@ CARDIAC_DRIFT_PCT: Final = 5.0
 # this long and within this share of each other's duration.
 HEART_RATE_RISE_MIN_S: Final = 180.0
 HEART_RATE_RISE_DURATION_SHARE: Final = 0.10
-# Easy, recovery and long sessions: share of moving time above zone 2 (Seiler; #2830).
+# Easy, recovery and long sessions: share of time above the LT1 heart rate in
+# effect (Seiler; #2830, #3915).
 EASY_ABOVE_SHARE_PCT: Final = 10.0
 # Ride steadiness: variability index (Coggan / Allen, TrainingPeaks: <= 1.05 steady).
 RIDE_VARIABILITY_INDEX: Final = 1.05
@@ -222,7 +223,7 @@ def session_report(
     """The report of a ``get_activity_details`` result.
 
     ``planned`` is the paired unit's estimate (``duration_s``, ``load`` and
-    ``above_easy_s``, its planned seconds above zone 2), None without a paired
+    ``above_easy_s``, its planned seconds above LT1), None without a paired
     unit; ``training_load`` is the session's local TSS-scale load (M6), the
     scale of the estimate. A provider load is never compared. ``race`` is
     the linked competition's race plan (``race_plan``), None without one.
@@ -449,10 +450,9 @@ def _easy_checks(facts: _Facts) -> list[dict[str, Any]]:
     elif (steady := _run_steadiness(facts)) is not None:
         checks.append(steady)
     checks.append(_decoupling(facts))
-    checks.append(_easy_time_above(facts))
     cap = _mapping(facts.targets.get("heart_rate_cap"))
-    if cap:
-        checks.append(_heart_rate_cap(facts, cap))
+    # A capped unit is judged by its cap, never by the LT1 line too (#3915).
+    checks.append(_heart_rate_cap(facts, cap) if cap else _easy_time_above(facts))
     return checks
 
 
@@ -611,36 +611,39 @@ def _decoupling(facts: _Facts) -> dict[str, Any]:
 
 
 def _easy_time_above(facts: _Facts) -> dict[str, Any]:
-    """Share of the session's heart-rate zone time above zone 2.
+    """Share of the session's heart-rate time above the LT1 heart rate in effect.
 
-    The paired plan's own seconds above zone 2 (strides, a fast finish) are
-    taken off; unplanned surges count.
+    ``easy_limit`` of the report inputs holds that bpm and the stream's seconds
+    above it and in all. The paired plan's own seconds above LT1 (strides, a
+    fast finish) are taken off; unplanned surges count.
     """
     title = "Zeit über der Easy-Grenze"
     if reason := facts.heart_rate_unknown():
         return _unknown("easy_time_above", title, reason)
-    buckets = [
-        bucket
-        for bucket in _mapping(facts.zones.get("heart_rate")).get("buckets") or ()
-        if isinstance(bucket, Mapping)
-    ]
-    total = sum(_number(bucket.get("seconds")) or 0.0 for bucket in buckets)
-    if not total:
-        return _unknown("easy_time_above", title, "Keine Herzfrequenz-Zonenzeiten.")
-    above = sum(
-        _number(bucket.get("seconds")) or 0.0
-        for bucket in buckets
-        if isinstance(bucket.get("index"), int) and bucket["index"] >= 3
+    limit = _mapping(
+        _mapping(facts.result.get(session_conditions.INPUTS)).get("easy_limit")
     )
+    total = _number(limit.get("total_s")) or 0.0
+    if not total:
+        return _unknown(
+            "easy_time_above",
+            title,
+            "Kein Herzfrequenzverlauf oder keine Laktatschwelle (LSHF).",
+        )
+    above = _number(limit.get("above_s")) or 0.0
     planned_above = _number(facts.planned.get("above_easy_s")) or 0.0
     above = max(0.0, above - planned_above)
     share = above / total * 100
     return _judged(
         "easy_time_above",
         title,
-        value={"seconds_above": round(above), "share_pct": round(share, 1)},
+        value={
+            "seconds_above": round(above),
+            "share_pct": round(share, 1),
+            "limit_bpm": limit.get("bpm"),
+        },
         unit="%",
-        rule="Anteil der Zeit über HF-Zone 2, ohne die im Plan vorgesehene Zeit darüber",
+        rule="Anteil der Zeit über dem LT1-Puls, ohne die im Plan vorgesehene Zeit darüber",
         threshold=EASY_ABOVE_SHARE_PCT,
         measure=share,
         basis="fixed",
@@ -2450,7 +2453,7 @@ def _hills(reps: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
 def _notable_heart_checks(facts: _Facts) -> list[str]:
     """The heart-rate checks the report finds notable, each by its own function.
 
-    Decoupling and time above zone 2 for easy sessions, cardiac drift for
+    Decoupling and time above LT1 for easy sessions, cardiac drift for
     interval sessions: what heat or the night before may explain (#3084 3c).
     """
     heart_checks = []

@@ -10,6 +10,7 @@ from typing import Any, Final
 from backend.activities.hr_cap import stored_cap
 from backend.activities.session_purpose import summary_is_not_training
 from backend.activities.strength_sets import plan_comparison, trained_structure
+from backend.activities.zone_settings import LT1_HR_SHARE
 from backend.athlete.local_date import iso_date_prefix
 from backend.athlete.profile import ProfileService
 from backend.canonical.activity_summary import (
@@ -40,6 +41,7 @@ from backend.performance.critical_power import (
 from backend.performance.critical_power import critical_power_speed
 from backend.performance.pace_at_hr import COMPARE_DAYS, session_comparison
 from backend.performance.planned_targets import (
+    heart_rate_above,
     heart_rate_cap_execution,
     planned_step_adherence,
     planned_target_execution,
@@ -796,6 +798,7 @@ class CoachActivityReadToolService:
             "intensity": own.get("intensity"),
             "grade_adjusted_speed_mps": own.get("grade_adjusted_speed_mps"),
             "rated_sessions": rated,
+            "easy_limit": self._easy_limit(result, session, unit, day),
         }
         # The report's facts only: they leave the tool result, so the model
         # reads them once (#3084 Part 2).
@@ -816,6 +819,31 @@ class CoachActivityReadToolService:
         if self._report_counts is not None:
             self._report_counts.report(report)
         return report
+
+    def _easy_limit(
+        self,
+        result: Mapping[str, Any],
+        session: Mapping[str, Any],
+        unit: Mapping[str, Any] | None,
+        day: date | None,
+    ) -> dict[str, Any] | None:
+        """The LT1 heart rate of the session's day and the stream's time above it.
+
+        The LT1 stand-in of the threshold HR in effect (``LT1_HR_SHARE``, #3915),
+        the boundary of the easy check; None without a threshold HR or stream.
+        """
+        sport = session.get("sport")
+        if self._unit_thresholds is None or day is None or sport not in ("run", "ride"):
+            return None
+        reference = unit or {"sport": str(sport).title(), "date": day.isoformat()}
+        lthr = self._unit_thresholds.thresholds(reference).lthr
+        if not lthr:
+            return None
+        bpm = round(lthr * LT1_HR_SHARE)
+        found = heart_rate_above(bpm, result.get("streams"))
+        if found is None:
+            return None
+        return {"bpm": bpm, "above_s": found[0], "total_s": found[1]}
 
     def _step_adherence(
         self, result: Mapping[str, Any], session: Mapping[str, Any], unit: Any

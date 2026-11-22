@@ -40,19 +40,19 @@ The system SHALL compose current body, cycling/running thresholds, VO2max, maxim
 Evidence: `backend/performance/current_metrics.py:current_performance_metrics`, `backend/performance/canonical_current.py:read_current_inputs`; `tests/test_performance_current_metrics.py:test_garmin_priority_and_metric_shape`, `tests/test_performance_current_metrics.py:test_invalid_values_and_inputs_are_not_mutated`. The eFTP scenario is verified by `tests/test_performance_current_metrics.py:test_stored_eftp_is_not_a_current_metric` and `tests/test_performance_canonical_load_metrics.py:EftpTests`. The Intervals.icu scenario is verified by `tests/test_performance_canonical_current_metrics.py:IntervalsValuesAreNotCurrentTests`. Added evidence: `tests/test_characterization_current_metrics.py:test_result_keys_and_units_are_stable`, `tests/test_garmin_canonical_reads.py:test_max_hr_comes_from_the_latest_day_of_each_category`, `tests/test_garmin_canonical_reads.py:test_newer_generic_vo2max_replaces_an_older_running_value`.
 
 ### Requirement: LT1 per sport with the origin of each value
-The current performance thresholds SHALL carry `first_thresholds`: LT1 of running and cycling, each value with its origin (`measured`, `estimated` for the adopted DFA-α1 value, `own_sessions`, `zone_2`, `fixed_share`), the same in the public state and for the Coach. A measured or adopted share, then own sessions (pace and power only, M9), then the top of zone 2 SHALL win over the fixed shares the athlete decided (2026-11-12, #2427).
+The current performance thresholds SHALL carry `first_thresholds`: LT1 of running and cycling, each value with its origin (`measured`, `estimated` for the adopted DFA-α1 value, `own_sessions`, `fixed_share`), the same in the public state and for the Coach. A measured or adopted share, then own sessions (pace and power only, M9), SHALL win over the fixed shares the athlete decided (2026-11-12, #2427), shown as "Standardwert"; the top of a zone 2 is no LT1 (athlete decision 2026-11-22, #3915).
 
 #### Scenario: No measured or adopted value and no zones
 - **WHEN** the profile holds no first threshold and the sport has no pace or power zones
-- **THEN** the heart rate is 85 % of the threshold HR, run pace 88 % of the threshold speed and ride power 75 % of the FTP, all `fixed_share` (LTHR 172 bpm, 4:30 /km and 280 W give 146 bpm, 5:07 /km and 210 W); a value with neither its LT2 nor a zone 2 is left out, and a sport without any LT2 value has no LT1.
+- **THEN** the heart rate is 85 % of the threshold HR, run pace 88 % of the threshold speed and ride power 75 % of the FTP, all `fixed_share` (LTHR 172 bpm, 4:30 /km and 280 W give 146 bpm, 5:07 /km and 210 W), also when zones exist; a value without its LT2 is left out, and a sport without any LT2 value has no LT1.
 
-#### Scenario: Measured value and zone 2
+#### Scenario: Measured value
 - **WHEN** a measured or adopted share is stored, or heart-rate, pace or power zones are in effect
-- **THEN** the heart rate uses that share with its origin, else the top of the heart-rate zone 2, and the pace or power the top of their zone 2 (`zone_2`); the other values keep the fixed share.
+- **THEN** the heart rate uses that share with its origin; pace and power keep the fixed share unless own sessions give them.
 
 #### Scenario: Own steady sessions at the LT1 heart rate
 - **WHEN** at least three ride or run sessions of the last 60 days hold at least 10 steady minutes (coefficient of variation at most 0.15) in the 10 bpm band of 5 bpm bins nearest to the sport's LT1 heart rate
-- **THEN** LT1 run pace is 1000 s divided by the median of their speeds in the band (outdoor sessions before indoor ones for both sports), and LT1 ride power the median of their power, each paired with the mean power of the minute before the heart rate; the origin is `own_sessions`, shown as an estimate; with fewer sessions the zone 2 top or the fixed share applies.
+- **THEN** LT1 run pace is 1000 s divided by the median of their speeds in the band (outdoor sessions before indoor ones for both sports), and LT1 ride power the median of their power, each paired with the mean power of the minute before the heart rate; the origin is `own_sessions`, shown as an estimate; with fewer sessions the fixed share applies.
 
 #### Scenario: LT1 progression in the threshold charts
 - **WHEN** the analysis history is composed
@@ -1053,7 +1053,7 @@ The system SHALL offer a running step test (M10 protocol P1, #3833) as a local l
 
 #### Scenario: Protocol steps
 - **WHEN** the step test template is built
-- **THEN** it holds a 10 min warm-up, 3-minute stages rising by 0.5 km/h, each held as a ±3 % pace band, from 1.5 km/h below the current LT1 pace (9.5 km/h without a plausible one) to two stages beyond the current LT2 pace (6 to 10 stages), and a 10 min cool-down; the unit names the chest strap, HRV recording, rested and not-ill preconditions and the place (treadmill at 1 % or a track, the same for every test)
+- **THEN** it holds a 10 min warm-up, 3-minute stages rising by 0.5 km/h, each held as a ±3 % pace band, from 1.5 km/h below the current LT1 pace (9.5 km/h without a plausible one), but at most 3.5 km/h below the current LT2 pace (#3915), to two stages beyond the current LT2 pace (6 to 10 stages), and a 10 min cool-down; the unit names the chest strap, HRV recording, rested and not-ill preconditions and the place (treadmill at 1 % or a track, the same for every test)
 
 #### Scenario: Separate test rhythm
 - **WHEN** a step test was completed

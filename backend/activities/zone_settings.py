@@ -38,6 +38,13 @@ from backend.canonical.vocabulary import (
 POWER_ZONE_LIMITS = (55, 75, 90, 105, 120, 150)
 HR_ZONE_LIMITS = (68, 83, 94, 105)
 PACE_ZONE_LIMITS = (77.5, 87.7, 94.3, 100, 103.4, 111.5)
+# LT1 as a fixed share of LT2 when no measured or adopted value exists
+# (athlete decisions 2026-11-12, #2427, and 2026-11-22, #3915): heart rate of the
+# threshold HR, cycling power of the FTP and running speed of the threshold
+# speed. The zone 2 top of a zone set is no LT1 (#3915). Change them here only.
+LT1_HR_SHARE: Final = 0.85
+LT1_POWER_SHARE: Final = 0.75
+LT1_RUN_SPEED_SHARE: Final = 0.88
 # Heart-rate steps are usually written as percent of max HR; threshold HR is
 # about 90 % of it.
 LTHR_SHARE_OF_MAX_HR = 0.9
@@ -64,6 +71,25 @@ def zone_source_name(configuration: ZoneConfiguration | None) -> str:
         return DEFAULT_ZONE_SOURCE
     provider = configuration.provenance.provider
     return LOCAL_ZONE_SOURCE if provider is None else _PROVIDER_ZONE_SOURCES[provider]
+
+
+def intensity_band(
+    kind: str, intensity: float, lt1_hr_share: float | None = None
+) -> str:
+    """The 3-zone band of an intensity (fraction of the threshold) of one sensor.
+
+    Low up to LT1 (``lt1_hr_share`` for heart rate when the athlete has one, else
+    the fixed shares above), high above the threshold itself, moderate between,
+    for every sensor alike (#3915). ``kind`` is ``hr``, ``power`` or ``pace``.
+    """
+    lt1 = {
+        "hr": lt1_hr_share or LT1_HR_SHARE,
+        "power": LT1_POWER_SHARE,
+        "pace": LT1_RUN_SPEED_SHARE,
+    }[kind]
+    if intensity <= lt1:
+        return "low"
+    return "moderate" if intensity <= 1.0 else "high"
 
 
 def percent_zone(percent: float, limits: tuple[float, ...]) -> int:
@@ -389,42 +415,6 @@ def effective_zone_configuration(
             ),
         )
     return _later_stand_in(matching, day) if day is not None else None
-
-
-def zone_two_top(
-    configuration: ZoneConfiguration, threshold_pace: float | None = None
-) -> float | None:
-    """The upper limit of zone 2: bpm, watts, or seconds per km for pace.
-
-    Percent pace limits are percent of the threshold speed: the configuration's
-    own threshold (m/s), else ``threshold_pace`` (s/km). None when it cannot be
-    resolved.
-    """
-    percents = configuration.percent_limits or ()
-    limits = configuration.limits or ()
-    percent = percents[1] if len(percents) > 1 else None
-    absolute = limits[1] if len(limits) > 1 else None
-    if configuration.metric is ZoneConfigurationMetric.PACE:
-        return _pace_top(absolute, percent, configuration.threshold, threshold_pace)
-    if absolute is not None or not percent:
-        return absolute
-    return _percent_value(configuration, percent)
-
-
-def _pace_top(
-    speed: float | None,
-    percent: float | None,
-    threshold_speed: float | None,
-    threshold_pace: float | None,
-) -> float | None:
-    """A pace limit in s/km from a speed (m/s) or a percent of the threshold speed."""
-    if speed:
-        return 1000 / speed
-    if percent and threshold_speed:
-        return 1000 / (threshold_speed * percent / 100)
-    if percent and threshold_pace:
-        return threshold_pace * 100 / percent
-    return None
 
 
 def _percent_value(configuration: ZoneConfiguration, percent: float) -> float | None:

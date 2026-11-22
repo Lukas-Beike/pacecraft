@@ -407,6 +407,7 @@ comparable.
 | `STAGE_MIN` | `3` | `backend/performance/step_test.py` |  |
 | `STEP_KMH` | `0.5` | `backend/performance/step_test.py` |  |
 | `BELOW_LT1_KMH` | `1.5` | `backend/performance/step_test.py` |  |
+| `BELOW_LT2_KMH` | `3.5` | `backend/performance/step_test.py` | Stage 1 lies at most this far below LT2, so two stages lie beyond it (#3915). |
 | `FALLBACK_START_KMH` | `9.5` | `backend/performance/step_test.py` |  |
 | `STAGES_BEYOND_LT2` | `2` | `backend/performance/step_test.py` |  |
 | `MAX_STAGES` | `10` | `backend/performance/step_test.py` |  |

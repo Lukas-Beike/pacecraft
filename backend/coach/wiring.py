@@ -304,7 +304,6 @@ def build_coach_context(
                 canonical,
                 activity_rows,
                 session_feedback=session_feedback,
-                zone_configurations=zone_configurations,
                 lt1_session_records=lt1_session_records,
             ),
             nutrition_meal_library=ctx.nutrition.meal_library_service,

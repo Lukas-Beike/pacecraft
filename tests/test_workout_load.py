@@ -1,7 +1,7 @@
 import unittest
 
-from backend.activities.workout_load import estimate_workout, zone_band
-from backend.activities.zone_settings import ZoneSettings
+from backend.activities.workout_load import estimate_workout
+from backend.activities.zone_settings import ZoneSettings, intensity_band
 from backend.canonical.vocabulary import Sport
 from backend.planning.planned_unit_load import estimate_planned_unit
 
@@ -14,8 +14,9 @@ class RideTests(unittest.TestCase):
     def test_repeats_percent_bands_and_load(self):
         result = estimate_workout("- 10m 55%\n\n" + INTERVALS, Sport.RIDE, FULL)
         self.assertEqual(2700, result.duration_s)
+        # 105 % of the FTP lies above the threshold: high (#3915).
         self.assertEqual(
-            {"low": 1500, "moderate": 1200, "high": 0}, result.band_seconds
+            {"low": 1500, "moderate": 0, "high": 1200}, result.band_seconds
         )
         self.assertAlmostEqual(0.88, result.intensity_factor, places=2)
         self.assertAlmostEqual(58.3, result.load, places=1)
@@ -140,12 +141,24 @@ class UnknownTests(unittest.TestCase):
         result = estimate_workout("- 10m Z6\n", Sport.RIDE, zones)
         self.assertEqual(("zone_out_of_range",), result.unknown)
 
-    def test_band_depends_on_zone_count(self):
-        self.assertEqual(
-            ["low", "moderate", "moderate", "high"],
-            [zone_band(zone, 7) for zone in (2, 3, 4, 5)],
-        )
-        self.assertEqual("high", zone_band(4, 5))
+    def test_bands_split_at_lt1_and_at_the_threshold_for_every_sensor(self):
+        # Low up to LT1 (85 % LTHR, 75 % FTP, 88 % threshold speed), high above
+        # the threshold itself (#3915): an easy run at 84 % LTHR is low, HR Z4
+        # (94-105 %) is no longer high below 100 %.
+        cases = (
+            ("hr", 0.84, "low"), ("hr", 0.85, "low"), ("hr", 0.86, "moderate"),
+            ("hr", 0.995, "moderate"), ("hr", 1.01, "high"),
+            ("power", 0.75, "low"), ("power", 0.76, "moderate"),
+            ("power", 1.0, "moderate"), ("power", 1.05, "high"),
+            ("pace", 0.88, "low"), ("pace", 0.9, "moderate"), ("pace", 1.02, "high"),
+        )  # fmt: skip
+        for kind, intensity, band in cases:
+            with self.subTest(kind=kind, intensity=intensity):
+                self.assertEqual(band, intensity_band(kind, intensity))
+        # An own LT1 moves the heart-rate split.
+        self.assertEqual("moderate", intensity_band("hr", 0.82, 0.8))
+        result = estimate_workout("- 60m 84% LTHR\n", Sport.RUN, FULL)
+        self.assertEqual({"low": 3600, "moderate": 0, "high": 0}, result.band_seconds)
 
 
 class PlannedUnitTests(unittest.TestCase):

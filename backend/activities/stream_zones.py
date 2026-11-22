@@ -17,7 +17,9 @@ distribution. A zone bound outside the canonical boundary range is left open.
 
 ``zone_times`` counts the same way for the cross-session reports (#1743): heart
 rate and power always from the streams, and for runs the pace zones from the
-speed stream against the threshold pace (speed 0 is no reading).
+speed stream against the threshold pace (speed 0 is no reading). It also counts
+the 3-zone bands of heart rate and power (``heart_rate_bands``, ``power_bands``:
+Z1 low up to LT1, Z2 moderate up to the threshold, Z3 high above it, #3915).
 """
 
 from __future__ import annotations
@@ -34,7 +36,12 @@ from backend.activities.detail_merge import (
     MergedStreams,
     SetChoice,
 )
-from backend.activities.zone_settings import ZoneSettings, percent_zone
+from backend.activities.zone_settings import (
+    LT1_HR_SHARE,
+    LT1_POWER_SHARE,
+    ZoneSettings,
+    percent_zone,
+)
 from backend.canonical.activity_detail import (
     MAX_ZONES,
     ZONE_BOUNDARY_BOUNDS,
@@ -51,10 +58,11 @@ from backend.canonical.vocabulary import (
 )
 from backend.db.activity_detail_store import StoredDetailSet
 
-METHOD_VERSION: Final = 1
+METHOD_VERSION: Final = 2
 # Bump when ``zone_times`` counts or names its zones differently, so stored report
-# zones recompute (2: the zone source of each sensor, the Garmin watch zones).
-ZONE_TIMES_VERSION: Final = 2
+# zones recompute (2: the zone source of each sensor, the Garmin watch zones;
+# 3: the 3-zone bands, #3915).
+ZONE_TIMES_VERSION: Final = 3
 LABEL: Final = "Zoneneinstellungen"
 MIN_GAP_S: Final = 30.0
 GAP_FACTOR: Final = 3.0
@@ -107,7 +115,9 @@ def zone_sources(settings: ZoneSettings) -> dict[str, str]:
     """The source of the zone limits of each report sensor."""
     return {
         "heart_rate": settings.hr_source,
+        "heart_rate_bands": settings.hr_source,
         "power": settings.power_source,
+        "power_bands": settings.power_source,
         "pace": settings.pace_source,
     }
 
@@ -117,8 +127,9 @@ def zone_times(
 ) -> dict[str, list[dict[str, object]]]:
     """Seconds per zone ``[{"id": "Z1", "secs": ...}]`` by report sensor.
 
-    Keys are ``heart_rate``, ``power`` and, with ``pace``, ``pace``; a sensor
-    without its stream, threshold or any counted second is left out.
+    Keys are ``heart_rate``, ``power`` and, with ``pace``, ``pace``, and the
+    bands ``heart_rate_bands`` and ``power_bands``; a sensor without its stream,
+    threshold or any counted second is left out.
     """
     if streams is None:
         return {}
@@ -130,6 +141,18 @@ def zone_times(
             settings.hr_limits,
         ),
         ("power", StreamChannel.POWER_W, settings.ftp, settings.power_limits),
+        (
+            "heart_rate_bands",
+            StreamChannel.HEART_RATE_BPM,
+            settings.hr_zone_reference,
+            (LT1_HR_SHARE * 100, 100.0),
+        ),
+        (
+            "power_bands",
+            StreamChannel.POWER_W,
+            settings.ftp,
+            (LT1_POWER_SHARE * 100, 100.0),
+        ),
     ]
     if pace:
         sensors.append(

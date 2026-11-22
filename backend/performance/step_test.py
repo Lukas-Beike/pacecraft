@@ -2,7 +2,7 @@
 
 Protocol: 10 min warm-up slower than stage 1, then 3-minute stages with pace
 targets, each 0.5 km/h faster. Stage 1 lies about 1.5 km/h below the athlete's
-current LT1 pace (9.5 km/h without one); the stages run to at least two stages
+current LT1 pace (9.5 km/h without one), at most 3.5 km/h below LT2; the stages run to at least two stages
 beyond the current LT2 pace, at most 10 (at least 6, the stages a "good" result
 needs). The run ends when a stage can no longer be held, then 10 min cool-down.
 
@@ -50,6 +50,8 @@ COOLDOWN_MIN: Final = 10
 STAGE_MIN: Final = 3
 STEP_KMH: Final = 0.5
 BELOW_LT1_KMH: Final = 1.5
+# Stage 1 lies at most this far below LT2, so two stages lie beyond it (#3915).
+BELOW_LT2_KMH: Final = 3.5
 FALLBACK_START_KMH: Final = 9.5
 STAGES_BEYOND_LT2: Final = 2
 MAX_STAGES: Final = 10
@@ -104,6 +106,8 @@ def stage_speeds(lt1_pace: object, lt2_pace: object) -> list[float]:
     lt1 = _speed_kmh(lt1_pace)
     lt2 = _speed_kmh(lt2_pace)
     start = round(lt1 - BELOW_LT1_KMH, 1) if lt1 is not None else FALLBACK_START_KMH
+    if lt2 is not None:
+        start = max(start, round(lt2 - BELOW_LT2_KMH, 1))
     speeds = [round(start + STEP_KMH * index, 2) for index in range(MAX_STAGES)]
     if lt2 is None:
         return speeds

@@ -1,7 +1,7 @@
 """Heart-rate caps of easy run units, stored as percent of the threshold HR.
 
 A run unit of a capped type (``HR_CAP_PERCENT``) stores ``hr_cap``:
-``{"percent_lthr": 87, "low_percent_lthr": 65, "source": "default"}``. Only
+``{"percent_lthr": 84, "low_percent_lthr": 65, "source": "default"}``. Only
 percentages are stored: the bpm is resolved wherever it is read, checked or
 exported, from the lactate threshold HR in effect on the unit's date, so the
 watch's own LTHR updates apply without editing a unit. The source says where the
@@ -21,11 +21,12 @@ from typing import Any, Final
 from backend.canonical.planning_fields import HR_CAP
 
 # Default upper limit in percent of the threshold HR by the unit's ``session_focus``.
-# The athlete decides these values; change them here only.
+# The athlete decides these values (easy and long 84 %, #3915: below the LT1
+# stand-in of 85 %); change them here only.
 HR_CAP_PERCENT: Final[Mapping[str, float]] = {
     "recovery": 80.0,
-    "easy": 87.0,
-    "long": 87.0,
+    "easy": 84.0,
+    "long": 84.0,
 }
 # With a measured first threshold: the easy and long cap is that threshold's
 # percent of the threshold HR minus this margin (percentage points), and the
