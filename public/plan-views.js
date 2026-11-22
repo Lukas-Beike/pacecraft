@@ -1444,7 +1444,7 @@ function plannedUnitActions(entry, dateKey, todayKey) {
 async function plannedUnitSaved(result, editor, changed) {
   const key = `local:${result.local_id}`;
   const text = `${changed ? "Gespeichert" : "Angelegt"}: ${editor.name.trim()}`;
-  plannedMoveReceipts.set(key, { text, change: result.change, from: editor.date });
+  plannedMoveReceipts.set(key, { text, change: result.change, from: changed ? String(editor.entry.date).slice(0, 10) : editor.date });
   plannedForceOpen.add(key);
   showPlannedDay(editor.date);
   await globalThis.load?.();
@@ -1461,7 +1461,17 @@ function plannedAddButton(dateKey) {
 function plannedArchiveControls(entry, dateKey) {
   const name = entry.name || "Trainingseinheit";
   const [archive, note] = inCardDelete(async () => {
-    const result = await api(`/api/planned-units/${encodeURIComponent(entry.local_id)}/archive`, { method: "POST", body: JSON.stringify({ confirmed: true, expected_payload_hash: entry.payload_hash }) });
+    let result;
+    try {
+      result = await api(`/api/planned-units/${encodeURIComponent(entry.local_id)}/archive`, { method: "POST", body: JSON.stringify({ confirmed: true, expected_payload_hash: entry.payload_hash }) });
+    } catch (error) {
+      // A changed unit reloads, so the card names the reason and the next try sends the current hash.
+      if (error.status === 409) {
+        plannedMoveReceipts.set(plannedEntryKey(entry, dateKey), { text: error.message });
+        await globalThis.load?.();
+      }
+      throw error;
+    }
     plannedDeleteReceipts.set(String(entry.local_id), { day: dateKey, text: `Archiviert: ${name}`, change: result.change, from: dateKey });
     await globalThis.load?.();
     announcePlanChange(`Archiviert: ${name}`);
@@ -3025,6 +3035,7 @@ function libraryToolbar() {
     input.addEventListener("change", () => {
       libraryView = value;
       renderLibrary(state.data?.library || []);
+      $("#library input[name=libraryView]:checked")?.focus();
     });
     group.append(h("label", "chip", input, h("span", null, label)));
   }

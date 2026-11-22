@@ -37,7 +37,8 @@ function unitStepRows(text) {
     if (group) return null;
     rows.push({ kind: "label", name: line });
   }
-  return rows;
+  // Prose without a step line stays text: rows would read it as a duration of 0.
+  return rows.length && !rows.some((row) => row.kind !== "label") ? null : rows;
 }
 
 function unitStepsText(rows) {
@@ -112,7 +113,8 @@ function unitEditorBody(editor) {
   if (!FOCUS_OPTIONS[sportKey]) body.session_focus = null;
   if (editor.kind === "unit") {
     body.date = editor.date;
-    if (editor.time) body.starts_at_local = `${editor.date}T${editor.time}:00`;
+    // Midnight is the stored form of a unit without a time.
+    if (editor.time || editor.originalTime) body.starts_at_local = `${editor.date}T${editor.time || "00:00"}:00`;
     if (editor.templateId) body.template_id = editor.templateId;
   }
   return body;
@@ -259,7 +261,7 @@ function renderUnitEditor(form, onSaved) {
     parts.push(unitField("Aus Bibliothek", pick));
   }
   if (editor.kind === "unit") {
-    const date = h("input", { type: "date", required: true, value: editor.date, min: timezoneDateKey(state.data?.profile?.timezone, new Date()) });
+    const date = h("input", { type: "date", required: true, value: editor.date, min: [editor.entry?.date?.slice(0, 10), timezoneDateKey(state.data?.profile?.timezone, new Date())].filter(Boolean).sort()[0] });
     date.addEventListener("input", () => { editor.date = date.value; });
     const time = h("input", { type: "time", value: editor.time });
     time.addEventListener("input", () => { editor.time = time.value; });

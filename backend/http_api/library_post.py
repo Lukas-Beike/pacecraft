@@ -83,10 +83,12 @@ class LibraryPostRoutes:
         `change` is the undo reference.
 
         Errors: 400 "Die Anfrage muss ein Objekt sein." or "Unbekannte Felder: …";
-        400 for a duration outside the range, a sport the library does not take or
+        400 "Der Name der Einheit fehlt."; 400 for a duration outside the range, a sport the library does not take or
         a workout text whose steps do not add up to the duration.
         """
         payload = _read_fields(handler, _TEMPLATE_FIELDS, _MAX_TEMPLATE_BYTES)
+        if not str(payload.get("name") or "").strip():
+            raise AppError(400, "Der Name der Einheit fehlt.")
         with change_history.collect_changes() as changes:
             entry = self._workout_library().create_template(payload, "manual")
         created = [item for item in changes if item["entity_type"] == "workout_library"]

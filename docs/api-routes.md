@@ -1248,7 +1248,7 @@ Response: 200 `{"status": "local", "local_id", "library_entry", "change"}`;
 `change` is the undo reference.
 
 Errors: 400 "Die Anfrage muss ein Objekt sein." or "Unbekannte Felder: …";
-400 for a duration outside the range, a sport the library does not take or
+400 "Der Name der Einheit fehlt."; 400 for a duration outside the range, a sport the library does not take or
 a workout text whose steps do not add up to the duration.
 
 ### `POST /api/library/{id}/archive`

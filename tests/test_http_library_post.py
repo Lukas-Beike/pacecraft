@@ -211,6 +211,7 @@ class LibraryPostRoutesTests(unittest.TestCase):
         for action, payload, message in (
             ("", {"name": "x", "date": "2026-09-22"}, "Unbekannte Felder: date."),
             ("update", {"local_id": "x"}, "Unbekannte Felder: local_id."),
+            ("", {"duration_minutes": 30}, "Der Name der Einheit fehlt."),
             (
                 "",
                 {"name": "x", "duration_minutes": 4},

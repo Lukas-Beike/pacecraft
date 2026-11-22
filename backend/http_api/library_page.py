@@ -30,9 +30,7 @@ class LibraryPageService:
         """The archived templates, newest archive first, whole in one answer (#3951)."""
         entries = [
             item
-            for item in self._workout_library.list(
-                self._maximum * 2, include_archived=True
-            )
+            for item in self._workout_library.list(1000, include_archived=True)
             if item.get("archived") and not item.get("date")
         ]
         entries.sort(key=lambda item: str(item.get("archived_at") or ""), reverse=True)
