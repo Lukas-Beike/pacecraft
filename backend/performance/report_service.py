@@ -18,7 +18,6 @@ from backend.activities.activity_summary import (
     summary_local_date,
 )
 from backend.activities.session_purpose import summary_is_not_training, summary_is_race
-from backend.activities.strength_progress import strength_progress
 from backend.athlete.local_date import iso_date_prefix
 from backend.canonical import sensor_registry
 from backend.canonical.stored_sports import resolve_workout_sport
@@ -71,7 +70,8 @@ PROFILE_WINDOW_DAYS = (28, 90)
 ANALYSIS_TREND_DAYS = 84
 PROGRESS_DAYS = frozenset({7, 28, 42, 56, 84})
 # Analyse › Kraft shows twelve calendar weeks like the endurance development (#3764).
-STRENGTH_WEEKS = 12
+STRENGTH_WEEKS = (4, 13, 26, 52)
+STRENGTH_DEFAULT_WEEKS = 13
 
 
 def report_sport(value: Any) -> str | None:
@@ -605,7 +605,12 @@ class TrainingReportReadService:
         curve_records: Callable[[], list[dict[str, Any]]] | None = None,
         training_model: Callable[[], str] = lambda: "",
         block_review: BlockReviewSource | None = None,
+        strength_sides: Callable[
+            [Mapping[str, Any]], tuple[bool | None, bool | None] | None
+        ]
+        | None = None,
     ) -> None:
+        self._strength_sides = strength_sides
         self._block_review = block_review
         self._training_model = training_model
         self._curve_records = curve_records
@@ -776,16 +781,19 @@ class TrainingReportReadService:
             timezone=timezone,
         )
 
-    def strength(self) -> dict[str, Any]:
-        """Analyse › Kraft (#3764): top set per exercise and sessions per week.
+    def strength(self, weeks: int = STRENGTH_DEFAULT_WEEKS) -> dict[str, Any]:
+        """Analyse › Kraft: how often per week the upper body and the legs were trained.
 
-        The last ``STRENGTH_WEEKS`` calendar weeks including the current one,
-        from the stored sets of completed strength sessions only. No strength
-        load and no estimated 1RM; a week without a session counts 0, an
-        exercise missing from a session is no point.
+        The last ``weeks`` (4, 13, 26 or 52) calendar weeks including the current
+        one, from completed strength sessions. A session counts for the upper body
+        and for the legs by its executed sets, else its focus (a full body session
+        for both); one that decides neither is counted as unknown, not guessed. No
+        strength load; a week without a session counts 0.
         """
+        if weeks not in STRENGTH_WEEKS:
+            raise AppError(400, "Ungültiger Analysezeitraum.")
         today = self._today()
-        start = today - timedelta(days=today.weekday(), weeks=STRENGTH_WEEKS - 1)
+        start = today - timedelta(days=today.weekday(), weeks=weeks - 1)
         summaries, _ = activity_summaries_with_sync_time(self._canonical)
         rows = [
             row
@@ -795,20 +803,31 @@ class TrainingReportReadService:
             <= iso_date_prefix(row.get("started_at_local"))
             <= today.isoformat()
         ]
-        counts = {start + timedelta(weeks=week): 0 for week in range(STRENGTH_WEEKS)}
+        counts = {
+            start + timedelta(weeks=week): {
+                "sessions": 0,
+                "upper": 0,
+                "legs": 0,
+                "unknown": 0,
+            }
+            for week in range(weeks)
+        }
         for row in rows:
             day = date.fromisoformat(iso_date_prefix(row.get("started_at_local")))
-            counts[day - timedelta(days=day.weekday())] += 1
-        progress = strength_progress(rows, max_sessions=None, max_exercises=None)
+            found = self._strength_sides(row) if self._strength_sides else None
+            count = counts[day - timedelta(days=day.weekday())]
+            count["sessions"] += 1
+            upper, legs = found or (None, None)
+            count["upper"] += upper is True
+            count["legs"] += legs is True
+            count["unknown"] += upper is None and legs is None
         return {
             "start": start.isoformat(),
             "end": today.isoformat(),
-            "source": progress["source"],
             "weeks": [
-                {"week_start": week.isoformat(), "sessions": count}
+                {"week_start": week.isoformat(), **count}
                 for week, count in counts.items()
             ],
-            "exercises": progress["exercises"],
         }
 
     def read(self, values: dict[str, Any], timezone: str = "UTC") -> dict[str, Any]:

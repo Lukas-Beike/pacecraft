@@ -348,7 +348,7 @@ function appendAnalysisPointMark(svg, item, point, index, unit, scales, obstacle
 
 // Only the latest, highest, lowest and first reading carry a value label (#1782); the tap readout shows the rest.
 function analysisLabelledPoints(item) {
-  const readings = item.points.filter(analysisValidPoint);
+  const readings = item.points.filter(analysisValidPoint).filter((point) => !(item.hideZeroLabels && Number(point.value) === 0));
   if (!readings.length) return [];
   const byValue = [...readings].sort((a, b) => Number(a.value) - Number(b.value));
   return [...new Set([readings.at(-1), byValue.at(-1), byValue[0], readings[0]])];
@@ -750,7 +750,7 @@ const ALL_TIME_RETRY_MS = 3000;
 // One power-profile read fills the Rekorde cards (#3826) and the sport tabs' CP/CS lines (#2265).
 const PROFILE_CARDS = [["rideActivityRecords", "Einzelne Fahrt"], ["cyclingPowerProfile", "Leistungsprofil"], ["runActivityRecords", "Einzelner Lauf"], ["runningBestEfforts", "Bestwerte"]];
 const CRITICAL_LINES = [["cyclingCriticalPower", "ride"], ["runningCriticalSpeed", "run"]];
-const ANALYSIS_PERFORMANCE_ROUTES = new Set(["analysis", "analysis/running", "analysis/cycling", "analysis/records"]);
+const ANALYSIS_PERFORMANCE_ROUTES = new Set(["analysis", "analysis/running", "analysis/cycling"]);
 // Every measured duration (athlete decision, #3826).
 const CYCLING_POWER_PROFILE_DURATIONS = [[5, "5 Sekunden"], [15, "15 Sekunden"], [30, "30 Sekunden"], [60, "1 Minute"], [120, "2 Minuten"], [180, "3 Minuten"], [300, "5 Minuten"], [420, "7 Minuten"], [600, "10 Minuten"], [720, "12 Minuten"], [1200, "20 Minuten"], [1800, "30 Minuten"], [3600, "1 Stunde"]];
 
@@ -760,7 +760,7 @@ function recordDateCell(point, label) {
   if (!point) return cell;
   if (!point.activity_id) { cell.append(dateLabel(point.date)); return cell; }
   const open = h("button", { type: "button", className: "link-button", "aria-label": `${label} vom ${dateLabel(point.date)} öffnen` }, dateLabel(point.date));
-  open.addEventListener("click", () => void ActivityDetails.open({ activity_id: point.activity_id, name: point.name }, { api, showDialog: showAccessibleDialog, backLabel: "Zurück zu Rekorde" }));
+  open.addEventListener("click", () => void ActivityDetails.open({ activity_id: point.activity_id, name: point.name }, { api, showDialog: showAccessibleDialog, backLabel: state.route === "analysis/cycling" ? "Zurück zu Radfahren" : "Zurück zu Laufen" }));
   cell.append(open);
   return cell;
 }
@@ -826,40 +826,25 @@ function showProfileCardsState(error) {
   }
 }
 
-// Analyse › Kraft (#3764, athlete: layout A): sessions per week, then one top-set chart per exercise
-// with its last sessions. Stored sets only: no strength load, no estimated 1RM; gaps stay gaps.
-const STRENGTH_LAST_SESSIONS = 3;
+// Analyse › Kraft (#3764, athlete B2): how often per week the upper body and the legs were trained over
+// the chosen period, a full body session on both; sessions that decide neither are counted apart.
 let strengthAnalysisGeneration = 0;
+let strengthHistoryPeriod = "91d";
 
-function strengthTopSet(session) {
-  const kg = Number(session.top_kg);
-  if (session.top_kg != null && Number.isFinite(kg)) return `${AppFormat.number(kg, { digits: Number.isInteger(kg) ? 0 : 1 })} kg × ${session.top_reps ?? "–"}`;
-  return session.top_reps != null ? `${session.top_reps} Wdh.` : "–";
-}
-
-function strengthExerciseChart(exercise, report) {
-  const sessions = (exercise.sessions || []).filter((session) => session.date);
-  const weighted = sessions.some((session) => session.top_kg != null);
-  const unit = weighted ? "kg" : "Wdh.";
-  const title = ActivityDetails.strengthExerciseLabel({ name: exercise.exercise === exercise.category ? null : exercise.exercise, category: exercise.category });
-  const points = sessions.map((session) => ({ date: session.date, value: weighted ? session.top_kg : session.top_reps, readout: `${strengthTopSet(session)} · ${session.sets ?? "–"} Sätze` })).reverse();
-  const series = [{ label: weighted ? "Top-Satz (kg)" : "Top-Satz (Wdh.)", legendLabel: title, unit, color: 0, cadenceDays: 1, points }];
-  const chart = analysisChart(title, series, unit, report.start, report.end, "Schwerster Satz je Einheit mit seinen Wiederholungen.", { showLegend: false }) || h("section", "analysis-chart-card", h("h3", null, title));
-  // The last-sessions table replaces the chart's own value list.
-  chart.querySelector("details")?.remove();
-  const rows = sessions.slice(0, STRENGTH_LAST_SESSIONS).map((session) => [h("th", { scope: "row" }, dateLabel(session.date)), String(session.sets ?? "–"), strengthTopSet(session)]);
-  const scroll = makeScrollRegionFocusable(h("div", "table-scroll"), `${title}: letzte Einheiten`);
-  scroll.append(table(["Datum", "Sätze", "Top-Satz"], rows, { className: "race-predictions-table" }));
-  chart.append(h("h5", null, "Letzte Einheiten"), scroll);
-  return chart;
+// One chart per body side: the sessions per week that trained it, a full body session on both.
+function strengthSideChart(title, key, color, report) {
+  const points = (report.weeks || []).map((week) => ({ date: week.week_start, value: week[key] }));
+  const series = [{ label: title, legendLabel: title, unit: "Mal", color, bars: true, connected: true, cadenceDays: 7, average: true, averageInHeading: true, hideZeroLabels: true, points }];
+  return analysisChart(title, series, "Mal", report.start, report.end, "Einheiten pro Woche; Ganzkörper zählt für Oberkörper und Beine.", { calendarWeeks: true, showLegend: false });
 }
 
 function strengthAnalysisCards(report) {
-  const points = (report.weeks || []).map((week) => ({ date: week.week_start, value: week.sessions }));
-  const series = [{ label: "Einheiten pro Woche", legendLabel: "Einheiten pro Woche", unit: "Einheiten", color: 2, bars: true, connected: true, cadenceDays: 7, points }];
-  const weekly = analysisChart("Einheiten pro Woche", series, "Einheiten", report.start, report.end, "Abgeschlossene Krafteinheiten.", { calendarWeeks: true, showLegend: false });
-  const charts = (report.exercises || []).map((exercise) => strengthExerciseChart(exercise, report));
-  return [weekly, charts.length ? analysisChartGroup("Top-Sätze", charts, [], "Schwerster Satz je Einheit mit seinen Wiederholungen.") : null].filter(Boolean);
+  const unknown = (report.weeks || []).reduce((total, week) => total + (week.unknown || 0), 0);
+  return [
+    strengthSideChart("Oberkörper", "upper", 2, report),
+    strengthSideChart("Beine", "legs", 3, report),
+    unknown ? h("p", "analysis-reference-note", `${AppFormat.plural(unknown, "Einheit", "Einheiten")} ohne erkennbaren Schwerpunkt, nicht zugeordnet.`) : null,
+  ].filter(Boolean);
 }
 
 async function renderStrengthAnalysis() {
@@ -871,10 +856,11 @@ async function renderStrengthAnalysis() {
     root.replaceChildren(createLoadingState("Kraftdaten werden geladen…"));
   }
   try {
-    const report = await requestAnalysisReport("/api/analysis/strength");
+    const report = await requestAnalysisReport(`/api/analysis/strength?weeks=${analysisPeriod(strengthHistoryPeriod).weeks}`);
     if (generation !== strengthAnalysisGeneration) return;
-    root.replaceChildren(...strengthAnalysisCards(report));
-    root.dataset.analysisEmpty = String(!(report.weeks || []).some((week) => week.sessions) && !(report.exercises || []).length);
+    const controls = analysisPeriodControls("Zeitraum für Kraft", strengthHistoryPeriod, (choice) => { strengthHistoryPeriod = choice; void renderStrengthAnalysis(); });
+    root.replaceChildren(controls, ...strengthAnalysisCards(report));
+    root.dataset.analysisEmpty = String(!(report.weeks || []).some((week) => week.sessions));
   } catch (error) {
     if (generation !== strengthAnalysisGeneration) return;
     root.dataset.analysisEmpty = "failed";
@@ -2742,15 +2728,14 @@ async function renderTrainingRecords({ background = false } = {}) { // NOSONAR
 // without a marker, still loading or failed counts as not empty; period controls stay visible.
 // A container shared by both sports names the marker of the sport's part (#2265).
 const ANALYSIS_SEGMENT_CONTENT = {
-  running: [["currentPerformance", "analysisEmptyRunning"], ["analysisHistoryCharts", "analysisEmptyRunning"], ["performancePredictions"], ["runningCriticalSpeed"], ["runningRecurringSessions"]],
-  cycling: [["currentPerformance", "analysisEmptyCycling"], ["analysisHistoryCharts", "analysisEmptyCycling"], ["cyclingCriticalPower"], ["cyclingRecurringSessions"]],
-  records: [["rideActivityRecords"], ["cyclingPowerProfile"], ["runActivityRecords"], ["runningBestEfforts"]],
+  running: [["currentPerformance", "analysisEmptyRunning"], ["analysisHistoryCharts", "analysisEmptyRunning"], ["performancePredictions"], ["runningCriticalSpeed"], ["runningRecurringSessions"], ["runActivityRecords"], ["runningBestEfforts"]],
+  cycling: [["currentPerformance", "analysisEmptyCycling"], ["analysisHistoryCharts", "analysisEmptyCycling"], ["cyclingCriticalPower"], ["cyclingRecurringSessions"], ["rideActivityRecords"], ["cyclingPowerProfile"]],
   load: [["sessionPerformance"], ["analysisLoadCharts"], ["trainingZoneCharts"], ["performanceEnduranceCharts"]],
   recovery: [["personalRecovery"]],
   strength: [["strengthAnalysis"]],
 };
-const ANALYSIS_EMPTY_TITLES = { running: "Noch keine Laufdaten", cycling: "Noch keine Raddaten", load: "Noch keine Belastungsdaten", recovery: "Noch keine Erholungsdaten", strength: "Noch keine Kraftdaten", records: "Noch keine Rekorde" };
-const ANALYSIS_SEGMENT_LABELS = { running: "Laufen", cycling: "Radfahren", strength: "Kraft", load: "Belastung", recovery: "Erholung", records: "Rekorde" };
+const ANALYSIS_EMPTY_TITLES = { running: "Noch keine Laufdaten", cycling: "Noch keine Raddaten", load: "Noch keine Belastungsdaten", recovery: "Noch keine Erholungsdaten", strength: "Noch keine Kraftdaten" };
+const ANALYSIS_SEGMENT_LABELS = { running: "Laufen", cycling: "Radfahren", strength: "Kraft", load: "Belastung", recovery: "Erholung" };
 const ANALYSIS_SEGMENT_SPORTS = { running: "run", cycling: "ride" };
 
 function analysisSegmentEmpty(segment) {
@@ -2806,7 +2791,7 @@ function renderAnalysisSegmentsIfActive() {
 }
 
 function renderAnalysisSegments(route = state.route) {
-  const segment = { "analysis/load": "load", "analysis/recovery": "recovery", "analysis/cycling": "cycling", "analysis/strength": "strength", "analysis/records": "records" }[route] || "running";
+  const segment = { "analysis/load": "load", "analysis/recovery": "recovery", "analysis/cycling": "cycling", "analysis/strength": "strength" }[route] || "running";
   const empty = renderAnalysisEmptyState(segment);
   document.getElementById("analysisRefreshButton").setAttribute("aria-label", `Analyse aktualisieren: ${ANALYSIS_SEGMENT_LABELS[segment]}`);
   const sport = empty ? null : ANALYSIS_SEGMENT_SPORTS[segment];
@@ -2823,7 +2808,6 @@ function renderAnalysisSegments(route = state.route) {
   document.getElementById("analysisLoadCharts").hidden = !load;
   document.getElementById("personalRecovery").hidden = segment !== "recovery";
   document.getElementById("strengthAnalysis").hidden = segment !== "strength" || empty;
-  document.getElementById("analysisRecords").hidden = segment !== "records" || empty;
   document.querySelectorAll("[data-analysis-segment]").forEach((link) => {
     const active = link.dataset.analysisSegment === segment;
     link.classList.toggle("active", active);
@@ -2837,7 +2821,7 @@ const analysisRefresh = AppViewRefresh.create({
   getRoute: () => state.route,
   getRequest: (route) => {
     // Laufen and Radfahren read the same performance values; the week review reads the sessions.
-    const area = { running: "performance", cycling: "performance", records: "performance", week: "sessions", strength: "sessions" }[route.split("/")[1]] || route.split("/")[1] || "performance";
+    const area = { running: "performance", cycling: "performance", week: "sessions", strength: "sessions" }[route.split("/")[1]] || route.split("/")[1] || "performance";
     const days = analysisRefreshDays(area);
     return { path: "/api/analysis/refresh", body: { area, ...(days ? { days } : {}) } };
   },

@@ -70,6 +70,7 @@ def build_performance(
     season_source: Callable[[], Any],
     block_review: Callable[..., dict[str, Any]],
     last_completed_test: Callable[..., str | None],
+    strength_sides: Callable[..., Any],
     season_preparation: Callable[..., dict[str, Any]],
 ) -> PerformanceServices:
     """One session curve reader for the process; the report services fresh per call.
@@ -137,6 +138,7 @@ def build_performance(
                     review=block_review,
                     last_test=last_completed_test,
                 ),
+                strength_sides=strength_sides,
                 training_model=lambda: str(
                     athlete.profile().get().get("training_model") or ""
                 ),

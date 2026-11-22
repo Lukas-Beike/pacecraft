@@ -123,21 +123,25 @@ class AnalysisRoutes:
         reports = self._reports()
         handler.send_json(200, reports.report.week_review(week, reports.timezone()))
 
-    def _strength(self, handler: Any, _request: RouteRequest) -> None:
-        """Analyse › Kraft: top sets per exercise over twelve weeks (#3764).
+    def _strength(self, handler: Any, request: RouteRequest) -> None:
+        """Analyse › Kraft: how often per week the upper body and the legs were trained.
 
-        Request: no query, no body.
+        Request: query `weeks` (optional): 4, 13 (default), 26 or 52; no body.
 
-        Response: 200 with `start`, `end` (the twelve calendar weeks up to
-        today), `source`, `weeks` (`week_start`, `sessions`: completed strength
-        sessions, 0 without one) and `exercises` (`exercise`, `category`,
-        `leg`, `sessions` newest first with `date`, `sets`, `top_kg` and
-        `top_reps`; null where the stored set has none). From stored sets
-        only: no strength load, no estimated 1RM.
+        Response: 200 with `start`, `end` (the calendar weeks up to today) and
+        `weeks` (`week_start`, `sessions`: completed strength sessions, `upper`
+        and `legs`: sessions that trained that side, a full body session both,
+        `unknown`: sessions that decide neither, never guessed; 0 without one).
+        No strength load.
 
-        Errors: none beyond the common ones.
+        Errors: 400 "Ungültiger Analysezeitraum." for another `weeks`.
         """
-        handler.send_json(200, self._reports().report.strength())
+        given = request.query.get("weeks")
+        try:
+            weeks = int(given[0]) if given else 13
+        except ValueError:
+            weeks = 0
+        handler.send_json(200, self._reports().report.strength(weeks))
 
     def _trend_history(self, handler: Any, request: RouteRequest) -> None:
         """The history of a longer trend period: 3, 6 or 12 months.

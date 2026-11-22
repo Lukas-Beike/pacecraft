@@ -292,10 +292,13 @@ export const STEPS = [
   detail("Kalender: Streckenhistorie", "#3763 route history", ".planned-entry[open] .activity-route .route-visits tbody tr", "text", { optional: true, each: ".planned-entry.is-completed[data-sport='Laufen'] > summary" }),
   detail("Kalender: Laufdynamik", "#2910 running dynamics", ".planned-entry[open] .activity-dynamics-value", "numbers", { optional: true, each: ".planned-entry.is-completed[data-sport='Laufen'] > summary" }),
   // The sport cards are tables: a measured value is a cell with a digit; a missing one is marked and has none.
-  ...[["running", "Laufen", "#currentPerformance table[data-analysis-sport='run'] td", "numbers"], ["cycling", "Radfahren", "#currentPerformance table[data-analysis-sport='ride'] td", "numbers"], ["load", "Belastung", "#analysisLoadCharts svg", "chart"], ["recovery", "Erholung", "#personalRecovery svg", "chart"], ["records", "Rekorde", "#analysisRecords td:not(.value-missing)", "numbers"]]
-    .map(([segment, label, ready, kind]) => ({ view: "analysis", name: `Analyse: ${label}`, covers: segment === "records" ? "#3826 records" : "Analyse tabs", pre: [tab("analysis", segment)], ready, kind })),
+  ...[["running", "Laufen", "#currentPerformance table[data-analysis-sport='run'] td", "numbers"], ["cycling", "Radfahren", "#currentPerformance table[data-analysis-sport='ride'] td", "numbers"], ["load", "Belastung", "#analysisLoadCharts svg", "chart"], ["recovery", "Erholung", "#personalRecovery svg", "chart"]]
+    .map(([segment, label, ready, kind]) => ({ view: "analysis", name: `Analyse: ${label}`, covers: "Analyse tabs", pre: [tab("analysis", segment)], ready, kind })),
+  // Each sport tab ends with its records card (#3826, #3929).
+  ...[["running", "Laufen", "#runRecordsCard td:not(.value-missing)"], ["cycling", "Radfahren", "#rideRecordsCard td:not(.value-missing)"]]
+    .map(([segment, label, ready]) => ({ view: "analysis", name: `Analyse: ${label}-Rekorde`, covers: "#3826 records", pre: [tab("analysis", segment)], ready, kind: "numbers" })),
   // Kraft needs stored strength sets, so the step is optional (#3764).
-  { view: "analysis", name: "Analyse: Kraft", covers: "#3764 strength top sets", pre: [tab("analysis", "strength")], ready: "#strengthAnalysis .analysis-chart-stack svg", kind: "chart", optional: true },
+  { view: "analysis", name: "Analyse: Kraft", covers: "#3929 strength sessions per week", pre: [tab("analysis", "strength")], ready: "#strengthAnalysis .analysis-chart-card svg", kind: "chart", optional: true },
   { view: "nutrition", name: "Ernährung: Verlauf", covers: "Nutrition week", pre: [tab("nutrition", "week")], ready: "#nutritionWeek", kind: "numbers" },
   // The body values' edit icons are svgs too, so the chart step waits for a body chart.
   { view: "nutrition", name: "Ernährung: Produktzähler", covers: "#3435 product use counts", pre: [tab("nutrition", "products")], opens: ['#nutritionProducts details[data-section="all"] > summary'], ready: "#nutritionProducts details[data-section='all'] .nutrition-usage", kind: "text" },

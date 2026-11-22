@@ -39,7 +39,7 @@ handler's docstring. Regenerate it with
 | GET | `/api/analysis/power-profiles` | Session | no | Analysis projection: power profiles or training records. |
 | POST | `/api/analysis/refresh` | Session + CSRF | after access | Run a targeted refresh of one analysis area. |
 | GET | `/api/analysis/running-dynamics` | Session | no | Running dynamics against the athlete's own runs at the same pace (#2829). |
-| GET | `/api/analysis/strength` | Session | no | Analyse › Kraft: top sets per exercise over twelve weeks (#3764). |
+| GET | `/api/analysis/strength` | Session | no | Analyse › Kraft: how often per week the upper body and the legs were trained. |
 | GET | `/api/analysis/training-records` | Session | no | Analysis projection: power profiles or training records. |
 | GET | `/api/analysis/trend-history` | Session | no | The history of a longer trend period: 3, 6 or 12 months. |
 | GET | `/api/analysis/trends` | Session | no | Pace at equal heart rate and recurring sessions, as the Coach reads them (#2802). |
@@ -326,16 +326,15 @@ than 200 characters.
 
 ### `GET /api/analysis/strength`
 
-Request: no query, no body.
+Request: query `weeks` (optional): 4, 13 (default), 26 or 52; no body.
 
-Response: 200 with `start`, `end` (the twelve calendar weeks up to
-today), `source`, `weeks` (`week_start`, `sessions`: completed strength
-sessions, 0 without one) and `exercises` (`exercise`, `category`,
-`leg`, `sessions` newest first with `date`, `sets`, `top_kg` and
-`top_reps`; null where the stored set has none). From stored sets
-only: no strength load, no estimated 1RM.
+Response: 200 with `start`, `end` (the calendar weeks up to today) and
+`weeks` (`week_start`, `sessions`: completed strength sessions, `upper`
+and `legs`: sessions that trained that side, a full body session both,
+`unknown`: sessions that decide neither, never guessed; 0 without one).
+No strength load.
 
-Errors: none beyond the common ones.
+Errors: 400 "Ungültiger Analysezeitraum." for another `weeks`.
 
 ### `GET /api/analysis/trend-history`
 

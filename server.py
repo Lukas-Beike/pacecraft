@@ -104,6 +104,7 @@ from backend.performance.wiring import (
 from backend.planning import library as planning_library
 from backend.planning import training_plans as planning_training_plans
 from backend.planning.block_review import block_review, last_completed_test
+from backend.planning.leg_strength import sides as strength_sides
 from backend.planning.plan_guard_service import (
     read_load_thresholds,
 )
@@ -445,6 +446,7 @@ PERFORMANCE = build_performance(
     season_source=lambda: PUBLIC_STATE.season_source(),
     block_review=block_review,
     last_completed_test=last_completed_test,
+    strength_sides=strength_sides,
     season_preparation=season_preparation,
 )
 APP.performance = PERFORMANCE

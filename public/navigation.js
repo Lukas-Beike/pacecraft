@@ -15,7 +15,6 @@ const NAV_ROUTES = Object.freeze({
   "analysis/load": "dataPanel",
   "nutrition/body": "nutritionPanel",
   "analysis/recovery": "dataPanel",
-  "analysis/records": "dataPanel",
   more: "settingsPanel",
   "more/connections": "settingsPanel",
   "more/coach": "settingsPanel",
@@ -57,7 +56,6 @@ const NAV_VIEWS = (() => {
     "analysis/load": period,
     "nutrition/body": view(["/api/performance", "/api/body/skinfolds", "/api/body/energy"], ["Ernährung aktualisieren", ...PERIODS, "Gewicht eintragen", "Körperfett eintragen", "Prozent", "Hautfalten", "Speichern", "Löschen", "Abbrechen"], ENTRIES),
     "analysis/recovery": period,
-    "analysis/records": sport,
     more: connections,
     "more/connections": connections,
     "more/coach": view(MORE_READS, ["Chat zurücksetzen", "Kontext laden"], ["loading", "error", "offline"]),
@@ -98,7 +96,7 @@ globalThis.AppRouter = (() => {
   // Removed views whose content lives elsewhere now: the single sessions are in the calendar (#2258),
   // the former Leistung segment is split by sport and its links open Laufen (#2265), the week review
   // sits under the calendar week (#3298), and Darstellung became App (#3914).
-  const ROUTE_ALIASES = Object.freeze({ "analysis/sessions": "plan/overview", "analysis/performance": "analysis/running", "analysis/week": "plan/overview", "more/appearance": "more/app" });
+  const ROUTE_ALIASES = Object.freeze({ "analysis/sessions": "plan/overview", "analysis/performance": "analysis/running", "analysis/week": "plan/overview", "more/appearance": "more/app", "analysis/records": "analysis/running" });
 
   function routeFromHash(hash = globalThis.location.hash) {
     const rawRoute = String(hash || "").replace(/^#/, "").toLowerCase();
