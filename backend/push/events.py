@@ -99,7 +99,7 @@ def morning_plan_event(
 ) -> Notification | None:
     """Today has a planned unit that is no rest day: once a day, without saying which."""
     if all(
-        str(unit.get("date"))[:10] != today.isoformat() or workout_is_rest(unit)
+        not str(unit.get("date")).startswith(today.isoformat()) or workout_is_rest(unit)
         for _, unit in units
     ):
         return None
