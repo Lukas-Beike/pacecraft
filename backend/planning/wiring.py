@@ -15,6 +15,7 @@ from backend.athlete.checkins import (
     RECURRING_WINDOW_DAYS,
     recurring_complaints,
 )
+from backend.canonical.first_threshold import stored_bpm
 from backend.db.repositories import (
     CompetitionRepository,
     PlanAdjustmentRepository,
@@ -321,6 +322,7 @@ def build_plan_guard(ctx: AppContext) -> PlanGuardServices:
             observation_reader=lambda: ctx.canonical_read,
             zone_configurations=lambda: ctx.athlete.zones().configurations(),
             today=local_date,
+            first_threshold_bpm=lambda: stored_bpm(ctx.athlete.profile().get()),
         )
 
     def block_lessons() -> list[dict[str, object]]:

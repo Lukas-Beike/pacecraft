@@ -648,7 +648,7 @@ The system SHALL estimate a planned run or ride at read time from its workout st
 
 #### Scenario: Unit values
 - **WHEN** every step has a duration and an intensity
-- **THEN** the intensity factor is the time-weighted 4th-power mean when every step is a power step, else the quadratic mean, and the load is `hours × IF² × 100`; the band seconds are low, moderate and high by each step's intensity: low up to LT1 (85 % of the threshold HR, 75 % of the FTP, 88 % of the threshold speed), moderate up to the threshold, high above it, for every sensor (#3915); `load_basis` is `normalized_power_over_ftp`, `relative_pace_speed`, `relative_lthr` or `mixed_step_intensity`.
+- **THEN** the intensity factor is the time-weighted 4th-power mean when every step is a power step, else the quadratic mean, and the load is `hours × IF² × 100`; the band seconds are low, moderate and high by each step's intensity: low up to LT1 (the stored first threshold as share of the threshold HR, else 85 %; 75 % of the FTP; 88 % of the threshold speed), moderate up to the threshold, high above it, for every sensor (#3915); `load_basis` is `normalized_power_over_ftp`, `relative_pace_speed`, `relative_lthr` or `mixed_step_intensity`.
 
 #### Scenario: Unknown values
 - **WHEN** a value cannot be resolved
@@ -737,6 +737,10 @@ A run unit whose focus has a cap in `HR_CAP_PERCENT` (`backend/activities/hr_cap
 #### Scenario: Adopted first threshold estimate
 - **WHEN** the athlete adopts the first threshold estimate from chest-strap RR intervals (`POST /api/profile/first-threshold/adopt`, never by the Coach)
 - **THEN** it is stored in bpm of today's run threshold HR as `first_threshold_hr` with the origin `estimated` (`first_threshold_origin`) through the profile save path with change receipt and undo, the caps follow it like a measured value, the cap source is `estimated` (label `geschätzt`), a stored measured value is replaced only when the request says so, and a later manual entry sets the origin back to `measured`.
+
+#### Scenario: Units with an older default cap
+- **WHEN** future planned run units store a default cap above today's default (planned before the default was lowered, #3915)
+- **THEN** the planning brief lists them as `outdated_hr_caps` with a note that the Coach offers the update in a turn the athlete starts; nothing is rewritten and an untouched unit never blocks a write
 
 #### Scenario: Cap values
 - **WHEN** a cap is derived

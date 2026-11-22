@@ -150,7 +150,7 @@ def zone_times(
             "heart_rate_bands",
             StreamChannel.HEART_RATE_BPM,
             settings.hr_zone_reference,
-            (LT1_HR_SHARE * 100, 100.0),
+            ((settings.lt1_share or LT1_HR_SHARE) * 100, 100.0),
         ),
         (
             "power_bands",

@@ -26,6 +26,7 @@ from backend.planning import (
     intensity_distribution,
     leg_strength,
     plan_checks,
+    run_hr_cap,
     season,
 )
 from backend.planning.load_checks import (
@@ -719,6 +720,18 @@ class PlanGuardService:
         )
         if coverage:
             brief = brief_budget.fit_brief({**brief, "load_coverage": coverage})
+        # Units still carrying an older, higher default cap (#3915): a note only.
+        outdated = run_hr_cap.outdated_default_caps(units)
+        if outdated:
+            brief = brief_budget.fit_brief(
+                {
+                    **brief,
+                    "outdated_hr_caps": {
+                        "note": run_hr_cap.OUTDATED_CAPS_NOTE,
+                        "units": outdated,
+                    },
+                }
+            )
         # A shown infection hint (M14, #3762) is information only; no check reads it.
         # It is never trimmed: the brief is fitted again with it, older entries go first.
         infection_hint = self._infection_hint()

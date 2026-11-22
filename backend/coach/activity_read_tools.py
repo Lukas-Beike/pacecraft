@@ -839,10 +839,12 @@ class CoachActivityReadToolService:
         if self._unit_thresholds is None or day is None or sport not in ("run", "ride"):
             return None
         reference = unit or {"sport": str(sport).title(), "date": day.isoformat()}
-        lthr = self._unit_thresholds.thresholds(reference).hr_zone_reference
+        settings = self._unit_thresholds.thresholds(reference)
+        lthr = settings.hr_zone_reference
         if not lthr:
             return None
-        bpm = round(lthr * LT1_HR_SHARE)
+        # The athlete's own first threshold, else the stand-in (#3915).
+        bpm = round(lthr * (settings.lt1_share or LT1_HR_SHARE))
         found = heart_rate_above(bpm, result.get("streams"))
         if found is None:
             return None

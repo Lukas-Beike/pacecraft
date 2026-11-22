@@ -201,7 +201,7 @@ The system SHALL provide read-only tools for exact local records and determinist
 
 #### Scenario: Week status and zone bands
 - **WHEN** a progress week is listed
-- **THEN** its status is `future`, `recorded`, `incomplete_current_week`, `incomplete_current_week_no_records` or `no_records_unknown`; a week with sessions lists the buckets `all`, `run`, `ride` and `strength` (or only the filtered sport) and names commutes as `commute_sessions` and `commute_duration_s`; a session's 3-zone bands use its power, else its heart rate, only from the local band times counted from its streams: low up to LT1 (85 % of the threshold HR, 75 % of the FTP, 88 % of the threshold speed), moderate up to the threshold, high above it, for every sensor (#3915).
+- **THEN** its status is `future`, `recorded`, `incomplete_current_week`, `incomplete_current_week_no_records` or `no_records_unknown`; a week with sessions lists the buckets `all`, `run`, `ride` and `strength` (or only the filtered sport) and names commutes as `commute_sessions` and `commute_duration_s`; a session's 3-zone bands use its power, else its heart rate, only from the local band times counted from its streams: low up to LT1 (the stored first threshold as share of the threshold HR, else 85 %; 75 % of the FTP; 88 % of the threshold speed), moderate up to the threshold, high above it, for every sensor (#3915).
 
 #### Scenario: Mean-maximal change in progress
 - **WHEN** the mean-max change of a progress window is built

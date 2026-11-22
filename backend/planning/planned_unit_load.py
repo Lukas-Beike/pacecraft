@@ -1,6 +1,7 @@
 """Intensity, 3-zone time and load of a planned unit, derived at read time."""
 
 from collections.abc import Callable, Mapping, Sequence
+from dataclasses import replace
 from datetime import date
 from typing import Any
 
@@ -91,8 +92,11 @@ class PlannedUnitEstimator:
         observation_reader: Callable[[], Any],
         zone_configurations: Callable[[], Sequence[ZoneConfiguration]],
         today: Callable[[], date] = date.today,
+        first_threshold_bpm: Callable[[], float | None] = lambda: None,
     ) -> None:
         self._database_manager = database_manager
+        # The stored first threshold moves the heart-rate band split (#3915).
+        self._first_threshold_bpm = first_threshold_bpm
         self._today = today
         self._observation_reader = observation_reader
         self._read_configurations = zone_configurations
@@ -115,7 +119,16 @@ class PlannedUnitEstimator:
         return estimate_planned_unit(unit, self.thresholds(unit))
 
     def thresholds(self, unit: Mapping[str, Any]) -> ZoneSettings:
-        """The current thresholds of the unit's sport, as its estimate uses."""
+        """The current thresholds of the unit's sport, as its estimate uses.
+
+        With a stored first threshold, its bpm over the run threshold HR of the
+        unit's day is the LT1 share of the heart-rate bands (#3915).
+        """
         if self._inputs is None:
             self._inputs = self._read_inputs()
-        return unit_thresholds(unit, *self._inputs)
+        settings = unit_thresholds(unit, *self._inputs)
+        bpm = self._first_threshold_bpm()
+        if not bpm:
+            return settings
+        run = unit_thresholds({**unit, "sport": "Run"}, *self._inputs).lthr
+        return replace(settings, lt1_share=bpm / run) if run else settings

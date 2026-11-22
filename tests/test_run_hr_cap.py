@@ -234,9 +234,14 @@ class CapTableTests(unittest.TestCase):
         for focus, cap in effective_caps(None).items():
             low, high = resolved_range(cap, LTHR) or (0, 0)
             self.assertEqual({**cap, "low_bpm": low, "bpm": high}, caps[focus])
-        measured = coach_thresholds(metrics, FIRST_PCT)["run_hr_caps"]
+        # The stored first threshold is bpm (#3915): FIRST_PCT of the LTHR.
+        measured = coach_thresholds(metrics, FIRST_PCT * LTHR / 100)["run_hr_caps"]
         self.assertEqual(
             {SOURCE_MEASURED}, {item[SOURCE_KEY] for item in measured.values()}
+        )
+        self.assertEqual(
+            effective_caps(FIRST_PCT)[FOCI[1]][PERCENT_KEY],
+            measured[FOCI[1]][PERCENT_KEY],
         )
         metrics["run_threshold_hr_bpm"]["value"] = None
         unknown = coach_thresholds(metrics)["run_hr_caps"]
@@ -503,6 +508,52 @@ class GuardTests(unittest.TestCase):
         with self.assertRaises(PlanCheckError):
             self.guard([with_cap(FOCI[1])], FIRST_PCT).verify([], accepted=[])
         self.guard([with_cap(FOCI[1], FIRST_PCT)], FIRST_PCT).verify([], accepted=[])
+
+
+class OutdatedCapTests(unittest.TestCase):
+    """Units with an older, higher default cap get a brief note only (#3915)."""
+
+    def test_only_default_caps_above_todays_default_are_listed(self) -> None:
+        old = unit(FOCI[1], hr_cap=hr_cap(87.0))
+        current = with_cap(FOCI[1])
+        measured = unit(FOCI[1], hr_cap=hr_cap(90.0, "measured"))
+        found = run_hr_cap.outdated_default_caps(
+            [old, current, measured, unit("tempo")]
+        )
+        self.assertEqual(
+            [
+                {
+                    "id": "u-" + FOCI[1],
+                    "date": "2026-11-10",
+                    "name": "Dauerlauf",
+                    "focus": FOCI[1],
+                    "stored_percent_lthr": 87.0,
+                    "default_percent_lthr": HR_CAP_PERCENT[FOCI[1]],
+                }
+            ],
+            found,
+        )
+
+    def test_the_brief_names_them_and_no_finding_blocks(self) -> None:
+        old = unit(FOCI[1], hr_cap=hr_cap(87.0))
+        guard = PlanGuardService(
+            planned_units=lambda: [old],
+            completed_activities=list,
+            competitions=list,
+            illness=lambda: "",
+            progress=lambda: {"week_list": []},
+            training_model=lambda: "pyramidal",
+            today=lambda: TODAY,
+            estimate_unit=lambda item: estimate_planned_unit(item, ZoneSettings()),
+        )
+        brief = guard.brief()
+        self.assertEqual(
+            [87.0],
+            [u["stored_percent_lthr"] for u in brief["outdated_hr_caps"]["units"]],
+        )
+        self.assertIn("never change them unasked", brief["outdated_hr_caps"]["note"])
+        # The untouched unit never blocks an unrelated write.
+        guard.verify(guard.findings(), accepted=[])
 
 
 class NormalizeTests(unittest.TestCase):

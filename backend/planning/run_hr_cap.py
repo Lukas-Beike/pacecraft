@@ -19,6 +19,7 @@ from backend.activities.hr_cap import (
     HR_CAP_PERCENT,
     LOW_PERCENT_KEY,
     PERCENT_KEY,
+    SOURCE_DEFAULT,
     SOURCE_KEY,
     cap_percents,
     effective_caps,
@@ -26,6 +27,7 @@ from backend.activities.hr_cap import (
     hr_cap,
     normalize_hr_cap,
     percent_text,
+    stored_cap,
 )
 from backend.canonical.first_threshold import (
     first_threshold_estimated,
@@ -39,6 +41,43 @@ MALFORMED: Final = "malformed"
 TOO_HIGH: Final = "too_high"
 SOURCE_MISMATCH: Final = "source_mismatch"
 LOW_MISMATCH: Final = "low_mismatch"
+
+
+OUTDATED_CAPS_NOTE: Final = (
+    "These planned run units still store an older default heart-rate cap above "
+    "today's default (#3915). Offer the update in a turn the athlete starts; "
+    "never change them unasked."
+)
+
+
+def outdated_default_caps(units: Iterable[Mapping[str, Any]]) -> list[dict[str, Any]]:
+    """Capped run units whose stored default cap lies above today's default.
+
+    Non-blocking: the guard re-checks only units the Coach writes, so a unit
+    planned before a lower default keeps its cap until the athlete agrees.
+    """
+    found = []
+    for unit in units:
+        focus = capped_focus(unit)
+        cap = None if focus is None else stored_cap(unit)
+        if (
+            focus is None
+            or cap is None
+            or cap[SOURCE_KEY] != SOURCE_DEFAULT
+            or cap[PERCENT_KEY] <= HR_CAP_PERCENT[focus]
+        ):
+            continue
+        found.append(
+            {
+                "id": str(unit.get("local_id") or unit.get("id") or ""),
+                "date": str(unit.get("date") or unit.get("starts_at_local") or "")[:10],
+                "name": str(unit.get("name") or ""),
+                "focus": focus,
+                "stored_percent_lthr": cap[PERCENT_KEY],
+                "default_percent_lthr": HR_CAP_PERCENT[focus],
+            }
+        )
+    return found
 
 
 def capped_focus(unit: Mapping[str, Any]) -> str | None:

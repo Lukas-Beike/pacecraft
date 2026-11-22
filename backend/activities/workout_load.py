@@ -234,7 +234,7 @@ def _estimate_step(
     band = (
         None
         if target.intensity is None
-        else intensity_band(str(step["kind"]), target.intensity)
+        else intensity_band(str(step["kind"]), target.intensity, thresholds.lt1_share)
     )
     return StepEstimate(
         kind=str(step["kind"]),

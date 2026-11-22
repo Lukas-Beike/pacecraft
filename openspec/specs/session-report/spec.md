@@ -27,7 +27,7 @@ The system SHALL add to every `get_activity_details` result a `session_report` (
 - **WHEN** the session focus is recovery, easy, endurance or long
 - **THEN** the report judges:
   - aerobic decoupling, notable above 5 %;
-  - the share of heart-rate time above the LT1 heart rate in effect (85 % of the threshold HR on the session day), notable above 10 %; the paired plan's own seconds above LT1 (strides, a fast finish) are taken off, unplanned surges count; a unit with a heart-rate cap is judged by its cap instead (#3915);
+  - the share of heart-rate time above the LT1 heart rate in effect (the stored first threshold as share of the threshold HR, else 85 %, on the session day), notable above 10 %; the paired plan's own seconds above LT1 (strides, a fast finish) are taken off, unplanned surges count; a unit with a heart-rate cap is judged by its cap instead (#3915);
   - a stored heart-rate cap by the verdict the planned targets computed (mean above the cap or more than 10 % of the time above it);
   - for rides the variability index, notable above 1.05.
 
