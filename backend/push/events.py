@@ -27,8 +27,9 @@ WEATHER_TOMORROW_HOUR: Final = 18
 # A session that started longer ago arrived by a backfill, not as news.
 NEW_ACTIVITY_DAYS: Final = 2
 _SESSION_ROWS: Final = 50
-# The newest automatic copy is stale from a day on (the schema release bar, #2996).
-BACKUP_STALE_HOURS: Final = 24.0
+# The nightly copy is missed once the newest is older than a day and a half: a
+# day alone would fire every night in the minutes before the copy is written.
+BACKUP_STALE_HOURS: Final = 36.0
 # Free space in the data directory below which the server needs attention.
 LOW_DISK_BYTES: Final = 1 << 30
 _NIGHT_METRICS: Final = tuple(

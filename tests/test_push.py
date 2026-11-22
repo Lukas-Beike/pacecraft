@@ -715,8 +715,9 @@ class PushChecksTests(unittest.TestCase):
         healthy = {
             "automatic": {
                 "enabled": True,
-                "newest_age_hours": 5.0,
-                "last_failure_age_hours": 20.0,  # older than the newest copy
+                # Last night's copy, just before tonight's is written: not stale.
+                "newest_age_hours": 30.0,
+                "last_failure_age_hours": 40.0,  # older than the newest copy
             },
             "free_bytes": 50 * 2**30,
         }
@@ -730,7 +731,7 @@ class PushChecksTests(unittest.TestCase):
         self.state["server"] = {
             "automatic": {
                 "enabled": True,
-                "newest_age_hours": 30.0,
+                "newest_age_hours": 40.0,
                 "last_failure_age_hours": 2.0,
             },
             "free_bytes": 2**20,

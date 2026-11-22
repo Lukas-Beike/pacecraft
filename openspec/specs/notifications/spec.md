@@ -96,7 +96,7 @@ The server SHALL send each event key at most once, only to subscribed devices, o
 - **THEN** one "Feedback" notification a day opens `#plan/overview`
 
 #### Scenario: Server attention
-- **WHEN** the automatic backup failed since its newest copy, the newest copy is over 24 hours old, or the data directory has under 1 GiB free
+- **WHEN** the automatic backup failed since its newest copy, the newest copy is over 36 hours old (a missed night), or the data directory has under 1 GiB free
 - **THEN** one "Server" notification per problem and day opens `#more/operations`
 
 #### Scenario: Weather warning
