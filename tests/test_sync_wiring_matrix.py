@@ -1,7 +1,6 @@
 """Every (provider, job type) reaches its provider service through the real wiring.
 
-The user and the Coach start sync jobs over ``POST /api/sync/jobs``; only the
-nutrition export is enqueued by the Coach card directly (#2137). This matrix
+The user and the Coach start sync jobs over ``POST /api/sync/jobs``. This matrix
 drives each pair the registry declares through the real configured checks, the
 real job queue and store, payload normalization, the real executor assembly and
 the real outcome service, on a temporary SQLite database. Fakes stand in only
@@ -34,7 +33,6 @@ from backend.canonical.vocabulary import GARMIN_ID, INTERVALS_ID, WAHOO_ID
 from backend.db.repositories import KeyValueRepository
 from backend.errors import AppError
 from backend.http_api.sync_commands import SyncCommandEndpoint
-from backend.nutrition.contracts import nutrition_approval_item
 from backend.runtime.events import StateEventBuffer
 from backend.runtime.maintenance import MaintenanceGate
 from backend.sync.daily import DailySyncMarkerService
@@ -57,19 +55,17 @@ JOBS = "/api/sync/jobs"
 UNIT = "11111111-1111-4111-8111-111111111111"
 ENTRIES = [{"library_workout_id": UNIT, "expected_payload_hash": "a" * 64}]
 COMPETITIONS = [{"type": "competition", "id": "race-1", "sha256": "b" * 64}]
-NUTRITION = [nutrition_approval_item({"date": "2026-11-08", "total_kcal": 2000})]
 BACKFILL_END = "2026-10-01"
 OK = {"status": "ok", "window_records": 3}
 
 # The pairs the UI, the Coach and the schedulers send, written out by hand:
 # plan_push from the calendar buttons and Coach cards, activity_details from the
-# activity view, refresh from the sync buttons, schedulers and Coach, nutrition and
-# competition pushes from Coach cards, and the backfills from startup.
+# activity view, refresh from the sync buttons, schedulers and Coach, competition
+# pushes from Coach cards, and the backfills from startup.
 EXPECTED_PAIRS: Final = frozenset(
     {
         (INTERVALS_ID, "plan_push"),
         (INTERVALS_ID, "competition_push"),
-        (INTERVALS_ID, "nutrition_sync"),
         (GARMIN_ID, "refresh"),
         (GARMIN_ID, "historical_backfill"),
         (GARMIN_ID, "wellness_backfill"),
@@ -83,8 +79,6 @@ EXPECTED_PAIRS: Final = frozenset(
         (CALENDAR_ID, "refresh"),
     }
 )
-# Pairs only the Coach card enqueues; the job route rejects them.
-COACH_ONLY: Final = frozenset({(INTERVALS_ID, "nutrition_sync")})
 # Providers whose descriptor carries a not_configured_message.
 CONFIGURABLE: Final = frozenset({INTERVALS_ID, GARMIN_ID, WAHOO_ID})
 
@@ -102,10 +96,6 @@ CASES: Final[dict[tuple[str, str], tuple[dict[str, Any], str]]] = {
     (INTERVALS_ID, "competition_push"): (
         {"reason": "test", "approval_manifest": COMPETITIONS},
         "intervals.competitions",
-    ),
-    (INTERVALS_ID, "nutrition_sync"): (
-        {"approval_manifest": NUTRITION},
-        "intervals.nutrition",
     ),
     (GARMIN_ID, "refresh"): ({"days": 7, "reason": "manual"}, "garmin.sync"),
     (GARMIN_ID, "historical_backfill"): (
@@ -263,9 +253,6 @@ class Harness:
             provider_sync=SimpleNamespace(
                 operation_observer=lambda: cast(Any, _Observer())
             ),
-            nutrition=SimpleNamespace(
-                intervals_sync_service=lambda: service("intervals.nutrition")
-            ),
             morning_body_battery_service=lambda: mock.Mock(),
             garmin=SimpleNamespace(
                 sync_service=lambda: self.garmin,
@@ -305,12 +292,6 @@ class Harness:
             -1,
             provider_configured=lambda provider_id: self.configured[provider_id](),
         )
-
-    def start(self, provider: str, job_type: str, payload: dict[str, Any]) -> dict:
-        """Start a pair the way its client does: the route, or the Coach card."""
-        if (provider, job_type) in COACH_ONLY:
-            return self.queue.enqueue(provider, job_type, payload, requested_by="coach")
-        return self.post(provider, job_type, payload)
 
     def post(self, provider: str, job_type: str, payload: dict[str, Any]) -> dict:
         status, job = self.endpoint.execute(
@@ -358,7 +339,7 @@ class ProviderJobWiringTests(unittest.TestCase):
             with self.subTest(provider=provider, type=job_type):
                 harness = Harness(self)
 
-                job = harness.start(provider, job_type, payload)
+                job = harness.post(provider, job_type, payload)
 
                 self.assertEqual(
                     (provider, job_type, "queued"),

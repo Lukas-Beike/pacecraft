@@ -168,7 +168,6 @@ REMOTE_WRITE_LABELS = {
     "start_intervals_plan_sync": "Trainingseinheiten mit Intervals.icu synchronisieren",
     "push_strength_to_garmin": "Einheiten an die Garmin-Uhr senden",
     "sync_competitions": "Bestätigte Wettkämpfe mit Intervals.icu synchronisieren",
-    "sync_nutrition": "Ernährungsdaten mit Intervals.icu synchronisieren",
     "resolve_training_sync_conflict": "Fehlgeschlagenen Intervals.icu-Sync wiederholen",
     "apply_adaptive_replan": "Adaptive Änderung anwenden und Krankheitspause synchronisieren",
 }
@@ -188,8 +187,6 @@ def remote_coach_write_diff(
             f"Fehlgeschlagenen {provider_name(remote_write_target(tool, intent))}"
             "-Sync wiederholen"
         )
-    if tool == "sync_nutrition":
-        return _nutrition_approval_diff(name, approval_manifest)
     if tool == "start_intervals_plan_sync":
         return _plan_sync_write_diff(
             {"name": name}, arguments, intent, approval_details or []
@@ -245,36 +242,6 @@ def _summary_date(value: Any) -> str:
             "Die Aktionsvorschau enthält ein ungültiges Datum.",
             reason="invalid_date",
         ) from exc
-
-
-def _nutrition_approval_diff(name: str, approval_manifest: Any) -> list[dict[str, str]]:
-    entries = approval_manifest if isinstance(approval_manifest, list) else []
-    if entries:
-        return _nutrition_write_diff(name, entries)
-    return [{"name": name, "date": "Keine ausstehenden Tage"}]
-
-
-def _nutrition_write_diff(
-    name: str, manifest: list[dict[str, Any]]
-) -> list[dict[str, str]]:
-    return [
-        {
-            "name": name,
-            "date": str(item["date"]),
-            "kcal": f"{item['total_kcal']} kcal",
-            "entries": str(item["entry_count"]),
-            **{
-                field: f"{item[key]} g"
-                for field, key in (
-                    ("carbs", "total_carbs_g"),
-                    ("protein", "total_protein_g"),
-                    ("fat", "total_fat_g"),
-                )
-                if item.get(key) is not None
-            },
-        }
-        for item in manifest
-    ]
 
 
 def _plan_sync_write_diff(

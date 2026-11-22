@@ -250,11 +250,6 @@ class NutritionCompositionTests(unittest.TestCase):
             ]
         )
         self.assertIsNone(
-            self.service.sync_status.get_sync_snapshot(entry["meal_date"])[
-                "total_carbs_g"
-            ]
-        )
-        self.assertIsNone(
             self.service.get_range_summary(entry["meal_date"], entry["meal_date"])[0][
                 "total_carbs_g"
             ]
@@ -587,7 +582,6 @@ class NutritionCompositionTests(unittest.TestCase):
         for summary in (
             self.service.sync_status.get_day_summary(first["meal_date"]),
             self.service.get_range_summary(first["meal_date"], first["meal_date"])[0],
-            self.service.sync_status.get_sync_snapshot(first["meal_date"]),
         ):
             self.assertEqual(summary["entry_count"], 2)
             self.assertEqual(summary["total_kcal"], 60)

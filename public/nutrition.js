@@ -173,7 +173,7 @@ function setValueWithUnit(element, text) {
   return element;
 }
 
-function nutritionBasisLabel(basis, item, sourceLabel) {
+function nutritionBasisLabel(basis, sourceLabel) {
   if (basis?.kind === "composite") return "";
   if (basis?.kind === "database") {
     return "Datenbankberechnung · " + basis.ingredients.map((food) => `${food.source}: ${food.name}, ${food.amount} ${food.unit} (Basis 100 ${food.basis_unit})`).join("; ");
@@ -248,12 +248,10 @@ function nutritionMealTitle(item) {
 
 function nutritionCard(item, template, sessions = []) {
   const sourceLabel = NUTRITION_SOURCE_LABELS[item.source] || "Erfasst";
-  const syncLabel = item.sync_state === "synced" ? " · Synchronisiert" : " · Lokal";
-  const basisLabel = nutritionBasisLabel(item.nutrition_basis, { template, syncLabel }, sourceLabel);
-  // The default (typed in by hand, stored locally) is not repeated under every meal; any other source or state is shown.
-  const isDefaultSource = !template && item.source === "manual" && item.sync_state !== "synced" && basisLabel === sourceLabel;
-  const sourceSuffix = template ? "" : syncLabel;
-  const sourceText = basisLabel && !isDefaultSource ? basisLabel + sourceSuffix : "";
+  const basisLabel = nutritionBasisLabel(item.nutrition_basis, sourceLabel);
+  // The default (typed in by hand) is not repeated under every meal; any other source is shown.
+  const isDefaultSource = !template && item.source === "manual" && basisLabel === sourceLabel;
+  const sourceText = basisLabel && !isDefaultSource ? basisLabel : "";
   const volume = item.volume_ml > 0 ? ` · ${AppFormat.number(item.volume_ml, { digits: 0 })} ml` : "";
   const title = h("h3", null, template ? item.name : nutritionMealTitle(item), ...(template ? [] : nutritionEstimateChip(item)));
   const card = h("article", "nutrition-card",

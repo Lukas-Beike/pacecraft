@@ -379,7 +379,7 @@ class CoachProposalBuilderTests(unittest.TestCase):
             self.assertIs(factory.call_args.args[0], ctx.database.return_value)
         self.assertEqual(ctx.database.call_count, 3)
         kwargs = create.call_args.kwargs
-        self.assertIs(kwargs["nutrition_diary_service"], ctx.nutrition.diary_service)
+        self.assertNotIn("nutrition_diary_service", kwargs)
         self.assertEqual(kwargs["today"](), "2026-09-26")
         with patch.object(wiring.time, "time", return_value=42.0):
             self.assertEqual(kwargs["now"](), 42.0)
@@ -506,7 +506,6 @@ class CoachCommandToolBuilderTests(unittest.TestCase):
             commands.repair_manifest.return_value,
             commands.plan_push.return_value,
             commands.provider_refresh.return_value,
-            nutrition_diary=ctx.nutrition.diary_service.return_value,
             connection_checks=ctx.provider_connection_checks,
             yazio_check=ANY,
             full_resync=ctx.provider_resync.full_resync_service.return_value,

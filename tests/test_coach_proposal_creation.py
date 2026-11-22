@@ -7,7 +7,6 @@ import json
 import sqlite3
 import unittest
 from typing import Any
-from unittest.mock import Mock
 from uuid import UUID
 
 from support import temp_database
@@ -382,52 +381,6 @@ class CoachProposalCreationTests(unittest.TestCase):
                     "id": "unit-2",
                 },
             ],
-        )
-
-    def test_nutrition_remote_write_freezes_dates_revisions_and_aggregates(
-        self,
-    ) -> None:
-        nutrition = Mock()
-        manifest = [
-            {
-                "date": "2026-09-24",
-                "revision": 4,
-                "total_kcal": 2200,
-                "total_carbs_g": 250.0,
-                "total_protein_g": 130.0,
-                "total_fat_g": 65.0,
-                "entry_count": 3,
-                "sha256": "a" * 64,
-            }
-        ]
-        nutrition.sync_status.approval_manifest.return_value = manifest
-        intent = {
-            "operation": "sync_nutrition",
-            "intent": "remote_sync",
-            "target_system": "intervals",
-            "authorization_scope": ["local_nutrition", "intervals_sync"],
-            "request": {"remote_write": True, "source_message_ids": [7]},
-        }
-        self._service(nutrition_diary_service=lambda: nutrition).create_remote_write(
-            "sync_nutrition",
-            {"pending_limit": 3},
-            intent,
-            conversation_id="conversation-1",
-            client_turn_id="turn-1",
-            session_csrf_hash="session-1",
-        )
-        payload = json.loads(str(self._rows()[0]["payload"]))
-        self.assertEqual(payload["arguments"]["_approval_manifest"], manifest)
-        self.assertEqual(
-            payload["arguments"],
-            {
-                "pending_limit": 3,
-                "_approval_manifest": manifest,
-            },
-        )
-        self.assertEqual(
-            nutrition.sync_status.approval_manifest.call_args.kwargs,
-            {"pending_limit": 3},
         )
 
     def test_distinct_session_keys_own_distinct_proposals(self) -> None:

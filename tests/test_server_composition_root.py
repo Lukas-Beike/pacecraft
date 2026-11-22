@@ -80,7 +80,6 @@ from backend.http_api.sync_commands import SyncCommandEndpoint
 from backend.nutrition.catalog import ProductCatalogService
 from backend.nutrition.diary import NutritionDiaryService
 from backend.nutrition.meal_library import NutritionMealLibraryService
-from backend.nutrition.sync import IntervalsNutritionSyncService
 from backend.performance.report_service import (
     TrainingProfileSelectionService,
     TrainingReportServices,
@@ -287,9 +286,6 @@ class CompositionRootTests(ServerTestCase):
         )
         self.assertIsInstance(
             nutrition.product_catalog_service(), ProductCatalogService
-        )
-        self.assertIsInstance(
-            nutrition.intervals_sync_service(), IntervalsNutritionSyncService
         )
         self.assertIs(nutrition.food_mirror(), nutrition.food_mirror())
 

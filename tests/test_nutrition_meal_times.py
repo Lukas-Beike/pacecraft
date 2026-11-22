@@ -9,11 +9,8 @@ from unittest.mock import Mock
 from nutrition_service_support import build_nutrition_services
 from support import dispatch_route, temp_database
 
-from backend.config import Config
 from backend.errors import AppError
 from backend.http_api.nutrition import NutritionPostRoutes
-from backend.nutrition.contracts import nutrition_approval_item
-from backend.nutrition.sync import IntervalsNutritionSyncService
 
 
 class NutritionMealTimeTests(unittest.TestCase):
@@ -48,12 +45,6 @@ class NutritionMealTimeTests(unittest.TestCase):
                 "kcal": 200,
             }
         )
-
-    def sync_service(self) -> tuple[IntervalsNutritionSyncService, Mock]:
-        config = Mock(spec=Config)
-        config.intervals_athlete_id = "i12345"
-        api = Mock()
-        return IntervalsNutritionSyncService(config, api, self.service), api
 
     def test_known_time_is_the_default_and_is_returned(self) -> None:
         entry = self.log_full_macros()
@@ -331,58 +322,6 @@ class NutritionMealTimeTests(unittest.TestCase):
             {"carbs_g": None, "protein_g": None, "fat_g": None},
         )
         self.assertEqual(summary["entries_without_macros"], 1)
-
-    def test_approval_withholds_partial_macros_but_keeps_kcal(self) -> None:
-        self.log_full_macros()
-        self.log_without_macros()
-
-        item = nutrition_approval_item(
-            self.service.sync_status.get_sync_snapshot("2026-09-24")
-        )
-
-        self.assertEqual(item["total_kcal"], 600)
-        self.assertIsNone(item["total_carbs_g"])
-        self.assertIsNone(item["total_protein_g"])
-        self.assertIsNone(item["total_fat_g"])
-
-    def test_sync_clears_partial_macros_remotely_and_marks_day_synced(self) -> None:
-        self.log_full_macros()
-        self.log_without_macros()
-        sync, api = self.sync_service()
-
-        result = sync.sync_day("2026-09-24")
-
-        self.assertEqual(
-            api.put.call_args.args[1],
-            {
-                "id": "2026-09-24",
-                "kcalConsumed": 600,
-                "carbohydrates": -1,
-                "protein": -1,
-                "fatTotal": -1,
-            },
-        )
-        self.assertIsNone(result["synced_summary"]["carbs"])
-        self.assertFalse(result["pending"])
-        self.assertEqual(self.service.sync_status.list_unsynced_dates(), [])
-
-    def test_complete_macros_are_written_and_day_is_synced(self) -> None:
-        self.log_full_macros()
-        sync, api = self.sync_service()
-
-        result = sync.sync_day("2026-09-24")
-
-        self.assertEqual(
-            api.put.call_args.args[1],
-            {
-                "id": "2026-09-24",
-                "kcalConsumed": 400,
-                "carbohydrates": 60.0,
-                "protein": 15.0,
-                "fatTotal": 10.0,
-            },
-        )
-        self.assertFalse(result["pending"])
 
 
 if __name__ == "__main__":

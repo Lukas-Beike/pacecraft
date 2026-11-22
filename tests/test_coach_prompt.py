@@ -7,7 +7,7 @@ from backend.coach.dialogue import INSTRUCTIONS
 from backend.coach.playbooks import _TASKS, nutrition_playbook, playbook_for
 from backend.coach.prompt import COACH_PROMPT
 
-EXPECTED_SHA256 = "6f918aebc0e056ec3e0a6f0eb11c3ece075dd281313fef3b2593e07943a03210"
+EXPECTED_SHA256 = "3fd1026447ba1bac88cc7422584feb9ce21cd22754bd59a0a4f9742db0bde326"
 
 
 class CoachPromptTests(unittest.TestCase):

@@ -2,85 +2,26 @@
 
 ## Purpose
 
-Describe explicit local-diary export to Intervals.icu and scoped Garmin nutrition refreshes re-validated against application revision `d1beefd77`. Requirements document inspected implementation and tests, not a completed live-provider conformance run. Local diary and totals are specified by `nutrition-diary-and-targets`; client request races by `view-refresh-and-client-state`. Local revision checks do not establish remote compare-and-swap protection against independent Intervals edits.
+Describe the rule that nutrition is never sent to a provider and the scoped Garmin nutrition refreshes, re-validated against application revision `d1beefd77`. Requirements document inspected implementation and tests, not a completed live-provider conformance run. Local diary and totals are specified by `nutrition-diary-and-targets`; client request races by `view-refresh-and-client-state`.
 
 ## Requirements
 
-### Requirement: Nutrition export is an explicit queued operation
-The system SHALL start a nutrition export only from a sync the athlete names in the Coach, queued without a card and bound to the manifest frozen when the request ran, and SHALL NOT expose a direct HTTP route that queues it. Ordinary diary reads, edits, product lookup, and view refresh SHALL not implicitly export nutrition.
+### Requirement: Nutrition is never sent to a provider
+The system SHALL NOT send nutrition to Intervals.icu or any other provider: no Coach tool, no HTTP route, no sync job type and no scheduler queues a nutrition export, and the Coach answers a request to send nutrition by saying that nutrition stays local (athlete decision, #4031). Diary reads, edits, product lookup and view refresh stay local, and entries already written to a provider earlier are left as they are.
 
-#### Scenario: No direct export route
-- **WHEN** a client posts to `/api/nutrition/sync`
-- **THEN** the nutrition routes do not handle it and no nutrition-export job is enqueued.
+#### Scenario: No nutrition job
+- **WHEN** a client posts a `nutrition_sync` job for any provider to `/api/sync/jobs`, or a job of that type is queued directly
+- **THEN** it is an unsupported job type and no provider call is made; a stored job of that type fails without a provider call and cannot be retried (409 `job_type_retired`).
 
-#### Scenario: Export on the job route
-- **WHEN** a client posts a `nutrition_sync` job for Intervals.icu to `/api/sync/jobs`, with a `date`, a `pending_limit`, a client-built `approval_manifest` or nothing
-- **THEN** the route answers 400 and no nutrition-export job is enqueued; only the Coach's named sync enqueues the export, directly through the queue.
+#### Scenario: No Coach tool
+- **WHEN** the athlete asks the Coach to transfer nutrition to Intervals.icu
+- **THEN** the Coach has no tool for it and says that nutrition is not sent.
 
-#### Scenario: Export pending dates
-- **WHEN** the named Coach sync covers pending dates
-- **THEN** service execution accepts only a limit from one through thirty-one.
+#### Scenario: Stored state is kept
+- **WHEN** the application starts on a database that holds `nutrition_sync_dates` rows or `nutrition_logs.sync_state` values
+- **THEN** they stay as stored and nothing reads or writes them for an export; the table is left for a later schema change.
 
-#### Scenario: Refresh the diary
-- **WHEN** the athlete refreshes a nutrition view
-- **THEN** the narrow read-refresh path is used and no nutrition-export job is enqueued.
-
-Evidence: `backend/http_api/nutrition.py::NutritionPostRoutes.routes`, `backend/http_api/sync_commands.py::SyncCommandEndpoint._enqueue_job`, `backend/nutrition/sync.py::IntervalsNutritionSyncService.sync_pending`; `tests/test_nutrition_api_and_sync.py::NutritionHttpApiTests.test_the_removed_sync_route_is_not_handled`, `tests/test_http_sync_commands.py::SyncCommandEndpointTests.test_confirmation_bound_requests_start_nothing_without_it`, `tests/test_nutrition_api_and_sync.py::NutritionHttpApiTests.test_nutrition_refresh_diary_reads_local_meals_and_only_daily_energy`.
-
-### Requirement: Approved exports bind exact local snapshots
-The system SHALL represent an approved nutrition export as selected dates with local revision, calories, macros, entry count, and a content digest. Approved execution SHALL validate the complete manifest and recheck each date before writing it.
-
-#### Scenario: Local change after approval
-- **WHEN** any selected local snapshot differs from the approved manifest before execution
-- **THEN** execution fails with a conflict before any provider write begins.
-
-#### Scenario: New pending date appears
-- **WHEN** another date becomes pending after approval
-- **THEN** approved execution exports only the frozen approved dates rather than expanding its scope.
-
-#### Scenario: Change during a multi-date run
-- **WHEN** an earlier date succeeds but a later date no longer matches its approved snapshot
-- **THEN** the earlier success remains reported and the later date is a failed result rather than being silently overwritten.
-
-Evidence: `backend/nutrition/contracts.py::nutrition_approval_item`, `backend/nutrition/sync_status.py::NutritionSyncStatusService.approval_manifest`, `backend/nutrition/sync.py::IntervalsNutritionSyncService.sync_approved`; `tests/test_nutrition_api_and_sync.py::IntervalsNutritionSyncServiceTests.test_approved_sync_rejects_changed_manifest_before_provider_write`, `tests/test_nutrition_api_and_sync.py::IntervalsNutritionSyncServiceTests.test_approved_sync_dispatches_only_frozen_dates`, `tests/test_nutrition_api_and_sync.py::IntervalsNutritionSyncServiceTests.test_approved_sync_preserves_prior_results_when_a_later_day_fails`.
-
-### Requirement: Daily export writes only supported wellness totals
-The system SHALL export a day's aggregated calories and macros to that day's Intervals wellness record. Unknown or incomplete macros SHALL be explicitly unset rather than leaving a previously exported remote value in place.
-
-#### Scenario: Complete totals
-- **WHEN** a selected day has complete local macros
-- **THEN** the wellness update contains `kcalConsumed`, `carbohydrates`, `protein`, and `fatTotal` with the day's aggregate values.
-
-#### Scenario: Calories-only or incomplete macros
-- **WHEN** a macro total is unknown
-- **THEN** that remote field is sent as the provider's unset number, `-1`, while known calories are still sent.
-
-#### Scenario: Empty day after deletion
-- **WHEN** the final previously exported entry is deleted and the athlete explicitly exports the pending date
-- **THEN** calories and all macros are sent as the provider's unset number, `-1`, instead of zeros, so the old daily nutrition totals are cleared without requiring a fabricated meal; the day's macro totals read as unknown.
-
-#### Scenario: Repeat the selected day's export
-- **WHEN** an unchanged day is explicitly exported again
-- **THEN** its totals target the same dated wellness resource rather than creating another local diary entry; this does not promise exactly-once network delivery or remote conflict protection.
-
-Evidence: `backend/nutrition/sync.py::IntervalsNutritionSyncService.sync_day`, `backend/nutrition/sync.py::UNSET_REMOTE_NUMBER`; `tests/test_nutrition_api_and_sync.py::IntervalsNutritionSyncServiceTests.test_sync_day_calls_intervals_api_and_marks_synced`, `tests/test_nutrition_api_and_sync.py::IntervalsNutritionSyncServiceTests.test_sync_clears_unknown_macros_remotely_and_marks_date_synced`, `tests/test_nutrition_api_and_sync.py::IntervalsNutritionSyncServiceTests.test_sync_of_an_emptied_day_sends_unset_values_not_zeros`, `tests/test_nutrition_api_and_sync.py::IntervalsNutritionSyncServiceTests.test_an_empty_day_has_unknown_totals`, `tests/test_nutrition.py::NutritionRepositoryAndServiceTests.test_deleting_last_synced_entry_keeps_empty_date_pending`. The last scenario combines inspected deletion/requeue and export behavior; there was no live empty-day provider write in this backfill.
-
-### Requirement: Export completion is revision-safe and retryable
-The system SHALL mark a date synced only if its local revision still matches the sent snapshot. A provider failure or concurrent local edit SHALL retain pending work, and a batch result SHALL distinguish synced, pending, and failed dates.
-
-#### Scenario: Stable successful write
-- **WHEN** the provider accepts a day's update and the local revision is unchanged
-- **THEN** the date is marked synced at that revision.
-
-#### Scenario: Local edit during provider write
-- **WHEN** the local meal changes while the remote request is in flight
-- **THEN** the sent snapshot can succeed remotely but the new local revision remains pending and is not reported as fully synced.
-
-#### Scenario: Partial batch failure
-- **WHEN** one date fails while others succeed
-- **THEN** successes remain acknowledged, failures remain available for retry, and the aggregate `ok` is false when pending or failed dates remain.
-
-Evidence: `backend/nutrition/sync.py::IntervalsNutritionSyncService.sync_day`, `backend/nutrition/sync.py::IntervalsNutritionSyncService.sync_pending`, `backend/nutrition/sync_status.py::NutritionSyncStatusService.mark_date_synced`; `tests/test_nutrition_api_and_sync.py::IntervalsNutritionSyncServiceTests.test_sync_keeps_date_pending_when_meal_changes_during_remote_write`, `tests/test_nutrition_api_and_sync.py::IntervalsNutritionSyncServiceTests.test_sync_pending_keeps_revision_races_out_of_synced_dates`, `tests/test_nutrition_api_and_sync.py::IntervalsNutritionSyncServiceTests.test_sync_pending_processes_all_dates`.
+Evidence: `backend/sync/jobs.py::JOB_TYPES`, `backend/coach/tool_specs.py`, `backend/coach/prompt.py`; `tests/test_sync_jobs.py`, `tests/test_http_sync_commands.py`, `tests/test_coach_tool_coverage.py`.
 
 ### Requirement: Nutrition refresh reads only its selected source and dates
 The system SHALL accept explicit refreshes for diary, week, body, or products and restrict each to its owned data. Week/body refreshes SHALL accept only fourteen or eighty-four days and reject future end dates and unsupported payload fields.
@@ -130,34 +71,3 @@ The system SHALL preserve previously stored nutrition-related measurements on a 
 
 Evidence: `backend/sync/garmin_service.py::GarminTargetedRefreshService.refresh_nutrition`, `backend/http_api/nutrition.py::NutritionPostRoutes._refresh_provider`; `tests/test_nutrition_garmin_refresh.py::GarminNutritionRefreshTests.test_provider_failure_returns_partial_without_persisting_stale_as_fresh`, `tests/test_nutrition_garmin_refresh.py::GarminNutritionRefreshTests.test_empty_body_refresh_is_partial_and_retains_prior_measurement_as_stale`, `tests/test_nutrition_garmin_refresh.py::GarminNutritionRefreshTests.test_weight_snapshot_merge_replaces_timestamped_corrections_and_keeps_metadata`.
 
-### Requirement: Export request, manifest and result contract
-The system SHALL write a day to the Intervals.icu wellness record of that date (row I17 of `docs/provider-endpoints.md`) with the body `id` (the date), `kcalConsumed`, `carbohydrates`, `protein` and `fatTotal`. An approval item SHALL consist of `date`, `revision`, `total_kcal`, `total_carbs_g`, `total_protein_g`, `total_fat_g`, `entry_count` and `sha256`, the SHA-256 of the compact, key-sorted JSON of all fields except `revision`. A manifest SHALL hold at most 31 distinct dates.
-
-#### Scenario: Day without a sync record at approval
-- **WHEN** an approved item has revision 0 and no entries, and the day now has revision 1, no entries and the same digest
-- **THEN** it still matches.
-
-#### Scenario: Job result
-- **WHEN** an export job ends
-- **THEN** its result is `completed`, or `partial` when a date stayed pending or failed, with `synced_dates`, `pending_dates` and `failed_dates` as date lists.
-
-#### Scenario: Coach-side checks
-- **WHEN** the named sync carries a date that differs from the manifest, more dates than the approved limit, or a manifest that no longer equals the current snapshots
-- **THEN** it fails with 409 and no job is queued.
-
-Detailed contract: the job is queued for provider `intervals`, type `nutrition_sync`, payload `{approval_manifest}`, requested by `coach`; enqueueing re-validates every item including the digest, and a lost outcome is never replayed. An unset Intervals.icu athlete id is sent as `0`. The errors of the approved execution are English, those of the Coach-side checks German. The preview lists per date the kcal, the entry count and the known macros, or "Keine ausstehenden Tage".
-
-Evidence: `backend/nutrition/sync.py::IntervalsNutritionSyncService.sync_day`, `backend/nutrition/sync.py::IntervalsNutritionSyncService.sync_approved`, `backend/nutrition/contracts.py::nutrition_approval_item`, `backend/nutrition/contracts.py::nutrition_approval_item_matches`, `backend/coach/sync_tools.py::CoachSyncToolService._sync_nutrition`, `backend/sync/executor.py::IntervalsJobAdapter._nutrition_sync`, `backend/sync/jobs.py::_normalize_nutrition_sync_job`, `backend/coach/proposal_validation.py`; `tests/test_nutrition.py::test_approval_manifest_freezes_revision_and_totals_without_mutating_sync_state`, `tests/test_nutrition_meal_times.py::test_approval_withholds_partial_macros_but_keeps_kcal`, `tests/test_sync_executor.py::test_dispatches_explicit_nutrition_sync_jobs`, `tests/test_sync_jobs.py::test_nutrition_sync_job_payload_is_bounded_and_unambiguous`, `tests/test_coach_tool_coverage.py::test_nutrition_correction_preserves_fields_and_sync_is_explicitly_queued`.
-
-### Requirement: Per-date sync state
-The system SHALL keep one sync record per meal date with a revision that starts at 1 and rises by 1 with every create, update or delete touching that date, and a state `pending` or `synced`. Marking a date synced at the sent revision SHALL also set every entry of that date to `synced`; any later write SHALL return the date to `pending`.
-
-#### Scenario: Pending order
-- **WHEN** pending dates are selected with a limit
-- **THEN** the oldest dates come first (default limit 14, allowed 1 to 31).
-
-#### Scenario: Reading a snapshot for approval
-- **WHEN** an approval manifest is built for a date without a sync record
-- **THEN** no record is created and the revision reads 0.
-
-Evidence: `backend/db/repositories.py::NutritionRepository.day_sync_snapshot`, `backend/db/repositories.py::NutritionRepository.mark_date_synced`, `backend/db/repositories.py::NutritionRepository._mark_pending`, `backend/db/repositories.py::NutritionRepository.list_unsynced_dates`, `backend/nutrition/sync_status.py::NutritionSyncStatusService.approval_manifest`; `tests/test_nutrition.py::test_calories_only_days_sync_without_starving_newer_days`, `tests/test_nutrition.py::test_macro_edit_after_calories_only_sync_requeues_the_day`, `tests/test_nutrition_use_case_services.py::test_sync_status_reads_empty_manifest_and_pending_dates`.

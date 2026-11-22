@@ -31,7 +31,6 @@ JOB_TYPES = frozenset(
         "activity_details",
         "plan_push",
         "competition_push",
-        "nutrition_sync",
         "historical_backfill",
         "wellness_backfill",
         "stream_backfill",
@@ -49,7 +48,7 @@ BACKFILL_CURSOR_STREAMS: dict[str, str] = {
 }
 BACKFILL_JOB_TYPES = frozenset(BACKFILL_CURSOR_STREAMS)
 # Jobs that only read providers and store the result locally: running one again
-# is safe. Every other type (plan_push, competition_push, nutrition_sync) may
+# is safe. Every other type (plan_push, competition_push) may
 # have written to a remote service, so a lost outcome is never replayed for it.
 REPLAYABLE_JOB_TYPES = frozenset({"refresh", "activity_details", *BACKFILL_JOB_TYPES})
 _BACKFILL_PROVIDER_MESSAGES = {
@@ -101,21 +100,7 @@ BACKFILL_CONTINUATION_SQL = (
 )
 MAX_JOB_REFRESH_DAYS = 3660
 MAX_EMPTY_BACKFILL_CHUNKS = 100
-INVALID_NUTRITION_MANIFEST_ERROR = "Invalid nutrition approval manifest."
-NUTRITION_MANIFEST_FIELDS = frozenset(
-    {
-        "date",
-        "revision",
-        "total_kcal",
-        "total_carbs_g",
-        "total_protein_g",
-        "total_fat_g",
-        "entry_count",
-        "sha256",
-    }
-)
 SHA256_PATTERN = re.compile(r"[0-9a-f]{64}")
-ISO_DAY_ERROR = "Das Datum muss ein ISO-Kalendertag sein."
 UNSUPPORTED_JOB_FIELDS_ERROR = "Der Job enth\u00e4lt nicht unterst\u00fctzte Felder."
 
 
@@ -394,8 +379,6 @@ def normalize_sync_job_request(
         raise JobValidationError(_BACKFILL_PROVIDER_MESSAGES[type_value])
     if type_value == "activity_details":
         normalized_payload = _normalize_activity_details_job(provider_value, values)
-    elif type_value == "nutrition_sync":
-        normalized_payload = _normalize_nutrition_sync_job(provider_value, values)
     elif type_value == "competition_push":
         normalized_payload = _normalize_competition_push_job(provider_value, values)
     elif type_value == "plan_push":
@@ -425,111 +408,6 @@ def _normalize_activity_details_job(
     if not isinstance(value, str) or not re.fullmatch(r"[A-Za-z0-9_-]{1,200}", value):
         raise JobValidationError("Die Aktivitäts-ID ist ungültig.")
     return {"activity_id": value}
-
-
-def _normalize_nutrition_sync_job(
-    provider: str, values: dict[str, Any]
-) -> dict[str, Any]:
-    allowed_fields = {"date", "pending_limit", "approval_manifest"}
-    supported = DEFAULT_PROVIDER_REGISTRY.supports_job(provider, "nutrition_sync")
-    if not supported or set(values) - allowed_fields:
-        raise JobValidationError("Ungültiger Ernährungssynchronisierungsauftrag.")
-    if "approval_manifest" in values:
-        return _normalize_approved_nutrition_job(values)
-    if "date" in values and "pending_limit" in values:
-        raise JobValidationError("Choose a date or pending days, not both.")
-    if "date" in values:
-        return {"date": _normalize_nutrition_date(values["date"])}
-    return {
-        "pending_limit": _normalize_nutrition_pending_limit(values.get("pending_limit"))
-    }
-
-
-def _normalize_approved_nutrition_job(values: dict[str, Any]) -> dict[str, Any]:
-    if set(values) != {"approval_manifest"}:
-        raise JobValidationError(
-            "An approved nutrition sync cannot include other targets."
-        )
-    return {
-        "approval_manifest": _normalize_nutrition_approval_manifest(
-            values["approval_manifest"]
-        )
-    }
-
-
-def _normalize_nutrition_date(value: Any) -> str:
-    if not isinstance(value, str):
-        raise JobValidationError(ISO_DAY_ERROR)
-    try:
-        parsed = date.fromisoformat(value)
-    except ValueError as exc:
-        raise JobValidationError(ISO_DAY_ERROR) from exc
-    if parsed.isoformat() != value:
-        raise JobValidationError(ISO_DAY_ERROR)
-    return value
-
-
-def _normalize_nutrition_pending_limit(value: Any) -> int:
-    if type(value) is not int or not 1 <= value <= 31:
-        raise JobValidationError("The nutrition sync limit must be between 1 and 31.")
-    return value
-
-
-def _normalize_nutrition_approval_manifest(value: Any) -> builtins.list[dict[str, Any]]:
-    if not isinstance(value, list) or len(value) > 31:
-        raise JobValidationError(INVALID_NUTRITION_MANIFEST_ERROR)
-    normalized: builtins.list[dict[str, Any]] = []
-    seen_dates: set[str] = set()
-    for entry in value:
-        normalized.append(_normalize_nutrition_approval_entry(entry, seen_dates))
-    return normalized
-
-
-def _normalize_nutrition_approval_entry(
-    entry: Any, seen_dates: set[str]
-) -> dict[str, Any]:
-    if not isinstance(entry, dict) or set(entry) != NUTRITION_MANIFEST_FIELDS:
-        raise JobValidationError(INVALID_NUTRITION_MANIFEST_ERROR)
-    raw_date = _normalize_nutrition_date(entry["date"])
-    if raw_date in seen_dates:
-        raise JobValidationError(ISO_DAY_ERROR)
-    _validate_nutrition_approval_fields(entry)
-    _validate_nutrition_approval_hash(entry)
-    seen_dates.add(raw_date)
-    return dict(entry)
-
-
-def _validate_nutrition_approval_fields(entry: dict[str, Any]) -> None:
-    integer_fields = ("revision", "total_kcal", "entry_count")
-    if any(type(entry[key]) is not int or entry[key] < 0 for key in integer_fields):
-        raise JobValidationError(INVALID_NUTRITION_MANIFEST_ERROR)
-    total_fields = ("total_carbs_g", "total_protein_g", "total_fat_g")
-    if any(
-        value is not None and (type(value) not in {int, float} or value < 0)
-        for value in (entry[key] for key in total_fields)
-    ):
-        raise JobValidationError(INVALID_NUTRITION_MANIFEST_ERROR)
-    digest = entry["sha256"]
-    if not isinstance(digest, str) or not SHA256_PATTERN.fullmatch(digest):
-        raise JobValidationError(INVALID_NUTRITION_MANIFEST_ERROR)
-
-
-def _validate_nutrition_approval_hash(entry: dict[str, Any]) -> None:
-    digest_values = {
-        key: entry[key]
-        for key in NUTRITION_MANIFEST_FIELDS
-        if key not in {"revision", "sha256"}
-    }
-    digest = hashlib.sha256(
-        json.dumps(
-            digest_values,
-            sort_keys=True,
-            ensure_ascii=False,
-            separators=(",", ":"),
-        ).encode("utf-8")
-    ).hexdigest()
-    if digest != entry["sha256"]:
-        raise JobValidationError("Nutrition approval hash does not match its totals.")
 
 
 def _normalize_competition_push_job(

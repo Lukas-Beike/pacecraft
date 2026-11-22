@@ -57,20 +57,16 @@ The system SHALL preserve the selected consumption date and distinguish a known 
 
 Evidence: `backend/nutrition/models.py::_normalize_logged_time`, `backend/nutrition/diary.py::_names_time_without_flag`, `public/nutrition.js::nutritionCard`; `tests/test_nutrition.py::NutritionRepositoryAndServiceTests.test_meal_logged_after_athlete_local_midnight_uses_athlete_local_day`, `tests/test_nutrition_meal_times.py::NutritionMealTimeTests.test_unknown_time_keeps_explicit_meal_type_and_noon_anchor`, `tests/test_nutrition_meal_times.py::NutritionMealTimeTests.test_naming_a_time_makes_an_unknown_time_known`.
 
-### Requirement: Targeted corrections and deletion preserve synchronization work
-The system SHALL update or delete the identified local meal, preserve omitted correction fields, and mark every affected date pending for later explicit export. Invalid or missing targets SHALL produce an error.
+### Requirement: Targeted corrections and deletion
+The system SHALL update or delete the identified local meal, and preserve omitted correction fields. Nothing is marked for an export, as nutrition is never sent to a provider. Invalid or missing targets SHALL produce an error.
 
 #### Scenario: Move and correct a meal
 - **WHEN** the athlete corrects calories and the meal date of an existing entry
-- **THEN** its identity, source, and other omitted fields remain, and both old and new dates become pending.
-
-#### Scenario: Remove the last exported meal
-- **WHEN** the last meal on an already-synced date is deleted
-- **THEN** it disappears from reads while the now-empty date remains pending so a later explicit export can clear prior remote totals.
+- **THEN** its identity, source, and other omitted fields remain, and the meal sits on its new date.
 
 #### Scenario: Add a product to a logged meal
 - **WHEN** the athlete adds a saved product to a logged meal
-- **THEN** the change gets a change-history record, so it can be undone, and its date is marked pending again.
+- **THEN** the change gets a change-history record, so it can be undone.
 
 #### Scenario: Invalid correction
 - **WHEN** a correction is empty, contains unsupported fields or invalid nutrient values, or names a nonexistent entry
@@ -80,7 +76,7 @@ The system SHALL update or delete the identified local meal, preserve omitted co
 - **WHEN** a client sends `PUT /api/nutrition/entry`
 - **THEN** no nutrition route handles it and no entry changes; an entry is corrected only through the Coach correction with its field whitelist, `manual_correction` basis and undo reference, or through the component edit.
 
-Evidence: `backend/http_api/nutrition.py::NutritionPutRoutes.routes`, `backend/nutrition/diary.py::NutritionDiaryService.correct_meal`, `backend/nutrition/diary.py::NutritionDiaryService.delete_meal`, `backend/nutrition/diary.py::NutritionDiaryService.add_product_to_meal`; `tests/test_nutrition_api_and_sync.py::NutritionHttpApiTests.test_put_entry_route_is_removed`, `tests/test_nutrition_history.py::NutritionHistoryTests.test_undo_of_an_added_product_restores_the_previous_meal`, `tests/test_nutrition.py::NutritionRepositoryAndServiceTests.test_correct_meal_preserves_omitted_fields_and_marks_old_and_new_days_pending`, `tests/test_nutrition.py::NutritionRepositoryAndServiceTests.test_correct_meal_rejects_empty_invalid_or_missing_target`, `tests/test_nutrition.py::NutritionRepositoryAndServiceTests.test_deleting_last_synced_entry_keeps_empty_date_pending`. Shared history/undo authorization is owned by the history and Coach contracts.
+Evidence: `backend/http_api/nutrition.py::NutritionPutRoutes.routes`, `backend/nutrition/diary.py::NutritionDiaryService.correct_meal`, `backend/nutrition/diary.py::NutritionDiaryService.delete_meal`, `backend/nutrition/diary.py::NutritionDiaryService.add_product_to_meal`; `tests/test_nutrition_api_and_sync.py::NutritionHttpApiTests.test_put_entry_route_is_removed`, `tests/test_nutrition_history.py::NutritionHistoryTests.test_undo_of_an_added_product_restores_the_previous_meal`, `tests/test_nutrition.py::NutritionRepositoryAndServiceTests.test_correct_meal_preserves_omitted_fields_and_moves_the_day`, `tests/test_nutrition.py::NutritionRepositoryAndServiceTests.test_correct_meal_rejects_empty_invalid_or_missing_target`. Shared history/undo authorization is owned by the history and Coach contracts.
 
 ### Requirement: Saved meals and composed meals are managed in the UI
 The system SHALL let the athlete in Ernährung › Produkte list the saved meals, log one for a number of portions on a day, rename it, delete it, compose a meal of several foods with amounts and keep or log it, and save a diary meal as a saved meal, each through the use cases of the Coach tools, with the server calculating every value and a receipt with undo.
@@ -116,20 +112,20 @@ The system SHALL let the athlete remove a component of a logged meal, change its
 
 #### Scenario: Change the meal's day, type or time
 - **WHEN** the same request carries `meal` with `meal_date`, `meal_type`, `meal_time` or `logged_time_known: false`, with or without component edits
-- **THEN** both are saved as one change with one undo reference; a new type moves a default time to the type's default but never a named one, a new day marks both days pending, an unknown time keeps only the type, and a `meal` without edits leaves the components and origin as stored; any other key, `logged_time_known: true`, or a time together with an unknown time fails with 400 and nothing changes.
+- **THEN** both are saved as one change with one undo reference; a new type moves a default time to the type's default but never a named one, a new day moves the meal, an unknown time keeps only the type, and a `meal` without edits leaves the components and origin as stored; any other key, `logged_time_known: true`, or a time together with an unknown time fails with 400 and nothing changes.
 
-Evidence: `backend/nutrition/meal_components.py::validated_meal_changes`, `tests/test_nutrition_meal_components.py::MealComponentEditTests.test_the_meal_change_and_the_component_edits_are_one_write`, `tests/test_nutrition_meal_components.py::MealComponentEditTests.test_a_new_day_moves_the_meal_and_marks_both_days`, `tests/test_nutrition_meal_components.py::MealComponentEditTests.test_a_bad_meal_change_changes_nothing`, `backend/nutrition/meal_components.py::edited_components`, `backend/nutrition/meal_components.py::entry_components`, `backend/nutrition/diary.py::NutritionDiaryService.edit_components`, `backend/http_api/nutrition.py::NutritionPostRoutes._edit_components`; `tests/test_nutrition_meal_components.py::MealComponentEditTests.test_a_changed_amount_is_recalculated_and_the_others_stay_as_stored`, `tests/test_nutrition_meal_components.py::MealComponentEditTests.test_a_swap_keeps_the_amount_and_takes_the_new_origin`, `tests/test_nutrition_meal_components.py::MealComponentEditTests.test_a_removed_component_leaves_the_rest_and_the_last_one_stays`, `tests/test_nutrition_meal_components.py::MealComponentEditTests.test_a_swap_to_another_unit_is_refused_and_changes_nothing`, `tests/test_nutrition_meal_components.py::MealComponentEditTests.test_an_edit_of_a_meal_that_changed_meanwhile_is_refused`; `e2e/nutrition-meal-edit.spec.js`.
+Evidence: `backend/nutrition/meal_components.py::validated_meal_changes`, `tests/test_nutrition_meal_components.py::MealComponentEditTests.test_the_meal_change_and_the_component_edits_are_one_write`, `tests/test_nutrition_meal_components.py::MealComponentEditTests.test_a_new_day_moves_the_meal`, `tests/test_nutrition_meal_components.py::MealComponentEditTests.test_a_bad_meal_change_changes_nothing`, `backend/nutrition/meal_components.py::edited_components`, `backend/nutrition/meal_components.py::entry_components`, `backend/nutrition/diary.py::NutritionDiaryService.edit_components`, `backend/http_api/nutrition.py::NutritionPostRoutes._edit_components`; `tests/test_nutrition_meal_components.py::MealComponentEditTests.test_a_changed_amount_is_recalculated_and_the_others_stay_as_stored`, `tests/test_nutrition_meal_components.py::MealComponentEditTests.test_a_swap_keeps_the_amount_and_takes_the_new_origin`, `tests/test_nutrition_meal_components.py::MealComponentEditTests.test_a_removed_component_leaves_the_rest_and_the_last_one_stays`, `tests/test_nutrition_meal_components.py::MealComponentEditTests.test_a_swap_to_another_unit_is_refused_and_changes_nothing`, `tests/test_nutrition_meal_components.py::MealComponentEditTests.test_an_edit_of_a_meal_that_changed_meanwhile_is_refused`; `e2e/nutrition-meal-edit.spec.js`.
 
 ### Requirement: Diary changes are recorded and undoable
-The system SHALL record every diary create, correction, added product and deletion as a `nutrition_entry` change in change history, with the audit-projected fields of the entry, and SHALL let the shared undo restore the recorded state only while the entry still matches the state the change produced. A restored entry SHALL mark its date pending for a later explicit export. A Coach turn whose applied writes are all diary tools SHALL be undoable as a whole.
+The system SHALL record every diary create, correction, added product and deletion as a `nutrition_entry` change in change history, with the audit-projected fields of the entry, and SHALL let the shared undo restore the recorded state only while the entry still matches the state the change produced. A Coach turn whose applied writes are all diary tools SHALL be undoable as a whole.
 
 #### Scenario: Undo a logged meal
 - **WHEN** the athlete undoes the change that logged a meal
-- **THEN** the entry is removed and its date is marked pending again.
+- **THEN** the entry is removed.
 
 #### Scenario: Undo an added product
 - **WHEN** the athlete undoes the change that added a saved product to a logged meal
-- **THEN** the meal returns to its previous values and its date is marked pending.
+- **THEN** the meal returns to its previous values.
 
 #### Scenario: Undo a correction or deletion
 - **WHEN** the athlete undoes a correction or a deletion
@@ -154,7 +150,7 @@ Evidence:
 - `tests/test_nutrition_history.py::NutritionHistoryTests.test_a_coach_turn_that_logs_meals_is_undoable`
 - `tests/test_nutrition_history.py::NutritionHistoryTests.test_undo_is_refused_after_a_later_edit`
 - `tests/test_nutrition_history.py::NutritionHistoryTests.test_undo_of_a_correction_restores_the_previous_values`
-- `tests/test_nutrition_history.py::NutritionHistoryTests.test_undo_of_a_delete_brings_the_entry_back_after_a_sync`
+- `tests/test_nutrition_history.py::NutritionHistoryTests.test_undo_of_a_delete_brings_the_entry_back_and_a_later_log_undoes`
 - `tests/test_nutrition_history.py::NutritionHistoryTests.test_undo_of_a_logged_meal_removes_it`
 - `tests/test_nutrition_history.py::NutritionHistoryTests.test_undo_of_an_added_product_restores_the_previous_meal`
 

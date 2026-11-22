@@ -89,9 +89,8 @@ and repair details remain with the provider capabilities.
 | `start_intervals_plan_sync` | canonical_and_dialogue / remote_write | remote_intervals | CoachSyncToolService | `training-library / TL10 Exact explicit sync selection and complete repair manifests`; `training-library / TL11 Planned-calendar upsert identity and in-flight local changes`; `training-library / TL12 Guarded explicit removal of a linked planned event`; `training-library / TL13 Exact repair ownership and bounded duplicate cleanup`; `training-library / TL14 Repair identity retention and final collection verification`; `training-library / TL15 Selected execution reports mixed outcomes and failed-object retry scope`; `coach-tool-authority / CA5 Named remote synchronization and explicit proposals`; `coach-tool-authority / CA6 Session-bound immutable approval contents` | `test_new_plan_sync_and_later_selected_sync_use_real_ids` |
 | `start_provider_refresh` | canonical_and_dialogue / provider_read_job | ungated | CoachSyncToolService | `coach-context-and-provenance / CP6 Explicit provider refresh and current results` | `test_provider_reads_and_job_status_use_correct_provider` |
 | `sync_competitions` | canonical_and_dialogue / remote_write | remote_intervals | CoachSyncToolService | `competitions-and-seasons / CS5 Explicit competition sync and conflict recovery`; `coach-tool-authority / CA5 Named remote synchronization and explicit proposals`; `coach-tool-authority / CA6 Session-bound immutable approval contents` | `test_competition_lifecycle_syncs_only_after_explicit_followup` |
-| `sync_nutrition` | canonical_and_dialogue / remote_write | remote_intervals | CoachSyncToolService | `coach-tool-authority / CA5 Named remote synchronization and explicit proposals`; `coach-tool-authority / CA6 Session-bound immutable approval contents` | `test_nutrition_correction_preserves_fields_and_sync_is_explicitly_queued` |
 | `undo_training_change` | canonical_and_dialogue / local_write | undo | CoachPlanningActionToolService | `change-history-and-undo / HU3 Read-only undo previews bound to current state`; `change-history-and-undo / HU4 Atomic hash-checked domain restore`; `change-history-and-undo / HU6 Scoped Coach undo and explicit proposal path` | `test_undo_is_a_bound_preview_until_explicit_confirmation` |
-| `update_nutrition_entry` | canonical_and_dialogue / local_write | nutrition | CoachAthleteRecordToolService | `coach-tool-authority / CA2 Athlete-message provenance and exact effect scope`; `coach-tool-authority / CA3 Direct local writes with impact checks` | `test_nutrition_correction_preserves_fields_and_sync_is_explicitly_queued` |
+| `update_nutrition_entry` | canonical_and_dialogue / local_write | nutrition | CoachAthleteRecordToolService | `coach-tool-authority / CA2 Athlete-message provenance and exact effect scope`; `coach-tool-authority / CA3 Direct local writes with impact checks` | `test_nutrition_correction_preserves_fields` |
 | `update_profile` | canonical_and_dialogue / local_write | profile | CoachProfileUpdateService | `athlete-profile-and-checkins / AP2 Partial profile edits and optimistic Coach conflicts` | `test_permanent_profile_acceptance_reads_and_preserves_existing_facts` |
 | `update_training_plan` | canonical_and_dialogue / local_write | planning | CoachPlanningActionToolService | `training-plans-and-adaptation / TP4 Plan membership, metadata and persistent constraints`; `coach-tool-authority / CA4 Domain-confirmed destructive and bulk effects` | `test_requested_draft_commit_and_metadata_lifecycle` |
 <!-- END GENERATED TOOL TABLE -->
@@ -1056,14 +1055,6 @@ effect `provider_read_job`; receipt „Datenabruf beauftragt“; proposal card �
 effect `remote_write`; gate domain `remote_intervals`; receipt „Wettkampfsynchronisierung beauftragt“; proposal card „Wettkämpfe synchronisieren“; not fully tracked (no turn undo).
 
 - `reason` (string)
-- `_request`* (the envelope above)
-
-### `sync_nutrition`
-
-effect `remote_write`; gate domain `remote_intervals`; receipt „Ernährungssynchronisierung beauftragt“; proposal card „Ernährung synchronisieren“; not fully tracked (no turn undo).
-
-- `date` (string)
-- `pending_limit` (integer; ≥1; ≤31)
 - `_request`* (the envelope above)
 
 ### `undo_training_change`

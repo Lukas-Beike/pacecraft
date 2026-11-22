@@ -43,14 +43,12 @@ PROVIDER_REJECTIONS = {
     "wellness_backfill": "Der Wellness-Backfill ist nur für Garmin zulässig.",
     "stream_backfill": "Der Stream-Backfill ist nur für Garmin und Wahoo zulässig.",
     "activity_details": "Ungültiger Aktivitätsdetailauftrag.",
-    "nutrition_sync": "Ungültiger Ernährungssynchronisierungsauftrag.",
     "competition_push": "Dieser Job ist nur für Intervals.icu zulässig.",
     "plan_push": "Plan-Push-Jobs sind nur für Intervals.icu, Wahoo und Garmin zulässig.",
 }
 # Payloads valid for the Intervals.icu-only types, so only the provider check can fail.
 PROBE_PAYLOADS = {
     "activity_details": {"activity_id": "activity-1"},
-    "nutrition_sync": {"date": "2026-09-20"},
 }
 
 
@@ -77,67 +75,20 @@ def _refresh_message(provider, payload):
 
 
 class SyncJobContractTests(unittest.TestCase):
-    def test_nutrition_sync_job_payload_is_bounded_and_unambiguous(self):
-        self.assertEqual(
-            normalize_sync_job_request(
-                "intervals", "nutrition_sync", {"date": "2026-09-24"}, all_sync_days=30
-            ),
-            {
-                "provider": "intervals",
-                "type": "nutrition_sync",
-                "payload": {"date": "2026-09-24"},
-            },
-        )
-        self.assertEqual(
-            normalize_sync_job_request(
-                "intervals", "nutrition_sync", {"pending_limit": 31}, all_sync_days=30
-            )["payload"],
-            {"pending_limit": 31},
-        )
-        manifest = [
-            {
-                "date": "2026-09-24",
-                "revision": 2,
-                "total_kcal": 2000,
-                "total_carbs_g": 220.5,
-                "total_protein_g": 120.0,
-                "total_fat_g": 65.0,
-                "entry_count": 3,
-            }
-        ]
-        digest_values = {
-            key: value for key, value in manifest[0].items() if key != "revision"
-        }
-        manifest[0]["sha256"] = hashlib.sha256(
-            json.dumps(
-                digest_values, sort_keys=True, ensure_ascii=False, separators=(",", ":")
-            ).encode("utf-8")
-        ).hexdigest()
-        self.assertEqual(
-            normalize_sync_job_request(
-                "intervals",
-                "nutrition_sync",
-                {"approval_manifest": manifest},
-                all_sync_days=30,
-            )["payload"],
-            {"approval_manifest": manifest},
-        )
-        for provider, payload in (
-            ("garmin", {"date": "2026-09-24"}),
-            ("intervals", {"date": "2026-02-30"}),
-            ("intervals", {"date": "2026-09-24", "pending_limit": 1}),
-            ("intervals", {"pending_limit": 32}),
-            ("intervals", {"pending_limit": True}),
-            ("intervals", {"unexpected": "value"}),
-            ("intervals", {"approval_manifest": [{"date": "2026-09-24"}]}),
-        ):
-            with (
-                self.subTest(provider=provider, payload=payload),
-                self.assertRaises(JobValidationError),
-            ):
-                normalize_sync_job_request(
-                    provider, "nutrition_sync", payload, all_sync_days=30
-                )
+    def test_nutrition_sync_is_an_unsupported_job_type_for_every_provider(self):
+        # Athlete decision (#4031): nutrition is never sent to Intervals.icu, so
+        # no nutrition job can be queued for any provider.
+        self.assertNotIn("nutrition_sync", JOB_TYPES)
+        for provider in ("intervals", "garmin", "wahoo"):
+            for payload in ({"date": "2026-09-24"}, {"pending_limit": 3}, {}):
+                with (
+                    self.subTest(provider=provider, payload=payload),
+                    self.assertRaises(JobValidationError) as raised,
+                ):
+                    normalize_sync_job_request(
+                        provider, "nutrition_sync", payload, all_sync_days=30
+                    )
+                self.assertEqual(str(raised.exception), "Unsupported job type.")
 
     def test_request_contract_normalizes_provider_and_type(self):
         result = validate_job_request(" Garmin ", " REFRESH ", {"days": 30})

@@ -129,7 +129,6 @@ class LiveCredentialHarness:
                 service=mock.Mock, outcome_service=mock.Mock
             ),
             provider_sync=SimpleNamespace(operation_observer=_Observer),
-            nutrition=SimpleNamespace(intervals_sync_service=mock.Mock),
             morning_body_battery_service=mock.Mock,
             garmin=SimpleNamespace(
                 sync_service=mock.Mock,

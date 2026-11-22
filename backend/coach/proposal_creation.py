@@ -69,7 +69,6 @@ class CoachProposalCreationService:
         now: Callable[[], float] = time.time,
         utc_now: Callable[[], str] = _utc_now,
         uuid_factory: Callable[[], uuid.UUID] = uuid.uuid4,
-        nutrition_diary_service: Callable[[], Any] | None = None,
         today: Callable[[], date] | None = None,
     ) -> None:
         self._today = today or _utc_today
@@ -78,7 +77,6 @@ class CoachProposalCreationService:
         self._now = now
         self._utc_now = utc_now
         self._uuid_factory = uuid_factory
-        self._nutrition_diary_service = nutrition_diary_service
 
     def create(self, values: Any, session_csrf_hash: str) -> dict[str, Any]:
         action_type, target_system, object_ids, diff, payload = (
@@ -184,7 +182,6 @@ class CoachProposalCreationService:
                 arguments,
                 intent,
                 database_manager=self._database_manager,
-                nutrition_diary_service=self._nutrition_diary_service,
                 today=self._today(),
             ),
             "conversation_id": str(conversation_id)[:160],
@@ -276,7 +273,6 @@ def _approved_remote_arguments(
     intent: dict[str, Any],
     *,
     database_manager: DatabaseManager,
-    nutrition_diary_service: Callable[[], Any] | None,
     today: date,
 ) -> dict[str, Any]:
     if tool == "start_intervals_plan_sync":
@@ -286,8 +282,6 @@ def _approved_remote_arguments(
     if tool == "sync_competitions":
         with database_manager.reader() as db:
             return {**arguments, "_approval_manifest": competition_push_manifest(db)}
-    if tool == "sync_nutrition":
-        return _nutrition_approval_arguments(arguments, nutrition_diary_service)
     if tool == "apply_adaptive_replan":
         return _adaptive_approval_arguments(arguments, database_manager)
     return dict(arguments)
@@ -729,24 +723,6 @@ def _plan_workout_details(rows: list[Any]) -> list[dict[str, str]]:
                 }
             )
     return details
-
-
-def _nutrition_approval_arguments(
-    arguments: dict[str, Any], nutrition_diary_service: Callable[[], Any] | None
-) -> dict[str, Any]:
-    if not nutrition_diary_service:
-        raise AppError(503, "Ernährungsvorschau ist nicht verfügbar.")
-    date_value = str(arguments.get("date") or "").strip()
-    limit = arguments.get("pending_limit")
-    if bool(date_value) == (limit is not None):
-        raise AppError(400, "Wähle ein Datum oder ausstehende Tage.")
-    nutrition = nutrition_diary_service()
-    manifest = (
-        nutrition.sync_status.approval_manifest(meal_date=date_value)
-        if date_value
-        else nutrition.sync_status.approval_manifest(pending_limit=limit)
-    )
-    return {**arguments, "_approval_manifest": manifest}
 
 
 # A card-free run never carries an explicit Garmin removal ("Von Garmin entfernen").

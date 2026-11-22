@@ -612,7 +612,7 @@ The system SHALL classify every non-read dialogue call from its validated `_requ
 
 #### Scenario: Step kinds
 - **WHEN** a call is classified
-- **THEN** it is a remote write for `start_intervals_plan_sync`, `push_strength_to_garmin`, `sync_competitions`, `sync_nutrition`, `apply_adaptive_replan` with `sync_illness_to_intervals`, and `resolve_training_sync_conflict` retrying a `plan_push`, `competition_push` or `nutrition_sync` job; a provider refresh for `start_provider_refresh` and a retry of any other job; otherwise a local action; a turn with mutations withheld fails every one with 403 `intent_scope_denied`, and a retry naming both `local_id` and `job_id` fails with 400 `tool_arguments_invalid`
+- **THEN** it is a remote write for `start_intervals_plan_sync`, `push_strength_to_garmin`, `sync_competitions`, `apply_adaptive_replan` with `sync_illness_to_intervals`, and `resolve_training_sync_conflict` retrying a `plan_push` or `competition_push` job; a provider refresh for `start_provider_refresh` and a retry of any other job; otherwise a local action; a turn with mutations withheld fails every one with 403 `intent_scope_denied`, and a retry naming both `local_id` and `job_id` fails with 400 `tool_arguments_invalid`
 
 #### Scenario: Target and remote declaration
 - **WHEN** the envelope does not fit the step kind
@@ -649,7 +649,7 @@ The system SHALL execute a non-read tool only when its classified scope holds th
 
 #### Scenario: Provider tokens
 - **WHEN** a sync or refresh tool executes
-- **THEN** `start_provider_refresh` needs `<target>_refresh`; `start_intervals_plan_sync` intervals_sync plus the unit groups its plan-sync owner derives from the entries; `push_strength_to_garmin` garmin_sync and `planned_unit:<id>` for each entry; `sync_competitions` intervals_sync and local_competitions; `sync_nutrition` intervals_sync (its owner accepts local_nutrition or intervals_sync, and the remote target needs intervals_sync); `resolve_training_sync_conflict` `competition:<id>` with a `local_id`, or with a `job_id` `sync_job:<id>` and `<provider>_sync` for a push job, else `<provider>_refresh`; `get_sync_job` `sync_job:<id>` unless the job was started in this turn (preparation grants it, see CP6)
+- **THEN** `start_provider_refresh` needs `<target>_refresh`; `start_intervals_plan_sync` intervals_sync plus the unit groups its plan-sync owner derives from the entries; `push_strength_to_garmin` garmin_sync and `planned_unit:<id>` for each entry; `sync_competitions` intervals_sync and local_competitions; `resolve_training_sync_conflict` `competition:<id>` with a `local_id`, or with a `job_id` `sync_job:<id>` and `<provider>_sync` for a push job, else `<provider>_refresh`; `get_sync_job` `sync_job:<id>` unless the job was started in this turn (preparation grants it, see CP6)
 
 Evidence:
 - `backend/coach/adaptive_apply.py:CoachAdaptiveApplyService.apply`
@@ -683,7 +683,7 @@ The system SHALL bind every Coach remote write to stored local state before it r
 
 #### Scenario: Competition, nutrition and illness-pause syncs
 - **WHEN** one of these syncs is prepared
-- **THEN** the competition sync stores a manifest with a SHA-256 per stored row and lists name, date and sport, a deletion as "Wird bei Intervals.icu entfernt" or "Remote-Wettkampfeintrag löschen", and a row changed since fails with 409 "Der Wettkampfbestand hat sich vor der Freigabe geändert."; the nutrition sync needs exactly one of `date` and `pending_limit` (400 "Wähle ein Datum oder ausstehende Tage.") and takes its manifest from the stored diary; the illness-pause sync takes only the adjustment id from the model, requires it to name the latest stored preview with an unapproved pause and stores that pause's dates (409 otherwise)
+- **THEN** the competition sync stores a manifest with a SHA-256 per stored row and lists name, date and sport, a deletion as "Wird bei Intervals.icu entfernt" or "Remote-Wettkampfeintrag löschen", and a row changed since fails with 409 "Der Wettkampfbestand hat sich vor der Freigabe geändert."; the illness-pause sync takes only the adjustment id from the model, requires it to name the latest stored preview with an unapproved pause and stores that pause's dates (409 otherwise)
 
 #### Scenario: Execution of an approved card
 - **WHEN** an approved card executes

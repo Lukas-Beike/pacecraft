@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import hashlib
-import json
 import unittest
 from contextlib import contextmanager
 from datetime import UTC, date, datetime
@@ -71,27 +69,6 @@ class RecordingFixtureLoader:
 
     def path(self) -> Path | None:
         return self.fixture_path
-
-
-class MockNutritionSync:
-    def __init__(self) -> None:
-        self.calls = []
-
-    def sync_day(self, day):
-        self.calls.append(("day", day))
-        return {"date": day, "pending": False}
-
-    def sync_pending(self, limit):
-        self.calls.append(("pending", limit))
-        return {"synced_dates": ["2026-09-24"], "pending_dates": [], "failed_dates": {}}
-
-    def sync_approved(self, manifest):
-        self.calls.append(("approved", manifest))
-        return {
-            "synced_dates": [item["date"] for item in manifest],
-            "pending_dates": [],
-            "failed_dates": {},
-        }
 
 
 class RecordingObserver:
@@ -202,7 +179,6 @@ class SyncJobExecutorTests(unittest.TestCase):
         self.queue = RecordingQueue()
         self.morning = RecordingService()
         self.fixture = RecordingFixtureLoader()
-        self.nutrition = MockNutritionSync()
         self.details = Mock()
         self.details.prefetch_new.return_value = {"fetched": 2, "failed": 0}
         self.executor = self.make_executor()
@@ -223,7 +199,6 @@ class SyncJobExecutorTests(unittest.TestCase):
                         sync_operation_observer=self.observer,
                         intervals_resync_gate=self.gate,
                     ),
-                    nutrition_sync_service=self.nutrition,
                 ),
                 GARMIN_ID: GarminJobAdapter(
                     jobs=GarminSyncJobOwner(
@@ -299,59 +274,22 @@ class SyncJobExecutorTests(unittest.TestCase):
             [(({"entries": [entry], "repair": True},), {})],
         )
 
-    def test_dispatches_explicit_nutrition_sync_jobs(self) -> None:
-        daily = self.executor.execute(
-            self.job("intervals", "nutrition_sync", {"date": "2026-09-24"})
-        )
-        pending = self.executor.execute(
-            self.job("intervals", "nutrition_sync", {"pending_limit": 7})
-        )
-        self.assertEqual(
-            daily, {"status": "completed", "date": "2026-09-24", "pending": False}
-        )
-        self.assertEqual(
-            pending,
-            {
-                "status": "completed",
-                "synced_dates": ["2026-09-24"],
-                "pending_dates": [],
-                "failed_dates": [],
-            },
-        )
-        self.assertEqual(self.nutrition.calls, [("day", "2026-09-24"), ("pending", 7)])
+    def test_a_stale_nutrition_sync_job_fails_without_reaching_intervals(self) -> None:
+        # Athlete decision (#4031): nutrition is never sent to Intervals.icu. A job
+        # stored by an earlier release fails and calls no provider service.
+        job = self.job("intervals", "nutrition_sync", {"date": "2026-09-24"})
 
-        approved = [
-            {
-                "date": "2026-09-24",
-                "revision": 2,
-                "total_kcal": 1200,
-                "total_carbs_g": 120.0,
-                "total_protein_g": 60.0,
-                "total_fat_g": 40.0,
-                "entry_count": 2,
-            }
-        ]
-        approved[0]["sha256"] = hashlib.sha256(
-            json.dumps(
-                {key: value for key, value in approved[0].items() if key != "revision"},
-                sort_keys=True,
-                ensure_ascii=False,
-                separators=(",", ":"),
-            ).encode("utf-8")
-        ).hexdigest()
-        result = self.executor.execute(
-            self.job("intervals", "nutrition_sync", {"approval_manifest": approved})
-        )
-        self.assertEqual(
-            result,
-            {
-                "status": "completed",
-                "synced_dates": ["2026-09-24"],
-                "pending_dates": [],
-                "failed_dates": [],
-            },
-        )
-        self.assertEqual(self.nutrition.calls[-1], ("approved", approved))
+        self.executor.run(job)
+
+        self.assertEqual(self.outcomes.complete_calls, [])
+        ((failed_job, error),) = self.outcomes.failure_calls
+        self.assertIs(failed_job, job)
+        assert isinstance(error, AppError)
+        self.assertEqual((error.status, error.reason), (400, "invalid_job_request"))
+        self.assertEqual(str(error), "Unsupported job type.")
+        for service in (self.selected, self.competitions, self.intervals):
+            self.assertEqual(service.calls, [])
+        self.assertEqual(self.after_job_calls, [])
 
     def test_calendar_and_weather_forward_reason_operation_and_force(self) -> None:
         self.executor.execute(self.job("calendar", payload={"reason": "morning"}))
@@ -641,22 +579,6 @@ class ProviderJobAdapterTests(unittest.TestCase):
     def setUp(self) -> None:
         self.job = {"id": "job-123", "provider": "intervals", "type": "refresh"}
 
-    def test_intervals_nutrition_runs_inline_without_provider_jobs(self) -> None:
-        jobs = Mock()
-        nutrition = MockNutritionSync()
-        adapter = IntervalsJobAdapter(jobs=jobs, nutrition_sync_service=nutrition)
-
-        result = adapter.execute(
-            self.job, {"date": "2026-09-24"}, "manual", job_type="nutrition_sync"
-        )
-
-        self.assertEqual(
-            result, {"status": "completed", "date": "2026-09-24", "pending": False}
-        )
-        self.assertEqual(nutrition.calls, [("day", "2026-09-24")])
-        jobs.execute_specific.assert_not_called()
-        jobs.execute_sync.assert_not_called()
-
     def test_intervals_output_leaves_a_stamp_only_for_a_real_round_trip(self) -> None:
         ok, failed = "intervals_last_output_ok_at", "intervals_last_output_failed_at"
 
@@ -677,37 +599,11 @@ class ProviderJobAdapterTests(unittest.TestCase):
             with self.subTest(job_type=job_type, result=result):
                 jobs, stamps = Mock(), cast("list[str]", [])
                 jobs.execute_specific.return_value = result
-                adapter = IntervalsJobAdapter(
-                    jobs=jobs,
-                    nutrition_sync_service=MockNutritionSync(),
-                    record_output=stamps.append,
-                )
+                adapter = IntervalsJobAdapter(jobs=jobs, record_output=stamps.append)
                 self.assertIs(
                     result, adapter.execute(self.job, {}, "manual", job_type=job_type)
                 )
                 self.assertEqual(stamps, [expected] if expected else [])
-        stamps = []
-        adapter = IntervalsJobAdapter(
-            jobs=Mock(),
-            nutrition_sync_service=MockNutritionSync(),
-            record_output=stamps.append,
-        )
-        adapter.execute(
-            self.job, {"date": "2026-09-24"}, "manual", job_type="nutrition_sync"
-        )
-        self.assertEqual(stamps, [ok])
-        # failed_dates also carries local errors (changed approval, busy writer).
-        local_only = Mock()
-        local_only.sync_pending.return_value = {
-            "synced_dates": [],
-            "pending_dates": [],
-            "failed_dates": {"2026-09-24": "Nutrition data changed after approval"},
-        }
-        stamps = []
-        IntervalsJobAdapter(
-            jobs=Mock(), nutrition_sync_service=local_only, record_output=stamps.append
-        ).execute(self.job, {"pending_limit": 7}, "manual", job_type="nutrition_sync")
-        self.assertEqual(stamps, [])
 
     def test_only_a_provider_failure_leaves_a_failed_stamp(self) -> None:
         cases = [
@@ -724,11 +620,7 @@ class ProviderJobAdapterTests(unittest.TestCase):
             with self.subTest(error=repr(error)):
                 jobs, stamps = Mock(), cast("list[str]", [])
                 jobs.execute_specific.side_effect = error
-                adapter = IntervalsJobAdapter(
-                    jobs=jobs,
-                    nutrition_sync_service=MockNutritionSync(),
-                    record_output=stamps.append,
-                )
+                adapter = IntervalsJobAdapter(jobs=jobs, record_output=stamps.append)
                 with self.assertRaises(type(error)):
                     adapter.execute(self.job, {}, "manual", job_type="competition_push")
                 self.assertEqual(
@@ -742,9 +634,7 @@ class ProviderJobAdapterTests(unittest.TestCase):
         def broken(_key: str) -> None:
             raise RuntimeError("database busy")
 
-        adapter = IntervalsJobAdapter(
-            jobs=jobs, nutrition_sync_service=MockNutritionSync(), record_output=broken
-        )
+        adapter = IntervalsJobAdapter(jobs=jobs, record_output=broken)
         self.assertEqual(
             adapter.execute(self.job, {}, "manual", job_type="competition_push"),
             {"status": "ok"},

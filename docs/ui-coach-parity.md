@@ -85,7 +85,6 @@ added a row conflicted on it (#4092).
 | Nutrition | Delete a meal | Tagebuch card `POST /api/nutrition/entry/delete` | `delete_nutrition_entry` | delete confirmation, undo | both | |
 | Nutrition | Create, edit or delete a saved meal | Produkte "Gespeicherte Mahlzeiten" `GET /api/nutrition/templates`, `POST /api/nutrition/templates`, `POST /api/nutrition/templates/from-entry`, `POST /api/nutrition/templates/delete` | `save_nutrition_template`, `delete_nutrition_template` | receipt, undo | both | |
 | Nutrition | Log a saved meal | Produkte "Eintragen" `POST /api/nutrition/templates/log` | `log_nutrition_template` | receipt, undo | both | |
-| Nutrition | Send daily totals to Intervals.icu | — | `sync_nutrition` | named sync | Coach only | #3952 |
 | Products | Search foods and products | Produkte `GET /api/nutrition/products`, `POST /api/nutrition/products/lookup` | `lookup_food`, `calculate_food_nutrition` | — | both | |
 | Products | Save a confirmed product, also from a label photo | Produkte `POST /api/nutrition/products`, `POST /api/nutrition/products/extract` | `save_nutrition_product` | receipt | both | |
 | Products | Edit a product or fill its missing values | Produkte `PUT /api/nutrition/products` | `list_incomplete_nutrition_products`, `fill_nutrition_product_gaps`, `search_web_for_product_values` | receipt | both | |

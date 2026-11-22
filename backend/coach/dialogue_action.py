@@ -169,8 +169,7 @@ class CoachDialogueActionService:
         name: str, arguments: dict[str, Any], retry_job: dict[str, Any] | None
     ) -> tuple[bool, bool]:
         retry_push = bool(
-            retry_job
-            and retry_job["type"] in {"plan_push", "competition_push", "nutrition_sync"}
+            retry_job and retry_job["type"] in {"plan_push", "competition_push"}
         )
         remote_write = (
             name
@@ -178,7 +177,6 @@ class CoachDialogueActionService:
                 "start_intervals_plan_sync",
                 "push_strength_to_garmin",
                 "sync_competitions",
-                "sync_nutrition",
             }
             or (
                 name == "apply_adaptive_replan"
@@ -378,8 +376,6 @@ class CoachDialogueActionService:
             self._validate_repair_scope(arguments, action["request"], action)
         if name == "push_strength_to_garmin":
             _apply_garmin_scope(arguments, action)
-        if name == "sync_nutrition":
-            require_coach_scope(action, "local_nutrition", "intervals_sync")
 
     @staticmethod
     def _apply_object_scope(

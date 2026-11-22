@@ -620,7 +620,6 @@ class CoachContextSelectionTests(unittest.TestCase):
             "Trag 2 Bananen ein": {"save_nutrition_entry"},
             "Mein Ruhepuls war heute 48, Schlaf 6 von 10": {"save_checkin"},
             "Ich will am 12. Oktober beim Stadtlauf starten": {"save_competition"},
-            "Gleiche die Ernährung mit Intervals ab": {"sync_nutrition"},
         }
         registered = {tool["name"] for tool in server.COACH_DIALOGUE_TOOLS}
         for message, expected in cases.items():

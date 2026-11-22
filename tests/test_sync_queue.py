@@ -182,6 +182,16 @@ class SyncJobQueueServiceTests(SyncQueueFixtureMixin, unittest.TestCase):
             lambda: self.service.resolve(queued["id"], {"action": "retry"})
         )
         self.assertEqual((stale.status, stale.reason), (409, "approval_stale"))
+        # #4031: a stored job of the removed nutrition export type cannot be retried.
+        with self.manager.unit_of_work() as db:
+            db.execute(
+                "UPDATE sync_jobs SET status='failed', error_class=NULL, type='nutrition_sync' WHERE id=?",
+                (queued["id"],),
+            )
+        retired = self._app_error(
+            lambda: self.service.resolve(queued["id"], {"action": "retry"})
+        )
+        self.assertEqual((retired.status, retired.reason), (409, "job_type_retired"))
 
     @staticmethod
     def _app_error(action):

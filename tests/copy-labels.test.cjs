@@ -28,9 +28,9 @@ test("profile sports are shown in German while stored identifiers stay unchanged
 
 test("a nutrition entry without a recorded basis is labelled by its source and leaves the sync state to the card", () => {
   const { nutritionBasisLabel } = extractFunctions("nutrition.js", ["nutritionBasisLabel"]);
-  assert.equal(nutritionBasisLabel(undefined, { template: false, syncLabel: " · lokal" }, "Manuelle Angabe"), "Manuelle Angabe");
-  assert.equal(nutritionBasisLabel({ kind: "packaging_label" }, {}, "Erfasst"), "Verpackungsangabe");
-  assert.equal(nutritionBasisLabel({ kind: "composite" }, {}, "Erfasst"), "");
+  assert.equal(nutritionBasisLabel(undefined, "Manuelle Angabe"), "Manuelle Angabe");
+  assert.equal(nutritionBasisLabel({ kind: "packaging_label" }, "Erfasst"), "Verpackungsangabe");
+  assert.equal(nutritionBasisLabel({ kind: "composite" }, "Erfasst"), "");
 });
 
 function contextValueNodeFor() {

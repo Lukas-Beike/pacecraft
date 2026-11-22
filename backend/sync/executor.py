@@ -444,7 +444,7 @@ def _output_stamp(job_type: str, result: dict[str, Any]) -> str | None:
 
     A skipped entry, an already synced one, a conflict with local edits and a
     contended run are local outcomes; only a synced entry, a completed
-    competition run or a synced nutrition day proves the connection.
+    competition run proves the connection.
     """
     if job_type == "plan_push":
         entries = [item.get("status") for item in result.get("results") or []]
@@ -453,15 +453,11 @@ def _output_stamp(job_type: str, result: dict[str, Any]) -> str | None:
         return INTERVALS_OUTPUT_FAILED_KEY if "error" in entries else None
     if job_type == "competition_push":
         return INTERVALS_OUTPUT_OK_KEY if result.get("status") == "ok" else None
-    if result.get("synced_dates") or ("date" in result and not result.get("pending")):
-        return INTERVALS_OUTPUT_OK_KEY
-    # failed_dates also holds local errors (changed approval, busy writer), so a
-    # nutrition failure is stamped only from a provider exception, not from here.
     return None
 
 
 class IntervalsJobAdapter:
-    """Route Intervals jobs: nutrition inline, then the plan and competition pushes.
+    """Route the Intervals jobs: the plan and competition pushes.
 
     A job that reached Intervals.icu leaves the stamp of its outcome through
     ``record_output``; the connection chip reads it after a reload.
@@ -471,11 +467,9 @@ class IntervalsJobAdapter:
         self,
         *,
         jobs: IntervalsSyncJobOwner,
-        nutrition_sync_service: Any,
         record_output: Callable[[str], None] = lambda _key: None,
     ) -> None:
         self._jobs = jobs
-        self._nutrition_sync_service = nutrition_sync_service
         self._record_output = record_output
 
     def execute(
@@ -513,40 +507,10 @@ class IntervalsJobAdapter:
         reason: str,
         job_type: str,
     ) -> dict[str, Any]:
-        if job_type == "nutrition_sync":
-            return self._nutrition_sync(payload)
         specific = self._jobs.execute_specific(job, payload, reason, job_type)
         if specific is None:
             raise AppError(400, UNKNOWN_PROVIDER_JOB, reason="invalid_job_request")
         return specific
-
-    def _nutrition_sync(self, payload: dict[str, Any]) -> dict[str, Any]:
-        if "approval_manifest" in payload:
-            result = self._nutrition_sync_service.sync_approved(
-                payload["approval_manifest"]
-            )
-            incomplete = result.get("pending_dates") or result.get("failed_dates")
-            return {
-                "status": "partial" if incomplete else "completed",
-                "synced_dates": result["synced_dates"],
-                "pending_dates": result.get("pending_dates", []),
-                "failed_dates": sorted(result.get("failed_dates", {})),
-            }
-        if "date" in payload:
-            result = self._nutrition_sync_service.sync_day(payload["date"])
-            return {
-                "status": "partial" if result.get("pending") else "completed",
-                "date": result["date"],
-                "pending": result.get("pending", False),
-            }
-        result = self._nutrition_sync_service.sync_pending(payload["pending_limit"])
-        incomplete = result.get("pending_dates") or result.get("failed_dates")
-        return {
-            "status": "partial" if incomplete else "completed",
-            "synced_dates": result["synced_dates"],
-            "pending_dates": result.get("pending_dates", []),
-            "failed_dates": sorted(result.get("failed_dates", {})),
-        }
 
 
 class GarminStrengthPushOwner(Protocol):
