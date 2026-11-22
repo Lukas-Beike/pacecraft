@@ -393,31 +393,12 @@ def state(
         hashes[rel] = digest
     if any(not unchanged(rel, path) for rel, path in paths):
         raise Unavailable(SOURCE_CHANGED)
-    branch = (
-        subprocess.run(
-            ["git", "-C", str(root), "rev-parse", "HEAD"],
-            capture_output=True,
-            check=True,
-        )
-        .stdout.decode()
-        .strip()
-    )
-    ref = (
-        subprocess.run(
-            ["git", "-C", str(root), "symbolic-ref", "-q", "HEAD"],
-            check=False,
-            capture_output=True,
-        )
-        .stdout.decode("utf-8", "replace")
-        .strip()
-    )
     stamp = hashlib.sha256(
         json.dumps(
             [
                 WRAPPER_SCHEMA,
                 VERSION,
-                branch,
-                ref,
+                _git_identity(root),
                 sorted(SOURCE_DIRS),
                 sorted(ROOT_FILES),
                 sorted(DENIED),
@@ -440,8 +421,9 @@ def _corpus_signature(root: Path) -> list[tuple[str, tuple[int, int, int, int]]]
     return [(rel, _signature(path)) for rel, path in corpus_paths(root)]
 
 
-def _git_identity(root: Path) -> tuple[str, str]:
-    head = (
+def _git_identity(root: Path) -> str:
+    """The commit only: a branch switch at the same commit keeps the graph (#3921)."""
+    return (
         subprocess.run(
             ["git", "-C", str(root), "rev-parse", "HEAD"],
             capture_output=True,
@@ -450,16 +432,6 @@ def _git_identity(root: Path) -> tuple[str, str]:
         .stdout.decode()
         .strip()
     )
-    ref = (
-        subprocess.run(
-            ["git", "-C", str(root), "symbolic-ref", "-q", "HEAD"],
-            check=False,
-            capture_output=True,
-        )
-        .stdout.decode("utf-8", "replace")
-        .strip()
-    )
-    return head, ref
 
 
 def _config_signature() -> str:
@@ -481,7 +453,7 @@ def _metadata(root: Path) -> dict:
     """Cheap freshness hint; never reads source contents."""
     return {
         "files": [[rel, list(sig)] for rel, sig in _corpus_signature(root)],
-        "git": list(_git_identity(root)),
+        "git": [_git_identity(root)],
         "config": _config_signature(),
     }
 
@@ -489,7 +461,7 @@ def _metadata(root: Path) -> dict:
 def _metadata_matches(root: Path, metadata: dict, source_signature: list) -> bool:
     return (
         metadata.get("files") == [[rel, list(sig)] for rel, sig in source_signature]
-        and metadata.get("git") == list(_git_identity(root))
+        and metadata.get("git") == [_git_identity(root)]
         and metadata.get("config") == _config_signature()
     )
 
@@ -653,13 +625,13 @@ def _run_graphify(root: Path, base: Path, inputs: Path, deadline: float) -> Path
         graph_data.get("nodes"),
         graph_data.get("edges", graph_data.get("links")),
     )
-    if (
-        result.returncode
-        or not isinstance(nodes, list)
-        or not nodes
-        or not isinstance(edges, list)
-    ):
-        raise Unavailable("Graphify update failed or returned an invalid graph")
+    if result.returncode:
+        # Name the cause, not only that it failed (#3921).
+        lines = (result.stderr or b"").decode("utf-8", "replace").strip().splitlines()
+        cause = _one_line(lines[-1]) if lines else "no error output"
+        raise Unavailable(f"Graphify update exited {result.returncode}: {cause}")
+    if not isinstance(nodes, list) or not nodes or not isinstance(edges, list):
+        raise Unavailable("Graphify update returned a graph without nodes or edges")
     if any(
         not isinstance(edge, dict)
         or not (
@@ -765,9 +737,31 @@ def update(root: Path, *, preparation: bool = False) -> int:
     except (OSError, subprocess.SubprocessError, Unavailable) as exc:
         # Do not mutate current.json outside the updater lock. Freshness is
         # derived from the source fingerprint and graph pointer at read time.
-        reason = str(exc) if isinstance(exc, Unavailable) else "Graphify process failed"
-        print(f"Graphify local: unavailable/stale ({reason})")
+        print(f"Graphify local: unavailable/stale ({_cause(exc)})")
         return 2
+
+
+def _one_line(text: str) -> str:
+    """Tool output as one printable line of at most 300 characters."""
+    # isprintable() drops C0, DEL and C1 controls such as U+009B (CSI) too.
+    printable = "".join(c if c.isprintable() else " " for c in text)
+    return " ".join(printable.split())[:300]
+
+
+def _cause(exc: BaseException) -> str:
+    """Why an operation failed, in one line (#3921)."""
+    if isinstance(exc, Unavailable):
+        return str(exc)
+    if isinstance(exc, subprocess.TimeoutExpired):
+        return f"Graphify timed out after {exc.timeout:.0f} s"
+    return _one_line(f"{type(exc).__name__}: {exc}")
+
+
+def _behind(root: Path, pointer: dict) -> int:
+    """How many source files changed, appeared or went since the graph was built."""
+    old = dict(pointer.get("metadata", {}).get("files", []))
+    new = {rel: list(sig) for rel, sig in _corpus_signature(root)}
+    return sum(old.get(rel) != new.get(rel) for rel in old.keys() | new.keys())
 
 
 def active_graph(root: Path) -> tuple[Path, Path]:
@@ -782,7 +776,20 @@ def active_graph(root: Path) -> tuple[Path, Path]:
     if current.get("stale") or not graph.is_file():
         raise Unavailable("no fresh local graph; run update")
     if not _metadata_current(root, current):
-        raise Unavailable("no fresh local graph; run update")
+        # Serve the last intact graph with a note instead of refusing (#3921).
+        digest = hashlib.sha256(graph.read_bytes()).hexdigest()
+        if digest != current.get("graph_sha256"):
+            raise Unavailable("local graph checksum mismatch; run update")
+        # Only files and commit may lag; a changed allowlist needs a rebuild.
+        if current.get("metadata", {}).get("config") != _config_signature():
+            raise Unavailable("local graph built for other source rules; run update")
+        files = _behind(root, current)
+        lag = f"behind by {files} files" if files else "from another commit"
+        print(
+            f"Graphify local: last graph, {lag}; "
+            "run `python scripts/graphify_local.py update` for a current one",
+            file=sys.stderr,
+        )
     return gen, graph
 
 
@@ -1111,8 +1118,7 @@ def main(argv: list[str] | None = None) -> int:
         root = repo_root(Path(__file__).parent)
         return _dispatch(root, args)
     except (Unavailable, OSError, subprocess.SubprocessError, ValueError) as exc:
-        reason = str(exc) if isinstance(exc, Unavailable) else "local operation failed"
-        print(f"Graphify local unavailable: {reason}", file=sys.stderr)
+        print(f"Graphify local unavailable: {_cause(exc)}", file=sys.stderr)
         return 2
 
 
