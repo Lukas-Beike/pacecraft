@@ -178,12 +178,13 @@ async function openCheckinForm(dateKey) {
 }
 
 // A tap on the reminder opens "#plan/checkin" (the router shows the calendar): once the app has rendered,
-// the form opens for today.
-let checkinLinkPending = globalThis.location.hash.toLowerCase() === "#plan/checkin";
-globalThis.addEventListener("hashchange", () => { checkinLinkPending ||= globalThis.location.hash.toLowerCase() === "#plan/checkin"; });
+// the form opens for today. The tap counts for ten seconds, so a declined navigation opens nothing later.
+const CHECKIN_LINK = "#plan/checkin";
+let checkinLinkAt = globalThis.location.hash.toLowerCase() === CHECKIN_LINK ? Date.now() : 0;
+globalThis.addEventListener("hashchange", () => { checkinLinkAt = globalThis.location.hash.toLowerCase() === CHECKIN_LINK ? Date.now() : 0; });
 document.addEventListener("app:route-rendered", () => {
-  if (!checkinLinkPending || !state.data) return;
-  checkinLinkPending = false;
-  if (AppRouter.baseRoute() !== "plan") return;
-  void openCheckinForm(todayIso());
+  if (!checkinLinkAt || !state.data) return;
+  const fresh = Date.now() - checkinLinkAt < 10_000;
+  checkinLinkAt = 0;
+  if (fresh && AppRouter.baseRoute() === "plan") void openCheckinForm(todayIso());
 });
