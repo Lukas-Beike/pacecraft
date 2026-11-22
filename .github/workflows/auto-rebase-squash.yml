@@ -41,16 +41,20 @@ jobs:
           permission-pull-requests: write
       # Dependabot runs receive no secrets, so its ruff/mypy bumps are aligned
       # here: trusted develop code reads the PR files as data and never runs them.
+      # The default checkout is the pushed or latest develop commit. A finished
+      # CI run only moves the rebase queue, so it checks out nothing.
       - name: Check out trusted develop
+        if: ${{ github.event_name != 'workflow_run' }}
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-          ref: ${{ github.sha }}
       - name: Set up Python
+        if: ${{ github.event_name != 'workflow_run' }}
         uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: '3.14'
       - name: Align quality baseline tool versions in Dependabot PRs
+        if: ${{ github.event_name != 'workflow_run' }}
         env:
           GH_TOKEN: ${{ steps.branch-app-token.outputs.token }}
           REPOSITORY: ${{ github.repository }}
