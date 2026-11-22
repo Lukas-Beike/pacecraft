@@ -192,7 +192,9 @@ def remove(entry: dict, merged_by_pr: bool) -> str | None:
 
 def schedule(primary: str, *, windows: bool = os.name == "nt") -> int:
     """Run the prune with --apply daily from the primary checkout."""
-    command = f'"{sys.executable}" scripts/prune_worktrees.py --apply'
+    # A stable interpreter, not this one: a worktree venv may be pruned itself.
+    python = "py -3" if windows else "python3"
+    command = f"{python} scripts/prune_worktrees.py --apply"
     if not windows:
         hour, minute = DAILY_AT.split(":")
         print(

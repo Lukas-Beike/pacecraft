@@ -282,12 +282,14 @@ class PruneWorktreesTests(unittest.TestCase):
             self.assertEqual(prune.schedule("C:/repo", windows=True), 0)
         (args,) = calls
         self.assertEqual(args[:9], ["schtasks", "/Create", "/F", "/SC", "DAILY", "/ST", "04:00", "/TN", prune.TASK])  # fmt: skip
-        self.assertTrue(args[10].startswith('cmd /c cd /d "C:/repo" && "'))
-        self.assertTrue(args[10].endswith("scripts/prune_worktrees.py --apply"))
+        self.assertEqual(
+            args[10],
+            'cmd /c cd /d "C:/repo" && py -3 scripts/prune_worktrees.py --apply',
+        )
         out = io.StringIO()
         with redirect_stdout(out):
             self.assertEqual(prune.schedule("/srv/repo", windows=False), 0)
-        self.assertIn('0 4 * * * cd "/srv/repo" && "', out.getvalue())
+        self.assertIn('0 4 * * * cd "/srv/repo" && python3 scripts/', out.getvalue())
         repo = self.make()
         with mock.patch.object(prune, "schedule", return_value=0) as scheduled:
             self.assertEqual(self.run_main(repo, ["--schedule"])[0], 0)
