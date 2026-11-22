@@ -453,6 +453,7 @@ def _taper_for(
             "window_days": days,
             f"previous_{days}d_minutes": round(previous / 60),
             f"final_{days}d_minutes": round(final / 60),
+            "lighter": lighter,
             "weeks_without_hard": weeks_without_hard,
         },
     )
@@ -1176,6 +1177,12 @@ def _risk(finding: Mapping[str, Any]) -> tuple[Any, ...]:
         return (max(evidence["deviating_bands"].values()),)
     if finding["code"] == "calendar_load":
         return (bool(evidence.get("overlap")), evidence.get("busy_minutes") or 0)
+    if finding["code"] == "missing_taper":
+        # Two failure reasons share the race's key (#3919).
+        return (
+            not evidence.get("lighter", True),
+            len(evidence.get("weeks_without_hard") or ()),
+        )
     return ()
 
 

@@ -292,6 +292,22 @@ class PlanCheckRuleTests(unittest.TestCase):
         race_day = [*build, unit("r", "2026-12-06", "run", 60)]
         self.assertEqual([], check(race_day, competitions=[race]))
 
+    def test_a_taper_that_also_loses_its_volume_cut_is_new(self) -> None:
+        race = {"event_date": "2026-12-06", "priority": "A", "name": "Race"}
+        build = [
+            unit("a", "2026-11-10", "ride", 60),
+            unit("b", "2026-11-14", "ride", 60),
+        ]
+        easy = [*build, unit("t", "2026-11-28", "ride", 20)]
+        heavy = [*build, unit("t", "2026-11-28", "ride", 180)]
+        before = check(easy, competitions=[race])
+        after = check(heavy, competitions=[race])
+        self.assertTrue(before[0]["evidence"]["lighter"])
+        self.assertEqual(
+            ["missing_taper"], codes(plan_checks.new_findings(before, after))
+        )
+        self.assertEqual([], plan_checks.new_findings(after, before))
+
     def test_a_hard_strength_session_is_no_taper_intensity(self) -> None:
         race = {"event_date": "2026-11-10", "priority": "A", "name": "Race"}
 
