@@ -10,10 +10,11 @@ from types import SimpleNamespace
 from unittest.mock import Mock
 
 from nutrition_service_support import build_nutrition_services
-from support import temp_database
+from support import dispatch_route, temp_database
 
 from backend.backup.database import DatabaseBackupConfig, DatabaseBackupService
 from backend.errors import AppError
+from backend.http_api.nutrition import NutritionPostRoutes
 
 
 class NutritionCompositionTests(unittest.TestCase):
@@ -649,3 +650,152 @@ class NutritionCompositionTests(unittest.TestCase):
         self.library.product_catalog.archive_product(product["id"])
         with self.assertRaises(AppError):
             self.library.product_catalog.calculate_components([component])
+
+    def _post(self, path: str, body: dict) -> tuple[int, dict]:
+        handler = Mock()
+        handler.read_json.return_value = body
+        routes = NutritionPostRoutes(
+            diary_service=lambda: self.service,
+            meal_library_service=lambda: self.library,
+        )
+        self.assertTrue(dispatch_route(routes, handler, path, method="POST"))
+        return handler.send_json.call_args.args
+
+    def test_saved_meal_routes_keep_log_and_delete_with_the_server_values(self):
+        # #3952: a diary meal becomes a saved meal, is logged for two portions and deleted.
+        meal = self.service.log_meal(
+            {
+                "meal_date": "2026-09-24",
+                "meal_type": "dinner",
+                "description": "Pasta",
+                "kcal": 700,
+                "carbs_g": 90,
+                "protein_g": 25,
+                "fat_g": 20,
+            }
+        )
+        status, saved = self._post(
+            "/api/nutrition/templates/from-entry", {"id": meal["id"], "name": "Pasta"}
+        )
+        self.assertEqual(status, 200)
+        self.assertEqual(saved["template"]["kcal"], 700)
+        self.assertEqual(saved["change"]["entity_type"], "nutrition_template")
+        # A name is taken once; the value never comes from the client.
+        with self.assertRaises(AppError) as taken:
+            self._post(
+                "/api/nutrition/templates/from-entry",
+                {"id": meal["id"], "name": "pasta", "kcal": 1},
+            )
+        self.assertEqual(taken.exception.status, 409)
+
+        status, logged = self._post(
+            "/api/nutrition/templates/log",
+            {"id": saved["template"]["id"], "portions": 2, "meal_date": "2026-09-23"},
+        )
+        self.assertEqual(logged["entry"]["kcal"], 1400)
+        self.assertEqual(logged["entry"]["meal_date"], "2026-09-23")
+        self.assertEqual(logged["change"]["entity_type"], "nutrition_entry")
+
+        with self.assertRaises(AppError) as unconfirmed:
+            self._post(
+                "/api/nutrition/templates/delete", {"id": saved["template"]["id"]}
+            )
+        self.assertEqual(unconfirmed.exception.status, 409)
+        status, deleted = self._post(
+            "/api/nutrition/templates/delete",
+            {"id": saved["template"]["id"], "confirmed": True},
+        )
+        self.assertEqual(deleted["deleted_id"], saved["template"]["id"])
+        # The logged entry keeps its values after the saved meal is gone.
+        self.assertEqual(self.service.get_meal(logged["entry"]["id"])["kcal"], 1400)
+        self.assertEqual(self.library.list_templates(), [])
+
+    def test_a_session_slot_meal_is_saved_as_a_snack_and_a_composed_one_keeps_its_basis(
+        self,
+    ):
+        # #3952: a saved meal belongs to no session; a composed meal keeps its components.
+        product = self.library.product_catalog.save_product(
+            {
+                "name": "Synthetic oats",
+                "basis_amount": 100,
+                "basis_unit": "g",
+                "kcal": 370,
+                "carbs_g": 60,
+                "protein_g": 13,
+                "fat_g": 7,
+            }
+        )
+        composed = self.service.log_meal(
+            {
+                "meal_date": "2026-09-24",
+                "meal_type": "pre_session",
+                "description": "Oats",
+                "components": [
+                    {
+                        "kind": "local_product",
+                        "product_id": product["id"],
+                        "amount": 50,
+                        "unit": "g",
+                    }
+                ],
+            }
+        )
+        _status, saved = self._post(
+            "/api/nutrition/templates/from-entry",
+            {"id": composed["id"], "name": "Oats"},
+        )
+        self.assertEqual(saved["template"]["meal_type"], "snack")
+        self.assertFalse(saved["template"]["meal_type_explicit"])
+        self.assertEqual(
+            saved["template"]["nutrition_basis"], composed["nutrition_basis"]
+        )
+        self.assertEqual(saved["template"]["kcal"], 185)
+        # An unknown entry and a blank name are refused before anything is saved.
+        for body, code in (
+            ({"id": "missing", "name": "X"}, 404),
+            ({"id": composed["id"], "name": " "}, 400),
+        ):
+            with self.assertRaises(AppError) as refused:
+                self._post("/api/nutrition/templates/from-entry", body)
+            self.assertEqual(refused.exception.status, code)
+        self.assertEqual(len(self.library.list_templates()), 1)
+
+    def test_the_template_route_saves_components_with_server_values_and_renames(self):
+        product = self.library.product_catalog.save_product(
+            {
+                "name": "Synthetic rice",
+                "basis_amount": 100,
+                "basis_unit": "g",
+                "kcal": 130,
+                "carbs_g": 28,
+                "protein_g": 2.7,
+                "fat_g": 0.3,
+            }
+        )
+        _, created = self._post(
+            "/api/nutrition/templates",
+            {
+                "name": "Reis",
+                "description": "Reis",
+                "components": [
+                    {
+                        "kind": "local_product",
+                        "product_id": product["id"],
+                        "amount": 200,
+                        "unit": "g",
+                    }
+                ],
+            },
+        )
+        self.assertEqual(created["template"]["kcal"], 260)
+        _status, renamed = self._post(
+            "/api/nutrition/templates",
+            {
+                "id": created["template"]["id"],
+                "name": "Reis pur",
+                "description": "Reis, gekocht",
+            },
+        )
+        self.assertEqual(renamed["template"]["name"], "Reis pur")
+        self.assertEqual(renamed["template"]["kcal"], 260)
+        self.assertEqual(renamed["change"]["action"], "update")

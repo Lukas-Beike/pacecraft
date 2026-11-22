@@ -326,6 +326,8 @@ export const STEPS = [
   { view: "nutrition", name: "Ernährung: Zuletzt genutzt", covers: "#3444 product last use", pre: [tab("nutrition", "products")], opens: ['#nutritionProducts details[data-section="all"] > summary'], ready: "#nutritionProducts details[data-section='all'] .nutrition-last-use", kind: "text" },
   // Read-only: the walk checks that a meal card has its pencil, it opens no dialog and saves nothing (#3948).
   { view: "nutrition", name: "Ernährung: Mahlzeit bearbeiten", covers: "#3948 meal pencil", since: "2.2.15", pre: [tab("nutrition", "diary")], ready: ".nutrition-card:has(.nutrition-card-head button[aria-label^='Mahlzeit bearbeiten']) h3", kind: "text", optional: true },
+  // Read-only: the walk checks that the saved meals section is there, it opens no dialog and saves nothing (#3952).
+  { view: "nutrition", name: "Ernährung: Gespeicherte Mahlzeiten", covers: "#3952 saved meals", pre: [tab("nutrition", "products")], ready: "#nutritionTemplates > details > summary", kind: "text" },
   { view: "nutrition", name: "Ernährung: Körper", covers: "Body analysis", pre: [tab("nutrition", "body")], ready: "#bodyAnalysisCharts [data-body-metric] svg", kind: "chart" },
   { view: "nutrition", name: "Ernährung: Körperwerte", covers: "#3402 weight and body fat with their pencils", pre: [tab("nutrition", "body")], ready: "#bodyAnalysisCharts [data-body-overview] [data-metric='weight_kg'] th small", kind: "text" },
   { view: "nutrition", name: "Ernährung: Energieverbrauch", covers: "#3099 #3252 energy card in the diary, #3550 übriger Alltag, #3577 Übriger Alltag, #3703 one source, #3723 provisional Übriger Alltag", pre: [tab("nutrition", "diary")], ready: "#nutritionEnergy [data-energy] .energy-usage", kind: "text" },
