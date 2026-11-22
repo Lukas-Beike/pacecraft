@@ -1889,6 +1889,7 @@ async function saveEnergyGoal(patch, button) {
     document.querySelector("#energyGoalDialog").close();
     toast(patch.energy_goal ? "Energieziel gespeichert." : "Energieziel entfernt.");
     renderBodyAnalysis(state.data?.performance?.history?.body);
+    renderDiaryEnergy();
   } catch (error) {
     document.querySelector("#energyGoalDialogStatus").textContent = error.message;
     button.disabled = false;
@@ -1900,9 +1901,9 @@ async function saveEnergyGoal(patch, button) {
 function energyGoalStrip(read) {
   const goal = read.goal;
   if (!goal) {
-    // The link jumps to the goal row in Körper and opens its dialog.
-    const link = h("button", { type: "button", className: "analysis-legend-info" }, "Ziel festlegen");
-    link.addEventListener("click", () => void AppRouter.navigate("nutrition/body", { historyMode: "push" }).then(openEnergyGoalDialog));
+    // The dialog opens in place: the diary stays under it, and the card is priced again after the save (#3930).
+    const link = h("button", { type: "button", className: "secondary-button" }, "Ziel festlegen");
+    link.addEventListener("click", openEnergyGoalDialog);
     return h("p", { className: "energy-goal", dataset: { energyGoal: "none" } }, link);
   }
   if (goal.remaining_kcal == null) return h("p", { className: "energy-goal muted", dataset: { energyGoal: "pending" } }, "Noch kein Tagesverbrauch für dein Ziel");
