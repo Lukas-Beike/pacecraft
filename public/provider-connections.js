@@ -536,7 +536,7 @@ function renderYazioStatus(result) {
   };
   setConnectionChip("#yazioConnectionStatus", yazioConnectionKind(result?.status));
   const date = result?.checked_at ? new Date(result.checked_at) : null;
-  const checked = date && !Number.isNaN(date.getTime()) ? `Geprüft: ${date.toLocaleString("de-DE")}` : "";
+  const checked = date && !Number.isNaN(date.getTime()) ? `Geprüft: ${AppFormat.dateTime(date)}` : "";
   const message = result ? messages[result.status] : "Status nicht verfügbar";
   setCredentialText("yazioConnectionDetail", [message, checked].filter(Boolean).join(" · "));
   const button = $("#yazioCheckButton");

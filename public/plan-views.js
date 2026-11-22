@@ -389,7 +389,7 @@ function calendarWeekDistance(activities) {
 }
 
 function countLabel(count, one, many) {
-  return `${count} ${count === 1 ? one : many}`;
+  return AppFormat.plural(count, one, many);
 }
 
 // Load sums only the sessions that carry a value and names the rest; no value at all hides the cell.
@@ -435,7 +435,7 @@ function calendarIntensityFactor(value) {
 function calendarSpeedLabel(activity) {
   let speed = Number(activity?.avg_speed_mps);
   if (!Number.isFinite(speed) || speed <= 0) speed = Number(activity?.distance_m) / Number(activity?.moving_duration_s);
-  return Number.isFinite(speed) && speed > 0 ? `${AppFormat.number(speed * 3.6, { digits: 1 })} km/h` : null;
+  return Number.isFinite(speed) && speed > 0 ? AppFormat.speed(speed * 3.6) : null;
 }
 
 function calendarIntensityLabel(value) {
@@ -495,9 +495,9 @@ function competitionResult(result) {
   let effort = null;
   if (result.sport === "ride") {
     if (Number.isFinite(power) && power > 0) effort = `${Math.round(power)} W`;
-    else if (hasSpeed) effort = `${AppFormat.number(speed * 3.6)} km/h`;
+    else if (hasSpeed) effort = AppFormat.speed(speed * 3.6);
   } else if (hasSpeed) {
-    effort = result.sport === "swim" ? `${AppFormat.clock(100 / speed)} /100 m` : `${AppFormat.clock(1000 / speed)} /km`;
+    effort = result.sport === "swim" ? `${AppFormat.clock(100 / speed)} /100 m` : AppFormat.pace(1000 / speed);
   }
   const time = result.duration_s == null ? null : AppFormat.clock(result.duration_s);
   const value = [time, AppFormat.distance(result.distance_m), effort].filter(Boolean).join(" · ");
@@ -1667,7 +1667,7 @@ function plannedFuellingRows(drink) {
 function plannedFuellingBlock(plan) {
   const rate = plan.sweat_rate;
   const band = rate?.similar && Array.isArray(rate.temperature_c) ? ` bei ${rate.temperature_c[0]}–${rate.temperature_c[1]} °C` : "";
-  const sessions = rate?.sessions === 1 ? "1 Einheit" : `${rate?.sessions} Einheiten`;
+  const sessions = AppFormat.plural(rate?.sessions, "Einheit", "Einheiten");
   const basis = rate ? `Schweißrate ${FUELLING_LITRES.format(rate.l_per_h)} l/h · ${sessions}${band}` : "Startwert ohne eigene Daten";
   const rows = (items) => h("div", "race-plan-rows", items.filter(Boolean).map(([label, value]) => h("div", null, h("span", null, label), h("strong", null, value))));
   return [
@@ -2103,7 +2103,7 @@ function runningWeekSyncCount(trainingCalendar) {
 }
 
 function weekSyncNoticeText(count) {
-  return `${count} ${count === 1 ? "Einheit" : "Einheiten"} zu synchronisieren`;
+  return `${AppFormat.plural(count, "Einheit", "Einheiten")} zu synchronisieren`;
 }
 
 // One badge for both: undecided events plus the running week's units to sync (#3384).
@@ -2913,6 +2913,26 @@ function libraryReceiptLine(status, id, receipt) {
   return status;
 }
 
+// A step line of the stored workout text ("- 20m 55%", "- 20m Z1 HR") in words: "20 min · 55 %", "20 min · Z1 Herzfrequenz".
+const LIBRARY_STEP_UNITS = { h: "h", m: "min", s: "s", km: "km", mtr: "m" };
+
+function libraryStepLine(line) {
+  const text = line.replace(/^\s*-\s*/, "");
+  // Only a line that starts with a size is a step; a prose bullet stays as written.
+  if (!/^\d+(?:[.,]\d+)?(?:h|m|s|km|mtr)(?:\s|$)/.test(text)) return line;
+  const words = text.split(/\s+/).filter(Boolean).map((word) => {
+    const size = /^(\d+(?:[.,]\d+)?)(h|m|s|km|mtr)$/.exec(word);
+    if (size) return `${size[1].replace(".", ",")} ${LIBRARY_STEP_UNITS[size[2]]}`;
+    if (/^\d+(?:[.,]\d+)?%$/.test(word)) return `${word.slice(0, -1).replace(".", ",")} %`;
+    return word === "HR" ? "Herzfrequenz" : word;
+  });
+  return words.length > 1 ? [words[0], words.slice(1).join(" ")].join(" · ") : words.join("");
+}
+
+function libraryDescriptionText(text) {
+  return String(text || "").split("\n").map((line) => (/^\s*-/.test(line) ? libraryStepLine(line) : line)).join("\n");
+}
+
 function renderLibrary(workouts) {
   const root = $("#library");
   if (!root) return;
@@ -2946,8 +2966,8 @@ function renderLibrary(workouts) {
         h("div", "library-sport-cards", sportWorkouts.map((workout) => h("article", "library-card",
           h("div", null,
             h("h4", null, workout.name || "Bibliotheks-Einheit"),
-            h("span", null, [workout.type, workout.planned_duration_s ? formatDuration(workout.planned_duration_s) : null].filter(Boolean).join(" · "))),
-          h("p", null, workout.description || "Kein Workout-Text hinterlegt."),
+            h("span", null, workout.planned_duration_s ? AppFormat.duration(workout.planned_duration_s) : "")),
+          h("p", null, libraryDescriptionText(workout.description) || "Kein Workout-Text hinterlegt."),
           libraryWahooRow(workout),
           ...libraryActions(workout)))));
       section.open = openSports.has(sport);

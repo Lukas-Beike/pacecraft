@@ -242,7 +242,7 @@ test("@responsive recovery, power, training focus, season and calendar profiles 
   await expect(garminBike.locator("summary")).toBeVisible();
   await expect(garminBike.locator("summary progress")).toHaveAttribute("value", "25");
   await garminBike.locator("summary").click();
-  await expect(garminBike.getByText("25 km von 100 km · 25%", { exact: true })).toBeVisible();
+  await expect(garminBike.getByText("25 km von 100 km · 25 %", { exact: true })).toBeVisible();
   const localGear = page.locator("#equipmentItems .equipment-card").filter({ hasText: "Fixture road bike" }).first();
   await localGear.locator("summary").click();
   await expect(localGear.getByText("1 zugeordnete Einheit", { exact: false }).first()).toBeVisible();
@@ -338,12 +338,12 @@ test("@responsive equipment keeps local authority and groups archived sources", 
   await expect(runPanel.locator(".equipment-card[open]")).toHaveCount(0);
   await expect(localCard.locator(".connection-card-body")).toBeHidden();
   await expect(localCard.locator("summary .connection-chip")).toHaveText("Ziel überschritten");
-  await expect(localCard.locator("summary .equipment-card-line")).toHaveText("125 km · 125% Lebensdauer");
+  await expect(localCard.locator("summary .equipment-card-line")).toHaveText("125 km · 125 % Lebensdauer");
   await expect(localCard.locator("summary progress")).toHaveAttribute("value", "100");
   // #2358: a closed card names the item, its state and its lifetime percent once; the bar is decorative.
   await expect(localCard.locator("summary")).toMatchAriaSnapshot(`
     - strong: Local running shoes
-    - text: Ziel überschritten 125 km · 125% Lebensdauer
+    - text: Ziel überschritten 125 km · 125 % Lebensdauer
   `);
   await expect(localCard.getByRole("progressbar")).toHaveCount(0);
   await expect(localCard.locator("summary .equipment-card-line .sr-only")).toHaveText("Lebensdauer");
@@ -355,7 +355,7 @@ test("@responsive equipment keeps local authority and groups archived sources", 
   await page.getByRole("tab", { name: "Laufschuhe" }).click();
   await expect(localCard).toHaveAttribute("open", "");
   await expect(localCard.locator(".connection-card-status h4")).toHaveText(["Nutzung", "Wartung", "Garmin"]);
-  await expect(localCard).toContainText("125 km von 100 km · 125% · Ziel überschritten");
+  await expect(localCard).toContainText("125 km von 100 km · 125 % · Ziel überschritten");
   await expect(localCard).toContainText("Statuskonflikt");
   await expect(localCard.getByRole("button", { name: "Wartung erledigt" })).toHaveCount(1);
   await expect(garminCard.locator(".connection-card-body")).toBeHidden();

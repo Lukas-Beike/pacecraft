@@ -496,7 +496,7 @@ function zoneLimitValue(item, limit, thresholdPace) {
 
 function zoneValueText(metric, value) {
   if (value == null) return "—";
-  if (metric === "pace") return formatPace(value).replace(" min/km", "");
+  if (metric === "pace") return formatPace(value).replace(" /km", "");
   return `${Math.round(value)}${metric === "power" ? " W" : ""}`;
 }
 

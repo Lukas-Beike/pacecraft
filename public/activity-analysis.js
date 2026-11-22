@@ -26,7 +26,7 @@
   // Pace sports show min/km (or min/100 m); others km/h. Stops below 0.3 m/s become gaps.
   function speedChannel(activity) {
     const kind = sportKind(activity);
-    if (kind === "other") return { label: "Geschwindigkeit", unit: "km/h", convert: (v) => v * 3.6, format: (v) => numberText(v, 1), color: "speed", floorAtZero: true };
+    if (kind === "other") return { label: "Geschwindigkeit", unit: "km/h", convert: (v) => v * 3.6, format: (v) => AppFormat.number(v, { digits: 1, minDigits: 1 }), color: "speed", floorAtZero: true };
     const meters = kind === "swim" ? 100 : 1000;
     return { label: "Pace", unit: kind === "swim" ? "min/100 m" : "min/km", convert: (v) => (v >= 0.3 ? meters / v : null), format: clock, invert: true, color: "speed" };
   }
@@ -255,7 +255,7 @@
       ["Arbeit", measure(metrics.work_kj ?? metrics.energy_kj, "kJ")],
       ["Effizienzfaktor", efficiencyText(metrics)],
       ["Variabilitätsindex", finite(metrics.variability_index) ? numberText(metrics.variability_index, 2) : null],
-      ["Decoupling", finite(metrics.decoupling_pct) ? `${numberText(metrics.decoupling_pct, 1)} %` : null],
+      ["Decoupling", finite(metrics.decoupling_pct) ? AppFormat.percent(metrics.decoupling_pct) : null],
       ["Trainingsbelastung", measure(metrics.load)],
       // Intensity arrives as a fraction or in percent; the calendar helper normalizes both.
       ["Intensität", calendarIntensityLabel(metrics.intensity)],
@@ -357,7 +357,7 @@
   function adherence(result) {
     if (result?.status !== "ok" || !result.steps?.length) return null;
     const header = h("div", "activity-adherence-header", h("h4", null, "Soll/Ist"));
-    if (finite(result.score_pct)) header.append(h("span", { className: "activity-adherence-score", dataset: { band: result.score_band } }, `Zieltreue ${result.score_pct} %`));
+    if (finite(result.score_pct)) header.append(h("span", { className: "activity-adherence-score", dataset: { band: result.score_band } }, `Zieltreue ${AppFormat.percent(result.score_pct, { digits: 0 })}`));
     const strip = h("div", { className: "activity-adherence-strip", "aria-hidden": "true" });
     const list = h("ol", "activity-adherence-steps");
     for (const step of result.steps) {
@@ -366,7 +366,7 @@
       segment.style.flexGrow = String(finite(seconds) ? Math.max(seconds, 1) : 1);
       strip.append(segment);
       const text = [STEP_ROLES[step.role], stepTarget(step), finite(seconds) ? clock(seconds) : null, stepActual(step)].filter(Boolean).join(" · ");
-      const share = finite(step.time_in_target_pct) ? `${step.time_in_target_pct} %` : "–";
+      const share = finite(step.time_in_target_pct) ? AppFormat.percent(step.time_in_target_pct, { digits: 0 }) : "–";
       list.append(h("li", { dataset: { band: step.band || "none" } }, h("span", null, String(step.step)), h("span", null, text), h("span", "activity-adherence-share", share)));
     }
     return h("section", "activity-adherence", header, strip, list, adherenceZones(result.zones));

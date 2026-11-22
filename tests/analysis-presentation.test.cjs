@@ -37,6 +37,9 @@ test("ratio units such as W/bpm keep significant digits and small efficiencies a
   assert.equal(analysisValue(1.5, "W/bpm"), "1,5 W/bpm");
   assert.equal(analysisValue(12.34, "W"), "12,3 W", "other units keep one decimal");
   assert.equal(analysisValue(10.123456789, ""), "10,1");
+  // Hours read as h:mm; a negative value that rounds to 0:00 carries no sign (#3933).
+  assert.equal(analysisValue(-0.5, "h"), "−0:30 h");
+  assert.equal(analysisValue(-0.004, "h"), "0:00 h");
   // A precise VO2max keeps its decimal; a whole value stays whole (#2263).
   assert.equal(analysisValue(54.3, "ml/kg/min"), "54,3 ml/kg/min");
   assert.equal(analysisValue(54, "ml/kg/min"), "54 ml/kg/min");
@@ -715,7 +718,7 @@ test("the seven-day ln(RMSSD) note shows the back-transformed mean, range and sp
   const { recoveryRollingNote } = extractFunctions("analysis.js", ["analysisRatioUnit", "analysisCountUnit", "analysisNumber", "analysisValue", "recoveryRollingNote"], { AppFormat: require("../public/format.js") });
   assert.equal(
     recoveryRollingNote({ status: "ok", mean_ms: 51.9, lower_ms: 53, upper_ms: 62.2, position: "below", cv_pct: 3, window_nights: 5 }),
-    "7-Tage-Mittel 51,9 ms (5 Nächte) · unter deinem Bereich 53 ms–62,2 ms · Schwankung 3 %",
+    "7-Tage-Mittel 51,9 ms (5 Nächte) · unter deinem Bereich 53 ms–62,2 ms · Schwankung 3,0 %",
   );
   assert.equal(
     recoveryRollingNote({ status: "provisional", mean_ms: 57, lower_ms: 53, upper_ms: 62.2, position: "within", cv_pct: null, window_nights: 3 }),

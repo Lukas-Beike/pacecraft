@@ -480,7 +480,7 @@ test("@responsive performance keeps dated FTP values and weekly medians independ
   await page.evaluate(async () => { await AppRouter.navigate("analysis/running", { historyMode: "replace" }); });
   const pace = root.locator(".analysis-subchart").filter({ has: page.getByRole("heading", { name: "Schwellenpace", exact: true }) });
   await pace.getByText("Werte ansehen", { exact: true }).click();
-  await expect(pace.locator("tbody td:nth-child(2)")).toHaveText([/4:50 min\/km/, /4:50 min\/km/]);
+  await expect(pace.locator("tbody td:nth-child(2)")).toHaveText([/4:50 \/km/, /4:50 \/km/]);
   await page.evaluate(async () => { await AppRouter.navigate("analysis/load", { historyMode: "replace" }); });
   await page.locator("#analysisLoadPeriod").getByRole("button", { name: "4 Wochen", exact: true }).click();
   await page.evaluate(async () => { await AppRouter.navigate("analysis/cycling", { historyMode: "replace" }); });

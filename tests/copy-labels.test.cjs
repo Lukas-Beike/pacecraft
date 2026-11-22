@@ -11,11 +11,11 @@ test("equipment count labels use singular for exactly one and German thousands s
   assert.equal(context.analysisCountLabel(1234, "Einheit", "Einheiten"), "1.234 Einheiten");
 });
 
-test("equipment percentages render with a German decimal comma and no space before %", () => {
+test("equipment percentages render with a German decimal comma and a space before % like every other percentage (#3933)", () => {
   const context = extractFunctions("analysis.js", ["analysisPercent"]);
-  assert.equal(context.analysisPercent(42.5), "42,5%");
-  assert.equal(context.analysisPercent(25), "25%");
-  assert.equal(context.analysisPercent(125), "125%");
+  assert.equal(context.analysisPercent(42.5), "42,5 %");
+  assert.equal(context.analysisPercent(25), "25 %");
+  assert.equal(context.analysisPercent(125), "125 %");
 });
 
 test("profile sports are shown in German while stored identifiers stay unchanged", () => {
@@ -80,4 +80,24 @@ test("release changes are grouped as Neu, Verbessert, Behoben and the rest, with
     fix: ["a restart closes the refreshes left running"],
     other: ["spec: unlinking a race", "Revert \"feat(x): something\"", "hooks: the guard scans long commands in linear time"],
   });
+});
+
+test("a library card shows its stored step lines in German words (#3933)", () => {
+  const { libraryDescriptionText } = extractFunctions("plan-views.js", ["LIBRARY_STEP_UNITS", "libraryStepLine", "libraryDescriptionText"]);
+  assert.equal(libraryDescriptionText("Locker\n- 20m 55%\n- 20m Z1 HR\n- 400mtr"), "Locker\n20 min · 55 %\n20 min · Z1 Herzfrequenz\n400 m");
+  assert.equal(libraryDescriptionText(""), "");
+  assert.equal(libraryDescriptionText("- Locker einlaufen"), "- Locker einlaufen", "a prose bullet stays as written");
+});
+
+test("a change that rounds to zero carries no sign (#3933)", () => {
+  const AppFormat = require("../public/format.js");
+  const { analysisChange } = extractFunctions("analysis.js", ["analysisChange"], {
+    analysisValue: (value, unit) => `${AppFormat.number(value, { digits: 1, minDigits: 1 })} ${unit}`,
+    formatPace: AppFormat.pace,
+  });
+  assert.equal(analysisChange(0.4, "kg"), "+0,4 kg");
+  assert.equal(analysisChange(-0.4, "kg"), "−0,4 kg");
+  assert.equal(analysisChange(0.04, "kg"), "0,0 kg");
+  assert.equal(analysisChange(-4, "s/km"), "−0:04 /km");
+  assert.equal(analysisChange(0.2, "s/km"), "0:00 /km");
 });

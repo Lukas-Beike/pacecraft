@@ -245,7 +245,7 @@ test("@responsive nutrition gaps keep expenditure visible without inventing inta
   await expect(first.locator(".is-expenditure")).toContainText("7 von 7 Tagen");
   await expect(root.locator(".is-expenditure .is-missing")).toHaveCount(0);
   await expect(root.locator(".is-intake .is-missing")).toHaveCount(12);
-  await expect(balance.locator(".stat-tile").nth(2)).toContainText("-300 kcal");
+  await expect(balance.locator(".stat-tile").nth(2)).toContainText("−300 kcal");
   await expect(balance.locator(".verlauf-period")).toContainText("1/91 Tage erfasst");
   await expect(root).not.toContainText("Kaloriendefizit");
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
