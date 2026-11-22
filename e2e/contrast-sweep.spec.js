@@ -143,9 +143,9 @@ const TEXT_FORMATS = [
 ];
 
 async function expectTextFormats(page, view) {
-  // The Coach context preview shows the raw JSON the Coach receives; that is data, not a displayed value.
+  // The Coach context preview shows the raw JSON the Coach receives and the changelog the release notes; neither is a displayed value.
   const text = await page.locator(".panel.active").evaluate((panel) => {
-    const raw = [...panel.querySelectorAll("pre")];
+    const raw = [...panel.querySelectorAll("pre, .release-changelog")];
     raw.forEach((node) => { node.hidden = true; });
     const shown = panel.innerText;
     raw.forEach((node) => { node.hidden = false; });
