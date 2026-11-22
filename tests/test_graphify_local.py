@@ -253,7 +253,7 @@ class GraphifyLocalTests(unittest.TestCase):
                 self.assertEqual(graph.update(self.root), 2)
             # A failed update names its cause (#3921).
             self.assertIn("Graphify update exited 1: boom: no space", output.getvalue())
-            self.assertEqual(graph._one_line("a\x1b[31m\tb\x7f"), "a [31m b")
+            self.assertEqual(graph._one_line("a\x1b[31m\tb\x7f\x9bc"), "a [31m b c")
             current = json.loads((rt / "current.json").read_text())
             self.assertEqual(current["generation"], generation)
             self.assertFalse(current["stale"])
@@ -624,6 +624,12 @@ class GraphifyLocalTests(unittest.TestCase):
             ):
                 self.assertEqual(graph.main(), 0)
             # Behind the source, the last graph is served with a note (#3921).
+            other_commit = dict(pointer, metadata=dict(pointer["metadata"], git=["x"]))
+            (rt / "current.json").write_text(json.dumps(other_commit))
+            with patch("sys.stderr", new_callable=io.StringIO) as note:
+                self.assertEqual(graph.active_graph(self.root)[1], graph_file)
+            self.assertIn("last graph, from another commit", note.getvalue())
+            (rt / "current.json").write_text(json.dumps(pointer))
             (self.root / "backend" / "one.py").write_text("def one(): return 3\n")
             with patch("sys.stderr", new_callable=io.StringIO) as note:
                 self.assertEqual(graph.active_graph(self.root)[1], graph_file)

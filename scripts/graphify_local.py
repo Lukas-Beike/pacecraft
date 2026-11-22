@@ -743,7 +743,8 @@ def update(root: Path, *, preparation: bool = False) -> int:
 
 def _one_line(text: str) -> str:
     """Tool output as one printable line of at most 300 characters."""
-    printable = "".join(c if 32 <= ord(c) != 127 else " " for c in text)
+    # isprintable() drops C0, DEL and C1 controls such as U+009B (CSI) too.
+    printable = "".join(c if c.isprintable() else " " for c in text)
     return " ".join(printable.split())[:300]
 
 
@@ -758,7 +759,7 @@ def _cause(exc: BaseException) -> str:
 
 def _behind(root: Path, pointer: dict) -> int:
     """How many source files changed, appeared or went since the graph was built."""
-    old = {rel: sig for rel, sig in pointer.get("metadata", {}).get("files", [])}
+    old = dict(pointer.get("metadata", {}).get("files", []))
     new = {rel: list(sig) for rel, sig in _corpus_signature(root)}
     return sum(old.get(rel) != new.get(rel) for rel in old.keys() | new.keys())
 
@@ -782,8 +783,10 @@ def active_graph(root: Path) -> tuple[Path, Path]:
         # Only files and commit may lag; a changed allowlist needs a rebuild.
         if current.get("metadata", {}).get("config") != _config_signature():
             raise Unavailable("local graph built for other source rules; run update")
+        files = _behind(root, current)
+        lag = f"behind by {files} files" if files else "from another commit"
         print(
-            f"Graphify local: last graph, behind by {_behind(root, current)} files; "
+            f"Graphify local: last graph, {lag}; "
             "run `python scripts/graphify_local.py update` for a current one",
             file=sys.stderr,
         )
