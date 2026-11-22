@@ -1699,7 +1699,8 @@ function appendPlanNotes(node, planNotes) {
   const planNoteLabels = {
     run_spike: ["Laufsprung", "Beobachtungsstudie, mittlere Evidenz"],
     load_spike: ["Lastsprung", "Aus Distanzstudien übertragen, nicht direkt validiert"],
-    weekly_load_rise: ["Wochenlast steigt", "Aus Distanzstudien übertragen, nicht direkt validiert"],
+    weekly_load_rise: ["Wochenlast steigt", "Planungskonvention: gegen die höchste der letzten 4 Wochen"],
+    lighter_week_missing: ["Keine leichtere Woche", "Praxisregel: alle 3 bis 4 Wochen eine leichtere Woche"],
     load_unknown: ["Last unbekannt", "Aus Distanzstudien übertragen, nicht direkt validiert"],
     back_to_back_hard: ["Harte Tage in Folge", "Praxisbasiert"],
     strength_hard_same_day: ["Kraft und harte Einheit", "Begrenzte Evidenz"],

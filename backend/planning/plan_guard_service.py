@@ -704,8 +704,11 @@ class PlanGuardService:
             complaints=self._complaints(),
         )
         # How many planned run and ride units have a computable load (#3918).
+        thresholds = self._load_thresholds()
         coverage = load_coverage(
-            plan_sessions(units, self._load_thresholds() or LoadThresholds()), today
+            plan_sessions(units, thresholds or LoadThresholds()),
+            today,
+            "missing_thresholds" if thresholds is None else thresholds.unavailable,
         )
         if coverage:
             brief = brief_budget.fit_brief({**brief, "load_coverage": coverage})

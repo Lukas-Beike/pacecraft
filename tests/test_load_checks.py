@@ -301,11 +301,36 @@ class LighterWeekTests(unittest.TestCase):
         self.assertFalse(found[0]["blocking"])
         self.assertIn("practice-based", found[0]["evidence_strength"])
 
+    def test_completed_weeks_start_the_run_and_each_run_is_named(self) -> None:
+        # Three completed rising weeks and this planned week are four (#3918);
+        # a later run after a lighter week is named on its own fourth week.
+        done = [
+            ride_done("2026-10-13", moving_duration_s=50 * 60),
+            ride_done("2026-10-20", moving_duration_s=60 * 60),
+            ride_done("2026-10-27", moving_duration_s=70 * 60),
+        ]
+        units = [
+            planned("w0", "2026-11-03", "ride", "- 60m 60%", planned_duration_s=80 * 60),
+            planned("w1", "2026-11-10", "ride", "- 60m 60%", planned_duration_s=40 * 60),
+            planned("w2", "2026-11-17", "ride", "- 60m 60%", planned_duration_s=50 * 60),
+            planned("w3", "2026-11-24", "ride", "- 60m 60%", planned_duration_s=60 * 60),
+            planned("w4", "2026-12-01", "ride", "- 60m 60%", planned_duration_s=70 * 60),
+            planned("s4", "2026-12-02", "strength", "", planned_duration_s=3600),
+        ]  # fmt: skip
+        found = only(check(units, done), "lighter_week_missing")
+        self.assertEqual([["w0"], ["w4"]], [item["local_ids"] for item in found])
+        self.assertEqual(
+            ["2026-10-12", "2026-10-19", "2026-10-26", "2026-11-02"],
+            found[0]["evidence"]["week_starts"],
+        )
+
     def test_a_lighter_week_or_three_weeks_give_no_note(self) -> None:
         done = [ride_done("2026-10-27")]
         lighter = check(self.plan((70, 50, 90)), done)
         self.assertEqual([], only(lighter, "lighter_week_missing"))
-        self.assertEqual([], only(check(self.plan((70, 80, 90))), "lighter_week_missing"))
+        self.assertEqual(
+            [], only(check(self.plan((70, 80, 90))), "lighter_week_missing")
+        )
 
 
 class LoadCoverageTests(unittest.TestCase):
@@ -319,6 +344,16 @@ class LoadCoverageTests(unittest.TestCase):
         ]
         coverage = load_checks.load_coverage(
             load_checks.plan_sessions(units, thresholds()), TODAY
+        )
+        # Unusable thresholds compute no load, whatever the steps would give.
+        blind = load_checks.load_coverage(
+            load_checks.plan_sessions(units, thresholds()),
+            TODAY,
+            "missing_thresholds",
+        )
+        self.assertEqual(
+            {(0, "missing_thresholds")},
+            {(week["with_load"], week["reason"]) for week in blind},
         )
         self.assertEqual(
             [
@@ -351,6 +386,23 @@ class WeeklyRiseTests(unittest.TestCase):
         self.assertEqual("notice", evidence["severity"])
         self.assertFalse(found[0]["blocking"])
         self.assertEqual(["a", "b"], found[0]["local_ids"])
+
+    def test_a_gradual_planned_climb_is_compared_with_the_completed_peak(
+        self,
+    ) -> None:
+        # Planned weeks never set the reference: 72 then 81 (each under 20 %
+        # above the planned week before) are named against the completed 64.
+        plan = [
+            planned("a", "2026-11-10", "ride", "- 60m 85%"),
+            planned("b", "2026-11-17", "ride", "- 60m 90%"),
+        ]
+        found = only(check(plan, self.history), "weekly_load_rise")
+        self.assertEqual(
+            {"2026-11-16"}, {item["evidence"]["week_start"] for item in found}
+        )
+        self.assertEqual(
+            {64}, {item["evidence"]["baseline_peak_load"] for item in found}
+        )
 
     def test_a_normal_week_after_a_lighter_one_stays_silent(self) -> None:
         # #3918 (A6): 128 against the peak of 128 is no rise, although it is

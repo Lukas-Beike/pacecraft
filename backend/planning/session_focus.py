@@ -428,13 +428,17 @@ def planned_intensity_factor(unit: Mapping[str, Any]) -> float | None:
     return value / 100 if value > 1.5 else value
 
 
+def tempo_hard(estimate: WorkoutEstimate) -> bool:
+    """A tempo with at least 30 minutes in the moderate band (B7, #3918)."""
+    return (estimate.band_seconds or {}).get("moderate", 0.0) >= TEMPO_HARD_S
+
+
 def computed_hard(estimate: WorkoutEstimate) -> bool | None:
     """Hard by computed zone; ``None`` when any step's intensity is unknown.
 
     Hard is at least five minutes in steps of zone 4 or higher (power, pace or
     heart-rate zones), so a hard interval set inside an easy session counts and
-    short strides or sprints do not; or at least 30 minutes in the moderate band
-    (between LT1 and the threshold), a long tempo (#3918).
+    short strides or sprints do not.
     """
     if not estimate.steps or estimate.intensity_factor is None:
         return None
@@ -443,15 +447,15 @@ def computed_hard(estimate: WorkoutEstimate) -> bool | None:
         for step in estimate.steps
         if (step.zone or 0) >= _HARD_ZONE
     )
-    moderate_s = (estimate.band_seconds or {}).get("moderate", 0.0)
-    return hard_s >= _HARD_STEP_S or moderate_s >= TEMPO_HARD_S
+    return hard_s >= _HARD_STEP_S
 
 
 def is_hard(unit: Mapping[str, Any], computed: bool | None = None) -> bool:
     """The one hard-session rule (athlete decision 2026-11-11, #2083).
 
-    The first stage with an answer decides: a set focus (a tempo by its
-    steps: hard with 30 minutes in the moderate band, #3918); the workout steps
+    The first stage with an answer decides: a tempo focus (set or derived) is
+    hard with 30 minutes in the moderate band or a hard step block (#3918); a
+    set focus; the workout steps
     (``computed`` from the caller's thresholds, else the zone and percent steps
     read without thresholds); a planned intensity factor of at least 0.85; and,
     only without readable steps, a non-negated Z4-Z7 target or a hard word.
@@ -461,11 +465,9 @@ def is_hard(unit: Mapping[str, Any], computed: bool | None = None) -> bool:
     if sport is Sport.STRENGTH:
         return False
     focus = session_focus(unit)
-    if focus.origin == "set" and focus.value == "tempo":
+    if focus.value == "tempo":
         # A tempo is hard with 30 minutes in the moderate band (B7, #3918).
-        if computed is None:
-            computed = computed_hard(estimate_planned_unit(unit, ZoneSettings()))
-        return bool(computed)
+        return tempo_hard(estimate_planned_unit(unit, ZoneSettings())) or bool(computed)
     if focus.origin == "set":
         return bool(focus.is_hard)
     # Separate step fields are exported as the workout, so they count too.

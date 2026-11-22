@@ -17,6 +17,8 @@ Rules (references are observational or practice-based, not individual advice):
   planning convention, no ratio); load that cannot be
   computed (missing or stale thresholds, unparsed steps) is named, not guessed.
   Only with thresholds passed to ``check_plan``.
+- lighter_week_missing: four consecutive weeks each with more run and ride time
+  than the week before (practice-based: a lighter week every 3rd to 4th week).
 - back_to_back_hard: hard run/ride sessions on consecutive days. Hard means a
   set session focus (threshold, sweet_spot, vo2max, anaerobic, race, test), else a
   computed workout zone (at least five minutes in zone 4+ steps,
@@ -53,7 +55,6 @@ import json
 import re
 from collections.abc import Iterable, Mapping, Sequence
 from datetime import date, timedelta
-from itertools import pairwise
 from typing import Any
 
 from backend.activities.workout_text import WorkoutTextError, structured_steps
@@ -418,47 +419,55 @@ def _lighter_week_missing(
     """A note when four consecutive weeks each hold more endurance time (#3918).
 
     The playbook asks for a lighter week every 3rd to 4th week. Weeks run from
-    last week to the last planned one; completed sessions count before today,
-    planned units from today. A run of four rising weeks that ends in a planned
-    week is named once, on that week's units.
+    three weeks back to the last planned one; completed sessions count before
+    today, planned units from today. Each run of rising weeks whose fourth week
+    is this week or later is named once, on that week's run and ride units.
     """
     now = today.isoformat()
-    future = [unit for unit in units if _day(unit) >= now]
+    future = [
+        unit
+        for unit in units
+        if _day(unit) >= now
+        and planned_sport_environment(unit)[0] in {Sport.RUN, Sport.RIDE}
+    ]
     weeks = _endurance_week_seconds(future, completed, today)
     monday = today - timedelta(days=today.weekday())
-    start = monday - timedelta(days=7)
     if not weeks:
         return []
-    last = max(weeks)
     series = []
-    week = start
-    while week <= last:
+    week = monday - timedelta(days=21)
+    while week <= max(weeks):
         series.append((week, weeks.get(week, 0.0)))
         week += timedelta(days=7)
-    for index in range(3, len(series)):
-        window = series[index - 3 : index + 1]
-        rising = all(later[1] > earlier[1] > 0 for earlier, later in pairwise(window))
-        if rising and window[-1][0] >= monday:
-            end = window[-1][0]
-            flagged = [
-                unit
-                for unit in future
-                if end.isoformat()
-                <= _day(unit)
-                <= (end + timedelta(days=6)).isoformat()
-            ]
-            return [
-                _finding(
-                    "lighter_week_missing",
-                    flagged,
-                    "Four consecutive weeks each hold more run and ride time than the week before; plan a lighter week.",
-                    {
-                        "week_starts": [item[0].isoformat() for item in window],
-                        "minutes": [round(item[1] / 60) for item in window],
-                    },
-                )
-            ]
-    return []
+    # Each maximal run of rising weeks that reaches a planned week, named once
+    # on its fourth week, keyed by that week.
+    findings = []
+    run_start = 0
+    for index in range(1, len(series) + 1):
+        if index < len(series) and series[index][1] > series[index - 1][1] > 0:
+            continue
+        window = series[run_start:index]
+        run_start = index
+        if len(window) < 4 or window[3][0] < monday:
+            continue
+        end = window[3][0]
+        flagged = [
+            unit
+            for unit in future
+            if end.isoformat() <= _day(unit) <= (end + timedelta(days=6)).isoformat()
+        ]
+        findings.append(
+            _finding(
+                "lighter_week_missing",
+                flagged,
+                "Four consecutive weeks each hold more run and ride time than the week before; plan a lighter week.",
+                {
+                    "week_starts": [item[0].isoformat() for item in window[:4]],
+                    "minutes": [round(item[1] / 60) for item in window[:4]],
+                },
+            )
+        )
+    return findings
 
 
 def _missing_taper(

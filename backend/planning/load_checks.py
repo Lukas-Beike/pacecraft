@@ -162,13 +162,14 @@ def plan_sessions(
 
 
 def load_coverage(
-    sessions: Sequence[PlannedSession], today: date
+    sessions: Sequence[PlannedSession], today: date, unavailable: str | None = None
 ) -> list[dict[str, Any]]:
     """Per planned ISO week: run and ride units and how many have a planned load.
 
     The load checks are only as good as this coverage (#3918): a week with an
     unknown load is never judged by the weekly rise, so the brief names how
-    many units it could compute.
+    many units it could compute. With unusable thresholds (``unavailable``) the
+    checks compute none, whatever the steps would give.
     """
     weeks: dict[str, list[int]] = {}
     for session in sessions:
@@ -176,9 +177,14 @@ def load_coverage(
             continue
         counts = weeks.setdefault(_monday(session.day), [0, 0])
         counts[0] += 1
-        counts[1] += session.estimate.load is not None
+        counts[1] += unavailable is None and session.estimate.load is not None
     return [
-        {"week_start": week, "units": total, "with_load": known}
+        {
+            "week_start": week,
+            "units": total,
+            "with_load": known,
+            **({"reason": unavailable} if unavailable else {}),
+        }
         for week, (total, known) in sorted(weeks.items())
     ]
 
@@ -316,7 +322,11 @@ def _baseline(
     sport: Sport,
     week: str,
 ) -> tuple[float, int] | None:
-    """The highest load of the last 3-4 known weeks of the sport, and their count."""
+    """The highest load of the last 3-4 known completed weeks, and their count.
+
+    ``week`` is the current week: planned weeks never set the reference, so a
+    plan that climbs week by week is compared with what was done (#3918).
+    """
     first = date.fromisoformat(week)
     keys = [
         (sport, (first - timedelta(weeks=n)).isoformat())
@@ -333,10 +343,11 @@ def weekly_rises(
     completed: Iterable[Mapping[str, Any]],
     today: date,
 ) -> list[Draft]:
-    """Planned weekly load per sport against the highest of the previous 3-4 weeks.
+    """Planned weekly load per sport against the highest of the last 3-4 completed weeks.
 
     A planning convention (#3918): a normal week after a lighter or illness week
-    stays silent, a new peak more than 20 % above the recent ones is named.
+    stays silent, a planned week more than 20 % above the recent completed peak
+    is named, however gradually the plan climbs to it.
     Weeks without a record, or with a session whose load is unknown, are unknown
     and not rest, so they are left out; fewer than three known weeks give no
     note. A week of the sport with such a session is not judged either.
@@ -347,10 +358,11 @@ def weekly_rises(
         if session.day >= today.isoformat():
             groups[session.sport, _monday(session.day)].append(session)
     drafts: list[Draft] = []
+    current = _monday(today.isoformat())
     for (sport, week), group in sorted(
         groups.items(), key=lambda item: (item[0][1], item[0][0].value)
     ):
-        baseline = _baseline(totals, partial, sport, week)
+        baseline = _baseline(totals, partial, sport, current)
         planned = totals.get((sport, week), 0.0)
         if (
             baseline is None

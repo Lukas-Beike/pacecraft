@@ -269,10 +269,16 @@ HARD_TABLE = (
         unit("Ride", name="Tempo", description="2x\n- 20m Z3\n- 5m Z1"),
         True,
     ),
+    # B7 is about a tempo: other moderate work keeps the zone rule.
     (
         "sweet spot at 90 %",
         unit("Ride", name="Sweet Spot", description="3x\n- 12m 90%\n- 4m 55%"),
-        True,
+        False,
+    ),
+    (
+        "long endurance ride just above LT1 without a focus",
+        unit("Ride", description="- 150m 76%"),
+        False,
     ),
     (
         "short tempo below 30 minutes",
