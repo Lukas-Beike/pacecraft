@@ -1,8 +1,13 @@
-"""Remove merged, clean, idle Git worktrees (dry run unless --apply)."""
+"""Remove merged, clean, idle Git worktrees (dry run unless --apply).
+
+--schedule registers a daily run with --apply from the primary checkout: a
+Windows scheduled task, elsewhere the crontab line to add (#3925).
+"""
 
 from __future__ import annotations
 
 import argparse
+import os
 import shutil
 import subprocess
 import sys
@@ -11,6 +16,10 @@ from pathlib import Path
 
 PROTECTED_BRANCHES = {"develop", "main"}
 DAY = 86400
+TASK = "Pacecraft worktree prune"
+DAILY_AT = "04:00"
+BASE = "origin/develop"
+IDLE_DAYS = 3.0
 
 
 def run(args: list[str], cwd: str | None = None) -> subprocess.CompletedProcess:
@@ -183,15 +192,53 @@ def remove(entry: dict, merged_by_pr: bool) -> str | None:
     return None
 
 
+def schedule(
+    primary: str,
+    idle_days: float = IDLE_DAYS,
+    base: str = BASE,
+    *,
+    windows: bool = os.name == "nt",
+) -> int:
+    """Run the prune with --apply daily from the primary checkout. The task
+    command is fixed: no command-line value reaches it."""
+    if base != BASE or idle_days != IDLE_DAYS:
+        print("prune_worktrees: --schedule uses the defaults of --base and --idle-days")
+        return 2
+    # A stable interpreter, not this one: a worktree venv may be pruned itself.
+    python = "py -3" if windows else "python3"
+    command = f"{python} scripts/prune_worktrees.py --apply"
+    if not windows:
+        hour, minute = DAILY_AT.split(":")
+        print(
+            f'Add to crontab: {int(minute)} {int(hour)} * * * cd "{primary}" && {command}'
+        )
+        return 0
+    action = f'cmd /c cd /d "{primary}" && {command}'
+    done = run(
+        ["schtasks", "/Create", "/F", "/SC", "DAILY", "/ST", DAILY_AT, "/TN", TASK,
+         "/TR", action]
+    )  # fmt: skip
+    if done.returncode != 0:
+        print(
+            f"prune_worktrees: schtasks failed: {done.stderr.strip()}", file=sys.stderr
+        )
+        return 1
+    print(f"scheduled '{TASK}' daily at {DAILY_AT}: {action}")
+    return 0
+
+
 def main(argv: list[str] | None = None, now: float | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "--apply", action="store_true", help="remove (default: dry run)"
     )
-    parser.add_argument("--idle-days", type=float, default=3.0)
+    parser.add_argument("--idle-days", type=float, default=IDLE_DAYS)
     # Warns below this free space on the primary checkout's drive.
     parser.add_argument("--min-free-gb", type=float, default=10.0)
-    parser.add_argument("--base", default="origin/develop")
+    parser.add_argument("--base", default=BASE)
+    parser.add_argument(
+        "--schedule", action="store_true", help="run --apply daily (#3925)"
+    )
     args = parser.parse_args(argv)
     now = time.time() if now is None else now
 
@@ -202,6 +249,8 @@ def main(argv: list[str] | None = None, now: float | None = None) -> int:
         return 1
     entries = parse_worktrees(listing.stdout)
     primary, current = entries[0]["path"], top.stdout.strip()
+    if args.schedule:
+        return schedule(primary, args.idle_days, args.base)
 
     failed = False
     for entry in entries:

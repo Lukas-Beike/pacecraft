@@ -269,6 +269,39 @@ class PruneWorktreesTests(unittest.TestCase):
         _, _, err = self.run_main(repo, ["--min-free-gb", "1"], free_gb=2)
         self.assertEqual(err, "")
 
+    def test_schedule_registers_a_daily_apply_from_the_primary_checkout(self):
+        # #3925: nothing ran the prune, so worktrees piled up.
+        calls = []
+
+        def run(args, **_kwargs):
+            calls.append(args)
+            return done()
+
+        out = io.StringIO()
+        with mock.patch.object(prune, "run", run), redirect_stdout(out):
+            self.assertEqual(prune.schedule("C:/repo", 3.0, windows=True), 0)
+        (args,) = calls
+        self.assertEqual(args[:9], ["schtasks", "/Create", "/F", "/SC", "DAILY", "/ST", "04:00", "/TN", prune.TASK])  # fmt: skip
+        self.assertEqual(
+            args[10],
+            'cmd /c cd /d "C:/repo" && py -3 scripts/prune_worktrees.py --apply',
+        )
+        out = io.StringIO()
+        with redirect_stdout(out):
+            self.assertEqual(prune.schedule("/srv/repo", 3.0, windows=False), 0)
+        self.assertIn('0 4 * * * cd "/srv/repo" && python3 scripts/', out.getvalue())
+        repo = self.make()
+        with mock.patch.object(prune, "schedule", return_value=0) as scheduled:
+            self.assertEqual(self.run_main(repo, ["--schedule"])[0], 0)
+        scheduled.assert_called_once_with(
+            str(repo.tmp / "primary"), 3.0, "origin/develop"
+        )
+        # The task command is fixed: other idle days or another base are refused.
+        with redirect_stdout(io.StringIO()):
+            self.assertEqual(prune.schedule("/srv/repo", 5.5), 2)
+        with redirect_stdout(io.StringIO()):
+            self.assertEqual(prune.schedule("/srv/repo", 3.0, "origin/main"), 2)
+
     def test_outside_a_repository_exits_nonzero(self):
         err = io.StringIO()
         with (

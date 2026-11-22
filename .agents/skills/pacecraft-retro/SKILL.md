@@ -12,11 +12,10 @@ worked. The outcome is an evidence-backed, prioritized improvement plan.
 
 ## When to run
 
-Run when the user asks, after every issue a `deliver-issue` run delivers (in a
-lane too: one retro per issue, right after its merge and close), and once more
-over the whole run at the end of a lane for patterns across its issues. Report
-every actionable finding; there is no limit per issue or per thread. Whether a
-finding becomes an issue follows "Decide each finding" below.
+Run when the user asks, after every issue a `deliver-issue` run delivers
+outside a lane, and once over the whole run at the end of a lane (#3925).
+Report every actionable finding. Whether a finding becomes an issue follows
+"Decide each finding" below.
 Scale depth to the work; a short run needs only a few evidence-backed lines, or
 "no actionable findings". Do not review the retro itself.
 
@@ -149,9 +148,11 @@ a one-line observation, impact, and proposed action, and offers exactly:
 2. **Fix in this session**: implement it now.
 
 In a lane coordinated by an orchestrator thread, a technical finding (process,
-skills, tooling, tests, code defects) takes the default without a question: file
-it as a new issue and report the URL to the orchestrator; only content or visual
-findings go to the athlete. Elsewhere, use the host's structured question tool
+skills, tooling, tests, code defects) takes the default without a question when
+it is a recurrence (cite the earlier issue or run) or has a measured cost (time,
+failures, tokens): file it and report the URL to the orchestrator. Any other
+technical finding is one ledger line to the orchestrator, no issue (#3925).
+Only content or visual findings go to the athlete. Elsewhere, use the host's structured question tool
 when available, batching within its limits; otherwise ask in plain text with numbered findings. One answer such as
 "default" or "ok" applies the default to all unanswered findings. An explicit
 choice authorizes only that action for that finding. Without an answer, or on a

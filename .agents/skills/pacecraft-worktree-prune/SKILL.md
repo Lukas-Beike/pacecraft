@@ -6,8 +6,13 @@ description: Base skill. List, and on request remove, merged clean idle Git work
 # Prune worktrees
 
 ```powershell
-python scripts/prune_worktrees.py [--base origin/develop] [--idle-days 3] [--apply]
+python scripts/prune_worktrees.py [--base origin/develop] [--idle-days 3] [--apply | --schedule]
 ```
+
+- `--schedule` registers the daily prune (#3925): a Windows scheduled task
+  "Pacecraft worktree prune" at 04:00 that runs `--apply` from the primary
+  checkout, or elsewhere the crontab line to add. Register it once per machine,
+  on the athlete's request.
 
 - Default is a dry run: one `keep|prune <path> [<branch>]: <reason>` line per
   worktree and the free disk space. Removal needs `--apply`, so show the dry run

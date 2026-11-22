@@ -195,5 +195,5 @@ unseen by checks that read only its messages (#3352).
 Nudge a lane that has stalled without a stated reason; answer questions or put
 them to the athlete as deliver-issue's "Working with the athlete" says (one
 decision per question), within [Athlete questions](#athlete-questions). A lane is settled when its queue is
-delivered, its retro ran, and it wrote its closing sentence; then archive or
+delivered, its one end-of-run retro ran (#3925), and it wrote its closing sentence; then archive or
 close it as the athlete prefers.
