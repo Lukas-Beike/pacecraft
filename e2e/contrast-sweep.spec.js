@@ -172,7 +172,10 @@ async function expectStructure(page, view) {
 async function expectTouchTargets(page, view) {
   const small = await page.evaluate(() => {
     const found = new Map();
-    const name = (element) => `${element.tagName.toLowerCase()}${element.id ? `#${element.id}` : ""}${typeof element.className === "string" && element.className ? `.${element.className.trim().split(/\s+/)[0]}` : ""}`;
+    const name = (element) => {
+      const first = typeof element.className === "string" ? element.className.trim().split(/\s+/)[0] : "";
+      return element.tagName.toLowerCase() + (element.id ? "#" + element.id : "") + (first ? "." + first : "");
+    };
     for (const element of document.querySelectorAll(".panel.active :is(button, a[href], select, summary, input:not([type=hidden], [type=checkbox], [type=radio], [type=range]), [role=button]), .bottom-nav a")) {
       if (!element.getClientRects().length || getComputedStyle(element).display === "inline" || element.closest("[hidden], .sr-only") || element.matches(".threshold-info")) continue;
       const box = element.getBoundingClientRect();

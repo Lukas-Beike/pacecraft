@@ -77,7 +77,10 @@ async function wholeScreenProblems(page) {
   return page.evaluate(() => {
     const panel = document.querySelector(".panel.active");
     const viewport = document.documentElement.clientWidth;
-    const name = (element) => `${element.tagName.toLowerCase()}${element.id ? `#${element.id}` : ""}${typeof element.className === "string" && element.className ? `.${element.className.trim().split(/\s+/)[0]}` : ""}`;
+    const name = (element) => {
+      const first = typeof element.className === "string" ? element.className.trim().split(/\s+/)[0] : "";
+      return element.tagName.toLowerCase() + (element.id ? "#" + element.id : "") + (first ? "." + first : "");
+    };
     const scrolls = (element) => /(auto|scroll)/.test(getComputedStyle(element).overflowX);
     const inScroll = (element) => { for (let node = element.parentElement; node && node !== panel; node = node.parentElement) if (scrolls(node)) return true; return false; };
     const problems = [];
