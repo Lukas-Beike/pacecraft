@@ -148,6 +148,10 @@ def validated_meal_changes(meal: Any) -> dict[str, Any]:
         or {"logged_time_known", "meal_time"} <= keys
     ):
         raise AppError(400, INVALID_EDIT)
+    # An empty day or type would read as "not given" and fall back to today or the hour.
+    for key in ("meal_date", "meal_type"):
+        if key in keys and (not isinstance(meal[key], str) or not meal[key].strip()):
+            raise AppError(400, INVALID_EDIT)
     if "meal_time" not in keys:
         return dict(meal)
     time = meal["meal_time"]
