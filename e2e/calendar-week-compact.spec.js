@@ -203,6 +203,11 @@ test("@responsive a unit missed on a confirmed rest day is dropped, missing weat
   const title = entry.locator(".planned-session-title").first();
   await expect(title).toHaveCSS("overflow-wrap", "break-word");
   await expect(title).toHaveCSS("hyphens", "auto");
+  // Its link opens the location field in the profile (#3932 K-03).
+  await page.locator(".planned-weather-hint").getByRole("link", { name: "Wetterort angeben" }).click();
+  await expect(page).toHaveURL(/#more\/profile$/);
+  await expect(page.locator('#profileForm [name="weather_location"]')).toBeFocused();
+  await page.goBack();
   await page.evaluate(() => { state.data.library = []; renderLibrary([]); });
   await expect(page.locator("#library .context-empty")).toHaveText("Noch keine Einheiten in der Bibliothek. Der Coach legt hier Einheiten ab, wenn du sie planst.");
 });
