@@ -253,6 +253,7 @@ class GraphifyLocalTests(unittest.TestCase):
                 self.assertEqual(graph.update(self.root), 2)
             # A failed update names its cause (#3921).
             self.assertIn("Graphify update exited 1: boom: no space", output.getvalue())
+            self.assertEqual(graph._one_line("a\x1b[31m\tb\x7f"), "a [31m b")
             current = json.loads((rt / "current.json").read_text())
             self.assertEqual(current["generation"], generation)
             self.assertFalse(current["stale"])
@@ -629,6 +630,11 @@ class GraphifyLocalTests(unittest.TestCase):
             self.assertIn("last graph, behind by 1 files", note.getvalue())
             graph_file.write_text('{"nodes":[1],"edges":[]}')
             with self.assertRaisesRegex(graph.Unavailable, "checksum"):
+                graph.active_graph(self.root)
+            graph_file.write_text('{"nodes":[],"edges":[]}')
+            pointer["metadata"]["config"] = "other source rules"
+            (rt / "current.json").write_text(json.dumps(pointer))
+            with self.assertRaisesRegex(graph.Unavailable, "other source rules"):
                 graph.active_graph(self.root)
         self.assertEqual(
             graph._cause(subprocess.TimeoutExpired(["graphify"], 180)),

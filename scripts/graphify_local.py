@@ -628,7 +628,7 @@ def _run_graphify(root: Path, base: Path, inputs: Path, deadline: float) -> Path
     if result.returncode:
         # Name the cause, not only that it failed (#3921).
         lines = (result.stderr or b"").decode("utf-8", "replace").strip().splitlines()
-        cause = lines[-1][:300] if lines else "no error output"
+        cause = _one_line(lines[-1]) if lines else "no error output"
         raise Unavailable(f"Graphify update exited {result.returncode}: {cause}")
     if not isinstance(nodes, list) or not nodes or not isinstance(edges, list):
         raise Unavailable("Graphify update returned a graph without nodes or edges")
@@ -741,13 +741,19 @@ def update(root: Path, *, preparation: bool = False) -> int:
         return 2
 
 
+def _one_line(text: str) -> str:
+    """Tool output as one printable line of at most 300 characters."""
+    printable = "".join(c if 32 <= ord(c) != 127 else " " for c in text)
+    return " ".join(printable.split())[:300]
+
+
 def _cause(exc: BaseException) -> str:
     """Why an operation failed, in one line (#3921)."""
     if isinstance(exc, Unavailable):
         return str(exc)
     if isinstance(exc, subprocess.TimeoutExpired):
         return f"Graphify timed out after {exc.timeout:.0f} s"
-    return f"{type(exc).__name__}: {exc}"[:300]
+    return _one_line(f"{type(exc).__name__}: {exc}")
 
 
 def _behind(root: Path, pointer: dict) -> int:
@@ -773,6 +779,9 @@ def active_graph(root: Path) -> tuple[Path, Path]:
         digest = hashlib.sha256(graph.read_bytes()).hexdigest()
         if digest != current.get("graph_sha256"):
             raise Unavailable("local graph checksum mismatch; run update")
+        # Only files and commit may lag; a changed allowlist needs a rebuild.
+        if current.get("metadata", {}).get("config") != _config_signature():
+            raise Unavailable("local graph built for other source rules; run update")
         print(
             f"Graphify local: last graph, behind by {_behind(root, current)} files; "
             "run `python scripts/graphify_local.py update` for a current one",
