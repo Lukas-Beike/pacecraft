@@ -22,11 +22,15 @@ test("@responsive Einplanen and Löschen work in the library card and Rückgäng
   const days = card.locator(".planned-move-days");
   await expect(days).toBeVisible();
   await expect(days.getByRole("button", { name: "Anderes Datum" })).toBeVisible();
+  // #3980: a background reload redraws the library; an open day strip stays open.
+  await page.evaluate(() => renderLibrary(state.data.library));
+  await expect(days).toBeVisible();
   const day = days.locator("button[data-day]").nth(1);
   const dayKey = await day.getAttribute("data-day");
   await day.click();
   const status = card.locator(":scope > .planned-move-status");
   await expect(status).toContainText("Eingeplant:");
+  await expect(days).toBeHidden();
   expect(posts.at(-1)).toEqual([expect.stringMatching(/\/schedule$/), { date: dayKey }]);
   await status.getByRole("button", { name: "Rückgängig" }).click();
   await expect(status).toContainText("Zurückgenommen.");
