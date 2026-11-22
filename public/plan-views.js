@@ -987,6 +987,12 @@ function replanReceiptLine() {
   return status;
 }
 
+// What the calendar's redraw check reads of the replan preview.
+function replanSnapshot() {
+  const preview = state.data?.planning?.latest_replan;
+  return [preview?.id, preview?.status, replanDismissed(), replanReceipt?.text];
+}
+
 function plannedReplanCard() {
   // A newer preview ends the receipt of the one applied.
   if (replanReceipt && state.data?.planning?.latest_replan?.id !== replanReceipt.previewId) replanReceipt = null;
@@ -3022,7 +3028,7 @@ function renderPlanned(trainingCalendar) {
   plannedLastDateKey = lastDateKey;
   keepPlannedSelection(todayKey, lastDateKey);
   dropDeleteReceiptsOutsideWeek();
-  const snapshot = JSON.stringify([calendar, todayKey, selectedWeekKey, calendarView, calendarSport, selectedDayKey, state.data?.daily_planning_context, state.data?.planning_compliance, state.data?.competitions, state.data?.weather, (state.data?.external_calendar?.events || []).map((event) => [event?.uid, event?.start_local, event?.impact, event?.name]), state.data?.external_calendar?.undecided_upcoming, state.data?.planning?.latest_replan?.id, state.data?.planning?.latest_replan?.status, replanDismissed(), replanReceipt?.text]);
+  const snapshot = JSON.stringify([calendar, todayKey, selectedWeekKey, calendarView, calendarSport, selectedDayKey, state.data?.daily_planning_context, state.data?.planning_compliance, state.data?.competitions, state.data?.weather, (state.data?.external_calendar?.events || []).map((event) => [event?.uid, event?.start_local, event?.impact, event?.name]), state.data?.external_calendar?.undecided_upcoming, ...replanSnapshot()]);
   if (snapshot === plannedRenderSnapshot && root.childElementCount) {
     if (state.plannedTodayFocusPending) requestAnimationFrame(() => focusPlannedToday());
     refreshWeekReview(root);
@@ -3037,10 +3043,7 @@ function renderPlanned(trainingCalendar) {
   }
   const focusedEntry = rememberPlannedEntryState(root);
   root.replaceChildren();
-  const banner = plannedUndecidedBanner();
-  if (banner) root.append(banner);
-  const replan = plannedReplanCard();
-  if (replan) root.append(replan);
+  root.append(...[plannedUndecidedBanner(), plannedReplanCard()].filter(Boolean));
   const weeklyCompliance = new Map(
     (Array.isArray(state.data?.planning_compliance) ? state.data.planning_compliance : [])
       .filter((item) => item?.week_start)
