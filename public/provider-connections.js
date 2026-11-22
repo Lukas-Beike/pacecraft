@@ -261,9 +261,9 @@ async function changeMetricExportField(item, input) {
   const enabled = input.checked;
   const remaining = (state.data?.garmin?.metric_export_fields || [])
     .filter((field) => field.enabled && field.key !== item.key).length;
-  let message = `${item.label} künftig automatisch an Intervals.icu senden?`;
+  let message = `${item.label} wird künftig automatisch an Intervals.icu gesendet.`;
   if (!enabled) {
-    message = `${item.label} nicht mehr automatisch an Intervals.icu senden?`;
+    message = `${item.label} wird nicht mehr automatisch an Intervals.icu gesendet.`;
     if (!remaining) message += " Damit endet der automatische Abgleich.";
   }
   setMetricExportFieldsBusy(true);
@@ -288,7 +288,7 @@ function toggleMetricExport(button) {
 
 async function configureAutomaticMetricExport(enabled, button) {
   const message = enabled
-    ? "Schwellenpuls (LSHF), maximale Herzfrequenz und Lauf-Schwellenpace künftig automatisch an Intervals.icu senden (lokale Zonen, sonst Garmin, sonst Wahoo)? Abweichende Werte dort werden überschrieben, die Herzfrequenzzonen neu berechnet."
+    ? "Schwellenpuls (LSHF), maximale Herzfrequenz und Lauf-Schwellenpace werden künftig automatisch an Intervals.icu gesendet (lokale Zonen, sonst Garmin, sonst Wahoo). Abweichende Werte dort werden überschrieben, die Herzfrequenzzonen neu berechnet."
     : "Schwellenwerte werden nicht mehr automatisch an Intervals.icu gesendet.";
   if (!await requestConfirmation(message, { title: enabled ? "Automatischen Abgleich aktivieren?" : "Automatischen Abgleich deaktivieren?", confirmLabel: enabled ? "Aktivieren" : "Deaktivieren" })) return;
   button.disabled = true;
