@@ -21,7 +21,7 @@ case on both sides, so the guards match.
 tool and route exists, the parity value matches the two columns, each gap names
 its issue and the counts below match the table.
 
-Counts: both 42, UI only 23, Coach only 21, neither 1, UI by rule 8.
+Counts: both 42, UI only 23, Coach only 21, neither 0, UI by rule 8.
 
 ## Matrix
 
@@ -121,7 +121,6 @@ Counts: both 42, UI only 23, Coach only 21, neither 1, UI by rule 8.
 | Privacy | Delete the local athlete data | Datenschutz `POST /api/privacy/delete` | — | typed confirmation | UI by rule | |
 | Privacy | Delete stored GPS tracks | Datenschutz `POST /api/privacy/gps/delete` | — | typed confirmation | UI by rule | |
 | Notifications | Turn notifications on or off on this device | App `POST /api/push/key`, `POST /api/push/subscribe`, `POST /api/push/unsubscribe` | — | device permission | UI by rule | |
-| Notifications | Switch notification types on or off | — | — | — | neither | #3914, #3960 |
 
 ## Outside the matrix
 
