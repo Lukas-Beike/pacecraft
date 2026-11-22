@@ -36,6 +36,7 @@ from backend.http_api.chat_post import ChatPostRoutes
 from backend.http_api.chat_stream import CoachChatStreamTransport
 from backend.http_api.coach_actions_post import CoachActionsPostRoutes
 from backend.http_api.coach_get import CoachGetRoutes
+from backend.http_api.competition_conflict_post import CompetitionConflictPostRoutes
 from backend.http_api.credentials_put import CredentialsPutRoutes
 from backend.http_api.diagnostics_delete_post import DiagnosticsDeletePostRoutes
 from backend.http_api.diagnostics_get import DiagnosticsGetRoutes
@@ -585,6 +586,7 @@ def _athlete_write_routes(
         ),
         LibraryPostRoutes(ctx.planning.workout_library, _unit_edit_service(ctx)),
         TrainingPlanPostRoutes(ctx.planning.training_plan, _unit_edit_service(ctx)),
+        CompetitionConflictPostRoutes(lambda: ctx.sync_commands.conflicts()),
         AdaptiveReplanPostRoutes(
             lambda: AdaptiveReplanActionService(
                 ctx.database(),
@@ -734,6 +736,7 @@ def build_http_api(
         library_post,
         training_plan_post,
         adaptive_replan_post,
+        competition_conflict_post,
         credentials_put,
         equipment_post,
         first_threshold_post,
@@ -792,6 +795,7 @@ def build_http_api(
             library_post,
             training_plan_post,
             adaptive_replan_post,
+            competition_conflict_post,
             credentials_put,
             wahoo_get,
             wahoo_post,

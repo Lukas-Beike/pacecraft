@@ -1212,6 +1212,8 @@ output.planned-move-status { display: block; }
 .competition-archive > .competition-card { margin-top: 12px; }
 .competition-read-state { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; color: var(--muted); font-size: .85rem; }
 .competition-read-state output:empty { display: none; }
+.competition-conflict { display: grid; gap: 8px; margin-top: 10px; }
+.competition-conflict > p { margin: 0; color: var(--warning, var(--ink)); font-size: .8rem; font-weight: 650; }
 .competition-card-facts { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, max(9rem, calc(50% - 6px))), 1fr)); gap: 10px 12px; margin-top: 12px; }
 .competition-card-facts > div { display: grid; gap: 3px; min-width: 0; }
 .competition-card-facts span { color: var(--subtle); font-size: .72rem; }

@@ -295,3 +295,37 @@ test("@responsive a plan's period is replaced in one change and Rückgängig tak
   expect(posts.at(-1)[1].changes.length).toBeGreaterThan(1);
   await expect(page.locator("#library .planned-move-status", { hasText: "Zurückgenommen." }).first()).toBeVisible();
 });
+
+// #4021: a competition with a sync conflict offers "Lokal behalten" and, behind a confirmation card, "Von dort übernehmen".
+test("@responsive a competition conflict is settled at its card", async ({ page, request }) => {
+  test.setTimeout(180_000);
+  const posts = [];
+  await page.route("**/api/competitions/*/resolve", async (route) => {
+    posts.push(route.request().postDataJSON());
+    await route.fulfill({ json: { ok: true, status: "resolved" } });
+  });
+  await openApp(page, request, "/#plan/season");
+  await page.evaluate(() => {
+    const base = { event_date: "2099-01-06", sport: "run", priority: "A", sync_state: "conflict", sync_conflict: "{\"type\":\"changed\"}", external_id: "x" };
+    state.data.competitions = [{ ...base, id: "c-1", name: "E2E Halbmarathon" }, { ...base, id: "c-2", name: "E2E Marathon", event_date: "2099-02-06" }];
+    globalThis.load = async () => {};
+    renderCompetitions(state.data.competitions);
+  });
+  const card = page.locator(".competition-card", { hasText: "E2E Halbmarathon" });
+  await expect(card.locator(".competition-conflict")).toContainText("Bei Intervals.icu geändert");
+  await expect(card.locator(".competition-conflict > .planned-activity-actions").getByRole("button")).toHaveText(["Lokal behalten", "Von dort übernehmen"]);
+
+  // Adopting needs the confirmation card; nothing is sent before it.
+  await card.getByRole("button", { name: "Von dort übernehmen" }).click();
+  await expect(card.getByText("Deine lokalen Werte werden durch die von Intervals.icu ersetzt.")).toBeVisible();
+  expect(posts).toEqual([]);
+  await card.getByRole("button", { name: "Ersetzen" }).click();
+  await expect.poll(() => posts.length).toBe(1);
+  expect(posts[0]).toEqual({ strategy: "adopt_remote", confirmed: true });
+  const other = page.locator(".competition-card", { hasText: "E2E Marathon" });
+  await other.getByRole("button", { name: "Lokal behalten" }).click();
+  await expect.poll(() => posts.length).toBe(2);
+  expect(posts[1]).toEqual({ strategy: "keep_local" });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBeTruthy();
+  await page.unrouteAll({ behavior: "ignoreErrors" });
+});

@@ -71,6 +71,7 @@ handler's docstring. Regenerate it with
 | PUT | `/api/competitions` | Session + CSRF | before access | Create or update one local competition the athlete entered. |
 | PUT | `/api/competitions/remove` | Session + CSRF | before access | Delete one local competition. |
 | GET | `/api/competitions/{id}/race-plan` | Session | no | Race plan of one stored competition, computed from local data. |
+| POST | `/api/competitions/{id}/resolve` | Session + CSRF | after access | Keep the local competition or take the Intervals.icu one; nothing is sent. |
 | GET | `/api/context-preview` | Session | no | Preview of the context the Coach receives. |
 | GET | `/api/diagnostics` | Session | no | Diagnostic report. |
 | POST | `/api/diagnostics/delete` | Session + CSRF | after access | Clear the stored diagnostics. |
@@ -917,6 +918,23 @@ provider: only the weather sync job fetches race-day forecasts.
 
 Errors: 404 `competition_not_found` "Dieser Wettkampf ist lokal nicht
 vorhanden." when the id is unknown.
+
+### `POST /api/competitions/{id}/resolve`
+
+Request: path `{id}`, the competition's local id; JSON body `{"strategy":
+"keep_local" | "adopt_remote", "confirmed": true}` and no other field.
+`adopt_remote` replaces the local values with the remote ones for good, so
+it needs `confirmed: true`; `keep_local` marks the local values to win at
+the next explicit send.
+
+Response: 200 `{"ok": true, "status": "resolved", "strategy",
+"competition", "competitions"}`.
+
+Errors: 400 "Ungültige Konfliktstrategie." or "Unbekannte Felder: …"; 409
+`confirmation_required` "Das Übernehmen muss bestätigt werden." for
+`adopt_remote` without `confirmed`; 404 "Wettkampf nicht gefunden."; 409
+"Für diesen Wettkampf liegt kein offener Synchronisierungskonflikt vor."; 409
+"Das Remote-Event kann nicht übernommen werden." when the event is gone.
 
 ### `GET /api/context-preview`
 
