@@ -40,7 +40,12 @@ RUNS_ONLY = {"status": "unknown", "reason": "nur aus Läufen", "sessions": 0}
 CONFIRM_DEVIATION_SHARE = 0.05
 # Adoptable value -> (estimate field, zone metric, label, unit).
 _VALUES: dict[str, tuple[str, ZoneConfigurationMetric, str, str]] = {
-    "heart_rate": ("heart_rate_bpm", ZoneConfigurationMetric.HEART_RATE, "Puls", "bpm"),
+    "heart_rate": (
+        "heart_rate_bpm",
+        ZoneConfigurationMetric.HEART_RATE,
+        "Herzfrequenz",
+        "bpm",
+    ),
     "pace": ("pace_seconds_per_km", ZoneConfigurationMetric.PACE, "Pace", "s/km"),
     "power": ("power_w", ZoneConfigurationMetric.POWER, "Leistung", "W"),
 }

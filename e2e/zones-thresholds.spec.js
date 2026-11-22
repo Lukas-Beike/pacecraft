@@ -60,10 +60,10 @@ test("@responsive each sport shows LT1 and LT2 and its zone kinds, and Bearbeite
   // Without power zones LT1 power is the server's fixed share of the FTP.
   await expect(thresholds.locator('[data-threshold="lt1-main"]')).toHaveText("214 W");
   // The box names the thresholds; a yellow "i" per row opens its origin (#2427).
-  await expect(thresholds.locator(".zone-thresholds > .zone-muted")).toHaveText(["Leistung", "Puls", /^Aerob \(LT1\)/, /^Anaerob \(LT2\) \/ FTP/]);
+  await expect(thresholds.locator(".zone-thresholds > .zone-muted")).toHaveText(["Leistung", "Herzfrequenz", /^Aerob \(LT1\)/, /^Anaerob \(LT2\) \/ FTP/]);
   await expect(thresholds.locator(".zone-source")).toHaveText("Bearbeiten");
   await thresholds.getByRole("button", { name: "Herkunft Aerob (LT1)" }).click();
-  await expect(page.locator(".analysis-info-tooltip:popover-open")).toHaveText("Puls aus der Herzfrequenzvariabilität · Leistung Standardwert");
+  await expect(page.locator(".analysis-info-tooltip:popover-open")).toHaveText("Herzfrequenz aus der Herzfrequenzvariabilität · Leistung Standardwert");
   await page.keyboard.press("Escape");
   await thresholds.getByRole("button", { name: "Herkunft Anaerob (LT2) / FTP" }).click();
   await expect(page.locator(".analysis-info-tooltip:popover-open")).toHaveText("Von Garmin Connect");
@@ -115,7 +115,7 @@ test("@responsive Analyse shows LT1 like the zones page", async ({ page }) => {
   await expect(cycling.locator('[data-metric="cycling_lt1_hr_bpm"] .estimate-chip')).toHaveCount(0);
   await expect(cycling.locator('[data-metric="cycling_lt1_watts"] th')).toContainText("Aerobe Schwelle (LT1) · Leistung");
   await expect(cycling.locator('[data-metric="cycling_ftp_watts"] th')).toContainText("Anaerobe Schwelle (LT2) · FTP");
-  await expect(cycling.locator('[data-metric="bike_threshold_hr_bpm"] th')).toContainText("Anaerobe Schwelle (LT2) · Puls");
+  await expect(cycling.locator('[data-metric="bike_threshold_hr_bpm"] th')).toContainText("Anaerobe Schwelle (LT2) · Herzfrequenz");
   await expect(cycling.locator('[data-metric="cycling_lt1_watts"] td')).toHaveText("214 W");
   await expect(cycling.locator('[data-metric="cycling_lt1_watts"] .estimate-chip')).toHaveCount(0);
 });
