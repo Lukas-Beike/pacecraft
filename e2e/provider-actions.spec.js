@@ -22,7 +22,8 @@ test("@responsive provider sync actions are disabled with a setup hint without c
   const intervalsHint = page.locator("#intervalsSetupHint");
   await expect(intervalsHint).toBeVisible();
   await expect(intervalsHint).toContainText("Intervals.icu ist nicht konfiguriert");
-  await expect(intervalsHint).toContainText("INTERVALS_API_KEY");
+  await expect(intervalsHint).toContainText("Server-Einstellungen");
+  await expect(intervalsHint).not.toContainText("INTERVALS_API_KEY");
   await expect(page.locator("#garminSetupHint")).toBeVisible();
   // A-043: the hint names both in-app ways to connect Garmin.
   await expect(page.locator("#garminSetupHint")).toHaveText("Garmin ist nicht verbunden. Melde dich unter „Garmin-Konto“ an oder hinterlege unter „Personal API“ einen Schlüssel.");

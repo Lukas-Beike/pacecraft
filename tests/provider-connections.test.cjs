@@ -96,7 +96,7 @@ test("badges show the source and only stored values offer removal", () => {
 
   assert.equal(badge("openai_api_key").textContent, "In der App gespeichert");
   assert.equal(badge("openai_api_key").className, "credential-source is-db");
-  assert.equal(badge("openai_base_url").textContent, "Aus Umgebung");
+  assert.equal(badge("openai_base_url").textContent, "Server-Einstellung");
   assert.equal(badge("openai_base_url").className, "credential-source is-env");
   assert.equal(badge("intervals_api_key").textContent, "Nicht gesetzt");
   assert.equal(badge("intervals_api_key").className, "credential-source is-none");
@@ -415,7 +415,7 @@ test("the save payload drops blank and non-string values", () => {
 
 test("source views fall back to none for unknown sources", () => {
   assert.deepEqual(credentialSourceView({ source: "db" }), { source: "db", label: "In der App gespeichert", removable: true });
-  assert.deepEqual(credentialSourceView({ source: "env" }), { source: "env", label: "Aus Umgebung", removable: false });
+  assert.deepEqual(credentialSourceView({ source: "env" }), { source: "env", label: "Server-Einstellung", removable: false });
   assert.deepEqual(credentialSourceView({ source: "weird" }), { source: "none", label: "Nicht gesetzt", removable: false });
   assert.deepEqual(credentialSourceView(undefined), { source: "none", label: "Nicht gesetzt", removable: false });
 });

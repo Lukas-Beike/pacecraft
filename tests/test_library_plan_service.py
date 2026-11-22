@@ -205,7 +205,7 @@ class LibraryPlanServiceTests(unittest.TestCase):
             raised.exception.message,
             "Planung wegen bestehender Kalendereinheiten nicht möglich: "
             + ", ".join(
-                f"2026-09-21: {name}" for name in ["Doppelte Bibliothekseinheit"] * 8
+                f"21.09.: {name}" for name in ["Doppelte Bibliothekseinheit"] * 8
             )
             + ". Weitere Konflikte wurden nicht aufgelistet.",
         )
@@ -246,7 +246,7 @@ class LibraryPlanServiceTests(unittest.TestCase):
                     ]
                 )
             self.assertIn(
-                "2026-09-21: Doppelte Bibliothekseinheit", raised.exception.message
+                "21.09.: Doppelte Bibliothekseinheit", raised.exception.message
             )
 
     def test_success_creates_batch_with_history_revision_and_one_post_commit_event(

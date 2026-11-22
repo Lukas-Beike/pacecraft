@@ -39,11 +39,11 @@ MAX_CALLBACK_VALUE_LENGTH = 2048
 _REFRESH_REJECTED_STATUSES = frozenset({400, 401, 422})
 
 NOT_CONFIGURED_MESSAGE = (
-    "Wahoo ist nicht konfiguriert. Bitte WAHOO_CLIENT_ID, WAHOO_CLIENT_SECRET "
-    "und WAHOO_REDIRECT_URI in der Serverkonfiguration hinterlegen."
+    "Wahoo ist nicht konfiguriert. Bitte Client-ID, Client-Secret und "
+    "Weiterleitungs-URL in den Server-Einstellungen hinterlegen."
 )
 INVALID_REDIRECT_MESSAGE = (
-    "WAHOO_REDIRECT_URI muss eine vollständige HTTPS-URL ohne Zugangsdaten sein."
+    "Die Weiterleitungs-URL muss eine vollständige HTTPS-URL ohne Zugangsdaten sein."
 )
 NOT_CONNECTED_MESSAGE = "Wahoo ist nicht verbunden."
 RECONNECT_MESSAGE = "Die Wahoo-Verbindung ist abgelaufen. Bitte Wahoo neu verbinden."

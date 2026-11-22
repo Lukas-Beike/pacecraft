@@ -32,7 +32,8 @@ async function openConnections(page, url = "/#more/connections") {
 test("@responsive Wahoo without server credentials explains the missing configuration", async ({ page }, testInfo) => {
   const card = await openConnections(page);
   await expect(page.locator("#wahooConnectionStatus")).toHaveText("Nicht eingerichtet");
-  await expect(page.locator("#wahooSetupHint")).toContainText("WAHOO_CLIENT_ID");
+  await expect(page.locator("#wahooSetupHint")).toContainText("Server-Einstellungen");
+  await expect(page.locator("#wahooSetupHint")).not.toContainText("WAHOO_CLIENT_ID");
   await expect(page.locator("#wahooConnectButton")).toBeHidden();
   await expect(page.locator("#wahooDisconnectButton")).toBeHidden();
   await card.scrollIntoViewIfNeeded();

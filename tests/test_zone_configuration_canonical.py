@@ -416,6 +416,21 @@ class LocalZoneEditTests(unittest.TestCase):
         with self.assertRaises(AppError):
             self.service.save_adopted({**LOCAL_POWER, "threshold_origin": "garmin"})
 
+    def test_a_refused_zone_names_the_field_in_german_not_its_key(self) -> None:
+        for payload, message in (
+            (
+                {**LOCAL_POWER, "limits": [100.0]},
+                "Die Zonen sind ungültig: 3 bis 7 Obergrenzen erforderlich.",
+            ),
+            (
+                {**LOCAL_POWER, "limits": None, "percent_limits": None},
+                "Die Zonen sind ungültig: Obergrenzen oder Prozentgrenzen.",
+            ),
+        ):
+            with self.assertRaises(AppError) as refused:
+                self.service.save(payload)
+            self.assertEqual(refused.exception.message, message)
+
     def test_read_carries_the_threshold_warning_only_when_present(self) -> None:
         self.assertNotIn("threshold_warnings", self.service.read())
         warning: dict[str, Any] = {

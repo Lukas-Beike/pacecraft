@@ -1951,6 +1951,9 @@ const CONTEXT_KEY_LABELS = {
   context_characters: "Zeichen im Kontext",
   projection: "Projektion",
   name: "Name",
+  goals: "Ziele",
+  training_background: "Trainingshintergrund",
+  availability: "Verfügbarkeit",
   sports: "Sportarten",
   typical_weekly_volume: "Typischer Wochenumfang",
   timezone: "Zeitzone",
@@ -1976,6 +1979,7 @@ function contextScalarText(key, value) {
   if (typeof value === "boolean") return value ? "Ja" : "Nein";
   if (typeof value === "number") return value.toLocaleString("de-DE", { maximumFractionDigits: 2 });
   if (typeof value === "string" && key.endsWith("_at")) return formatTime(value);
+  if (key === "sports") return profileSportsLabel(value);
   return String(value);
 }
 

@@ -101,10 +101,10 @@ class WahooPostRoutes:
         deleted).
 
         Errors: for `/api/wahoo/connect`: 503 `not_configured` "Wahoo ist nicht
-        konfiguriert. Bitte WAHOO_CLIENT_ID, WAHOO_CLIENT_SECRET und
-        WAHOO_REDIRECT_URI in der Serverkonfiguration hinterlegen."; 400
-        `invalid_redirect_uri` "WAHOO_REDIRECT_URI muss eine vollständige
-        HTTPS-URL ohne Zugangsdaten sein." when the configured redirect is not an
+        konfiguriert. Bitte Client-ID, Client-Secret und Weiterleitungs-URL in
+        den Server-Einstellungen hinterlegen."; 400 `invalid_redirect_uri` "Die
+        Weiterleitungs-URL muss eine vollständige HTTPS-URL ohne Zugangsdaten
+        sein." when the configured redirect is not an
         HTTPS URL with host, without credentials or fragment. Disconnect has no
         route-specific errors.
         """

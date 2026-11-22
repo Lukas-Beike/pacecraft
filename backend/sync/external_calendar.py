@@ -74,7 +74,7 @@ class ExternalCalendarSyncService:
             if not self._config.calendar_ical_url:
                 raise AppError(
                     503,
-                    "CALENDAR_ICAL_URL ist nicht konfiguriert.",
+                    "Der Kalender-Link ist nicht konfiguriert.",
                     reason="not_configured",
                 )
             if not self._lock.acquire(blocking=False):

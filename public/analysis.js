@@ -3499,7 +3499,7 @@ function trainingFocusZoneInfo(report, model, items) {
   const period = trainingFocusPeriodLabel(report).toLowerCase();
   const source = [...new Set(items.map((item) => item.source).filter(Boolean))].join(", ");
   // Each zone model is summed on its own (#1743); a session can appear for HF and power.
-  const basis = model === "provider" ? "Zonen des Geräts, für Einheiten ohne lokale Zonenzeiten" : "Lokale Zonen am Tag der Einheit, aus den Streams gezählt";
+  const basis = model === "provider" ? "Zonen des Geräts, für Einheiten ohne lokale Zonenzeiten" : "Lokale Zonen am Tag der Einheit, aus den Aufzeichnungen gezählt";
   return `${basis} (${period}). Quelle: ${source || "unbekannt"}.`;
 }
 
