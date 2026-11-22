@@ -450,14 +450,18 @@ def computed_hard(estimate: WorkoutEstimate) -> bool | None:
     return hard_s >= _HARD_STEP_S
 
 
-def is_hard(unit: Mapping[str, Any], computed: bool | None = None) -> bool:
+def is_hard(
+    unit: Mapping[str, Any],
+    computed: bool | None = None,
+    tempo_computed: bool | None = None,
+) -> bool:
     """The one hard-session rule (athlete decision 2026-11-11, #2083).
 
     The first stage with an answer decides: a tempo focus (set or derived) is
     hard with 30 minutes in the moderate band or a hard step block, read like
     any unit's steps (#3918); a set focus; the workout steps
-    (``computed`` from the caller's thresholds, else the zone and percent steps
-    read without thresholds); a planned intensity factor of at least 0.85; and,
+    (``computed`` and ``tempo_computed`` from the caller's thresholds, else the
+    zone and percent steps read without thresholds); a planned intensity factor of at least 0.85; and,
     only without readable steps, a non-negated Z4-Z7 target or a hard word.
     Strength is never hard here; heavy strength has its own rule.
     """
@@ -474,7 +478,9 @@ def is_hard(unit: Mapping[str, Any], computed: bool | None = None) -> bool:
     estimate = estimate_planned_unit(unit, ZoneSettings())
     if computed is None:
         computed = computed_hard(estimate)
-    if tempo and tempo_hard(estimate):
+    if tempo and (
+        tempo_computed if tempo_computed is not None else tempo_hard(estimate)
+    ):
         # A tempo is hard with 30 minutes in the moderate band or a hard step
         # block (B7, #3918).
         return True

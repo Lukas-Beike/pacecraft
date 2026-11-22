@@ -84,6 +84,7 @@ from backend.planning.session_focus import (
     computed_hard,
     planned_intensity_factor,
     session_focus,
+    tempo_hard,
 )
 from backend.planning.session_focus import is_hard as unit_is_hard
 from backend.planning.sport import planned_sport_environment
@@ -192,6 +193,7 @@ LONG_SESSION_S = 5400
 RUN_WINDOW_DAYS = 30
 # Key check_plan sets on a unit copy whose steps give a computed intensity.
 COMPUTED_HARD = "_computed_hard"
+COMPUTED_TEMPO_HARD = "_computed_tempo_hard"
 _ENDURANCE = frozenset({Sport.RUN, Sport.RIDE})
 # "maximal" is left out: in German it mostly means "at most".
 _HEAVY = re.compile(r"\b(?:heavy|schwer|[1-6]\s*rm)\b", re.IGNORECASE)
@@ -214,9 +216,11 @@ def is_hard(unit: Mapping[str, Any]) -> bool:
 
     The steps are judged with the thresholds ``check_plan`` computed them with.
     """
-    computed = unit.get(COMPUTED_HARD)
+    computed, tempo = unit.get(COMPUTED_HARD), unit.get(COMPUTED_TEMPO_HARD)
     return _sport(unit) in _ENDURANCE and unit_is_hard(
-        unit, computed if isinstance(computed, bool) else None
+        unit,
+        computed if isinstance(computed, bool) else None,
+        tempo if isinstance(tempo, bool) else None,
     )
 
 
@@ -902,14 +906,17 @@ def focus_missing(units: Sequence[Mapping[str, Any]]) -> list[dict]:
 def _with_computed_hard(
     units: Sequence[Mapping[str, Any]], sessions: Sequence[load_checks.PlannedSession]
 ) -> list[Mapping[str, Any]]:
-    """Unit copies carrying the hardness computed from their workout steps."""
-    computed = {
-        id(session.unit): computed_hard(session.estimate) for session in sessions
-    }
+    """Unit copies carrying the hardness computed from their workout steps, and
+    the tempo rule's verdict from the same thresholds (B7, #3918)."""
+    computed: dict[int, dict[str, bool]] = {}
+    for session in sessions:
+        hard = computed_hard(session.estimate)
+        extra = {} if hard is None else {COMPUTED_HARD: hard}
+        if session.estimate.band_seconds is not None:
+            extra[COMPUTED_TEMPO_HARD] = tempo_hard(session.estimate)
+        computed[id(session.unit)] = extra
     return [
-        {**unit, COMPUTED_HARD: computed[id(unit)]}
-        if computed.get(id(unit)) is not None
-        else unit
+        {**unit, **computed[id(unit)]} if computed.get(id(unit)) else unit
         for unit in units
     ]
 
