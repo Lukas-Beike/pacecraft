@@ -1,7 +1,7 @@
 # M6 — Local TSS-scale session load and intensity
 
 - **Card:** M6
-- **Card version:** 8
+- **Card version:** 7
 - **Method ID:** local-tss-load v7 (#1725, v2 #1726, v3 #1774, v4 #1771, v5 #1773, v6 #1892, v7 #1950)
 - **Status:** implemented (`backend/performance/local_tss.py`, `backend/sync/local_load.py`)
 - **Classification:** model estimate

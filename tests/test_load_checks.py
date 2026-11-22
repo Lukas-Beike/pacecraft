@@ -313,6 +313,7 @@ class HeartRateStepLoadTests(unittest.TestCase):
         (ride,) = load_checks.plan_sessions(
             [unit], load_checks.LoadThresholds(resolver=lambda *_: settings)
         )
+        assert ride.estimate.load is not None
         self.assertAlmostEqual(100.0, ride.estimate.load, places=6)
 
 
