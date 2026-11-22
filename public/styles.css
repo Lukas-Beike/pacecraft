@@ -1815,6 +1815,8 @@ button:focus-visible, a:focus-visible, summary:focus-visible {
 .library-plan-field { display: grid; gap: 6px; margin-top: 10px; color: var(--muted); font-size: .76rem; font-weight: 650; }
 .replan-rows { display: grid; gap: 6px; margin: 8px 0; padding: 0; list-style: none; }
 .replan-row { display: grid; grid-template-columns: 74px minmax(0, 1fr); gap: 8px; padding-top: 6px; border-top: 1px solid var(--line); font-size: .8rem; }
+.plan-replace-row { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 8px; align-items: center; padding-top: 6px; border-top: 1px solid var(--line); font-size: .85rem; }
+.plan-replace-row > button { min-width: 44px; padding: 0; }
 .library-toolbar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; justify-content: space-between; margin-bottom: 12px; }
 .edit-row { display: grid; gap: 8px; padding: 12px; border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--surface); }
 .edit-row.is-removed { opacity: .6; }
