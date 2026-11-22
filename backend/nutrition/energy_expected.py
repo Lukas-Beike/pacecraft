@@ -95,7 +95,9 @@ def expected_total_kcal(
 ) -> int | None:
     """Today's expected total on the outlined ``row``: its resting energy and
     everyday term, the 28-day mean steps and digestion (Garmin's row has no
-    digestion part) and the planned units. None where any part is unknown."""
+    digestion part) and the planned units. Each part is at least what the row
+    counts so far, so the expectation never lies below the total so far. None
+    where any part is unknown."""
     split = (row or {}).get("split")
     if split is None or split["resting_kcal"] is None or planned_kcal is None:
         return None
@@ -104,4 +106,9 @@ def expected_total_kcal(
     if neat is None or tef is None:
         return None
     learned = split.get("learned_kcal") or 0
-    return round(split["resting_kcal"] + learned + neat + tef + planned_kcal)
+    parts = (
+        max(neat, split.get("neat_kcal") or 0),
+        max(tef, split.get("tef_kcal") or 0),
+        max(planned_kcal, split.get("sport_kcal") or 0),
+    )
+    return round(split["resting_kcal"] + learned + sum(parts))

@@ -21,6 +21,7 @@ from backend.nutrition.energy_balance import (
     history_start,
 )
 from backend.nutrition.energy_expected import (
+    expected_total_kcal,
     planned_inputs,
     planned_net_kcal,
     usual_kcal_per_hour,
@@ -2224,6 +2225,18 @@ class ExpectedTotalTests(unittest.TestCase):
         self.assertEqual(1847, km["total_kcal"], "so far: rest and learned only")
         # A rest day expects the usual steps and digestion alone.
         self.assertEqual(2347, self.view(0.0)["expected_total_kcal"])
+
+    def test_it_never_lies_below_what_the_day_counts_so_far(self) -> None:
+        latest = window(END, 2700.0, 1850.0)
+        split = {"resting_kcal": 1800, "neat_kcal": 0, "sport_kcal": 0, "tef_kcal": 0}
+        usual = expected_total_kcal({"split": split}, latest, 100.0, False)
+        assert usual is not None
+        # An unplanned 600 kcal ride, 400 everyday and 300 digestion so far.
+        busy = {**split, "neat_kcal": 400, "sport_kcal": 600, "tef_kcal": 300}
+        self.assertEqual(
+            usual + (400 - 250) + (600 - 100) + (300 - 250),
+            expected_total_kcal({"split": busy}, latest, 100.0, False),
+        )
 
     def test_it_is_for_today_and_known_parts_only(self) -> None:
         self.assertIsNone(self.view(None)["expected_total_kcal"])
