@@ -1,7 +1,7 @@
 // Read-only explorer of the running app for UI reviews (#3913): runs the steps of a plan file.
 //
 //   node scripts/ui_explore.mjs --url <app address> --password-file <secret file>
-//     --out-dir <new scratchpad dir> --plan <plan .json in the temp directory>
+//     --out-dir <new scratchpad dir> --plan - < plan.json
 //
 // Plan: {"viewports": ["phone", "desktop"], "colorScheme": "light|dark", "textZoom": 100-200,
 // "steps": [{"go": "analysis/running"}, {"click": "<css>", "nth": 0}, {"scroll": "<css>" | pixels},
@@ -211,8 +211,10 @@ async function main() {
     if (!values.url || !values["password-file"] || !values["out-dir"] || !values.plan) throw new Error("--url, --password-file, --out-dir and --plan are required");
     url = baseUrl(values.url);
     outDir = scratchPath(values["out-dir"]);
-    reading = "cannot read the plan";
-    plan = parsePlan(JSON.parse(fs.readFileSync(scratchPath(values.plan), "utf8")));
+    // The plan comes on standard input, so no file path from the command line is read for it (Sonar S8707).
+    if (values.plan !== "-") throw new Error("--plan - reads the plan JSON from standard input");
+    reading = "cannot read the plan on standard input";
+    plan = parsePlan(JSON.parse(fs.readFileSync(0, "utf8")));
     reading = SECRET_MISSING;
     password = fs.readFileSync(secretPath(values["password-file"]), "utf8").trim();
     if (!password) throw new Error(SECRET_MISSING);
