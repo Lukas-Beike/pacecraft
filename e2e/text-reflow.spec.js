@@ -96,7 +96,9 @@ async function wholeScreenProblems(page) {
         const edge = box.right + 1;
         const over = [...element.querySelectorAll("*")].filter((inner) => inner.getClientRects().length && [...inner.getClientRects()].some((rect) => rect.right > edge));
         const leaves = over.filter((inner) => !over.some((other) => other !== inner && inner.contains(other))).slice(0, 3);
-        problems.push(`${name(element)} clips ${element.scrollWidth - element.clientWidth}px (own "${(element.textContent || "").trim().slice(0, 28)}" w=${Math.round(box.width)})${leaves.length ? ` by ${leaves.map((inner) => `${name(inner)} "${(inner.textContent || "").trim().slice(0, 24)}" w=${Math.round(inner.getBoundingClientRect().width)}`).join(", ")}` : ""}`);
+        const text = (node, length) => (node.textContent || "").trim().slice(0, length);
+        const by = leaves.map((inner) => name(inner) + ' "' + text(inner, 24) + '" w=' + Math.round(inner.getBoundingClientRect().width)).join(", ");
+        problems.push(name(element) + " clips " + (element.scrollWidth - element.clientWidth) + 'px (own "' + text(element, 28) + '" w=' + Math.round(box.width) + ")" + (by ? " by " + by : ""));
       }
     }
     const walker = document.createTreeWalker(panel, NodeFilter.SHOW_TEXT);
