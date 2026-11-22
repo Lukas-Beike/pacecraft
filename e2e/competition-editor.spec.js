@@ -40,17 +40,14 @@ test.afterEach(async ({ page }) => {
 
 const card = (page, name) => page.locator("#competitionList details.competition-card").filter({ hasText: name });
 
-async function removeFromDialog(page, name) {
+// "Löschen" in the dialog deletes at once; the receipt offers the undo (#3934 G-03).
+async function removeFromDialog(page) {
   const dialog = page.locator("#competitionDialog");
   await expect(dialog).toBeVisible();
   await dialog.getByRole("button", { name: "Löschen" }).click();
-  await expect(dialog.getByRole("heading", { name: "Wettkampf löschen?" })).toBeVisible();
-  await expect(dialog).toContainText(`„${name}“ am `);
-  await expect(dialog).toContainText("Bei Intervals.icu verschwindet er erst mit dem nächsten Sync, den du anstößt.");
-  return dialog;
 }
 
-test("@responsive an upcoming competition is added, edited and deleted with a confirmation and an undo", async ({ page }) => {
+test("@responsive an upcoming competition is added, edited and deleted at once with an undo", async ({ page }) => {
   await openSeason(page);
   const date = inDays(30);
   await addCompetition(page, { name: "E2E Stadtlauf", date, time: "09:30", sport: "Laufen", priority: "A", distance: "10", duration: "45:00" });
@@ -82,13 +79,9 @@ test("@responsive an upcoming competition is added, edited and deleted with a co
   await expect(edited).toContainText("Musterstadt");
   await expect(edited).toContainText("09:30");
 
-  // Löschen asks again inside the dialog; Abbrechen returns to the form.
+  // Löschen deletes at once, with no second step.
   await edited.getByRole("button", { name: "Wettkampf bearbeiten" }).click();
-  await removeFromDialog(page, "E2E Stadtlauf 10 km");
-  await dialog.getByRole("button", { name: "Abbrechen" }).click();
-  await expect(dialog.getByLabel("Name")).toBeVisible();
-  const confirm = await removeFromDialog(page, "E2E Stadtlauf 10 km");
-  await confirm.locator("#competitionDialogConfirmRemove").click();
+  await removeFromDialog(page);
   await expect(dialog).toBeHidden();
   await expect(card(page, "E2E Stadtlauf")).toHaveCount(0);
   await expect(page.locator("#toast")).toContainText("Wettkampf gelöscht.");
@@ -98,7 +91,7 @@ test("@responsive an upcoming competition is added, edited and deleted with a co
   await expect(page.locator("#toast")).toContainText("Zurückgenommen.");
   await expect(card(page, "E2E Stadtlauf 10 km")).toHaveCount(1);
   await card(page, "E2E Stadtlauf 10 km").getByRole("button", { name: "Wettkampf bearbeiten" }).click();
-  await (await removeFromDialog(page, "E2E Stadtlauf 10 km")).locator("#competitionDialogConfirmRemove").click();
+  await removeFromDialog(page);
   await expect(card(page, "E2E Stadtlauf")).toHaveCount(0);
 });
 
@@ -130,7 +123,7 @@ test("@responsive a past competition in the archive is edited with its derived r
   await past.locator("summary .competition-summary-main").click();
   await expect(past).toContainText("Nur ein Test");
   await past.getByRole("button", { name: "Wettkampf bearbeiten" }).click();
-  await (await removeFromDialog(page, "E2E Archiv")).locator("#competitionDialogConfirmRemove").click();
+  await removeFromDialog(page);
   await expect(dialog).toBeHidden();
   await expect(archive.locator("details.competition-card").filter({ hasText: "E2E Archiv" })).toHaveCount(0);
 });

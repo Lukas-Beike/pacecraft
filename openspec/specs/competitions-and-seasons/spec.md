@@ -285,9 +285,9 @@ The athlete SHALL add, edit and delete a competition in Kalender → Wettkämpfe
 - **WHEN** the dialog opens a past competition that has a derived result
 - **THEN** the result shows as read-only text; nothing is entered or stored for it.
 
-#### Scenario: Delete with a second step
+#### Scenario: Delete at once
 - **WHEN** the athlete presses "Löschen" in the dialog
-- **THEN** the dialog asks "Wettkampf löschen?" with the name and day before it sends `confirmed: true`; the deletion keeps the remote tombstone and its undo.
+- **THEN** the competition is deleted at once with `confirmed: true`, no second step; the receipt offers "Rückgängig" and the deletion keeps the remote tombstone and its undo (athlete decision 2026-11-22, #3934).
 
 #### Scenario: Refusal
 - **WHEN** a write has no session (401), no CSRF token (403), an invalid field (400), no confirmation (400) or an unknown id (404), or the device is offline
