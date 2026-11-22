@@ -1611,9 +1611,11 @@ class BrowserRunnerTests(unittest.TestCase):
                 str(ROOT / "public/service-worker.js")
                 + ":/work/public/service-worker.js:ro",
                 str(ROOT / "scripts/ui_walk.mjs") + ":/work/scripts/ui_walk.mjs:ro",
+                str(ROOT / "scripts/ui_explore.mjs")
+                + ":/work/scripts/ui_explore.mjs:ro",
             },
         )
-        self.assertEqual(len(mounted), 6)
+        self.assertEqual(len(mounted), 7)
         for source in mounted:
             self.assertTrue(source.endswith(":ro"))
             self.assertNotIn(".env", source)

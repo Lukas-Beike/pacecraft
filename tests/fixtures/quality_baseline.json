@@ -1592,12 +1592,6 @@
     },
     {
       "tool": "eslint",
-      "path": "scripts/hooks/guard_private_paths.py",
-      "code": "sonarjs/regex-complexity",
-      "message_sha256": "110c4cb3679cbc222e46c6d88ee0749affe5e8ca5767444cca954de32f3733ba"
-    },
-    {
-      "tool": "eslint",
       "path": "backend/weather/recommendations.py",
       "code": "sonarjs/regex-complexity",
       "message_sha256": "2bd23d3a690d8e1fe000d5933efa0b28dc38690a15b9089c8757a09883b0a763"

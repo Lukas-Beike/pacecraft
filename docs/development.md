@@ -18,6 +18,10 @@ a sandbox) that blocks clear `.env`, `data`, and Garmin token path forms with no
 exceptions, so you run the Docker runbook commands that pass `.env` or mount
 `data` yourself. It also blocks commands that merely mention such a path, such
 as a commit message; pass that text through a file.
+T3's secret folder may only be the `--password-file` value of `scripts/prod_diagnostics.py`, `prod_guards.py`, `prod_logs.py`,
+`scripts/ui_walk.mjs` (fixed read-only walk), `scripts/ui_explore.mjs` (read-only
+explorer of a JSON plan; it aborts every request but GET, HEAD, login and logout
+and fails the run) and `scripts/post_release_actions.mjs` (#3758, #3913).
 Importing or running `server.py` reads the checkout's and the data directory's
 `.env` at import, so the hook also blocks a Python command that imports or runs
 `server`, unless it sets `DATA_DIR` to a temporary directory and neither the
