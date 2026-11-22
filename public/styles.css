@@ -1553,7 +1553,7 @@ body:has(#profilePanel.active .dirty-indicator:not([hidden])) .toast { bottom: c
   #chatPanel .composer,
   #chatPanel .coach-action-review,
   #chatPanel > .fine-print { width: min(100%, 760px); margin-right: auto; margin-left: auto; }
-  #settingsPanel.active { display: grid; grid-template-columns: minmax(190px, 220px) minmax(0, 1fr); align-items: start; gap: 0 24px; }
+  #settingsPanel.active { display: grid; grid-template-columns: minmax(190px, 220px) minmax(0, 1fr); align-items: start; align-content: start; gap: 0 24px; }
   #settingsPanel > .section-heading { grid-column: 1 / -1; }
   #settingsPanel > .more-segment-nav { position: sticky; top: 24px; grid-column: 1; grid-row: 2 / span 8; display: grid; align-content: start; gap: 4px; margin: 0; overflow: visible; }
   #settingsPanel > .more-segment-nav a { flex: none; white-space: normal; min-height: 46px; justify-content: start; padding: 10px 12px; text-align: left; }

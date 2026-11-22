@@ -200,19 +200,25 @@ test("@responsive the skip link moves the focus to the content and keeps the rou
 });
 
 // #3935 G-11: the page heading does not move when a short view replaces a long one.
-test("@responsive the page heading stays at one height between tabs on a wide screen", async ({ page }) => {
+test("@responsive the page heading stays at one height between tabs on a wide screen", async ({ page, request }) => {
   test.skip(page.viewportSize().width < 1100, "the desktop grid");
+  expect((await request.get("/api/fixture/demo")).ok()).toBeTruthy();
   await page.route("**/api/state/events*", (route) => route.abort());
   await page.goto("/#plan/overview");
   await expect(page.locator("#appShell")).toBeVisible();
   await expect.poll(() => page.evaluate(() => Boolean(state.data))).toBe(true);
   const heights = [];
-  for (const route of ["plan/overview", "plan/library", "plan/season", "more/appearance", "more/connections", "analysis/strength"]) {
+  for (const route of ["plan/overview", "plan/library", "plan/season", "more/app", "more/connections", "analysis/strength"]) {
     await page.evaluate((target) => AppRouter.navigate(target, { historyMode: "replace" }), route);
-    await expect(page.locator(".panel.active h2").first()).toBeVisible();
-    await page.evaluate(() => globalThis.scrollTo(0, 0));
-    heights.push(await page.locator(".panel.active h2").first().evaluate((heading) => Math.round(heading.getBoundingClientRect().top)));
+    const panel = await page.evaluate((target) => AppNavigation.routes[target], route);
+    await expect(page.locator(`#${panel}.active h2:visible`).first()).toBeVisible();
+    heights.push(await page.locator(`#${panel}.active h2:visible`).first().evaluate((heading) => {
+      const box = heading.getBoundingClientRect();
+      let parents = "";
+      for (let node = heading.parentElement; node && node.tagName !== "BODY" && parents.split(">").length < 6; node = node.parentElement) parents += `${node.tagName.toLowerCase()}#${node.id}.${String(node.className).split(" ")[0]}(${getComputedStyle(node).display},${Math.round(node.getBoundingClientRect().top + globalThis.scrollY)})>`;
+      return Math.round(box.top + globalThis.scrollY) + (parents && box.top + globalThis.scrollY > 200 ? ` [${parents}]` : "");
+    }));
   }
   // The tabs differ by a few px of their own heading margin; before the fix a short view sat 110 to 240 px lower.
-  expect(Math.max(...heights) - Math.min(...heights), `heading tops ${heights.join(", ")}`).toBeLessThanOrEqual(12);
+  expect(Math.max(...heights.map((top) => parseInt(top, 10))) - Math.min(...heights.map((top) => parseInt(top, 10))), `heading tops ${heights.join(", ")}`).toBeLessThanOrEqual(12);
 });
