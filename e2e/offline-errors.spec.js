@@ -79,3 +79,14 @@ test("a Coach message sent without a connection returns to the composer and surv
   await expect(page.locator("#appShell")).toBeVisible();
   await expect(page.locator("#messageInput")).toHaveValue("Dieser Satz wurde ohne Verbindung geschrieben.");
 });
+
+test("a toast does not follow the athlete to another screen @responsive", async ({ page }) => {
+  await ready(page);
+  await page.evaluate(() => { toast("Wettkampf gespeichert", false); });
+  await expect(page.locator("#toast")).toHaveClass(/show/);
+  // A toast a moment old belongs to the route change after it; the athlete's own tap comes later.
+  await page.waitForTimeout(1600);
+  await page.evaluate(() => { location.hash = "nutrition/diary"; });
+  await expect(page.locator("#nutritionPanel")).toBeVisible();
+  await expect(page.locator("#toast")).not.toHaveClass(/show/);
+});

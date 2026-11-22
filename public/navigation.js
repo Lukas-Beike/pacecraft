@@ -91,6 +91,8 @@ globalThis.AppRouter = (() => {
   const { routes, linkRoutes, defaultRoute, planSegments, moreSegments } = AppNavigation;
   let handlers = {};
   let configured = false;
+  // How long a toast counts as belonging to the route change that follows it.
+  const TOAST_FOLLOW_MS = 1500;
   let hashchangeRegistered = false;
 
   // Removed views whose content lives elsewhere now: the single sessions are in the calendar (#2258),
@@ -171,6 +173,9 @@ globalThis.AppRouter = (() => {
     const panel = activatePanel(panelRoute, navigationRoute);
     if (!panel) return false;
     state.plannedTodayFocusPending = shouldFocusPlannedToday;
+    // A message belongs to the screen it was shown on; its undo does not follow to another one. One
+    // shown a moment ago belongs to this very route change (a result that then opens its screen).
+    if (panelRoute !== state.route && Date.now() - (globalThis.toast?.shownAt ?? 0) > TOAST_FOLLOW_MS) globalThis.hideToast?.();
     AppState.setRoute(panelRoute);
     handlers.renderActiveRoute(mainRoute, panelRoute);
     updateHistory(panelRoute, historyMode);

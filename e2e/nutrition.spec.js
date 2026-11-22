@@ -357,7 +357,7 @@ test("@responsive the product list has sections, markers and the same four actio
 
   // Deleting a database entry asks first and removes it from the database.
   await oat.getByRole("button", { name: "Löschen" }).click();
-  await expect(page.locator("#confirmationDialog")).toContainText("Eintrag „Haferdrink“ aus der Datenbank entfernen?");
+  await expect(page.locator("#confirmationDialog")).toContainText("Der Eintrag „Haferdrink“ wird aus der Datenbank entfernt.");
   await page.locator("#confirmationDialogAccept").click();
   await expect(cards).toHaveCount(3);
   expect(requests.forget).toEqual([{ id: "off:4006381333931", confirmed: true }]);

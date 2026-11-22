@@ -147,7 +147,7 @@ async function downloadDatabaseBackup() {
 async function restoreDatabaseBackup() {
   const input = $("#backupFileInput");
   const file = input?.files?.[0];
-  if (!file || !await requestConfirmation("Das aktuelle Datenbank-Backup wird vorher gesichert und durch die ausgewählte Datei ersetzt. Fortfahren?", { title: "Datenbank-Backup wiederherstellen?" })) return;
+  if (!file || !await requestConfirmation("Das aktuelle Datenbank-Backup wird vorher gesichert und durch die ausgewählte Datei ersetzt.", { title: "Datenbank-Backup wiederherstellen?", confirmLabel: "Wiederherstellen" })) return;
   const button = $("#backupRestoreButton");
   button.disabled = true;
   const controller = new AbortController();
@@ -967,7 +967,7 @@ async function saveZones(event) {
 
 async function removeZones() {
   const button = $("#zoneRemoveButton");
-  const confirmed = await requestConfirmation("Lokale Zonen entfernen? Danach gelten wieder die Zonen des Anbieters.", { title: "Lokale Zonen entfernen?", confirmLabel: "Entfernen" });
+  const confirmed = await requestConfirmation("Danach gelten wieder die Zonen des Anbieters.", { title: "Lokale Zonen entfernen?", confirmLabel: "Entfernen" });
   if (!confirmed) return;
   button.disabled = true;
   try {

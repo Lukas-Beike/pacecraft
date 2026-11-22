@@ -701,7 +701,7 @@ Evidence: `public/views.js::replaceMarkdownLinks`; `public/views.js::linkHostNot
 
 ### Requirement: Shared confirmation dialog
 
-Destructive or discarding actions SHALL use one modal confirmation with a title (default "Aktion bestätigen"), a message, "Abbrechen" and an accept button (default "Bestätigen"); `docs/view-catalogue.md` lists the texts per action. Closing the dialog in any way SHALL count as declined, and a newer confirmation SHALL decline a pending one.
+Destructive or discarding actions SHALL use one modal confirmation with a title that asks the question, a message that names the consequence, "Abbrechen" and an accept button named by a verb (no default title or label); `docs/view-catalogue.md` lists the texts per action. Closing the dialog in any way SHALL count as declined, and a newer confirmation SHALL decline a pending one.
 
 #### Scenario: Typed confirmation
 - **WHEN** an action requires a confirmation text
