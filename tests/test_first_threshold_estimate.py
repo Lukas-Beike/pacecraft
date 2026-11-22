@@ -834,12 +834,12 @@ class AdoptFlowTests(unittest.TestCase):
         self.assertEqual(stored[FIRST_THRESHOLD_ORIGIN_FIELD], ORIGIN_ESTIMATED)
         self.assertNotIn("first_threshold_pct", stored)
         with self.manager.reader() as db:
-            raw = json.loads(self.kv.get(db, "profile"))
+            raw = json.loads(self.kv.get(db, "profile") or "{}")
         self.assertEqual(raw, legacy)
         # The next save stores the bpm and drops the percent.
         profile.patch({"name": "Ada"})
         with self.manager.reader() as db:
-            raw = json.loads(self.kv.get(db, "profile"))
+            raw = json.loads(self.kv.get(db, "profile") or "{}")
         self.assertEqual(raw[FIRST_THRESHOLD_FIELD], "144")
         self.assertNotIn("first_threshold_pct", raw)
         self.assertEqual(raw[FIRST_THRESHOLD_ORIGIN_FIELD], ORIGIN_ESTIMATED)
@@ -886,7 +886,7 @@ class LegacyPercentTests(unittest.TestCase):
 
     def raw(self) -> dict[str, Any]:
         with self.manager.reader() as db:
-            return json.loads(self.kv.get(db, "profile"))
+            return json.loads(self.kv.get(db, "profile") or "{}")
 
     def test_the_threshold_lookup_reading_the_profile_never_recurses(self) -> None:
         # The run threshold lookup reads the athlete's local date, which reads

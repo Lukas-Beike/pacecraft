@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "base": "15bb2d1b43c14bd8d901be82e1a17c84ae80fc97",
+  "base": "429e622726b504c88ce85cc210113747229bf8b0",
   "versions": {
     "ruff": "0.17.5",
     "mypy": "2.4.1"
@@ -815,12 +815,6 @@
       "path": "tests/test_sync_executor.py",
       "code": "arg-type",
       "message_sha256": "feec021553a83a8fa5829eca1bb333991a8dbca72071588f28592501a9c4daf4"
-    },
-    {
-      "tool": "mypy",
-      "path": "backend/history/service.py",
-      "code": "assignment",
-      "message_sha256": "3b94f7337d07e04231f4dad89d039610cec2fa34c02905c8d2135361a3c57a3f"
     },
     {
       "tool": "mypy",
