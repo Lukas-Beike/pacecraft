@@ -172,3 +172,27 @@ test("@responsive whole screens keep their controls and words intact at 200 % te
   const lines = Object.entries(found).map(([route, problems]) => `${route}: ${problems.slice(0, 6).join("; ")}`);
   expect(lines, lines.join(" | ")).toEqual([]);
 });
+
+// The threshold names and values of the profile stay inside their box at the normal text size too: a header word wider
+// than its column ran past the box edge and left its backdrop undecidable for the contrast sweep.
+test("@responsive the profile's threshold grid stays inside its box at the phone width", async ({ page, request }) => {
+  test.skip(page.viewportSize().width > 480, "the phone layout is the one that is tight");
+  expect((await request.get("/api/fixture/demo")).ok()).toBeTruthy();
+  await page.goto("/#more/profile");
+  await page.waitForFunction(() => state.initialStateLoaded);
+  // The zones load when their section opens.
+  await page.evaluate(() => document.querySelectorAll(".panel.active details:not([open])").forEach((element) => { element.open = true; }));
+  await expect(page.locator("[data-zone-box='thresholds']").first()).toBeVisible();
+  const outside = await page.locator("[data-zone-box='thresholds']").evaluateAll((boxes) => boxes.flatMap((box) => {
+    const edge = box.getBoundingClientRect();
+    return [...box.querySelectorAll(".zone-thresholds > *")].filter((cell) => {
+      // The text and inline content of the cell, not the enlarged tap area of its info button.
+      const content = document.createRange();
+      content.selectNodeContents(cell);
+      const own = content.getBoundingClientRect();
+      const cellBox = cell.getBoundingClientRect();
+      return own.width && (own.right > edge.right + 0.5 || own.right > cellBox.right + 0.5);
+    }).map((cell) => cell.textContent.trim().slice(0, 24));
+  }));
+  expect(outside).toEqual([]);
+});

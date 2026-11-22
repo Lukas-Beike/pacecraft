@@ -880,7 +880,8 @@ a.message-retry { display: grid; place-items: center; text-decoration: none; }
 .zone-box { padding: 12px; border: 1px solid var(--line); border-radius: var(--radius-md); background: var(--translucent-surface); container-type: inline-size; }
 .zone-box h3 { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: baseline; gap: 8px; margin: 0 0 8px; font-size: .95rem; }
 .zone-box h3 small, .zone-muted, .zone-source { color: var(--muted); font-size: .78rem; font-weight: 400; }
-.zone-thresholds { display: grid; grid-template-columns: auto repeat(2, minmax(0, 1fr)); gap: 4px 12px; font-size: .88rem; }
+/* The value columns keep their header word whole; the name column takes the rest and wraps. */
+.zone-thresholds { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 4px 12px; font-size: .88rem; }
 .zone-thresholds b { font-weight: 600; font-variant-numeric: tabular-nums; }
 /* rem follows the text size: with bigger text each row names its threshold on its own line above the two values. */
 @container (max-width: 15rem) {
