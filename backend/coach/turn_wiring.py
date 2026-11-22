@@ -41,6 +41,7 @@ from backend.coach.turn_failures import (
 from backend.coach.turn_opening import CoachTurnOpeningService
 from backend.coach.turn_outcome import CoachStructuredOutcomeService
 from backend.db.repositories import ChatRepository
+from backend.push.events import coach_answer_event
 from backend.runtime import clock as runtime_clock
 from backend.runtime import events as runtime_events
 from backend.runtime import maintenance as runtime_maintenance
@@ -126,6 +127,11 @@ def build_coach_background_jobs(
             utc_now,
         )
 
+    def announce_answer(client_turn_id: str) -> None:
+        # The push checks are wired after the context is built (#3914).
+        if ctx.push_checks is not None:
+            ctx.push_checks.notify(coach_answer_event(client_turn_id))
+
     def background_job_runner() -> CoachBackgroundJobRunner:
         return CoachBackgroundJobRunner(
             job_store(),
@@ -138,6 +144,7 @@ def build_coach_background_jobs(
             runtime_maintenance.MAINTENANCE_GATE,
             ctx.redactor,
             ctx.logger,
+            on_answer=announce_answer,
         )
 
     return CoachBackgroundJobServices(

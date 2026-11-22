@@ -45,7 +45,7 @@ The server SHALL generate the VAPID key pair once, keep the private key and the 
 Evidence: `backend/push/service.py:PushService`, `backend/push/service.py::diagnostics`, `backend/provider_credentials.py:CREDENTIAL_KV_KEYS`; `tests/test_push.py::test_payload_encryption_matches_the_rfc_8291_example`, `tests/test_push.py::test_vapid_token_is_an_es256_jwt_for_the_endpoint_origin`, `tests/test_push.py::test_a_gone_subscription_is_removed_and_the_log_names_no_endpoint`.
 
 ### Requirement: Each event is sent once, lock-screen safe, per-type switchable
-The server SHALL send each event key at most once, only to subscribed devices, only for types switched on (all on by default), and only between 07:00 and 22:00 athlete-local time; an event found at night waits for the morning. An event of a switched-off type SHALL be recorded as handled, so switching it on does not replay it; an event that stays current is never announced again. Bodies SHALL carry no names, values, places, provider error text or Coach content.
+The server SHALL send each event key at most once, only to subscribed devices, only for types switched on (all on by default), and, except a Coach answer, only between 07:00 and 22:00 athlete-local time; an event found at night waits. A switched-off type's event is recorded as handled, so switching it on replays nothing; an event that stays current is never announced again. Bodies SHALL carry no names, values, places, provider error text or Coach content.
 
 #### Scenario: Delivery
 - **WHEN** a claimed event reaches no device (no answer, 5xx or 429)
@@ -67,7 +67,43 @@ The server SHALL send each event key at most once, only to subscribed devices, o
 - **WHEN** today's infection hint shows and is unanswered
 - **THEN** one notification asks the athlete to confirm how they feel and opens `#plan/overview`
 
-Evidence: `backend/push/service.py:PushService.notify`, `backend/push/checks.py:PushChecks`; `tests/test_push.py::test_each_event_is_sent_once_and_a_switched_off_type_never`, `tests/test_push.py::test_a_repeated_failure_is_announced_once_per_streak`, `tests/test_push.py::test_a_competition_within_three_days_is_announced_once`, `tests/test_push.py::test_a_step_test_is_announced_once_when_a_threshold_newly_turns_stale`, `tests/test_push.py::test_nothing_is_sent_at_night_and_it_waits_for_the_morning`, `tests/test_push.py::test_a_failed_delivery_is_tried_again_and_still_sent_once`, `tests/test_push.py::test_a_streak_longer_than_the_rows_read_is_announced_once`, `tests/test_push.py::test_the_checks_hold_the_gate_only_around_database_steps`.
+#### Scenario: Coach answer
+- **WHEN** a Coach turn started by the athlete's own stored message finishes with an answer
+- **THEN** "Coach" / "Deine Antwort ist da." opens `#coach` right away at any hour, after the turn's operation; a failed delivery never fails the turn and no unfinished turn sends one
+
+#### Scenario: Morning plan
+- **WHEN** today has a planned unit
+- **THEN** from 07:00 one "Heute" notification a day says training is planned, without any detail, and opens `#plan/overview`
+
+#### Scenario: New session
+- **WHEN** a Garmin or Wahoo session started within two days is stored after the subscription
+- **THEN** one "Neue Einheit" notification stands for all sessions new at that check and opens `#plan/overview`
+
+#### Scenario: Morning data
+- **WHEN** sleep, HRV or resting heart rate observations dated today are stored
+- **THEN** one "Morgenwerte" notification a day opens `#analysis/recovery`
+
+#### Scenario: Maintenance due
+- **WHEN** active equipment reaches its maintenance interval
+- **THEN** one "Wartung fällig" notification per item and last maintenance opens `#more/equipment`
+
+#### Scenario: Personal best
+- **WHEN** Analyse › Rekorde shows a record dated on or after the subscription day, while a session stored after the subscription is recent
+- **THEN** one "Neue Bestleistung" notification stands for the new records and opens `#analysis/records`
+
+#### Scenario: Missing feedback
+- **WHEN** from 20:00 a session of today has no effective session RPE
+- **THEN** one "Feedback" notification a day opens `#plan/overview`
+
+#### Scenario: Server attention
+- **WHEN** the automatic backup failed since its newest copy, the newest copy is over 24 hours old, or the data directory has under 1 GiB free
+- **THEN** one "Server" notification per problem and day opens `#more/operations`
+
+#### Scenario: Weather warning
+- **WHEN** a planned outdoor unit today (from 07:00) or tomorrow (from 18:00) has a forecast with heat from 25 °C apparent, European AQI from 60, DWD pollen level 3 or a storm (weather code 95 or more)
+- **THEN** one "Wetter" notification per unit and day opens `#plan/overview`
+
+Evidence: `backend/push/service.py:PushService.notify`, `backend/push/checks.py:PushChecks`, `backend/push/events.py`, `backend/coach/background_job.py:CoachBackgroundJobRunner._announce`, `backend/weather/recommendations.py::day_warning`; `tests/test_push.py::test_a_coach_answer_is_sent_at_once_and_at_any_hour`, `tests/test_coach_background_job.py::test_an_answer_is_announced_after_the_operation_for_the_athletes_own_turn`, `tests/test_coach_background_job.py::test_no_answer_is_announced_without_one`, `tests/test_coach_background_job.py::test_a_failing_announcement_never_fails_the_turn`, `tests/test_push.py::test_the_morning_plan_is_announced_once_a_day_without_details`, `tests/test_push.py::test_new_sessions_are_announced_as_one_and_only_when_recent`, `tests/test_push.py::test_the_night_values_are_announced_once_when_they_are_dated_today`, `tests/test_push.py::test_equipment_at_its_interval_is_announced_once_per_maintenance`, `tests/test_push.py::test_a_record_after_the_subscription_is_announced_once`, `tests/test_push.py::test_missing_feedback_is_announced_once_a_day_from_the_evening`, `tests/test_push.py::test_server_problems_are_announced_once_per_problem_and_day`, `tests/test_push.py::test_a_weather_warning_for_an_outdoor_unit_is_announced_in_its_window`, `tests/test_push.py::test_a_weather_warning_needs_heat_poor_air_high_pollen_or_a_storm`, `tests/test_push.py::test_a_source_that_fails_skips_only_itself`; `tests/test_push.py::test_each_event_is_sent_once_and_a_switched_off_type_never`, `tests/test_push.py::test_a_repeated_failure_is_announced_once_per_streak`, `tests/test_push.py::test_a_competition_within_three_days_is_announced_once`, `tests/test_push.py::test_a_step_test_is_announced_once_when_a_threshold_newly_turns_stale`, `tests/test_push.py::test_nothing_is_sent_at_night_and_it_waits_for_the_morning`, `tests/test_push.py::test_a_failed_delivery_is_tried_again_and_still_sent_once`, `tests/test_push.py::test_a_streak_longer_than_the_rows_read_is_announced_once`, `tests/test_push.py::test_the_checks_hold_the_gate_only_around_database_steps`.
 
 ### Requirement: The service worker shows push messages and opens their screen
 The service worker SHALL show each push message with its title, body and tag, accept only an in-app `#route` as its target, and on a tap focus an open app window on that route or open the app there.

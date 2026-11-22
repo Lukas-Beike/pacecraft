@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import json
+import shutil
 from collections.abc import Callable
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -54,6 +56,8 @@ class BackupServices:
     automatic_backup_copies: Callable[[], AutomaticBackups]
     # The nightly copy when due; the periodic loop runs it (#3760).
     run_nightly: Callable[[], None]
+    # The automatic copies' state and the free disk space, for the push checks.
+    server_state: Callable[[], dict[str, Any]]
 
 
 def build_backup(ctx: AppContext) -> BackupServices:
@@ -154,6 +158,22 @@ def build_backup(ctx: AppContext) -> BackupServices:
         with ctx.database().unit_of_work() as db:
             ctx.key_values.set(db, FAILURE_KEY, json.dumps(value))
 
+    def server_state() -> dict[str, Any]:
+        """The automatic copies' summary and the data directory's free bytes (#3914)."""
+        automatic = automatic_backups()
+        with ctx.database().reader() as db:
+            failure = ctx.key_values.get(db, FAILURE_KEY)
+        try:
+            free = shutil.disk_usage(ctx.data_dir()).free
+        except OSError:
+            free = None
+        return {
+            "automatic": {"enabled": False}
+            if automatic is None
+            else automatic.summary(datetime.now(UTC), failure),
+            "free_bytes": free,
+        }
+
     return BackupServices(
         backup_service,
         restore_validation_service,
@@ -161,4 +181,5 @@ def build_backup(ctx: AppContext) -> BackupServices:
         automatic_backups,
         automatic_backup_copies,
         run_nightly,
+        server_state,
     )

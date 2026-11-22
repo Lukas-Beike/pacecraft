@@ -316,6 +316,53 @@ class CoachBackgroundJobRunnerTests(unittest.TestCase):
                 self.assertEqual(events.get_nowait()[0], "completed")
                 self.assertEqual(events.get_nowait(), ("delta", {"text": "Hallo"}))
 
+    def test_an_answer_is_announced_after_the_operation_for_the_athletes_own_turn(
+        self,
+    ) -> None:
+        depths = []
+        self.runner._on_answer = lambda turn_id: depths.append(
+            (turn_id, getattr(self.gate.local, "depth", 0))
+        )
+
+        self.runner.run(self.job("synthetic-operation"))
+
+        # Outside the maintenance operation, so a push never holds up a restore.
+        self.assertEqual(depths, [("synthetic-turn", 0)])
+
+    def test_no_answer_is_announced_without_one(self) -> None:
+        announced = Mock()
+        self.runner._on_answer = announced
+        self.chat.run.return_value = {"status": "completed", "message": ""}
+        self.runner.run(self.job("operation-without-answer"))
+        self.chat.run.return_value = {"status": "cancelled", "message": {"a": "b"}}
+        self.runner.run(self.job("operation-cancelled"))
+        self.chat.run.side_effect = RuntimeError("synthetic")
+        self.failures.persist.return_value = {"status": "failed"}
+        self.runner.run(self.job("operation-failed"))
+        # A job without the athlete's own session never starts a turn.
+        self.chat.run.reset_mock()
+        self.sessions.restore_coach_session_csrf_hash.return_value = ""
+        self.runner.run(self.job("operation-unattended"))
+
+        announced.assert_not_called()
+        self.assertEqual(self.chat.run.call_count, 0)
+
+    def test_a_failing_announcement_never_fails_the_turn(self) -> None:
+        self.runner._on_answer = Mock(side_effect=RuntimeError("push down"))
+        operation_id, _ = self.streams.register("synthetic-session")
+        try:
+            with self.assertLogs("test.coach.background-job", "WARNING") as logs:
+                self.runner.run(self.job(operation_id))
+
+            self.assertNotIn("push down", "".join(logs.output))
+            self.failures.persist.assert_not_called()
+            self.jobs.record_failed_attempt.assert_not_called()
+            events = self.streams.events("synthetic-session", operation_id)
+            assert events is not None
+            self.assertEqual(events.get_nowait()[0], "completed")
+        finally:
+            self.streams.unregister("synthetic-session", operation_id)
+
 
 if __name__ == "__main__":
     unittest.main()

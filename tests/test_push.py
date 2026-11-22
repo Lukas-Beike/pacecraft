@@ -20,12 +20,14 @@ from backend.provider_credentials import (
 )
 from backend.push import web_push
 from backend.push.checks import PushChecks
+from backend.push.events import coach_answer_event
 from backend.push.service import (
     TYPES,
     Notification,
     PushService,
     diagnostics,
 )
+from backend.weather.recommendations import day_warning
 
 # RFC 8291 Appendix A: the worked example of one encrypted push message.
 RFC_PLAINTEXT = b"When I grow up, I want to be a watermelon"
@@ -56,6 +58,12 @@ def _database() -> sqlite3.Connection:
         "area TEXT NOT NULL, started_at TEXT NOT NULL, finished_at TEXT, status TEXT NOT NULL, "
         "error_code TEXT);"
         "CREATE TABLE competitions (id TEXT PRIMARY KEY, event_date TEXT NOT NULL);"
+        "CREATE TABLE planned_units (local_id TEXT PRIMARY KEY, payload TEXT NOT NULL);"
+        "CREATE TABLE activity_sessions (activity_id TEXT PRIMARY KEY, "
+        "primary_provider TEXT NOT NULL, state TEXT NOT NULL, "
+        "started_at TEXT NOT NULL, created_at TEXT NOT NULL);"
+        "CREATE TABLE observations (id INTEGER PRIMARY KEY, metric TEXT NOT NULL, "
+        "observed_on TEXT NOT NULL, state TEXT NOT NULL);"
     )
     return connection
 
@@ -351,12 +359,25 @@ class PushChecksTests(unittest.TestCase):
         self.local = {"now": datetime(2026, 11, 22, 9, 0, tzinfo=UTC)}
         self.hint = {"value": None}
         self.warnings = {"value": None}
+        # What the other owners report: equipment, records, forecast, server, RPE.
+        self.state: dict[str, Any] = {
+            "equipment": None,
+            "records": None,
+            "days": None,
+            "server": None,
+            "unrated": [],
+        }
         self.checks = PushChecks(
             self.service,
             lambda: FakeManager(self.connection),
             lambda: self.local["now"],
             infection_hint=lambda: self.hint["value"],
             threshold_warnings=lambda: self.warnings["value"],
+            equipment=lambda: self.state["equipment"],
+            records=lambda: self.state["records"],
+            weather_days=lambda: self.state["days"],
+            server_state=lambda: self.state["server"],
+            unrated_sessions=lambda day: self.state["unrated"],
         )
 
     def _refresh(
@@ -520,6 +541,288 @@ class PushChecksTests(unittest.TestCase):
         self.service.unsubscribe({})
         self.connection.execute("INSERT INTO competitions VALUES ('c1', '2026-11-23')")
         self.assertEqual(self.checks.check(), 0)
+
+    def _at(self, hour, day=22):
+        self.local["now"] = datetime(2026, 11, day, hour, 0, tzinfo=UTC)
+
+    def _titled(self, title):
+        return [m for _endpoint, m in self.sender.sent if m["title"] == title]
+
+    def _announced(self, title, body, url):
+        """Two checks send the title exactly once; its body is fixed and digit-free."""
+        self.checks.check()
+        self.checks.check()
+        (message,) = self._titled(title)
+        self.assertEqual((message["body"], message["url"]), (body, url))
+        self.assertFalse(any(char.isdigit() for char in message["body"]))
+        return message
+
+    def _unit(self, local_id, **payload):
+        self.connection.execute(
+            "INSERT INTO planned_units VALUES (?, ?)", (local_id, json.dumps(payload))
+        )
+
+    def _session(self, ident, created_minutes, started="2026-11-22T08:00:00+00:00"):
+        created = (NOW + timedelta(minutes=created_minutes)).isoformat()
+        self.connection.execute(
+            "INSERT INTO activity_sessions VALUES (?, 'garmin', 'active', ?, ?)",
+            (ident, started, created),
+        )
+
+    def test_the_morning_plan_is_announced_once_a_day_without_details(self):
+        self._unit("u0", date="2026-11-23", name="Morgen", sport="Swim")
+        self._unit("u1", date="2026-11-22", name="Archiviert", archived=True)
+        self.checks.check()
+        self.assertEqual(self.sender.sent, [])  # tomorrow's and archived units
+        self._unit("u2", date="2026-11-22", name="Geheime Intervalle", sport="Swim")
+        self._at(6)
+        self.checks.check()
+        self.assertEqual(self.sender.sent, [])  # not before 07:00
+        self._at(7)
+        message = self._announced(
+            "Heute", "Für heute ist Training geplant.", "#plan/overview"
+        )
+        self.assertNotIn("Geheime", json.dumps(message))
+        self._at(8, day=23)
+        self.checks.check()
+        self.assertEqual(len(self._titled("Heute")), 2)  # a new day, a new key
+
+    def test_new_sessions_are_announced_as_one_and_only_when_recent(self):
+        self._session("act_old", -30)  # stored before the subscription
+        self._session("act_backfill", 40, started="2026-11-01T08:00:00+00:00")
+        self.connection.execute(
+            "INSERT INTO activity_sessions VALUES ('act_i', 'intervals', 'active', "
+            "'2026-11-22T08:00:00+00:00', ?)",
+            ((NOW + timedelta(minutes=50)).isoformat(),),
+        )
+        self._at(11)
+        self.checks.check()
+        self.assertEqual(self.sender.sent, [])
+        self._session("act_1", 30)
+        self._session("act_2", 45)
+        self._announced(
+            "Neue Einheit", "Eine neue Einheit ist synchronisiert.", "#plan/overview"
+        )
+        self._session("act_3", 90)
+        self.checks.check()
+        self.assertEqual(len(self._titled("Neue Einheit")), 2)
+
+    def test_the_night_values_are_announced_once_when_they_are_dated_today(self):
+        self.connection.executemany(
+            "INSERT INTO observations (metric, observed_on, state) VALUES (?, ?, ?)",
+            [("hrv_rmssd", "2026-11-21", "active"), ("sleep_score", "2026-11-22", "x")],
+        )
+        self.checks.check()
+        self.assertEqual(self.sender.sent, [])  # yesterday's, and not an active one
+        self.connection.execute(
+            "INSERT INTO observations (metric, observed_on, state) "
+            "VALUES ('sleep_duration', '2026-11-22', 'active')"
+        )
+        self._announced(
+            "Morgenwerte", "Die Werte der Nacht sind da.", "#analysis/recovery"
+        )
+
+    def test_equipment_at_its_interval_is_announced_once_per_maintenance(self):
+        def item(ident, due, *done, status="active"):
+            return {
+                "id": ident,
+                "status": status,
+                "usage": {"maintenance_due": due},
+                "maintenance": [{"date": day} for day in done],
+            }
+
+        self.state["equipment"] = {
+            "items": [
+                item("e0", False),
+                item("e1", None),
+                item("e2", True, status="archived"),
+                item("e3", True, "2026-10-01"),
+            ]
+        }
+        self._announced(
+            "Wartung fällig",
+            "Ein Ausrüstungsteil hat sein Wartungsintervall erreicht.",
+            "#more/equipment",
+        )
+        # Maintained, then due again: the last maintenance makes a new key.
+        self.state["equipment"]["items"][3] = item(
+            "e3", True, "2026-10-01", "2026-11-10"
+        )
+        self.checks.check()
+        self.assertEqual(len(self._titled("Wartung fällig")), 2)
+
+    def test_a_record_after_the_subscription_is_announced_once(self):
+        def record(activity_id, day, status="ok", **fields):
+            return {
+                "sport": "ride",
+                "environment": "outdoor",
+                "duration_seconds": 300,
+                "activity_id": activity_id,
+                "date": day,
+                "status": status,
+                **fields,
+            }
+
+        window = {
+            "power": [
+                record("a0", "2026-11-20", duration_seconds=60),  # before
+                record("a1", "2026-11-22"),
+                record(None, None, "unknown", duration_seconds=5),
+            ],
+            "running": {"speed": [], "distance": []},
+            "activity_records": [],
+        }
+        self.state["records"] = {"all_time": window}
+        self._at(11)
+        self.checks.check()
+        self.assertEqual(self.sender.sent, [])  # no session arrived: not read
+        self._session("act_1", 30)
+        self._announced(
+            "Neue Bestleistung", "Du hast eine neue Bestleistung.", "#analysis/records"
+        )
+        window["activity_records"].append(
+            {
+                "sport": "run",
+                "field": "distance_m",
+                "status": "ok",
+                "activity_id": "a2",
+                "date": "2026-11-22",
+            }
+        )
+        self.checks.check()
+        self.assertEqual(len(self._titled("Neue Bestleistung")), 2)
+
+    def test_missing_feedback_is_announced_once_a_day_from_the_evening(self):
+        self.state["unrated"] = ["act_1"]
+        self._at(19)
+        self.checks.check()
+        self.assertEqual(self.sender.sent, [])
+        self._at(20)
+        self._announced(
+            "Feedback",
+            "Für eine Einheit von heute fehlt noch dein Feedback.",
+            "#plan/overview",
+        )
+        self.state["unrated"] = []
+        self._at(21, day=23)
+        self.checks.check()
+        self.assertEqual(len(self._titled("Feedback")), 1)
+        self.state["unrated"] = ["act_2"]
+        self.checks.check()
+        self.assertEqual(len(self._titled("Feedback")), 2)  # tomorrow's own key
+
+    def test_server_problems_are_announced_once_per_problem_and_day(self):
+        healthy = {
+            "automatic": {
+                "enabled": True,
+                "newest_age_hours": 5.0,
+                "last_failure_age_hours": 20.0,  # older than the newest copy
+            },
+            "free_bytes": 50 * 2**30,
+        }
+        self.state["server"] = healthy
+        self.checks.check()
+        self.assertEqual(self.sender.sent, [])
+        self.state["server"] = {**healthy, "automatic": {"enabled": False}}
+        self.state["server"]["free_bytes"] = 2**20
+        self.checks.check()  # a disabled backup is no problem; the disk is low
+        self.assertEqual(len(self._titled("Server")), 1)
+        self.state["server"] = {
+            "automatic": {
+                "enabled": True,
+                "newest_age_hours": 30.0,
+                "last_failure_age_hours": 2.0,
+            },
+            "free_bytes": 2**20,
+        }
+        self.checks.check()
+        self.checks.check()
+        self.assertEqual(len(self._titled("Server")), 2)  # a failed and a stale copy
+        self._at(10, day=23)
+        self.checks.check()
+        self.assertEqual(len(self._titled("Server")), 3)
+        message = self._titled("Server")[0]
+        self.assertEqual(
+            (message["body"], message["url"]),
+            ("Backup oder Speicher braucht Aufmerksamkeit.", "#more/operations"),
+        )
+
+    def test_a_weather_warning_for_an_outdoor_unit_is_announced_in_its_window(self):
+        self._unit("u1", date="2026-11-22", name="Waldlauf", sport="Run")
+        self._unit("u2", date="2026-11-23", name="Ausfahrt", sport="Ride")
+        self._unit(
+            "u3", date="2026-11-22", name="Rolle", sport="Ride", environment="indoor"
+        )
+        self.state["days"] = [
+            {"date": "2026-11-22", "apparent_temperature_max": 31.0},
+            {"date": "2026-11-23", "weather_code": 95},
+        ]
+        self.checks.check()
+        self.checks.check()
+        self.assertEqual(len(self._titled("Wetter")), 1)  # today's run only
+        self._at(17)
+        self.checks.check()
+        self.assertEqual(len(self._titled("Wetter")), 1)  # tomorrow from 18:00
+        self._at(18)
+        self.checks.check()
+        self.checks.check()
+        messages = self._titled("Wetter")
+        self.assertEqual(len(messages), 2)
+        self.assertEqual(
+            (messages[0]["body"], messages[0]["url"]),
+            (
+                "Für eine geplante Einheit draußen gibt es einen Wetterhinweis.",
+                "#plan/overview",
+            ),
+        )
+        self.assertNotIn("Waldlauf", json.dumps(messages))
+        self.state["days"] = []
+        self._at(9, day=24)
+        self._unit("u4", date="2026-11-24", name="Lauf", sport="Run")
+        self.checks.check()
+        self.assertEqual(len(self._titled("Wetter")), 2)  # a calm day
+
+    def test_a_weather_warning_needs_heat_poor_air_high_pollen_or_a_storm(self):
+        cases = {
+            "calm": ({"apparent_temperature_max": 24.9, "weather_code": 3}, False),
+            "heat": ({"apparent_temperature_max": 25.0}, True),
+            "air": ({"air_quality": {"european_aqi_max": 60.0}}, True),
+            "fair air": ({"air_quality": {"european_aqi_max": 59.0}}, False),
+            "pollen": ({"pollen": {"levels": {"Birke": "2-3"}}}, True),
+            "light pollen": ({"pollen": {"levels": {"Birke": "1-2"}}}, False),
+            "storm": ({"weather_code": 95}, True),
+            "no forecast": (None, False),
+        }
+        for name, (day, expected) in cases.items():
+            with self.subTest(name):
+                self.assertIs(day_warning(day), expected)
+
+    def test_a_coach_answer_is_sent_at_once_and_at_any_hour(self):
+        self._at(23)
+        self.assertTrue(self.checks.notify(coach_answer_event("turn-1")))
+        self.assertFalse(self.checks.notify(coach_answer_event("turn-1")))
+        (message,) = self._titled("Coach")
+        self.assertEqual(
+            (message["body"], message["url"], message["tag"]),
+            ("Deine Antwort ist da.", "#coach", "coach:turn-1"),
+        )
+        self.assertTrue(self.checks.notify(coach_answer_event("turn-2")))
+
+    def test_a_source_that_fails_skips_only_itself(self):
+        def broken():
+            raise RuntimeError("source down")
+
+        checks = PushChecks(
+            self.service,
+            lambda: FakeManager(self.connection),
+            lambda: self.local["now"],
+            equipment=broken,
+            server_state=lambda: {"free_bytes": 1},
+        )
+        with self.assertLogs("intervals_coach", "WARNING") as logs:
+            self.assertEqual(checks.check(), 1)
+        self.assertNotIn("source down", "".join(logs.output))
+        self.assertEqual(len(self._titled("Server")), 1)
 
 
 class PushRouteTests(unittest.TestCase):
