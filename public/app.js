@@ -26,6 +26,12 @@ document.querySelectorAll(".nav-item").forEach((link) => link.addEventListener("
   const linkedRoute = String(link.getAttribute("href") || "").replace(/^#/, "").trim();
   void AppRouter.navigate(linkedRoute || link.dataset.route, { historyMode: "push" });
 }));
+// The skip link must not reach the hash router: it moves the focus to the content.
+document.querySelector(".skip-link")?.addEventListener("click", (event) => {
+  event.preventDefault();
+  document.querySelector("#main")?.focus();
+});
+
 // Alt+1 to Alt+5 open the main views in navigation order (#2812): never while typing or behind a dialog or menu;
 // Ctrl+Alt (AltGr) types characters, so it is left alone.
 document.addEventListener("keydown", (event) => {

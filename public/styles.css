@@ -242,6 +242,9 @@ button { cursor: pointer; }
 }
 
 .icon-sprite { position: absolute; width: 0; height: 0; overflow: hidden; }
+.skip-link { position: absolute; z-index: 20; top: 8px; left: 8px; display: inline-flex; min-height: 44px; align-items: center; padding: 0 16px; border: 1px solid var(--line-strong); border-radius: var(--radius-sm); color: var(--ink); background: var(--surface-raised); font-weight: 700; text-decoration: none; transform: translateY(-200%); }
+.skip-link:focus { transform: none; }
+main:focus { outline: none; }
 .nav-icon { width: 21px; height: 21px; fill: none; stroke: currentColor; stroke-linecap: round; stroke-linejoin: round; stroke-width: 1.8; }
 /* One surface-card family (#2434); view rules add only layout. */
 .card, .analysis-chart-card, .settings-section, .connection-card, .nutrition-total, .nutrition-card, .nutrition-tools, .planned-week, .planned-month, .coach-action-review, .status-strip { border: 1px solid var(--line); border-radius: var(--radius-lg); background: var(--surface); box-shadow: var(--shadow-soft); }
@@ -1515,7 +1518,7 @@ body:has(#chatPanel.active) .toast { bottom: calc(var(--composer-height, 0px) + 
 body:has(#profilePanel.active .dirty-indicator:not([hidden])) .toast { bottom: calc(var(--composer-offset) + 64px); }
 
 @media (min-width: 768px) {
-  .shell { display: grid; grid-template-columns: 72px minmax(0, 1fr); grid-template-areas: "nav header" "nav main"; gap: 0 24px; padding: 0 24px 32px 0; }
+  .shell { display: grid; grid-template-columns: 72px minmax(0, 1fr); grid-template-rows: auto 1fr; align-content: start; grid-template-areas: "nav header" "nav main"; gap: 0 24px; padding: 0 24px 32px 0; }
   .desktop-nav { grid-area: nav; position: sticky; top: 0; display: flex; height: 100dvh; flex-direction: column; gap: 8px; padding: 24px 4px; border-right: 1px solid var(--line); }
   .desktop-nav .nav-item { display: grid; min-height: 52px; place-items: center; gap: 5px; padding: 7px 2px; border-radius: 12px; color: var(--muted); text-decoration: none; }
   .desktop-nav .nav-item > span { font-size: .72rem; font-weight: 650; }

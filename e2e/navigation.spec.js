@@ -177,3 +177,42 @@ test("@responsive Betrieb & Diagnose lists the release changes from the image as
   await expect(page.locator("#settingsAppVersion")).toHaveText(/^v\d+\.\d+\.\d+/);
   await expect(page.locator(".release-changelog")).toHaveCount(0);
 });
+
+// #3935 X-04: the first Tab stop skips the navigation; the link must not reach the hash router.
+test("@responsive the skip link moves the focus to the content and keeps the route", async ({ page }) => {
+  await page.route("**/api/state/events*", (route) => route.abort());
+  await page.goto("/#nutrition/diary");
+  await expect(page.locator("#appShell")).toBeVisible();
+  await expect.poll(() => page.evaluate(() => Boolean(state.data))).toBe(true);
+  // It leads the tab order: no focusable element comes before it.
+  const first = await page.evaluate(() => {
+    const tabbable = [...document.querySelectorAll("a[href], button:not([disabled]), input:not([disabled]), select, textarea, summary, [tabindex]:not([tabindex='-1'])")].filter((element) => element.getClientRects().length);
+    return `${tabbable[0]?.tagName}.${tabbable[0]?.className}`;
+  });
+  expect(first, "first tab stop").toBe("A.skip-link");
+  const link = page.getByRole("link", { name: "Zum Inhalt springen" });
+  await link.focus();
+  await expect(link).toBeFocused();
+  await expect(link).toBeInViewport();
+  await page.keyboard.press("Enter");
+  await expect(page.locator("#main")).toBeFocused();
+  expect(new URL(page.url()).hash).toBe("#nutrition/diary");
+});
+
+// #3935 G-11: the page heading does not move when a short view replaces a long one.
+test("@responsive the page heading stays at one height between tabs on a wide screen", async ({ page }) => {
+  test.skip(page.viewportSize().width < 1100, "the desktop grid");
+  await page.route("**/api/state/events*", (route) => route.abort());
+  await page.goto("/#plan/overview");
+  await expect(page.locator("#appShell")).toBeVisible();
+  await expect.poll(() => page.evaluate(() => Boolean(state.data))).toBe(true);
+  const heights = [];
+  for (const route of ["plan/overview", "plan/library", "plan/season", "more/appearance", "more/connections", "analysis/strength"]) {
+    await page.evaluate((target) => AppRouter.navigate(target, { historyMode: "replace" }), route);
+    await expect(page.locator(".panel.active h2").first()).toBeVisible();
+    await page.evaluate(() => globalThis.scrollTo(0, 0));
+    heights.push(await page.locator(".panel.active h2").first().evaluate((heading) => Math.round(heading.getBoundingClientRect().top)));
+  }
+  // The tabs differ by a few px of their own heading margin; before the fix a short view sat 110 to 240 px lower.
+  expect(Math.max(...heights) - Math.min(...heights), `heading tops ${heights.join(", ")}`).toBeLessThanOrEqual(12);
+});
