@@ -221,6 +221,13 @@ class CoachAthleteRecordToolService:
         """
         action, kind = payload.get("action"), payload.get("kind")
         if action == "set":
+            if "equipment_id" not in payload:
+                # null clears the default; a missing item must not (#3957).
+                raise AppError(
+                    400,
+                    "Die Regel braucht equipment_id (null für keine).",
+                    reason="tool_arguments_invalid",
+                )
             return self._equipment.save_rule(
                 {
                     "kind": kind,

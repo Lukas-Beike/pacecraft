@@ -226,7 +226,7 @@ class CoachAthleteRecordToolServiceTests(unittest.TestCase):
         sessions = Mock()
         receipt = {"status": "ok", "change": {"id": "c1"}}
         sessions.confirm.return_value = sessions.split.return_value = receipt
-        sessions.merge.return_value = receipt
+        sessions.merge.return_value = sessions.delete.return_value = receipt
         service = CoachAthleteRecordToolService(
             self.checkins,
             self.feedback,
@@ -252,6 +252,13 @@ class CoachAthleteRecordToolServiceTests(unittest.TestCase):
                 sessions.merge,
                 ("act_1", "act_3"),
             ),
+            # #3957: the local delete of the session details.
+            (
+                "delete_activity_session",
+                {"payload": {"activity_id": "act_1"}},
+                sessions.delete,
+                ("act_1",),
+            ),
         )
         for name, arguments, method, expected in cases:
             with self.subTest(name=name):
@@ -269,6 +276,25 @@ class CoachAthleteRecordToolServiceTests(unittest.TestCase):
                         name, arguments, {**intent, "authorization_scope": []}
                     )
                 self.assertEqual(raised.exception.reason, "intent_scope_denied")
+
+    def test_a_rule_set_without_its_item_or_an_unknown_action_changes_nothing(self):
+        # #3957: a missing equipment_id must not clear the kind's default.
+        equipment = Mock()
+        service = CoachAthleteRecordToolService(
+            Mock(), Mock(), Mock(), equipment=equipment
+        )
+        intent = {
+            "operation": "set_equipment_rule",
+            "authorization_scope": ["local_equipment"],
+        }
+        for payload in (
+            {"action": "set", "kind": "run:easy", "expected_revision": 1},
+            {"action": "clear", "kind": "run:easy"},
+        ):
+            with self.subTest(payload=payload), self.assertRaises(AppError) as refused:
+                service.execute("set_equipment_rule", {"payload": payload}, intent)
+            self.assertEqual("tool_arguments_invalid", refused.exception.reason)
+        self.assertEqual([], equipment.method_calls)
 
     def test_operation_and_scope_denials_block_each_tool(self):
         cases = (

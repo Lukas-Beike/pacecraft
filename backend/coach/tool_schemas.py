@@ -1451,7 +1451,7 @@ def build_structured_tool_schemas(
         ),
         (
             "set_equipment_rule",
-            "Default equipment per kind of session, as Ausrüstung sets it, only on the athlete's explicit request. action set: from today on (equipment_id null for none), expected_revision from read_training_records rules (0 before its first save); earlier sessions keep theirs. action preview: count the earlier sessions without an own choice the rule would give its item; tell the athlete the count. action apply: give them the item, only after the athlete confirmed that count in a later message.",
+            "Default equipment per kind of session, as Ausrüstung sets it, only on the athlete's explicit request. action set: from today on, equipment_id required (null for none), expected_revision from read_training_records rules (0 before its first save); earlier sessions keep theirs. action preview: count the earlier sessions without an own choice the rule would give its item; tell the athlete the count. action apply: give them the item, only after the athlete confirmed that count in a later message.",
             {
                 "action": {"type": "string", "enum": ["set", "preview", "apply"]},
                 "kind": {"type": "string", "enum": list(RULE_KINDS)},

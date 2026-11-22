@@ -300,7 +300,7 @@ The system SHALL assign only resolved canonical completed activities to compatib
 
 #### Scenario: Coach planned choice and default rules
 - **WHEN** the athlete asks the Coach to choose a planned unit's equipment or to set, count or apply a kind's default (#3957)
-- **THEN** `assign_activity_equipment` with `planned_unit_id` and `set_equipment_rule` (`set`, `preview`, `apply`) use the same service calls as the routes under scope `local_equipment`; `preview` changes nothing and shows no receipt, and `apply` is a bulk change that needs the athlete's confirmed request in `profile`.
+- **THEN** `assign_activity_equipment` with `planned_unit_id` and `set_equipment_rule` (`set`, `preview`, `apply`) use the same service calls as the routes under scope `local_equipment`; `preview` changes nothing and shows no receipt, `set` needs `equipment_id` (null for none), and `apply` is a bulk change that needs the athlete's confirmed request in `profile`, runs inside the turn's one transaction and names its count on the receipt.
 
 #### Scenario: Rule applied to earlier sessions
 - **WHEN** the athlete previews a rule with `GET /api/equipment/rules/preview?kind=` and confirms with `{"kind", "confirmed": true}` at `POST /api/equipment/rules/apply`

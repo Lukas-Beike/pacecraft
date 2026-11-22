@@ -75,6 +75,11 @@ def coach_effect_label(item: dict[str, Any]) -> str:
         or result.get("changes")
         or []
     )
+    if item.get("tool") == "set_equipment_rule" and isinstance(
+        result.get("count"), int
+    ):
+        # A rule applied to earlier sessions names how many it gave the item.
+        count = result["count"]
     return f"{label} ({count})" if count else label
 
 

@@ -23,6 +23,7 @@ from test_feedback_session_identity import ZONE, ingest_wahoo, wahoo_row
 from backend.activities.hr_cap import effective_caps
 from backend.activities.route_store import save_index
 from backend.canonical.vocabulary import DfaQuality
+from backend.coach.outcomes import coach_effect_label
 from backend.coach.receipt_compaction import compact_receipt
 from backend.coach.tool_specs import PROFILE_MUTATING_TOOLS
 from backend.coach.training_patch import CoachTrainingPatchService
@@ -2903,6 +2904,13 @@ class CoachToolCoverageTests(DialogueHarness, unittest.TestCase):
             message="Ja, gib sie auch den früheren Läufen.",
         )
         self.assertEqual(preview["count"], applied["count"])
+        # The receipt names how many earlier sessions the apply changed.
+        self.assertEqual(
+            "Ausrüstungsregel gespeichert (12)",
+            coach_effect_label(
+                {"tool": "set_equipment_rule", "result": {"ok": True, "count": 12}}
+            ),
+        )
 
     def test_every_mutating_tool_rejects_missing_user_authorization_without_effect(
         self,
