@@ -1091,7 +1091,11 @@ class RouteTests(unittest.TestCase):
         )
         # A step test's detail read (#3833) runs before the profile lock is taken.
         events: list[str] = []
-        service.adopt.side_effect = lambda *_args: events.append("lock") or {}
+        def adopt(*_args: Any) -> dict[str, Any]:
+            events.append("lock")
+            return {}
+
+        service.adopt.side_effect = adopt
 
         def read(activity_id: str) -> dict[str, str]:
             events.append("read")
