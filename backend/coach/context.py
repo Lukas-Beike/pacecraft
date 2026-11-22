@@ -742,6 +742,9 @@ class CoachPerformanceContextReader:
 
 
 _COACH_ZONE_FIELDS = (
+    # A local entry's key lets the Coach remove it (#3956); removal finds
+    # only local configurations.
+    "key",
     "sport",
     "metric",
     "environment",
@@ -783,8 +786,6 @@ def coach_training_zones(
                             for field in _COACH_ZONE_FIELDS
                             if view[field] is not None
                         },
-                        # A local entry's key lets the Coach remove it (#3956).
-                        **({"key": view["key"]} if view["source"] == "local" else {}),
                         # A provider's default set also serves the sports without one.
                         "sport": sport.value,
                         "zone_source": zone_source_name(chosen),
