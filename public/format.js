@@ -44,14 +44,14 @@
   }
 
   // A percentage with a space before the sign, as in "42,5 %".
-  function percent(value, options = { digits: 1 }) {
-    const text = number(value, options);
+  function percent(value, { digits = 1 } = {}) {
+    const text = number(value, { digits });
     return text == null ? null : `${text} %`;
   }
 
   // A change with an explicit sign: "+1,2", "−0,4", "0" (never a signed zero).
-  function signed(value, options = { digits: 1 }) {
-    const text = number(value, options);
+  function signed(value, { digits = 1, minDigits = 0 } = {}) {
+    const text = number(value, { digits, minDigits });
     if (text == null) return null;
     return Number(value) > 0 && text !== "0" && /[1-9]/.test(text) ? `+${text}` : text;
   }
