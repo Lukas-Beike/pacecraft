@@ -123,7 +123,7 @@ async function downloadDatabaseBackup() {
 async function restoreDatabaseBackup() {
   const input = $("#backupFileInput");
   const file = input?.files?.[0];
-  if (!file || !await requestConfirmation("Das aktuelle Datenbank-Backup wird vorher gesichert und durch die ausgewählte Datei ersetzt.", { title: "Datenbank-Backup wiederherstellen?", confirmLabel: "Wiederherstellen" })) return;
+  if (!file || !await requestConfirmation("Das aktuelle Datenbank-Backup wird vorher gesichert und durch die ausgewählte Datei ersetzt.", { title: "Datenbank-Backup wiederherstellen?", danger: true, confirmLabel: "Wiederherstellen" })) return;
   const button = $("#backupRestoreButton");
   button.disabled = true;
   const controller = new AbortController();
@@ -239,7 +239,7 @@ async function deleteGpsTracks() {
     if (!expectedText) throw new Error("Die Löschbestätigung ist derzeit nicht verfügbar.");
     const confirmation = await requestConfirmation(
       `Alle gespeicherten GPS-Spuren (${gpsTracksState.stored_tracks}) werden unwiderruflich lokal gelöscht. Streckenerkennung und Wetter am Ort nutzen sie nicht mehr. Die übrigen Aufzeichnungen bleiben.`,
-      { title: "GPS-Spuren löschen?", inputLabel: "Bestätigungstext", expectedText, confirmLabel: "Löschen" },
+      { title: "GPS-Spuren löschen?", inputLabel: "Bestätigungstext", expectedText, danger: true, confirmLabel: "Löschen" },
     );
     if (!confirmation) return;
     const result = await api("/api/privacy/gps/delete", { method: "POST", body: JSON.stringify({ confirm: confirmation }) });
@@ -280,7 +280,7 @@ async function deletePrivacyData() {
       title: "Lokale Daten endgültig löschen?",
       inputLabel: "Bestätigungstext",
       expectedText: preview.confirmation_text,
-      confirmLabel: "Endgültig löschen",
+      danger: true, confirmLabel: "Endgültig löschen",
       secondaryAction: { label: "Erst Backup erstellen", onClick: downloadDatabaseBackup },
     });
     if (!confirmation) return;
@@ -943,7 +943,7 @@ async function saveZones(event) {
 
 async function removeZones() {
   const button = $("#zoneRemoveButton");
-  const confirmed = await requestConfirmation("Danach gelten wieder die Zonen des Anbieters.", { title: "Lokale Zonen entfernen?", confirmLabel: "Entfernen" });
+  const confirmed = await requestConfirmation("Danach gelten wieder die Zonen des Anbieters.", { title: "Lokale Zonen entfernen?", danger: true, confirmLabel: "Entfernen" });
   if (!confirmed) return;
   button.disabled = true;
   try {

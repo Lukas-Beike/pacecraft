@@ -219,10 +219,10 @@ test("deleting a database entry removes it from the database after its own confi
   assert.equal(status.textContent, "Eintrag „Haferdrink“ aus der Datenbank entfernt.");
 });
 
-test("deleting an own product archives it after confirmation", async () => {
+test("deleting an own product archives it at once, only the database removal asks (G-03)", async () => {
   const { context, calls } = actionContext({});
   await context.deleteNutritionProduct({ id: "own-1", name: "Whey", origin: "own" });
-  assert.deepEqual(calls.map(([target]) => target), ["confirm", "/api/nutrition/products/archive"]);
+  assert.deepEqual(calls.map(([target]) => target), ["/api/nutrition/products/archive"]);
 });
 
 test("re-checking an own product without an EAN names the EAN and the editor", async () => {

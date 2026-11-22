@@ -134,9 +134,8 @@ test("@responsive nutrition product library supports review, local save, favorit
   const favorites = await openProductSection(page, "favorites");
   await expect(favorites.filter({ hasText: productName })).toHaveCount(1);
 
+  // An own product is archived at once (G-03); its undo line follows.
   await card.getByRole("button", { name: "Löschen" }).click();
-  await expect(page.locator("#confirmationDialog")).toBeVisible();
-  await page.locator("#confirmationDialogAccept").click();
   await expect(card).toHaveCount(0);
   await expect(favorites.filter({ hasText: productName })).toHaveCount(0);
 });

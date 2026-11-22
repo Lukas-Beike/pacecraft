@@ -40,7 +40,7 @@ async function downloadServerLogs() {
 async function deleteServerLogs() {
   const confirmed = await requestConfirmation("Alle gespeicherten Server-Logs werden gelöscht.", {
     title: "Server-Logs löschen?",
-    confirmLabel: "Löschen",
+    danger: true, confirmLabel: "Löschen",
   });
   if (!confirmed) return;
   const button = $("#logsDeleteButton");
@@ -81,7 +81,7 @@ async function downloadDiagnostics() {
 async function deleteDiagnostics() {
   const confirmed = await requestConfirmation("Alle gespeicherten Diagnosedaten werden gelöscht.", {
     title: "Diagnose löschen?",
-    confirmLabel: "Löschen",
+    danger: true, confirmLabel: "Löschen",
   });
   if (!confirmed) return;
   const button = $("#diagnosticsDeleteButton");

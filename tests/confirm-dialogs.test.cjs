@@ -5,6 +5,7 @@ const { test } = require("node:test");
 const { babelParse, traverse, extractFunctions } = require("./frontend-harness.cjs");
 
 const PUBLIC = path.join(__dirname, "../public");
+const DANGER_LABELS = new Set(["Löschen", "Entfernen", "Ausmustern", "Zurücksetzen", "Verwerfen", "Trennen", "Endgültig löschen", "Wiederherstellen"]);
 
 // Every confirmation names its question in a title and its action as a verb (#3934 G-02): no
 // "Aktion bestätigen" and no "Bestätigen" button, and the text is not the title again.
@@ -19,6 +20,10 @@ test("every requestConfirmation call passes a title and a verb label", () => {
         const options = args[1]?.type === "ObjectExpression" ? args[1].properties : [];
         const named = new Set(options.map((property) => property.key?.name));
         if (!named.has("title") || !named.has("confirmLabel")) offenders.push(`${file}:${callPath.node.loc.start.line}`);
+        // Red only for a destructive action (G-01): its verb says so and the call marks it `danger`.
+        const label = options.find((property) => property.key?.name === "confirmLabel")?.value;
+        const flagged = named.has("danger");
+        if (label?.type === "StringLiteral" && DANGER_LABELS.has(label.value) !== flagged) offenders.push(`${file}:${callPath.node.loc.start.line} danger flag`);
         // The question is the title's; the text names the consequence and asks nothing.
         const first = args[0];
         let text = "";

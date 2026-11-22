@@ -108,7 +108,7 @@ function showNutritionReceipt(status, message, change, afterUndo) {
 }
 
 async function deleteNutritionEntry(item) {
-  if (!await requestConfirmation(`Die Mahlzeit „${item.description}“ wird gelöscht.`, { title: "Mahlzeit löschen?", confirmLabel: "Löschen" })) return false;
+  // Acts at once (athlete decision, #3934 G-03): "Rückgängig" in the receipt takes the question's place.
   const status = document.querySelector("#nutritionStatus");
   try {
     const result = await api("/api/nutrition/entry/delete", { method: "POST", body: JSON.stringify({ id: item.id }) });
@@ -278,8 +278,12 @@ function nutritionEstimateChip(item) {
 function nutritionEntryActions(item) {
   const estimate = h("button", { type: "button", className: "secondary-button" }, item.estimate_uncertain ? "Nicht geschätzt" : "Als geschätzt markieren");
   estimate.addEventListener("click", () => void markNutritionEstimate(item));
-  const remove = h("button", { type: "button", className: "secondary-button", "aria-label": `Mahlzeit löschen: ${item.description}` }, "Löschen");
-  remove.addEventListener("click", () => void deleteNutritionEntry(item));
+  const remove = h("button", { type: "button", className: "secondary-button danger-button", "aria-label": `Mahlzeit löschen: ${item.description}` }, "Löschen");
+  remove.addEventListener("click", async () => {
+    // One tap, one delete: the button waits for the request, as the removed dialog did.
+    remove.disabled = true;
+    try { await deleteNutritionEntry(item); } finally { remove.disabled = false; }
+  });
   return [nutritionComponentDetails(item), estimate, remove].filter(Boolean);
 }
 
@@ -979,8 +983,8 @@ async function pollNutritionRefreshAll(announce = false, start = false) {
 
 async function deleteNutritionProduct(product) {
   const database = nutritionIsDatabaseProduct(product);
-  const question = database ? `Der Eintrag „${product.name}“ wird aus der Datenbank entfernt. Eigene Produkte bleiben erhalten.` : `Das Produkt „${product.name}“ wird gelöscht. Mahlzeiten, die es nutzen, behalten ihre Werte.`;
-  if (!await requestConfirmation(question, { title: database ? "Datenbankeintrag entfernen?" : "Produkt löschen?", confirmLabel: database ? "Entfernen" : "Löschen" })) return;
+  // Only the irreversible removal from the database asks; an own product acts at once with its undo line.
+  if (database && !await requestConfirmation(`Der Eintrag „${product.name}“ wird aus der Datenbank entfernt. Eigene Produkte bleiben erhalten.`, { title: "Datenbankeintrag entfernen?", danger: true, confirmLabel: "Entfernen" })) return;
   const generation = state.sessionGeneration;
   try {
     const result = await api(database ? "/api/nutrition/products/database/delete" : "/api/nutrition/products/archive", { method: "POST", body: JSON.stringify({ id: product.id, confirmed: true }) });
@@ -1003,8 +1007,16 @@ function appendNutritionProductActions(card, product, local) {
       ["Aktualisieren", false, (button) => refreshNutritionProduct(product, button)],
       ["Löschen", false, () => deleteNutritionProduct(product)],
     ]) {
-      const button = h("button", { type: "button", className: primary ? "push-button" : "secondary-button" }, label);
-      button.addEventListener("click", () => run(button)); actions.append(button);
+      let buttonClass = primary ? "push-button" : "secondary-button";
+      if (label === "Löschen") buttonClass += " danger-button";
+      const button = h("button", { type: "button", className: buttonClass }, label);
+      button.addEventListener("click", async () => {
+        if (label !== "Löschen") { run(button); return; }
+        // One tap, one delete: the button waits for the request, as the removed dialog did.
+        button.disabled = true;
+        try { await run(button); } finally { button.disabled = false; }
+      });
+      actions.append(button);
       // Without a known unit an amount cannot be counted against the values.
       if (label === "Verwenden" && !product.basis_unit) { button.disabled = true; button.title = "Bezugsmenge unbekannt"; }
     }

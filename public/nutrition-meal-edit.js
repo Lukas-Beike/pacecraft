@@ -161,9 +161,10 @@ async function saveNutritionMealEdit() {
   const edit = nutritionMealEdit;
   const { item, rows, revision, generation } = edit;
   if (!nodes.form.reportValidity()) return;
-  // Without a component the meal goes, after its own confirmation.
+  // Without a component the meal goes: "Speichern" is no delete cue, so this path asks first.
   if (rows.every((row) => row.removed)) {
-    if (await deleteNutritionEntry(item)) nodes.root.close();
+    const confirmed = await requestConfirmation(`Die Mahlzeit „${item.description}“ wird gelöscht, weil keine Zutat übrig ist.`, { title: "Mahlzeit löschen?", danger: true, confirmLabel: "Löschen" });
+    if (confirmed && await deleteNutritionEntry(item)) nodes.root.close();
     return;
   }
   nodes.save.disabled = true;

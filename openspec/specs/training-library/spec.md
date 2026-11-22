@@ -39,7 +39,7 @@ The system SHALL support authorized template update, archive, restore and deleti
 - **THEN** deletion fails with HTTP 409 and directs the athlete to archive it instead; supported archival retains its identity/link, marks it archived and locally pending, and performs no immediate provider write or scheduled-copy mutation.
 
 #### Scenario: Athlete deletes from the library card
-- **WHEN** the athlete taps the red "Löschen" in an opened library card and confirms "Einheit löschen?" in the card
+- **WHEN** the athlete taps the red "Löschen" in an opened library card and no question follows
 - **THEN** `POST /api/library/{id}/archive` with `{"confirmed": true}` archives the entry through the template `archive` (409 `confirmation_required` without the flag), so the entry leaves the library while units planned from it stay; the library leads with "Gelöscht: <Name>" and "Rückgängig" restores the entry (#3028).
 
 #### Scenario: Archived templates no provider holds are deleted after 30 days

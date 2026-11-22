@@ -1650,7 +1650,7 @@ function bindBodyFatDialog() {
     const day = form.elements.date.value;
     const folds = bodyFatMode === "folds";
     const [name, path] = folds ? ["Messung", "/api/body/skinfolds/remove"] : ["Körperfett", "/api/body/body-fat/remove"];
-    if (!await requestConfirmation(`${name} vom ${dateLabel(day)} wird gelöscht.`, { title: `${name} löschen?`, confirmLabel: "Löschen" })) return;
+    if (!await requestConfirmation(`${name} vom ${dateLabel(day)} wird gelöscht.`, { title: `${name} löschen?`, danger: true, confirmLabel: "Löschen" })) return;
     await sendBodyEntry("bodyFatDialog", path, { date: day, confirmed: true }, remove, bodyFatReceipt(day, folds, "gelöscht"));
   });
   document.querySelector("#bodyFatDialogCancel").addEventListener("click", () => document.querySelector("#bodyFatDialog").close());
@@ -1806,7 +1806,7 @@ function bindWeightDialog() {
   const remove = document.querySelector("#weightDialogRemove");
   remove.addEventListener("click", async () => {
     const day = form.elements.date.value;
-    if (!await requestConfirmation(`Das Gewicht vom ${dateLabel(day)} wird gelöscht.`, { title: "Gewicht löschen?", confirmLabel: "Löschen" })) return;
+    if (!await requestConfirmation(`Das Gewicht vom ${dateLabel(day)} wird gelöscht.`, { title: "Gewicht löschen?", danger: true, confirmLabel: "Löschen" })) return;
     await sendBodyEntry("weightDialog", "/api/body/weight/remove", { date: day, confirmed: true }, remove, weightReceipt(day, "gelöscht"));
   });
   document.querySelector("#weightDialogCancel").addEventListener("click", () => document.querySelector("#weightDialog").close());
@@ -3331,7 +3331,7 @@ function equipmentForm(tab, item) {
 }
 
 async function retireEquipment(item, button) {
-  const confirmed = await requestConfirmation(`${item.name} wird ausgemustert.`, { title: "Ausrüstung ausmustern?", confirmLabel: "Ausmustern" });
+  const confirmed = await requestConfirmation(`${item.name} wird ausgemustert.`, { title: "Ausrüstung ausmustern?", danger: true, confirmLabel: "Ausmustern" });
   if (!confirmed) return;
   button.disabled = true;
   const saved = Object.fromEntries(EQUIPMENT_SAVED_FIELDS.filter((key) => key in item).map((key) => [key, item[key]]));

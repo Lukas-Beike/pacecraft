@@ -289,7 +289,7 @@ function setDirtyIndicator(id, dirty) {
 
 
 async function confirmDiscardDraft(isDirty) {
-  return !isDirty || Boolean(await requestConfirmation("Deine Eingaben auf dieser Seite gehen verloren.", { title: "Änderungen verwerfen?", confirmLabel: "Verwerfen" }));
+  return !isDirty || Boolean(await requestConfirmation("Deine Eingaben auf dieser Seite gehen verloren.", { title: "Änderungen verwerfen?", danger: true, confirmLabel: "Verwerfen" }));
 }
 
 
