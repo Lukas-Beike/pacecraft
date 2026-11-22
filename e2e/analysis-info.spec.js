@@ -774,6 +774,21 @@ test("@responsive Kraft shows how often per week the upper body and the legs wer
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
 });
 
+test("@responsive a short Kraft period without sessions offers the longer one", async ({ page }) => {
+  await page.route("**/api/analysis/strength*", (route) => {
+    const weeks = Number(new URL(route.request().url()).searchParams.get("weeks"));
+    return route.fulfill({ json: { start: "2026-08-31", end: "2026-11-20", weeks: strengthWeeks(weeks, (index) => ({ sessions: weeks >= 13 && index === 0 ? 1 : 0, upper: weeks >= 13 && index === 0 ? 1 : 0, legs: 0, unknown: 0 })) } });
+  });
+  await performanceFixture(page, {}, "strength");
+  const root = page.locator("#strengthAnalysis");
+  await root.getByRole("button", { name: "4 Wochen" }).click();
+  // The controls stay reachable: the empty card widens the period instead of trapping the choice.
+  await expect(page.locator("#analysisEmptyState")).toContainText("Keine Daten in den letzten 4 Wochen");
+  await page.locator("#analysisEmptyState").getByRole("button", { name: "3 Monate anzeigen" }).click();
+  await expect(root.getByRole("heading", { name: "Oberkörper" })).toBeVisible();
+  await expect(root.getByRole("button", { name: "3 Monate" })).toHaveAttribute("aria-pressed", "true");
+});
+
 test("@responsive Kraft without stored sets shows the one empty card", async ({ page }) => {
   await page.route("**/api/analysis/strength*", (route) => route.fulfill({ json: {
     start: "2026-08-31", end: "2026-11-20",

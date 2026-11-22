@@ -820,7 +820,7 @@ class TrainingReportReadService:
             upper, legs = found or (None, None)
             count["upper"] += upper is True
             count["legs"] += legs is True
-            count["unknown"] += upper is None and legs is None
+            count["unknown"] += upper is not True and legs is not True
         return {
             "start": start.isoformat(),
             "end": today.isoformat(),

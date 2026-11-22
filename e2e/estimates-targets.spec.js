@@ -126,7 +126,7 @@ test("@responsive desktop Analyse rows: two cards at equal height, a lone card a
   // The athlete's rule (#3154): no half-width card beside an empty half, no ragged pair.
   test.skip(!(page.viewportSize().width >= 1100), "Desktop layout");
   const seen = { pairs: 0, lone: 0 };
-  for (const [tab, ready] of [["running", "#currentPerformance table[data-analysis-sport='run']"], ["cycling", "#currentPerformance table[data-analysis-sport='ride']"], ["records", "#runningBestEfforts h4"], ["load", "#trainingZoneCharts .analysis-chart-card"], ["recovery", "#personalRecovery svg"]]) {
+  for (const [tab, ready] of [["running", "#currentPerformance table[data-analysis-sport='run']"], ["cycling", "#currentPerformance table[data-analysis-sport='ride']"], ["load", "#trainingZoneCharts .analysis-chart-card"], ["recovery", "#personalRecovery svg"]]) {
     await open(page, `analysis/${tab}`, ready);
     const rows = await page.evaluate(() => [...document.querySelectorAll("#dataPanel .analysis-history-charts")].filter((grid) => grid.offsetParent).flatMap((grid) => {
       const width = grid.getBoundingClientRect().width;

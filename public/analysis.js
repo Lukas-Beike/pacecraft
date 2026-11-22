@@ -2748,6 +2748,7 @@ function analysisDataSourceConnected(data = state.data) {
 
 function analysisSegmentPeriod(segment) {
   if (segment === "load") return analysisHistoryPeriod;
+  if (segment === "strength") return strengthHistoryPeriod;
   return segment === "recovery" ? recoveryHistoryPeriod : null;
 }
 
@@ -2760,7 +2761,7 @@ function analysisEmptyCard(segment) {
     cause = "Keine Daten in den letzten 4 Wochen.";
     action = h("button", { className: "push-button", type: "button" }, "3 Monate anzeigen");
     action.addEventListener("click", () => {
-      const controls = document.querySelectorAll(segment === "load" ? "#analysisLoadPeriod button" : "#personalRecovery .analysis-period-controls button");
+      const controls = document.querySelectorAll(segment === "load" ? "#analysisLoadPeriod button" : `${segment === "strength" ? "#strengthAnalysis" : "#personalRecovery"} .analysis-period-controls button`);
       [...controls].find((button) => button.textContent === "3 Monate")?.click();
     });
   } else if (connected) {
