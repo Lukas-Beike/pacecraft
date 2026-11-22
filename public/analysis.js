@@ -11,7 +11,7 @@ function analysisValue(value, unit) {
   if (unit === "s") return formatDuration(Math.round(Number(value)));
   if (unit === "h") {
     const minutes = Math.round(Math.abs(Number(value)) * 60);
-    return `${Number(value) < 0 ? "−" : ""}${Math.floor(minutes / 60)}:${String(minutes % 60).padStart(2, "0")} h`;
+    return `${Number(value) < 0 && minutes > 0 ? "−" : ""}${Math.floor(minutes / 60)}:${String(minutes % 60).padStart(2, "0")} h`;
   }
   if (unit === "Einheiten") return AppFormat.plural(value, "Einheit", "Einheiten");
   const suffix = unit ? ` ${unit}` : "";
