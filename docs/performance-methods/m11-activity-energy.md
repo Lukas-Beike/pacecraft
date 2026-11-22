@@ -87,7 +87,7 @@ counting it twice. 1 kcal = 4184 J.
   to correct METs to the measured resting rate.
 - R65 (Joosen & Westerterp 2006): thermic effect per macronutrient.
 - R66 (LaForgia et al. 2006): EPOC 6-15 % of the net exercise oxygen cost.
-- R78 (Loucks, Kiens & Wright 2011): the exercise energy of the energy availability is this card's net session cost (#3917).
+- R78 (Loucks, Kiens & Wright 2011): energy availability as intake less exercise energy; its exercise energy is this card's net session cost (#3917).
 
 ## Population and reference measurement
 

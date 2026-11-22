@@ -1,8 +1,8 @@
 """Two non-blocking notes on the size of an energy deficit (#3917).
 
 Energy availability (EA) is the intake less the exercise energy, per kg of
-fat-free mass and day (Loucks, Kiens & Wright 2011, R78); the note fires below
-30 kcal/kg FFM, the IOC's low-availability line (Mountjoy et al. 2023, R79).
+fat-free mass and day (Loucks, Kiens & Wright 2011, R78; Mountjoy et al. 2023,
+R79); the note fires below 30 kcal/kg FFM, the athlete's line (#3917).
 The exercise energy is M11's session net cost, already net of the resting
 energy over each session's duration; the fat-free mass is M13's lean mass. The
 loss-rate note compares M12's 28-day weight line with 1 % of body mass per week

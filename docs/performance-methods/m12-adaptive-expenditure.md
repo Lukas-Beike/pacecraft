@@ -254,7 +254,7 @@ estimate. It never rewrites logged values and never falls back to a formula.
 - R68 (Hall 2008): energy content of fat and lean tissue change, and Forbes'
   body-composition curve.
 - M11 and its sources for the activity and TEF terms.
-- R80 (Garthe et al. 2011): the loss-rate note's line; R81 (Hector & Phillips 2018): protein 1.6-2.4 g/kg in a deficit, in the diary's range with the energy goal "Abnehmen"; R82 (Thomas et al. 2016): carbohydrate planned by load (#3917).
+- R80 (Garthe et al. 2011): the loss-rate note's line; R81 (Hector & Phillips 2018): protein 1.6-2.4 g/kg in a deficit, in the diary's range with the energy goal "Abnehmen" (#3917).
 - The method comment and athlete decisions on #3100 and #3099.
 
 ## Population and reference measurement
