@@ -571,7 +571,10 @@ class AdaptiveReplanPreviewService:
         """The running return after an approved pause, from stored approvals only."""
         pause = self.latest_illness_pause()
         return illness_return.current_state(
-            pause[1] if pause else None, self.latest_illness_return(), self._today()
+            pause[1] if pause else None,
+            self.latest_illness_return(),
+            self._today(),
+            self._checkin_service.list(30) if pause else (),
         )
 
     def enforced_return_stage(self) -> int | None:
