@@ -522,6 +522,8 @@ class CoachCommandToolBuilderTests(unittest.TestCase):
             second_threshold=ANY,
             step_test=ANY,
             activity_routes=ANY,
+            product_cleanup=ctx.nutrition.product_cleanup,
+            product_refresh=ctx.nutrition.product_refresh,
         )
         # #3956: the LT2 service reads the performance curves, lazily.
         kwargs = constructors["CoachAthleteRecordToolService"].call_args.kwargs

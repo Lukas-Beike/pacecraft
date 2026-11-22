@@ -296,6 +296,31 @@ class CoachAthleteRecordToolServiceTests(unittest.TestCase):
             self.assertEqual("tool_arguments_invalid", refused.exception.reason)
         self.assertEqual([], equipment.method_calls)
 
+    def test_the_product_tools_refuse_without_scope_or_action(self):
+        # #3958: authorization, scope and the action are checked before any
+        # product, clean-up or re-check is reached.
+        cleanup, refresh = Mock(), Mock()
+        service = CoachAthleteRecordToolService(
+            Mock(), Mock(), Mock(), self.nutrition, self.nutrition,
+            product_cleanup=lambda: cleanup, product_refresh=refresh,
+        )  # fmt: skip
+        for name, payload, operation, scope, status in (
+            ("manage_nutrition_products", {"action": "archive", "id": "p"}, "save_nutrition_entry", "local_nutrition", 403),
+            ("manage_nutrition_products", {"action": "cleanup", "days": 90}, "manage_nutrition_products", "local_profile", 403),
+            ("refresh_nutrition_products", {"all": True}, "manage_nutrition_products", "local_nutrition", 403),
+            ("manage_nutrition_products", {"action": "delete", "id": "p"}, "manage_nutrition_products", "local_nutrition", 400),
+        ):  # fmt: skip
+            with self.subTest(name=name, payload=payload, operation=operation):
+                with self.assertRaises(AppError) as refused:
+                    service.execute(
+                        name,
+                        {"payload": payload},
+                        {"operation": operation, "authorization_scope": [scope]},
+                    )
+                self.assertEqual(status, refused.exception.status)
+        self.assertEqual([], self.nutrition.method_calls)
+        self.assertEqual([], cleanup.method_calls + refresh.method_calls)
+
     def test_operation_and_scope_denials_block_each_tool(self):
         cases = (
             (

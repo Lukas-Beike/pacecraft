@@ -675,6 +675,9 @@ def _removes_records(tool_name: str, arguments: Mapping[str, Any] | None) -> boo
     # So does replacing a measured or entered threshold (#3956).
     if tool_name in {"save_body_entry", "save_zones"}:
         return arguments.get("replace") is True
+    # Archiving, forgetting or cleaning up products removes them (#3958).
+    if tool_name == "manage_nutrition_products":
+        return _payload_action(arguments) in {"archive", "forget", "cleanup"}
     if tool_name in {"save_equipment", "update_training_plan"}:
         payload = arguments.get("payload")
         return isinstance(payload, Mapping) and (
@@ -698,6 +701,11 @@ def _applies_equipment_rule(
         and isinstance(payload, Mapping)
         and _canonical(payload.get("action")) == "apply"
     )
+
+
+def _payload_action(arguments: Mapping[str, Any] | None) -> str:
+    payload = arguments.get("payload") if isinstance(arguments, Mapping) else None
+    return _canonical(payload.get("action")) if isinstance(payload, Mapping) else ""
 
 
 def _new_records(
@@ -760,6 +768,11 @@ def call_impact(
         tool_name in WHOLE_PLAN_TOOLS
         # A rule applied to earlier sessions changes them all at once (#3957).
         or _applies_equipment_rule(tool_name, arguments)
+        # A product clean-up removes many products at once (#3958).
+        or (
+            tool_name == "manage_nutrition_products"
+            and _payload_action(arguments) == "cleanup"
+        )
         or (records and records_so_far + records > BULK_THRESHOLD)
         or (bulk_from and tool_records_so_far + records >= bulk_from)
     ):

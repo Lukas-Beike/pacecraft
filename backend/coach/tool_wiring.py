@@ -189,6 +189,8 @@ def build_coach_command_tools(
                 )
             ),
             activity_routes=lambda: ctx.activity_routes,
+            product_cleanup=nutrition.product_cleanup,
+            product_refresh=nutrition.product_refresh,
         )
 
     def profile_update_service() -> CoachProfileUpdateService:

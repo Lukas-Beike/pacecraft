@@ -249,6 +249,24 @@ TOOL_SPECS: tuple[ToolSpec, ...] = (
         requirements=(CA6, "coach-tool-authority/CA10"),
     ),
     ToolSpec(
+        "manage_nutrition_products",
+        ATHLETE_RECORDS,
+        domain=NUTRITION,
+        done="Produkte geändert",
+        action="Produkte ändern",
+        requirements=("food-catalog-and-meal-library/Coach product management", CA4),
+    ),
+    ToolSpec(
+        "refresh_nutrition_products",
+        ATHLETE_RECORDS,
+        domain=NUTRITION,
+        done="Produkte aktualisiert",
+        action="Produkte aktualisieren",
+        # The food database answers outside the turn's write transaction.
+        external_food_lookup=True,
+        requirements=("food-catalog-and-meal-library/Coach product management",),
+    ),
+    ToolSpec(
         "fill_nutrition_product_gaps",
         ATHLETE_RECORDS,
         domain=NUTRITION,

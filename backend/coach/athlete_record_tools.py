@@ -54,6 +54,8 @@ _ZONE_FIELDS = (
     "from_beginning",
 )
 _LT2_FIELDS = ("sport", "source", "value", "shown", "confirm_deviation", "activity_id")
+# Produkte's card and list actions, through the routes' use cases (#3958).
+_PRODUCT_TOOLS = frozenset({"manage_nutrition_products", "refresh_nutrition_products"})
 
 
 class CoachAthleteRecordToolService:
@@ -75,6 +77,8 @@ class CoachAthleteRecordToolService:
         second_threshold: Callable[[], Any] | None = None,
         step_test: Callable[[str], Any] | None = None,
         activity_routes: Callable[[], Any] | None = None,
+        product_cleanup: Callable[[], Any] | None = None,
+        product_refresh: Any = None,
     ) -> None:
         # Zonen & Schwellen's services and the step-test read of one session.
         self._zones = zones
@@ -83,6 +87,9 @@ class CoachAthleteRecordToolService:
         self._step_test = step_test
         # The recognised routes, renamed as the session details do (#3957).
         self._activity_routes = activity_routes
+        # Produkte's clean-up and its background re-check of every product.
+        self._product_cleanup = product_cleanup
+        self._product_refresh = product_refresh
         # The Körper entry service of "weight" or "body_fat" (#3640).
         self._body_entries = body_entries
         self._checkins = checkins
@@ -104,6 +111,8 @@ class CoachAthleteRecordToolService:
             return self._execute_body(name, arguments, intent)
         if name in _ZONE_TOOLS:
             return self._execute_zones(name, arguments, intent)
+        if name in _PRODUCT_TOOLS:
+            return self._execute_products(name, arguments, intent)
         if name in {
             "save_nutrition_template",
             "save_nutrition_product",
@@ -511,6 +520,51 @@ class CoachAthleteRecordToolService:
             "first_threshold_bpm": result["profile"].get(FIRST_THRESHOLD_FIELD),
             "first_threshold_estimate": result["first_threshold_estimate"],
         }
+
+    def _execute_products(
+        self, name: str, arguments: dict[str, Any], intent: dict[str, Any]
+    ) -> dict[str, Any]:
+        """Favourite, archive, forget, clean up or re-check products (#3958).
+
+        Archive, forget and clean-up are deletes for the write gate, the
+        clean-up also bulk; its preview and an empty run change nothing.
+        """
+        self._authorize(
+            intent,
+            name,
+            "Die strukturierte Coach-Autorisierung erlaubt diese Produktänderung nicht.",
+        )
+        require_coach_scope(intent, "local_nutrition")
+        library = self._nutrition_meal_library_service()
+        payload = structured_action_payload(arguments)
+        product_id = str(payload.get("id") or "")
+        if name == "refresh_nutrition_products":
+            if payload.get("all") is True:
+                if self._product_refresh is None:
+                    raise AppError(
+                        503, "Die Produktaktualisierung ist nicht verfügbar."
+                    )
+                # The background run of "Alle aktualisieren"; one at a time.
+                return {"ok": True, "run": self._product_refresh.start()}
+            return library.refresh_database_food(product_id)
+        action, catalog = payload.get("action"), library.product_catalog
+        if action == "favorite":
+            product = catalog.set_favorite(product_id, payload.get("favorite"))
+            return {"ok": True, "product": product}
+        if action == "archive":
+            return {"ok": True, "product": catalog.archive_product(product_id)}
+        if action == "forget":
+            return library.forget_database_food(product_id)
+        if action in {"cleanup_preview", "cleanup"} and self._product_cleanup:
+            cleanup = self._product_cleanup()
+            if action == "cleanup_preview":
+                preview = cleanup.preview(payload.get("days"))
+                return {"ok": True, "status": "unchanged", **preview}
+            run = cleanup.run({"days": payload.get("days"), "confirmed": True})
+            return run | ({"status": "unchanged"} if run["change"] is None else {})
+        raise AppError(
+            400, "Unbekannte Produktaktion.", reason="tool_arguments_invalid"
+        )
 
     @staticmethod
     def _authorize(intent: dict[str, Any], operation: str, message: str) -> None:
