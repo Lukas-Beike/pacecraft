@@ -90,7 +90,7 @@ test("@responsive a waiting entry is listed and can be discarded, and nothing is
   const dialog = page.locator("#outboxDialog");
   await expect(dialog).toBeVisible();
   await expect(dialog.locator("li")).toHaveCount(1);
-  await expect(dialog.locator("li")).toContainText("Gewicht 81.2 kg");
+  await expect(dialog.locator("li")).toContainText("Gewicht 81,2 kg");
   await expect(dialog.locator("li")).toContainText("wartet");
   expect(await new AxeBuilder({ page }).include("#outboxDialog").withTags(["wcag2aa"]).analyze()).toEqual(expect.objectContaining({ violations: [] }));
   await dialog.getByRole("button", { name: "Verwerfen" }).click();

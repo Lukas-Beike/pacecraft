@@ -131,6 +131,30 @@ async function showView(page, route, calendarView) {
   await openCollapsibles(page, route);
 }
 
+// #3933: one spelling per kind of value. Each pattern names the spelling it rejects; the text is what the athlete reads.
+const TEXT_FORMATS = [
+  [/\d\.\d{1,2} (kg|g|kcal|km|km\/h|%|W|bpm|ml|min)\b/, "a decimal point instead of a comma"],
+  [/(^|[\s(])-\d/, "a hyphen as minus sign"],
+  [/\d%/, "a percent sign without a space"],
+  [/(^|[\s(])[-−]0(,0+)? (%|kg|W)/, "a negative zero"],
+  [/\b1 (Einheiten|Messungen|Sätze|Wiederholungen|Aktivitäten|Portionen)\b/, "a plural after one"],
+  [/\d{2}\.\d{2}\.\d{4},? \d{2}:\d{2}:\d{2}/, "a timestamp with seconds"],
+  [/\bPortion\(en\)/, "an either-or plural"],
+];
+
+async function expectTextFormats(page, view) {
+  // The Coach context preview shows the raw JSON the Coach receives; that is data, not a displayed value.
+  const text = await page.locator(".panel.active").evaluate((panel) => {
+    const raw = [...panel.querySelectorAll("pre")];
+    raw.forEach((node) => { node.hidden = true; });
+    const shown = panel.innerText;
+    raw.forEach((node) => { node.hidden = false; });
+    return shown;
+  });
+  const found = text.split("\n").flatMap((line) => TEXT_FORMATS.filter(([pattern]) => pattern.test(line)).map(([, reason]) => `${view}: ${reason} in "${line.trim()}"`));
+  expect(found, `value formats: ${found.join(" | ")}`).toEqual([]);
+}
+
 // Fails with the view, the theme and every failing node with its measured and expected contrast.
 async function expectContrast(page, view, theme, scopes = SCOPES) {
   await page.mouse.move(0, 0);
@@ -164,6 +188,7 @@ test.describe("colour contrast sweep", () => {
           await showView(page, route, calendarView);
           await applyTheme(page, theme);
           await expectContrast(page, view, theme);
+          if (theme === "light") await expectTextFormats(page, view);
           if (route === "analysis/running") {
             // One opened explanation popover, named so a new chart legend cannot change it (#2766).
             await page.locator(".panel.active").getByRole("button", { name: "Entwicklung: Informationen", exact: true }).click();

@@ -3,6 +3,7 @@ const vm = require("node:vm");
 const { test } = require("node:test");
 const { loadPublicScript, FakeElement } = require("./frontend-harness.cjs");
 
+require("../public/format.js");
 const { providerCheckView, checkedConnectionKind } = require("../public/provider-checks.js");
 
 const PROVIDERS = ["alpha", "beta", "gamma"];
@@ -39,6 +40,7 @@ function loadChecks(apiHandler, providers = PROVIDERS) {
     setTimeout: () => 0,
     clearTimeout: () => {},
     Date,
+    AppFormat: require("../public/format.js"),
   };
   // Loaded in page order: the chips of connection-status.js follow the check results.
   loadPublicScript(["connection-status.js", "provider-checks.js"], context);

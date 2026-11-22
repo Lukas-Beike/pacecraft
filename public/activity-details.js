@@ -23,7 +23,7 @@
     const ticks = [axisMax, level, level - axisSpan / 2];
     ticks.forEach((value) => {
       svg.append(svgNode("line", { x1: left, x2: width - right, y1: y(value), y2: y(value), class: "activity-gridline" }));
-      svg.append(svgNode("text", { x: left - 8, y: y(value) + 4, "text-anchor": "end" }, Number(value).toLocaleString("de-DE", { maximumFractionDigits: 1 })));
+      svg.append(svgNode("text", { x: left - 8, y: y(value) + 4, "text-anchor": "end" }, AppFormat.number(value, { digits: 1 })));
     });
     const xTicks = [start, start + duration / 2, points.at(-1)[0]];
     xTicks.forEach((time) => svg.append(svgNode("text", { x: x(time), y: height - 8, "text-anchor": "middle" }, `${Math.round(time / 60)} min`)));
@@ -41,7 +41,7 @@
     times.forEach((time, index) => {
       if (typeof time !== "number" || !Number.isFinite(time)) return;
       const value = values[index];
-      const reading = typeof value === "number" && Number.isFinite(value) ? `${value.toLocaleString("de-DE", { maximumFractionDigits: 2 })} ${unit}` : "Lücke";
+      const reading = typeof value === "number" && Number.isFinite(value) ? `${AppFormat.number(value, { digits: 2 })} ${unit}` : "Lücke";
       rows.push([h("th", { scope: "row" }, `${Math.floor(time / 60)}:${String(Math.floor(time % 60)).padStart(2, "0")}`), reading]);
     });
     tableWrap.append(table(["Zeit", label], rows, { caption: `${label} in ${unit}; fehlende Werte sind als Lücke markiert.` }));
@@ -120,12 +120,12 @@
   function sessionLoadText(load) {
     if (!load || load.reason === "no_rating") return "";
     if (load.value == null) return `Session-RPE-Last: offen · ${SESSION_LOAD_REASONS[load.reason] || "unbekannt"}`;
-    const value = Number(load.value).toLocaleString("de-DE", { maximumFractionDigits: 1 });
+    const value = AppFormat.number(load.value, { digits: 1 });
     const rpe = Number(load.rpe).toLocaleString("de-DE");
-    const minutes = Number(load.duration_min).toLocaleString("de-DE", { maximumFractionDigits: 1 });
+    const minutes = AppFormat.number(load.duration_min, { digits: 1 });
     const text = `Session-RPE-Last: ${value} AU · RPE ${rpe} (${load.rpe_source_label}) × ${minutes} min`;
     if (load.duration_flag !== "deviating_duration") return text;
-    const moving = Number(load.moving_duration_min).toLocaleString("de-DE", { maximumFractionDigits: 1 });
+    const moving = AppFormat.number(load.moving_duration_min, { digits: 1 });
     return `${text} · lange Unterbrechung, ${moving} min in Bewegung`;
   }
 
@@ -485,7 +485,7 @@
     ["step_length_m", "Schrittlänge", "m", 2],
   ];
   const DRIFT_METRICS = { contact_time: ["Bodenkontaktzeit", 0], vertical_oscillation: ["Vertikale Oszillation", 1], step_length: ["Schrittlänge", 2] };
-  const decimal = (value, digits) => value.toLocaleString("de-DE", { minimumFractionDigits: digits, maximumFractionDigits: digits });
+  const decimal = (value, digits) => AppFormat.number(value, { digits, minDigits: digits });
   const isNumber = (value) => typeof value === "number" && Number.isFinite(value);
 
   // Label and text of each running dynamics average a sensor measured; none when the device had no sensor.
@@ -502,8 +502,7 @@
       .filter(([name, metric]) => DRIFT_METRICS[name] && isNumber(metric?.first) && isNumber(metric?.last) && isNumber(metric?.change_percent))
       .map(([name, metric]) => {
         const [label, digits] = DRIFT_METRICS[name];
-        const sign = metric.change_percent > 0 ? "+" : "";
-        return `${label} ${decimal(metric.first, digits)} → ${decimal(metric.last, digits)} ${metric.unit} (${sign}${decimal(metric.change_percent, 1)} %)`;
+        return `${label} ${decimal(metric.first, digits)} → ${decimal(metric.last, digits)} ${metric.unit} (${AppFormat.signed(metric.change_percent, { digits: 1, minDigits: 1 })} %)`;
       });
     return drift.flagged && typeof drift.label === "string" ? [drift.label, ...lines] : lines;
   }
@@ -624,10 +623,10 @@
         content.append(h("p", null, `${quality.aligned_steps}/${quality.planned_steps} Schritte zugeordnet · ${quality.missing_steps} fehlen`));
         const list = h("ol", "activity-laps");
         quality.steps.forEach((step) => list.append(h("li", null, step.status === "ok"
-          ? `${step.target}: ${step.mean} ${step.unit} · ${step.seconds_in_target} s im Ziel · Abweichung ${step.average_deviation_percent}% · Abdeckung ${Math.round(step.coverage * 100)}%`
+          ? `${step.target}: ${step.mean} ${step.unit} · ${step.seconds_in_target} s im Ziel · Abweichung ${AppFormat.percent(step.average_deviation_percent)} · Abdeckung ${AppFormat.percent(step.coverage * 100, { digits: 0 })}`
           : `${step.target}: ${step.reason || "Messabdeckung unzureichend"}`)));
         content.append(list);
-        quality.repeat_groups?.forEach((group) => content.append(h("p", null, `${group.target}: ${group.repetitions} vergleichbare Wiederholungen · Abfall ${group.fade_percent}%`)));
+        quality.repeat_groups?.forEach((group) => content.append(h("p", null, `${group.target}: ${group.repetitions} vergleichbare Wiederholungen · Abfall ${AppFormat.percent(group.fade_percent)}`)));
       }
       content.append(h("p", "muted", "Einzelziele verwenden ±5%; vorgegebene Bereiche bleiben unverändert. Ziele stammen aus der ersten Detailabfrage. Frühere Vorlagenänderungen sind nicht rekonstruierbar."));
     }
@@ -641,7 +640,7 @@
       let description = aerobic.reason;
       if (aerobic.status === "ok") {
         const longSession = aerobic.long_session ? " · lange Einheit" : "";
-        description = `Drift ${aerobic.drift_percent}% · gleichmäßige Leistung pro Schlag ${aerobic.efficiency} ${aerobic.unit}${longSession}`;
+        description = `Drift ${AppFormat.percent(aerobic.drift_percent)} · gleichmäßige Leistung pro Schlag ${aerobic.efficiency} ${aerobic.unit}${longSession}`;
       }
       content.append(h("p", null, description));
       content.append(h("p", "muted", "Lokale Methode: zehn Minuten Aufwärmen ausgeschlossen, danach zwei gleich lange Hälften bei gleichmäßiger Belastung und mindestens 85% Messabdeckung. Temperatur, Gelände und Indoor/Outdoor beeinflussen den Vergleich; keine pauschale Fitnessbewertung."));

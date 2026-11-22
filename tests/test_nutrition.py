@@ -286,6 +286,12 @@ class NutritionRepositoryAndServiceTests(unittest.TestCase):
         template = self.library.save_template({**payload, "name": "Oats"})
         logged = self.service.log_template(template["id"], 0.5)
         self.assertEqual(logged["kcal"], 87)
+        self.assertTrue(logged["description"].startswith("Oats · 0,5 Portionen: "))
+        self.assertTrue(
+            self.service.log_template(template["id"], 1)["description"].startswith(
+                "Oats · 1 Portion: "
+            )
+        )
         self.assertEqual(logged["nutrition_basis"]["ingredients"][0]["amount"], 25)
         self.assertEqual(self.service.log_template(template["id"], "0,5")["kcal"], 87)
         renamed = self.library.save_template(

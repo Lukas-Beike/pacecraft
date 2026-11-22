@@ -81,10 +81,10 @@ function renderNutritionSegments(route) {
   });
 }
 
-function nutritionNumber(value) {
+function nutritionNumber(value, unit = "") {
   if (value == null || value === "") return "–";
   const number = Number(value);
-  return Number.isFinite(number) ? AppFormat.number(number, { digits: 1 }) : String(value);
+  return Number.isFinite(number) ? AppFormat.number(number, { digits: 1, minDigits: unit === "g" ? 1 : 0 }) : String(value);
 }
 
 // A diary write reports its text with "Rückgängig" while the change can still be undone.
@@ -192,7 +192,7 @@ function nutritionComponentDetails(item) {
     h("ul", "nutrition-component-list", components.map((component) => h("li", null,
       h("strong", null, component.name || "Unbenannte Zutat"),
       h("span", null, ` · ${component.amount ?? "–"} ${component.unit || ""}`.trim()),
-      h("span", null, ` · ${nutritionNumber(component.kcal)} kcal · KH ${nutritionNumber(component.carbs_g)} g · Protein ${nutritionNumber(component.protein_g)} g · Fett ${nutritionNumber(component.fat_g)} g`),
+      h("span", null, ` · ${nutritionNumber(component.kcal)} kcal · KH ${nutritionNumber(component.carbs_g, "g")} g · Protein ${nutritionNumber(component.protein_g, "g")} g · Fett ${nutritionNumber(component.fat_g, "g")} g`),
       h("small", null, nutritionComponentSource(component.nutrition_basis, NUTRITION_SOURCE_LABELS[item.source]))))));
 }
 
@@ -251,7 +251,7 @@ function nutritionCard(item, template, sessions = []) {
     h("h3", null, template ? item.name : nutritionMealTitle(item), ...(template ? [] : nutritionEstimateChip(item))),
     template ? null : nutritionSessionBlock(item, sessions),
     h("p", null, item.description),
-    h("p", null, `${nutritionNumber(item.kcal)} kcal · KH ${nutritionNumber(item.carbs_g)} g · Protein ${nutritionNumber(item.protein_g)} g · Fett ${nutritionNumber(item.fat_g)} g${template ? " / Portion" : ""}${volume}`),
+    h("p", null, `${nutritionNumber(item.kcal)} kcal · KH ${nutritionNumber(item.carbs_g, "g")} g · Protein ${nutritionNumber(item.protein_g, "g")} g · Fett ${nutritionNumber(item.fat_g, "g")} g${template ? " / Portion" : ""}${volume}`),
     sourceText ? h("small", null, sourceText) : null);
   if (!template) card.append(...nutritionEntryActions(item));
   return card;
@@ -304,7 +304,7 @@ function nutritionTotalTile(label, key, unit, day, hasEntries) {
   // A partial sum of known values is shown only with an explicit incompleteness label.
   const total = hasEntries ? (complete ?? day.known_macro_totals?.[key] ?? day.known_intake_totals?.[key]) : null;
   if (total == null) markValueMissing(value);
-  else setValueWithUnit(value, `${nutritionNumber(total)} ${unit}`);
+  else setValueWithUnit(value, `${nutritionNumber(total, unit)} ${unit}`);
   tile.append(value, h("span", null, label + (complete == null && total != null ? " · unvollständig" : "")));
   return tile;
 }
@@ -1063,7 +1063,7 @@ function nutritionProductCard(product, local) {
       h("h3", null, [product.brand, product.name].filter(Boolean).join(" · ") || "Unbenanntes Produkt"),
       nutritionUsageCount(product),
       local && product.id && product.local !== false ? nutritionFavoriteButton(product) : null),
-    h("p", null, `${kcalLabel} · KH ${product.carbs_g ?? "–"} g · Protein ${product.protein_g ?? "–"} g · Fett ${product.fat_g ?? "–"} g`),
+    h("p", null, `${kcalLabel} · KH ${nutritionNumber(product.carbs_g, "g")} g · Protein ${nutritionNumber(product.protein_g, "g")} g · Fett ${nutritionNumber(product.fat_g, "g")} g`),
     h("div", "nutrition-product-marks",
       h("span", "nutrition-origin", nutritionOriginText(product)),
       nutritionLastUseText(product) ? h("span", "nutrition-last-use", nutritionLastUseText(product)) : null,

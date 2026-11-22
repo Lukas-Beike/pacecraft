@@ -26,7 +26,7 @@ const ESTIMATES = {
 function lt2(globals = {}) {
   return extractFunctions("settings.js", NAMES, {
     state: { data: {} },
-    formatPace: (seconds) => `${Math.floor(seconds / 60)}:${String(Math.round(seconds % 60)).padStart(2, "0")} min/km`,
+    formatPace: (seconds) => `${Math.floor(seconds / 60)}:${String(Math.round(seconds % 60)).padStart(2, "0")} /km`,
     dateLabel: (day) => day.split("-").reverse().join("."),
     AppFormat: require("../public/format.js"),
     ...globals,

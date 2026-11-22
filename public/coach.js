@@ -1977,7 +1977,7 @@ function contextTextNode(text) {
 function contextScalarText(key, value) {
   if (value === null || value === undefined || value === "") return "–";
   if (typeof value === "boolean") return value ? "Ja" : "Nein";
-  if (typeof value === "number") return value.toLocaleString("de-DE", { maximumFractionDigits: 2 });
+  if (typeof value === "number") return AppFormat.number(value, { digits: 2 }) ?? String(value);
   if (typeof value === "string" && key.endsWith("_at")) return formatTime(value);
   if (key === "sports") return profileSportsLabel(value);
   return String(value);

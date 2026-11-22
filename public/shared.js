@@ -373,8 +373,7 @@ function formatWhole(value) {
 
 function formatPace(seconds) {
   if (seconds == null || Number.isNaN(Number(seconds))) return null;
-  const total = Math.round(Number(seconds));
-  return `${Math.floor(total / 60)}:${String(total % 60).padStart(2, "0")} min/km`;
+  return AppFormat.pace(seconds);
 }
 
 

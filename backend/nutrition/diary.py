@@ -97,6 +97,12 @@ def _merged_entry(existing: dict[str, Any], changes: dict[str, Any]) -> dict[str
     return merged
 
 
+def _portion_text(amount: float) -> str:
+    """ "1 Portion", "0,5 Portionen": decimal comma, singular only for exactly one."""
+    unit = "Portion" if amount == 1 else "Portionen"
+    return f"{amount:g}".replace(".", ",") + f" {unit}"
+
+
 def _names_time_without_flag(changes: dict[str, Any]) -> bool:
     """A newly named meal time is known even when the stored entry had none."""
     return bool({"logged_at", "meal_time"} & set(changes)) and (
@@ -198,13 +204,14 @@ class NutritionDiaryService:
             raise AppError(
                 400, "Portionsanzahl muss größer als 0 und höchstens 20 sein."
             )
+        portion_text = _portion_text(amount)
         with self._database_manager.unit_of_work() as db:
             template = self._meal_library.get_template_in_transaction(db, template_id)
             if not template:
                 raise AppError(404, SAVED_MEAL_NOT_FOUND)
             payload = {
                 **template,
-                "description": f"{template['name']} · {amount:g} Portion(en): {template['description']}",
+                "description": f"{template['name']} · {portion_text}: {template['description']}",
                 "meal_date": meal_date,
                 "meal_time": meal_time,
                 # Without a time, an explicit template type takes its default time

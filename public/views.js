@@ -432,7 +432,7 @@ const FIRST_THRESHOLD_QUALITY_LABELS = { good: "gut", low: "niedrig" };
 
 function firstThresholdEstimateText(estimate) {
   const percent = `${String(estimate.percent_lthr).replace(".", ",")} % LSHF`;
-  const sessions = `${estimate.sessions} ${estimate.sessions === 1 ? "Einheit" : "Einheiten"}`;
+  const sessions = AppFormat.plural(estimate.sessions, "Einheit", "Einheiten");
   const quality = `Qualität ${FIRST_THRESHOLD_QUALITY_LABELS[estimate.quality] || estimate.quality}`;
   return ["DFA-α1", Number.isFinite(estimate.bpm) ? `${estimate.bpm} bpm` : null, percent, sessions, quality].filter(Boolean).join(" · ");
 }
