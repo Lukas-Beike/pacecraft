@@ -221,12 +221,12 @@ class ServiceTests(unittest.TestCase):
     def setUp(self) -> None:
         open_database(self)
 
-    def service(self, records=(), first_threshold_pct=None, lthr=160.0):
+    def service(self, records=(), first_threshold_hr=None, lthr=160.0):
         profile = Mock()
         profile.get.return_value = (
             {}
-            if first_threshold_pct is None
-            else {"first_threshold_pct": first_threshold_pct}
+            if first_threshold_hr is None
+            else {"first_threshold_hr": first_threshold_hr}
         )
         return SecondThresholdService(
             self.manager,
@@ -263,8 +263,8 @@ class ServiceTests(unittest.TestCase):
     def test_the_stored_first_threshold_bounds_the_value(self) -> None:
         for days in (2, 5, 9):
             add_run(self, days, stored(series()))
-        # 95 % of 180 bpm is 171 bpm, above the 170 bpm crossing.
-        result = self.service(first_threshold_pct="95", lthr=180.0).estimates()
+        # A stored 171 bpm lies above the 170 bpm crossing (#3915: stored in bpm).
+        result = self.service(first_threshold_hr="171", lthr=180.0).estimates()
         self.assertEqual(result["run"]["dfa_alpha1"]["status"], "unknown")
 
 

@@ -9,13 +9,17 @@ function nodes() {
   return {
     firstThresholdEstimate: make(),
     firstThresholdEstimateText: make(),
-    firstThresholdStoredLabel: { textContent: "Gespeichert (% LSHF)" },
+    firstThresholdStoredLabel: { textContent: "Puls (bpm)" },
+    firstThresholdPercent: { textContent: "" },
   };
 }
 
 function render(estimate, profile) {
   const elements = nodes();
-  const context = extractFunctions("views.js", ["FIRST_THRESHOLD_QUALITY_LABELS", "firstThresholdEstimateText", "renderFirstThresholdEstimate"], { document: { getElementById: (id) => elements[id] } });
+  const context = extractFunctions("views.js", ["FIRST_THRESHOLD_QUALITY_LABELS", "firstThresholdEstimateText", "renderFirstThresholdEstimate", "firstThresholdPercentText"], {
+    document: { getElementById: (id) => elements[id] },
+    state: { data: { performance: { metrics: { run_threshold_hr_bpm: { value: 170 } } } } },
+  });
   context.renderFirstThresholdEstimate(estimate, profile);
   return elements;
 }
@@ -36,11 +40,15 @@ test("no estimate hides the block", () => {
   assert.equal(render(null, {}).firstThresholdEstimate.hidden, true);
 });
 
-test("a stored adopted estimate is marked on the stored value", () => {
-  const adopted = render(null, { first_threshold_pct: "90", first_threshold_origin: "estimated" });
-  assert.equal(adopted.firstThresholdStoredLabel.textContent, "Gespeichert (% LSHF, DFA-α1)");
-  const measured = render(null, { first_threshold_pct: "90", first_threshold_origin: "measured" });
-  assert.equal(measured.firstThresholdStoredLabel.textContent, "Gespeichert (% LSHF)");
+test("a stored adopted estimate is marked on the stored bpm, the percent is display only (#3915)", () => {
+  const adopted = render(null, { first_threshold_hr: "153", first_threshold_origin: "estimated" });
+  assert.equal(adopted.firstThresholdStoredLabel.textContent, "Puls (bpm, DFA-α1)");
+  // 153 of today's 170 bpm threshold HR.
+  assert.equal(adopted.firstThresholdPercent.textContent, "90 % LSHF");
+  const measured = render(null, { first_threshold_hr: "144", first_threshold_origin: "measured" });
+  assert.equal(measured.firstThresholdStoredLabel.textContent, "Puls (bpm)");
+  assert.equal(measured.firstThresholdPercent.textContent, "84,7 % LSHF");
+  assert.equal(render(null, {}).firstThresholdPercent.textContent, "");
 });
 
 test("the plan card names the method of an estimated cap source", () => {
@@ -49,20 +57,20 @@ test("the plan card names the method of an estimated cap source", () => {
 });
 
 function adoptContext({ dirty, other = "Ada" }) {
-  const elements = { ...nodes(), profileForm: { elements: { first_threshold_pct: { value: "85" } } } };
+  const elements = { ...nodes(), profileForm: { elements: { first_threshold_hr: { value: "145" } } } };
   const rendered = [];
   const dirtyFlags = [];
   const context = extractFunctions("settings.js", ["applyAdoptedFirstThreshold"], {
     $: (selector) => elements[selector.slice(1)],
     state: {
       profileDirty: dirty,
-      profileBaseline: { first_threshold_pct: "85", name: "" },
-      data: { profile: { first_threshold_pct: "85", name: "" }, first_threshold_estimate: null },
+      profileBaseline: { first_threshold_hr: "145", name: "" },
+      data: { profile: { first_threshold_hr: "145", name: "" }, first_threshold_estimate: null },
     },
     profileFieldText: (value) => (typeof value === "string" ? value : ""),
-    profileFormValues: (form) => ({ first_threshold_pct: form.elements.first_threshold_pct.value, name: other }),
+    profileFormValues: (form) => ({ first_threshold_hr: form.elements.first_threshold_hr.value, name: other }),
     determineChangedProfileFields: (values, baseline) => Object.fromEntries(Object.entries(values).filter(([key, value]) => value !== baseline[key])),
-    renderFirstThresholdEstimate: (estimate, profile) => rendered.push([estimate, profile.first_threshold_pct]),
+    renderFirstThresholdEstimate: (estimate, profile) => rendered.push([estimate, profile.first_threshold_hr]),
     setDirtyIndicator: (id, flag) => dirtyFlags.push([id, flag]),
   });
   return { context, elements, rendered, dirtyFlags };
@@ -71,11 +79,11 @@ function adoptContext({ dirty, other = "Ada" }) {
 test("an adopted estimate reaches the input and the estimate block while the form holds other edits", () => {
   const { context, elements, rendered, dirtyFlags } = adoptContext({ dirty: true });
   const estimate = { percent_lthr: 90, sessions: 4, quality: "low" };
-  context.applyAdoptedFirstThreshold({ profile: { first_threshold_pct: "90", first_threshold_origin: "estimated", name: "" }, first_threshold_estimate: estimate });
-  assert.equal(elements.profileForm.elements.first_threshold_pct.value, "90");
-  assert.equal(context.state.profileBaseline.first_threshold_pct, "90");
+  context.applyAdoptedFirstThreshold({ profile: { first_threshold_hr: "153", first_threshold_origin: "estimated", name: "" }, first_threshold_estimate: estimate });
+  assert.equal(elements.profileForm.elements.first_threshold_hr.value, "153");
+  assert.equal(context.state.profileBaseline.first_threshold_hr, "153");
   assert.equal(context.state.data.profile.first_threshold_origin, "estimated");
-  assert.deepEqual(rendered, [[estimate, "90"]]);
+  assert.deepEqual(rendered, [[estimate, "153"]]);
   // The unsaved name edit stays, so the form is still dirty.
   assert.equal(context.state.profileDirty, true);
   assert.deepEqual(dirtyFlags, [["profileDirtyIndicator", true]]);
@@ -83,14 +91,14 @@ test("an adopted estimate reaches the input and the estimate block while the for
 
 test("the form is clean again when the adopted value was its only edit", () => {
   const { context, dirtyFlags } = adoptContext({ dirty: true, other: "" });
-  context.applyAdoptedFirstThreshold({ profile: { first_threshold_pct: "90", first_threshold_origin: "estimated" }, first_threshold_estimate: null });
+  context.applyAdoptedFirstThreshold({ profile: { first_threshold_hr: "153", first_threshold_origin: "estimated" }, first_threshold_estimate: null });
   assert.equal(context.state.profileDirty, false);
   assert.deepEqual(dirtyFlags, [["profileDirtyIndicator", false]]);
 });
 
 test("a step test's LT1 is adopted with the same refresh as the profile's estimate (#3833)", async () => {
   const calls = [];
-  const result = { adopted: true, profile: { first_threshold_pct: "90" }, first_threshold_estimate: null };
+  const result = { adopted: true, profile: { first_threshold_hr: "153" }, first_threshold_estimate: null };
   const context = extractFunctions("plan-views.js", ["adoptStepTestValue"], {
     state: { data: { profile: {} } },
     api: async (url, options) => { calls.push(["api", url, JSON.parse(options.body)]); return result; },

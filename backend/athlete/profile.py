@@ -491,9 +491,14 @@ class ProfileService:
     ) -> dict[str, str]:
         restored = dict(current or DEFAULT_PROFILE)
         restored.update(target or DEFAULT_PROFILE)
-        if first_threshold_percent((target or {}).get(LEGACY_PERCENT_FIELD)) is not None:
+        if (
+            first_threshold_percent((target or {}).get(LEGACY_PERCENT_FIELD))
+            is not None
+        ):
             # A state from before #3915: its percent, not the current bpm, is restored.
-            restored[FIRST_THRESHOLD_FIELD] = (target or {}).get(FIRST_THRESHOLD_FIELD, "")
+            restored[FIRST_THRESHOLD_FIELD] = (target or {}).get(
+                FIRST_THRESHOLD_FIELD, ""
+            )
         normalized = normalize_profile(self._with_legacy_bpm(restored, db))
         previous = self.get_from_db(db)
         self._profile_repository.set(db, json.dumps(normalized, ensure_ascii=False))

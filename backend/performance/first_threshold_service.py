@@ -105,9 +105,7 @@ class FirstThresholdService:
         profile = self._profile_service.get()
         origin = first_threshold_origin(profile)
         view = estimate_view(estimate, resolver(None))
-        if (
-            origin == ORIGIN_ESTIMATED and stored_bpm(profile) == bpm
-        ):
+        if origin == ORIGIN_ESTIMATED and stored_bpm(profile) == bpm:
             # Already stored: no profile write and no history entry.
             return {
                 "profile": profile,
@@ -119,9 +117,7 @@ class FirstThresholdService:
                 409,
                 "Ein gemessener Wert ist gespeichert. Zum Ersetzen bitte bestätigen.",
             )
-        saved = self._profile_service.set_first_threshold(
-            f"{bpm:g}", ORIGIN_ESTIMATED
-        )
+        saved = self._profile_service.set_first_threshold(f"{bpm:g}", ORIGIN_ESTIMATED)
         return {"profile": saved, "first_threshold_estimate": view, "adopted": True}
 
 

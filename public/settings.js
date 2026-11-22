@@ -80,7 +80,6 @@ async function saveProfile(event) {
     state.profileBaseline = { ...state.profileBaseline, ...changed };
     if (generation !== state.sessionGeneration) return;
     state.profileDirty = JSON.stringify([...new FormData(form)]) !== submittedForm;
-    if (!state.profileDirty) renderFirstThresholdEstimate(state.data?.first_threshold_estimate, saved);
     setDirtyIndicator("profileDirtyIndicator", state.profileDirty);
     invalidateContextPreview();
     // The birth year and the sex decide the skinfold body fat and sites (#3099).
