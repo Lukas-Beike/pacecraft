@@ -203,6 +203,7 @@ class StatusSnapshotTests(unittest.TestCase):
                 ):
                     codes.append(snapshot.main(["--repo", "o/n", "--changes"]))
                 outputs.append(out.getvalue())
+            state_text = state.read_text(encoding="utf-8")
         self.assertEqual(codes, [3, 0, 3])
         self.assertNotIn("Merged since", outputs[0])
         self.assertEqual(outputs[1], "status_snapshot: unchanged\n")
@@ -210,6 +211,8 @@ class StatusSnapshotTests(unittest.TestCase):
         self.assertIn(
             "Merged since the last change (1):\n  #30 fix: y (t2)", outputs[2]
         )
+        # Each repository keeps its own state.
+        self.assertEqual(list(json.loads(state_text)), ["o/n"])
         searches = [
             args[args.index("--search") + 1] for args in calls if "--search" in args
         ]

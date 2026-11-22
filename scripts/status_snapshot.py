@@ -252,10 +252,18 @@ def render(snapshot: dict) -> str:
     return "\n".join(lines)
 
 
-def last_state() -> tuple[str, str | None]:
-    """The stored digest and the time of the last reported change, if any."""
+def read_states() -> dict:
     try:
-        state = json.loads(STATE_FILE.read_text(encoding="utf-8"))
+        states = json.loads(STATE_FILE.read_text(encoding="utf-8"))
+    except OSError, ValueError:
+        return {}
+    return states if isinstance(states, dict) else {}
+
+
+def last_state(repo: str) -> tuple[str, str | None]:
+    """The repository's stored digest and the time of its last reported change."""
+    try:
+        state = read_states()[repo]
         at = datetime.fromtimestamp(int(state["at"]), UTC)
         return str(state["digest"]), at.strftime("%Y-%m-%dT%H:%M:%SZ")
     except OSError, ValueError, KeyError, TypeError:
@@ -269,10 +277,13 @@ def digest(snapshot: dict) -> str:
     return hashlib.sha256(text).hexdigest()
 
 
-def store_state(value: str) -> None:
+def store_state(repo: str, value: str, started: int) -> None:
+    """Keep each repository's state apart; ``started`` precedes the reads, so a
+    PR merged while they ran falls into the next window."""
+    states = read_states()
+    states[repo] = {"digest": value, "at": started}
     STATE_FILE.parent.mkdir(parents=True, exist_ok=True)
-    stamp = int(datetime.now(UTC).timestamp())
-    STATE_FILE.write_text(json.dumps({"digest": value, "at": stamp}), encoding="utf-8")
+    STATE_FILE.write_text(json.dumps(states), encoding="utf-8")
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -292,7 +303,8 @@ def main(argv: list[str] | None = None) -> int:
                 "repo", "view", "--json", "nameWithOwner", "--jq", ".nameWithOwner"
             ).strip()
         )
-        stored, since = last_state() if args.changes else ("", None)
+        started = int(datetime.now(UTC).timestamp())
+        stored, since = last_state(repo) if args.changes else ("", None)
         snapshot = collect(repo, since)
     except SnapshotError as exc:
         print(f"status_snapshot: {exc}", file=sys.stderr)
@@ -301,7 +313,7 @@ def main(argv: list[str] | None = None) -> int:
         if digest(snapshot) == stored:
             print("status_snapshot: unchanged")
             return 0
-        store_state(digest(snapshot))
+        store_state(repo, digest(snapshot), started)
     print(json.dumps(snapshot, indent=2) if args.json else render(snapshot))
     return CHANGED if args.changes else 0
 
