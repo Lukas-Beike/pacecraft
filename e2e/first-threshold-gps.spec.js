@@ -36,7 +36,8 @@ test("saving a measured first threshold stores the bpm, shows its percent and le
   const baseline = await page.evaluate(() => state.profileBaseline);
   expect(baseline.first_threshold_hr).toBe("150");
 
-  await form.getByRole("button", { name: "Profil speichern" }).click();
+  // Nothing left to save: the bar is gone.
+  await expect(form.locator(".save-bar")).toBeHidden();
   await expect(page.locator("#profileDirtyIndicator")).toBeHidden();
   await page.waitForTimeout(500);
   expect(puts.filter((body) => "first_threshold_hr" in body)).toHaveLength(1);

@@ -24,6 +24,11 @@ test("a failed request without a server response shows an honest German message 
     : route.fallback()));
   await page.evaluate(() => { location.hash = "more/profile"; });
   await expect(page.locator("#profilePanel")).toBeVisible();
+  // The save bar appears with a change the field reports.
+  await page.locator('#profileForm [name="name"]').evaluate((field) => {
+    field.value = `${field.value} `;
+    field.dispatchEvent(new Event("input", { bubbles: true }));
+  });
   await page.getByRole("button", { name: "Profil speichern" }).click();
   const toast = page.locator("#toast");
   await expect(toast).toContainText(NETWORK_MESSAGE);
