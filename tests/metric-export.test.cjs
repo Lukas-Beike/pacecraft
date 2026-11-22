@@ -80,7 +80,7 @@ test("a confirmed field change sends the full field list and shows the receipt",
   const toasts = [];
   const input = { checked: true, disabled: false };
   await fieldContext(true, calls, toasts).changeMetricExportField({ key: "ftp", label: "Rad-FTP" }, input);
-  assert.match(calls[0].message, /Rad-FTP künftig automatisch an Intervals\.icu senden/);
+  assert.match(calls[0].message, /Rad-FTP wird künftig automatisch an Intervals\.icu gesendet/);
   assert.deepEqual(calls[1].body, { enabled: true, field: "ftp", field_enabled: true, confirmed: true, source: "garmin", provider: "intervals" });
   assert.deepEqual(toasts, [{ message: "Intervals.icu-Abgleich: Rad-FTP an", error: false }]);
   assert.equal(input.checked, true);
