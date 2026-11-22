@@ -25,6 +25,7 @@ _DELETE_TOOLS = (
     "delete_nutrition_template",
     "delete_body_entry",
     "delete_zones",
+    "delete_activity_session",
 )
 
 
@@ -563,6 +564,26 @@ class DestructiveTierTests(unittest.TestCase):
                         classifier=_Classifier(_verdict(["planning"], bulk=True)),
                     ).allowed
                 )
+        # #3957: a default rule applied to earlier sessions is bulk in profile;
+        # setting or previewing it is not.
+        rule = {"kind": "run:easy"}
+        for action, impact in (("set", set()), ("preview", set()), ("apply", {"bulk"})):
+            with self.subTest(action=action):
+                payload = {"payload": {**rule, "action": action}}
+                self.assertEqual(
+                    gate.call_impact("set_equipment_rule", payload), impact
+                )
+        apply = {"payload": {**rule, "action": "apply"}}
+        for verdict, allowed in (
+            (_verdict(["profile"], bulk=True), True),
+            (_verdict(["profile"]), False),
+        ):
+            with self.subTest(verdict=verdict):
+                decision = _check(
+                    "set_equipment_rule", "ja, auch die früheren",
+                    classifier=_Classifier(verdict), arguments=apply,
+                )  # fmt: skip
+                self.assertEqual(allowed, decision.allowed, decision)
 
     def test_many_records_in_one_turn_need_a_confirmed_bulk_change(self):
         week = {"changes": [{"action": "update"}] * gate.BULK_THRESHOLD}

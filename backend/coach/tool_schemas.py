@@ -17,6 +17,7 @@ from backend.athlete.checkins import (
     MAX_COMPLAINTS,
     SYMPTOM_LABELS,
 )
+from backend.athlete.equipment import RULE_KINDS
 from backend.athlete.profile import BODY_FIELDS, COACH_READ_ONLY_FIELDS
 from backend.canonical.vocabulary import Sport
 from backend.db.repositories import NUTRIENT_COLUMNS
@@ -1440,12 +1441,39 @@ def build_structured_tool_schemas(
         ),
         (
             "assign_activity_equipment",
-            "Explicitly assign a canonical completed activity to matching active equipment. If sport_pending or parent_pending is true, ask the athlete for the missing equipment detail before assignment. Reassignment recalculates both usage counters. equipment_id=null explicitly clears assignment. activity_id accepts the local ID (act_...) or the provider activity ID. Never infer a favorite bike/shoe.",
+            "Explicitly assign a canonical completed activity, or a planned unit, to matching active equipment. If sport_pending or parent_pending is true, ask the athlete for the missing equipment detail before assignment. Reassignment recalculates both usage counters. equipment_id=null explicitly clears assignment (for a planned unit: Keiner). Send exactly one of activity_id (the local ID act_... or the provider activity ID) and planned_unit_id (a local_id from list_planned_workouts). Never infer a favorite bike/shoe.",
             {
                 "activity_id": {"type": "string"},
+                "planned_unit_id": {"type": "string"},
                 "equipment_id": {"type": ["string", "null"]},
             },
-            ["activity_id", "equipment_id"],
+            ["equipment_id"],
+        ),
+        (
+            "set_equipment_rule",
+            "Default equipment per kind of session, as Ausrüstung sets it, only on the athlete's explicit request. action set: from today on (equipment_id null for none), expected_revision from read_training_records rules (0 before its first save); earlier sessions keep theirs. action preview: count the earlier sessions without an own choice the rule would give its item; tell the athlete the count. action apply: give them the item, only after the athlete confirmed that count in a later message.",
+            {
+                "action": {"type": "string", "enum": ["set", "preview", "apply"]},
+                "kind": {"type": "string", "enum": list(RULE_KINDS)},
+                "equipment_id": {"type": ["string", "null"]},
+                "expected_revision": {"type": "integer", "minimum": 0},
+            },
+            ["action", "kind"],
+        ),
+        (
+            "delete_activity_session",
+            "Local only: delete one activity session and every provider copy in it, as the session details do; nothing is deleted at a provider. Only on the athlete's explicit request to delete it. activity_id is the local session ID (act_...).",
+            {"activity_id": {"type": "string", "minLength": 1}},
+            ["activity_id"],
+        ),
+        (
+            "rename_activity_route",
+            "Local only: rename one recognised route (route.route_id of get_activity_details) on the athlete's explicit request; name 1 to 60 characters.",
+            {
+                "route_id": {"type": "string", "minLength": 1},
+                "name": {"type": "string", "minLength": 1, "maxLength": 60},
+            },
+            ["route_id", "name"],
         ),
         (
             "confirm_activity_session",

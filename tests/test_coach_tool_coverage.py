@@ -21,6 +21,7 @@ from test_coach_dialogue import DialogueHarness, server
 from test_feedback_session_identity import ZONE, ingest_wahoo, wahoo_row
 
 from backend.activities.hr_cap import effective_caps
+from backend.activities.route_store import save_index
 from backend.canonical.vocabulary import DfaQuality
 from backend.coach.receipt_compaction import compact_receipt
 from backend.coach.tool_specs import PROFILE_MUTATING_TOOLS
@@ -89,6 +90,8 @@ REQUIRED_VARIANTS = {
     "sync_nutrition": {"date", "pending"},
     "push_strength_to_garmin": {"push", "remove"},
     "save_zones": {"save", "adopt_first_threshold", "adopt_lt2"},
+    "assign_activity_equipment": {"activity", "planned_unit"},
+    "set_equipment_rule": {"set", "preview", "apply"},
 }
 
 
@@ -129,6 +132,12 @@ def variants(name, arguments, result):
         return {"date" if arguments.get("date") else "pending"}
     if name == "save_zones":
         return {arguments["action"]}
+    if name == "assign_activity_equipment":
+        return {
+            "planned_unit" if "planned_unit_id" in arguments["payload"] else "activity"
+        }
+    if name == "set_equipment_rule":
+        return {arguments["payload"]["action"]}
     if name == "push_strength_to_garmin":
         return {
             "remove" if entry.get("remove") else "push"
@@ -1575,6 +1584,8 @@ class CoachToolCoverageTests(DialogueHarness, unittest.TestCase):
         "confirm_activity_session:success",
         "split_activity_session:success",
         "merge_activity_sessions:success",
+        "rename_activity_route:success",
+        "delete_activity_session:success",
     )
     def test_session_tools_correct_the_bundle_and_leave_a_change_receipt(self):
         self.seed_duplicate_pair()
@@ -1611,6 +1622,38 @@ class CoachToolCoverageTests(DialogueHarness, unittest.TestCase):
         )
         self.assertEqual(merged["status"], "merged")
         self.assertEqual(len(sessions.bundle(first)["members"]), 2)
+        # #3957: a recognised route is renamed and the session deleted locally.
+        with server.database_manager().unit_of_work() as db:
+            save_index(
+                server.KEY_VALUE_REPOSITORY,
+                db,
+                {
+                    "next": 2,
+                    "routes": {"r1": {"name": None, "ref": ""}},
+                    "sessions": {},
+                },
+            )
+        renamed = self.run_tool(
+            "rename_activity_route",
+            {"payload": {"route_id": "r1", "name": "  Deichrunde "}},
+            ["local_activity_session"],
+            message="Nenn die Strecke Deichrunde.",
+        )
+        self.assertEqual(("r1", "Deichrunde"), (renamed["route_id"], renamed["label"]))
+        deleted = self.run_tool(
+            "delete_activity_session",
+            {"payload": {"activity_id": first}},
+            ["local_activity_session"],
+            message="Lösch diese Aktivität.",
+        )
+        self.assertEqual("deleted", deleted["status"])
+        with server.database_manager().read_snapshot() as db:
+            self.assertEqual(
+                [],
+                db.execute(
+                    "SELECT activity_id FROM activity_sessions WHERE state='active'"
+                ).fetchall(),
+            )
 
     @covers("clarify_coach_request:success", "cancel_coach_request:success")
     def test_clarification_and_cancellation_preserve_athlete_data(self):
@@ -2712,15 +2755,19 @@ class CoachToolCoverageTests(DialogueHarness, unittest.TestCase):
     @covers(
         "read_training_records:success",
         "save_equipment:success",
-        "assign_activity_equipment:success",
+        "assign_activity_equipment:activity",
+        "assign_activity_equipment:planned_unit",
         "log_equipment_maintenance:success",
         "read_nutrition:success",
+        "set_equipment_rule:set",
+        "set_equipment_rule:preview",
+        "set_equipment_rule:apply",
     )
     def test_training_records_and_equipment_tools_use_confirmed_local_state(
         self,
     ):
         self.seed_activity()
-        server.PLANNING_WORKFLOWS.local_plan_creation_service().save(
+        unit = server.PLANNING_WORKFLOWS.local_plan_creation_service().save(
             [
                 {
                     "date": "2026-10-03",
@@ -2807,6 +2854,55 @@ class CoachToolCoverageTests(DialogueHarness, unittest.TestCase):
         )
         self.assertTrue(maintenance["stored_locally"])
         self.assertTrue(self.run_tool("read_nutrition", {})["ok"])
+        # #3957: a planned unit's equipment and a kind's default rule.
+        planned = self.run_tool(
+            "assign_activity_equipment",
+            {
+                "payload": {
+                    "planned_unit_id": unit["id"],
+                    "equipment_id": equipment["id"],
+                }
+            },
+            ["local_equipment"],
+            message="Nimm die Laufschuhe für die geplante Einheit.",
+        )
+        self.assertEqual(
+            (unit["id"], equipment["id"]),
+            (
+                planned["assignment"]["planned_unit_id"],
+                planned["assignment"]["equipment_id"],
+            ),
+        )
+        rule = self.run_tool(
+            "set_equipment_rule",
+            {
+                "payload": {
+                    "action": "set",
+                    "kind": "run:easy",
+                    "equipment_id": equipment["id"],
+                    "expected_revision": 0,
+                }
+            },
+            ["local_equipment"],
+            message="Lockere Läufe immer mit diesen Schuhen.",
+        )
+        self.assertEqual(1, rule["rule"]["revision"])
+        preview = self.run_tool(
+            "set_equipment_rule",
+            {"payload": {"action": "preview", "kind": "run:easy"}},
+            ["local_equipment"],
+            message="Wie viele frühere Läufe wären das?",
+        )
+        self.assertEqual(
+            ("unchanged", equipment["id"]), (preview["status"], preview["equipment_id"])
+        )
+        applied = self.run_tool(
+            "set_equipment_rule",
+            {"payload": {"action": "apply", "kind": "run:easy"}},
+            ["local_equipment"],
+            message="Ja, gib sie auch den früheren Läufen.",
+        )
+        self.assertEqual(preview["count"], applied["count"])
 
     def test_every_mutating_tool_rejects_missing_user_authorization_without_effect(
         self,
