@@ -226,6 +226,7 @@ def build_coach_tool_dispatch(
                 planning.training_plan,
                 history.undo_service,
                 ctx.coach_proposals.creation_service,
+                calendar_decisions=lambda: ctx.external_calendar.decisions(),
             ),
         )
 

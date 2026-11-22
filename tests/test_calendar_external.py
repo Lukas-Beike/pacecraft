@@ -522,6 +522,32 @@ class ExternalCalendarTests(unittest.TestCase):
         self.assertEqual([], self.stored_decisions())
         followup.check.assert_not_called()
 
+    def test_the_coach_decides_the_event_it_names_by_start_and_name(self):
+        # #3959: the Coach reads no UID; start and name find exactly one event.
+        self.add_event("one", uid="team")
+        self.add_event(
+            "two", uid="team", start="2026-09-28T09:00:00", end="2026-09-28T10:00:00"
+        )
+        self.add_event("same", uid="other")  # another name at the same start
+        service, _followup, _events = self.service()
+        result = service.decide_shown(
+            "Event one", "2026-09-21T09:00:00", "short", series=False
+        )
+        self.assertNotIn("uid", result)
+        self.assertEqual(
+            [("team", "2026-09-21T09:00:00", "short")], self.stored_decisions()
+        )
+        service.decide_shown("Event two", "2026-09-28T09:00:00", "block", series=True)
+        self.assertEqual([("team", "", "block")], self.stored_decisions())
+        for name, start in (
+            ("Event one", "2026-09-22T09:00:00"),
+            ("Unknown", "2026-09-21T09:00:00"),
+            (None, "2026-09-21T09:00:00"),
+        ):
+            with self.subTest(name=name, start=start), self.assertRaises(AppError):
+                service.decide_shown(name, start, "none", series=False)
+        self.assertEqual([("team", "", "block")], self.stored_decisions())
+
 
 if __name__ == "__main__":
     unittest.main()

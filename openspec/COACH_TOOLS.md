@@ -32,6 +32,7 @@ and repair details remain with the provider capabilities.
 | `calculate_food_nutrition` | canonical_and_dialogue / read | read | CoachReadToolService | `coach-tool-authority / CA1 Complete owned tool capability catalog`; `coach-tool-authority / CA2 Athlete-message provenance and exact effect scope` | `test_food_database_read_tools_calculate_without_writing` |
 | `cancel_coach_request` | dialogue_only / control | ungated | CoachStructuredToolExecutionService | `coach-conversation / CC6 Persisted clarification and conversational continuation`; `coach-tool-authority / CA8 Bounded execution and cancellation boundaries` | `test_clarification_and_cancellation_preserve_athlete_data` |
 | `clarify_coach_request` | dialogue_only / control | ungated | CoachClarificationService | `coach-conversation / CC6 Persisted clarification and conversational continuation`; `coach-tool-authority / CA8 Bounded execution and cancellation boundaries` | `test_clarification_and_cancellation_preserve_athlete_data` |
+| `classify_calendar_event` | canonical_and_dialogue / local_write | planning | CoachAthleteRecordToolService | `external-calendars / Athlete decision per event`; `coach-tool-authority / CA2 Athlete-message provenance and exact effect scope` | `test_the_coach_classifies_a_calendar_event_like_einordnen` |
 | `commit_training_plan` | canonical_and_dialogue / local_write | planning | CoachPlanArtifactToolService | `training-plans-and-adaptation / TP2 Atomic revision-checked plan commit`; `coach-tool-authority / CA4 Domain-confirmed destructive and bulk effects` | `test_requested_draft_commit_and_metadata_lifecycle` |
 | `confirm_activity_session` | canonical_and_dialogue / local_write | profile | CoachAthleteRecordToolService | `activity-ingestion-and-storage / Athlete session corrections`; `coach-tool-authority / CA2 Athlete-message provenance and exact effect scope` | `test_session_tools_correct_the_bundle_and_leave_a_change_receipt` |
 | `delete_activity_feedback` | canonical_and_dialogue / local_write | checkin | CoachAthleteRecordToolService | `athlete-profile-and-checkins / AP7 Exact completed-activity feedback`; `coach-tool-authority / CA4 Domain-confirmed destructive and bulk effects` | `test_daily_feedback_and_activity_feedback_are_separate_from_profile` |
@@ -316,6 +317,16 @@ effect `control`; not fully tracked (no turn undo).
 - `source_message_ids`* (array of integer; ≤24 items)
 - `summary`* (string)
 - `question`* (string)
+
+### `classify_calendar_event`
+
+effect `local_write`; gate domain `planning`; receipt „Termin eingeordnet“; proposal card „Termin einordnen“; not fully tracked (no turn undo).
+
+- `name`* (string; ≥1 chars; ≤200 chars)
+- `start_local`* (string; ≥1 chars; ≤40 chars)
+- `impact`* (string/null; one of `"block"`, `"short"`, `"easy"`, `"none"`, `null`)
+- `series` (boolean)
+- `_request`* (the envelope above)
 
 ### `commit_training_plan`
 

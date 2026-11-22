@@ -364,6 +364,14 @@ TOOL_SPECS: tuple[ToolSpec, ...] = (
         requirements=("athlete-profile-and-checkins/Coach zone changes", CA4),
     ),
     ToolSpec(
+        "classify_calendar_event",
+        PLANNING_ACTIONS,
+        domain=PLANNING,
+        done="Termin eingeordnet",
+        action="Termin einordnen",
+        requirements=("external-calendars/Athlete decision per event", CA2),
+    ),
+    ToolSpec(
         "save_equipment",
         ATHLETE_RECORDS,
         domain=PROFILE,

@@ -2649,6 +2649,40 @@ class CoachToolCoverageTests(DialogueHarness, unittest.TestCase):
         self.assertEqual(3, sum(1 for name, _ in pushed if name == "garmin"))
         self.assertEqual({"entries": []}, server.ATHLETE_DATA.weight_entries().read())
 
+    @covers("classify_calendar_event:success")
+    def test_the_coach_classifies_a_calendar_event_like_einordnen(self):
+        # #3959: the event the Coach names by start and name gets the decision.
+        start = "2026-09-10T18:00:00"
+        with server.database_manager().unit_of_work() as db:
+            db.execute(
+                "INSERT INTO external_calendar_events VALUES "
+                "(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                ("e1", "uid-team", "Synthetic team evening", start[:10], start,
+                 "2026-09-10T20:00:00", 120, 0, 1, 0, 0, 0, "updated"),
+            )  # fmt: skip
+        decided = self.run_tool(
+            "classify_calendar_event",
+            {
+                "name": "Synthetic team evening",
+                "start_local": start,
+                "impact": "short",
+            },
+            ["local_calendar"],
+            message="Am Teamabend nur kurz trainieren.",
+        )
+        self.assertEqual(
+            ("short", start), (decided["impact"], decided["occurrence_start"])
+        )
+        self.assertNotIn("uid", decided)
+        with server.database_manager().read_snapshot() as db:
+            stored = db.execute(
+                "SELECT uid, occurrence_start, impact FROM external_calendar_decisions"
+            ).fetchall()
+        self.assertEqual(
+            [("uid-team", start, "short")],
+            [(row["uid"], row["occurrence_start"], row["impact"]) for row in stored],
+        )
+
     @covers(
         "save_zones:save",
         "save_zones:adopt_lt2",

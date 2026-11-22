@@ -32,6 +32,7 @@ generated from the `covers` declarations; regenerate it with
 | `calculate_food_nutrition` | `success` | `test_food_database_read_tools_calculate_without_writing` |
 | `cancel_coach_request` | `success` | `test_clarification_and_cancellation_preserve_athlete_data` |
 | `clarify_coach_request` | `success` | `test_clarification_and_cancellation_preserve_athlete_data` |
+| `classify_calendar_event` | `success` | `test_the_coach_classifies_a_calendar_event_like_einordnen` |
 | `commit_training_plan` | `success` | `test_requested_draft_commit_and_metadata_lifecycle` |
 | `confirm_activity_session` | `success` | `test_session_tools_correct_the_bundle_and_leave_a_change_receipt` |
 | `delete_activity_feedback` | `success` | `test_daily_feedback_and_activity_feedback_are_separate_from_profile` |

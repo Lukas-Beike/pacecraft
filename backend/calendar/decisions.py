@@ -31,6 +31,29 @@ class ExternalCalendarDecisionService:
         self._utc_now = utc_now
         self._today = today
 
+    def decide_shown(
+        self, name: Any, start_local: Any, impact: Any, *, series: bool
+    ) -> dict[str, Any]:
+        """Decide the event the Coach names as it reads it (#3959).
+
+        The Coach sees no UID, so the event is the one stored with exactly this
+        start and name (the name as the Coach reads it, cut to 200 characters);
+        none or several of them is refused. The answer names no UID either.
+        """
+        if not isinstance(name, str) or not isinstance(start_local, str):
+            raise AppError(400, "Ungültiger Termin.")
+        with self._database_manager.reader() as db:
+            rows = db.execute(
+                "SELECT DISTINCT uid, name FROM external_calendar_events "
+                "WHERE start_local = ?",
+                (start_local[:_MAX_START_LENGTH],),
+            ).fetchall()
+        uids = {row["uid"] for row in rows if str(row["name"])[:200] == name}
+        if len(uids) != 1:
+            raise AppError(404, "Termin nicht gefunden.")
+        result = self.decide(uids.pop(), None if series else start_local, impact)
+        return {key: value for key, value in result.items() if key != "uid"}
+
     def decide(self, uid: Any, occurrence_start: Any, impact: Any) -> dict[str, Any]:
         """Set the impact of one occurrence, or of every occurrence when no start is given.
 
