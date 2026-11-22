@@ -796,7 +796,7 @@ a.message-retry { display: grid; place-items: center; text-decoration: none; }
 .equipment-rule-status { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; font-size: .85rem; }
 .equipment-rule-status:empty { display: none; }
 .equipment-rule-status p { flex-basis: 100%; margin: 0; }
-.planned-equipment-chip { min-height: 32px; border: 1px solid var(--line-strong); background: var(--surface-raised); color: var(--ink); font: inherit; font-size: .8rem; cursor: pointer; }
+.planned-equipment-chip { min-height: 44px; border: 1px solid var(--line-strong); background: var(--surface-raised); color: var(--ink); font: inherit; font-size: .8rem; cursor: pointer; }
 .planned-zone-time-bar { display: flex; height: 10px; overflow: hidden; border-radius: 5px; background: var(--surface-input); }
 .planned-zone-time-bar i { display: block; min-width: 2px; background: var(--muted); }
 .planned-zone-time-bar [data-zone="1"] { background: var(--training-zone-1); }
@@ -986,7 +986,7 @@ a.message-retry { display: grid; place-items: center; text-decoration: none; }
 .planned-focus-form { display: flex; flex-wrap: wrap; align-items: end; gap: 8px 12px; }
 /* The label sits above its select, so a phone never breaks it inside a word (#2370). */
 .planned-focus-field { display: grid; flex: 0 1 12rem; gap: 4px; font-size: .78rem; font-weight: 700; }
-.planned-focus-field select { min-height: 36px; width: 100%; padding: 4px 8px; }
+.planned-focus-field select { min-height: 44px; width: 100%; padding: 4px 8px; }
 .planned-focus-status { color: var(--muted); font-size: .72rem; }
 .planned-move-status, .planned-delete-note { margin: 0; color: var(--muted); font-size: .72rem; }
 .planned-move-days { display: flex; flex-wrap: wrap; gap: 6px; }
@@ -1022,7 +1022,7 @@ a.message-retry { display: grid; place-items: center; text-decoration: none; }
 .planned-month-day.has-blocked-event .planned-month-number { box-shadow: inset 0 -2px 0 var(--danger); }
 /* Personal calendar events (#2620): a band of chips above the day's units; the left edge names the impact. */
 .planned-event-band { display: flex; flex-wrap: wrap; gap: 5px; min-width: 0; }
-.planned-event-chip { --event-edge: var(--muted); display: inline-flex; max-width: 100%; min-height: 32px; align-items: center; gap: 6px; padding: 3px 9px 3px 7px; border: 1px solid var(--transparent); border-left: 3px solid var(--event-edge); border-radius: 9px; color: var(--ink); background: var(--surface-raised); font: inherit; font-size: .75rem; line-height: 1.3; text-align: left; cursor: pointer; }
+.planned-event-chip { --event-edge: var(--muted); display: inline-flex; max-width: 100%; min-height: 44px; align-items: center; gap: 6px; padding: 3px 9px 3px 7px; border: 1px solid var(--transparent); border-left: 3px solid var(--event-edge); border-radius: 9px; color: var(--ink); background: var(--surface-raised); font: inherit; font-size: .75rem; line-height: 1.3; text-align: left; cursor: pointer; }
 .planned-event-chip small { color: var(--muted); font-size: inherit; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .planned-event-name { min-width: 0; overflow-wrap: anywhere; }
 .planned-event-chip[data-impact="block"] { --event-edge: var(--danger); }
@@ -1033,7 +1033,7 @@ a.message-retry { display: grid; place-items: center; text-decoration: none; }
 .planned-event-chip:focus-visible { outline: 2px solid var(--accent-bright); outline-offset: 2px; }
 .planned-undecided-banner { display: flex; align-items: center; gap: 10px; margin: 0 0 12px; padding: 8px 8px 8px 12px; border: 1px solid var(--orange); border-radius: 12px; color: var(--ink); background: var(--warning-surface-soft); font-size: .82rem; font-weight: 650; }
 .planned-undecided-banner > span:nth-child(2) { flex: 1; min-width: 0; }
-.planned-undecided-banner button { min-height: 36px; padding: 0 14px; border: 0; border-radius: 10px; color: var(--primary-control-ink); background: var(--primary-control-bg); font-weight: 700; }
+.planned-undecided-banner button { min-height: 44px; padding: 0 14px; border: 0; border-radius: 10px; color: var(--primary-control-ink); background: var(--primary-control-bg); font-weight: 700; }
 .planned-event-dot { width: 7px; height: 7px; flex: none; border-radius: 50%; background: var(--orange); }
 .planned-event-sheet { width: 100%; max-width: 100%; margin: auto 0 0; padding: 12px 16px max(18px, env(safe-area-inset-bottom)); border: 0; border-top: 1px solid var(--line-strong); border-radius: 20px 20px 0 0; color: var(--ink); background: var(--surface); box-shadow: var(--shadow); }
 .planned-event-head { display: flex; align-items: center; gap: 10px; }
@@ -1102,7 +1102,7 @@ a.message-retry { display: grid; place-items: center; text-decoration: none; }
 .planned-conflict { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; padding: 6px 8px; border: 1px solid var(--warning-border); border-radius: 8px; color: var(--ink); background: var(--warning-surface-soft); font-size: .75rem; font-weight: 650; }
 .planned-conflict-button { min-height: 44px; margin-left: auto; }
 .planned-garmin-exercise { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; width: 100%; }
-.planned-suggestion-chip { min-height: 36px; padding: 4px 12px; border: 1px dashed currentColor; border-radius: 999px; background: none; color: inherit; font: inherit; font-size: .75rem; cursor: pointer; }
+.planned-suggestion-chip { min-height: 44px; padding: 4px 12px; border: 1px dashed currentColor; border-radius: 999px; background: none; color: inherit; font: inherit; font-size: .75rem; cursor: pointer; }
 .planned-group-items { display: grid; gap: 6px; padding: 0 6px 6px; }
 .planned-zone-legend { display: flex; flex-wrap: wrap; gap: 4px 12px; margin: 0; padding: 8px 16px; border-top: 1px solid var(--line); color: var(--muted); font-size: .72rem; }
 .planned-zone-legend i { display: inline-block; width: 10px; height: 10px; margin-right: 4px; border-radius: 2px; background: currentColor; vertical-align: -1px; }
@@ -1232,7 +1232,7 @@ a.message-retry { display: grid; place-items: center; text-decoration: none; }
 .context-preview-status.error { color: var(--danger-ink); }
 .context-preview-content { display: grid; gap: 9px; margin-top: 13px; }
 .context-preview-content details { overflow: hidden; border: 1px solid var(--line); border-radius: 13px; background: var(--translucent-surface); }
-.context-preview-content summary { cursor: pointer; padding: 11px 13px; color: var(--ink); font-size: .78rem; font-weight: 700; }
+.context-preview-content summary { cursor: pointer; min-height: 44px; padding: 11px 13px; color: var(--ink); font-size: .78rem; font-weight: 700; }
 .context-preview-content summary::marker { color: var(--accent-bright); }
 .context-preview-content pre { max-height: 360px; margin: 0; overflow: auto; padding: 0 13px 13px; color: var(--muted); white-space: pre-wrap; overflow-wrap: anywhere; font: .72rem/1.45 ui-monospace, SFMono-Regular, Consolas, monospace; }
 .context-preview-body { padding: 0 13px 13px; }

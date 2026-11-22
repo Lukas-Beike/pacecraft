@@ -168,6 +168,23 @@ async function expectStructure(page, view) {
   expect(found, `axe structure: ${found.join(" | ")}`).toEqual([]);
 }
 
+// #3935 X-03: on the phone every control that is not a link inside a sentence keeps a 44 px hit area.
+async function expectTouchTargets(page, view) {
+  if (page.viewportSize().width > 480) return;
+  const small = await page.evaluate(() => {
+    const found = new Map();
+    const name = (element) => `${element.tagName.toLowerCase()}${element.id ? `#${element.id}` : ""}${typeof element.className === "string" && element.className ? `.${element.className.trim().split(/\s+/)[0]}` : ""}`;
+    for (const element of document.querySelectorAll(".panel.active :is(button, a[href], select, summary, input:not([type=hidden], [type=checkbox], [type=radio], [type=range]), [role=button]), .bottom-nav a")) {
+      if (!element.getClientRects().length || getComputedStyle(element).display === "inline" || element.closest("[hidden], .sr-only") || element.matches(".threshold-info")) continue;
+      const box = element.getBoundingClientRect();
+      if (box.width < 1 || box.height < 1) continue;
+      if (box.height < 43.5 || box.width < 43.5) found.set(name(element), `${Math.round(box.width)}x${Math.round(box.height)}`);
+    }
+    return [...found].map(([key, size]) => `${key} ${size}`);
+  });
+  expect(small, `touch targets under 44 px: ${view}: ${small.join(" | ")}`).toEqual([]);
+}
+
 // Fails with the view, the theme and every failing node with its measured and expected contrast.
 async function expectContrast(page, view, theme, scopes = SCOPES) {
   await page.mouse.move(0, 0);
@@ -203,6 +220,7 @@ test.describe("colour contrast sweep", () => {
           await expectContrast(page, view, theme);
           if (theme === "light") await expectTextFormats(page, view);
           if (theme === "light") await expectStructure(page, view);
+          if (theme === "light") await expectTouchTargets(page, view);
           if (route === "analysis/running") {
             // One opened explanation popover, named so a new chart legend cannot change it (#2766).
             await page.locator(".panel.active").getByRole("button", { name: "Entwicklung: Informationen", exact: true }).click();
