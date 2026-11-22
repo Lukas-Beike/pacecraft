@@ -311,7 +311,7 @@ After an approved illness pause the system SHALL run a three-stage return (stage
 - **THEN** a return runs, starting at stage 1 on the day after the pause; a stored stage state is used only when it belongs to the same pause end, and after 28 days or at stage 3 nothing is enforced.
 
 #### Scenario: Advance
-- **WHEN** today's check-in exists, reports no pain or illness complaint, its soreness (if given) is at most 5, the overnight HRV position is not `below`, the resting heart rate is at most 5 bpm above the usual value and the stage is at least 2 days old
+- **WHEN** today's check-in exists, reports no pain or illness complaint, its soreness (if given) is at most 5, the overnight HRV is not below the lower quartile less half the interquartile range (the M14 margin of the infection hint, #3920), the resting heart rate is at most 5 bpm above the usual value and the stage is at least 2 days old
 - **THEN** the preview proposes the next stage (`action: advance`, `pending: true`).
 
 #### Scenario: Hold or step back
