@@ -2084,16 +2084,6 @@ function energyBodyText(body) {
   return `KFA ${analysisValue(body.body_fat_pct, "%")} (${source}), fettfreie Masse ${analysisValue(body.lean_mass_kg, "kg")}`;
 }
 
-function energyBasisText(read) {
-  const { basis, body } = read;
-  const own = basis.insufficient
-    ? `Aus deinen Daten: Datenbasis zu gering (${ENERGY_INSUFFICIENT[basis.insufficient] || basis.insufficient})`
-    : `Aus deinen Daten: ${basis.complete_days} von ${basis.days} Tagen vollständig`;
-  const folds = energyBodyText(body);
-  return `kcal/Tag · ${own} · Formeln: Ruhe + eigene Aktivität + Verdauung · ${folds} · `
-    + "Bänder nominal 95 %, ohne Fehler beim Erfassen des Essens · Ruhe aus deinen Daten ist ein Rest (Gesamt − eigene Aktivität − Verdauung) und trägt deren Fehler mit";
-}
-
 // How the values come about sits behind one small "i": the basis, the formulas and NEAT's inputs
 // (athlete decisions 2026-11-16, #3252 and #3255); no helper text stays under the table.
 let energyInfoId = 0;
@@ -2104,7 +2094,7 @@ function energyBiasText(flagged) {
   return `Geschätzte Mahlzeiten wirken im Mittel ${formatWhole(Math.abs(flagged.bias_pct))} % ${direction} als erfasst (± ${formatWhole(flagged.bias_band_pct)} %)`;
 }
 
-const ENERGY_DAY_NOTE = "Der Verbrauch ist der gewählte Tag, heute bis jetzt, der Quelle, die dein Gewicht am besten trifft (Vergleich im Verlauf); Sport 0 ohne Einheit, Verdauung nur mit erfassten Mahlzeiten; Offene Kalorien zieht das Gegessene vom Tag gesamt ab, das Defizit des gewählten Zeitraums steht im Verlauf";
+const ENERGY_DAY_NOTE = "Verbrauch des gewählten Tages, heute bis jetzt, in kcal/Tag, der Quelle, die dein Gewicht am besten trifft (Vergleich im Verlauf); Sport 0 ohne Einheit, Verdauung nur mit erfassten Mahlzeiten; Offene Kalorien = Tag gesamt − Gegessenes; das Defizit des Zeitraums steht im Verlauf";
 
 // The same small info icon as the chart groups (Analyse › Laufen › Entwicklung, #3336).
 function energyInfoButton(label, text) {
@@ -2114,9 +2104,22 @@ function energyInfoButton(label, text) {
   return [button, info];
 }
 
+// What the numbers are, where they come from and how sure they are, one short line each (athlete decision, #3930).
+function energyInfoItems(read) {
+  const { basis, body } = read;
+  const data = basis.insufficient ? `Datenbasis zu gering (${ENERGY_INSUFFICIENT[basis.insufficient] || basis.insufficient})` : `${basis.complete_days} von ${basis.days} Tagen vollständig`;
+  const activity = [energyNeatInputs(basis?.neat), energyStandNote(read.wellness)].filter(Boolean).join(" · ");
+  const uncertainty = ["Bänder nominal 95 %, ohne Fehler beim Erfassen des Essens",
+    "Ruhe aus deinen Daten ist ein Rest (Gesamt − eigene Aktivität − Verdauung) und trägt deren Fehler mit",
+    energyTefNote(read), energyBiasText(read.flagged)].filter(Boolean).join(" · ");
+  return [["Was", ENERGY_DAY_NOTE], ["Daten", `Aus deinen Daten: ${data}`],
+    ["Quelle", `Formeln: Ruhe + eigene Aktivität + Verdauung · ${energyBodyText(body)}`], ["Aktivität", activity], ["Unsicherheit", uncertainty]]
+    .filter(([, text]) => text);
+}
+
 function energyInfo(read) {
-  const text = [ENERGY_DAY_NOTE, energyBasisText(read), energyNeatInputs(read.basis?.neat), energyStandNote(read.wellness), energyTefNote(read), energyBiasText(read.flagged)].filter(Boolean).join(" · ");
-  return energyInfoButton("Energieverbrauch: Informationen", text);
+  const list = h("ul", "energy-info-list", energyInfoItems(read).map(([what, text]) => h("li", null, h("strong", null, `${what}: `), text)));
+  return energyInfoButton("Energieverbrauch: Informationen", list);
 }
 
 // Split A (athlete decision 2026-11-16): one stacked bar for the outlined source, a row per part.
@@ -2246,7 +2249,7 @@ function energySourceLine(row) {
 // then the day total with its band; the comparison of all sources is Verlauf's.
 function energyUsage(read) {
   const row = read.rows.find((item) => item.source === read.outlined);
-  const head = h("div", "energy-usage-head", h("h3", null, read.day_partial ? "Verbrauch heute · bis jetzt" : "Verbrauch"), ...energyInfo(read));
+  const head = h("div", "energy-usage-head", h("h3", null, read.day_partial ? "Verbrauch heute (Stand jetzt)" : "Verbrauch"), ...energyInfo(read));
   if (!row?.split) return h("div", { className: "energy-usage" }, head, h("p", "muted", "Noch keine Quelle"));
   const parts = energyRowParts(row.split);
   const texts = parts.map((part) => energyPartText(read, row, part));
