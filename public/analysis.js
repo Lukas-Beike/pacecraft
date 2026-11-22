@@ -308,7 +308,8 @@ function analysisPlotScales(series, start, end, { unit = "", zeroCentered = fals
   if (unit === "s/km") step = Math.max(5, Math.ceil(step / 5) * 5);
   if (analysisCountUnit(unit)) step = Math.max(1, step);
   if (domain) step = domain.step;
-  const min = domain ? domain.min : (series.some((item) => item.bars) ? 0 : Math.floor((low - padding) / step) * step);
+  const fitted = series.some((item) => item.bars) ? 0 : Math.floor((low - padding) / step) * step;
+  const min = domain ? domain.min : fitted;
   const max = domain ? domain.max : Math.ceil((high + padding) / step) * step;
   // Wide screens place two charts per row, so the plot is drawn at the column width and keeps its text size.
   let chartWidth = 680;
