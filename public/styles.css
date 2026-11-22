@@ -377,8 +377,6 @@ h2 {
 .analysis-chart-legend .analysis-legend-info { display: inline-flex; align-items: center; justify-content: center; box-sizing: border-box; min-width: 44px; min-height: 44px; }
 .analysis-info-icon { position: relative; display: inline-grid; place-items: center; box-sizing: border-box; width: 44px; min-width: 44px; height: 44px; min-height: 44px; margin: -12px -8px -12px .2em; padding: 0; vertical-align: middle; text-decoration: none; font-size: .8rem; font-weight: 700; line-height: 1; }
 .analysis-info-icon::before { content: ""; position: absolute; top: 50%; left: 50%; box-sizing: border-box; width: 22px; height: 22px; border: 1.5px solid currentColor; border-radius: 50%; transform: translate(-50%, -50%); }
-.analysis-line-key { display: flex; align-items: center; gap: 8px; margin: 4px 0 0; color: var(--muted); font-size: .72rem; }
-.analysis-line-key-swatch { flex: none; width: 24px; height: 0; border-top: 2px dashed currentColor; }
 .analysis-chart-legend li[data-line="dashed"]::before { mask: repeating-linear-gradient(90deg, var(--ink) 0 6px, var(--transparent) 6px 9px); }
 /* A record's date opens its activity (#3826). */
 .link-button { min-height: 44px; padding: 0; border: 0; background: none; color: var(--link); font: inherit; text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
@@ -1164,6 +1162,7 @@ h2 {
 .competition-card > summary strong { font-size: .95rem; }
 .competition-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
 .competition-heading h3 { margin: 2px 0 0; font-size: 1rem; }
+.competition-heading .secondary-button { margin-left: auto; }
 .competition-card > summary { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; list-style: none; }
 .competition-card > summary::-webkit-details-marker { display: none; }
 .competition-summary-main { display: block; flex: 1 1 auto; min-width: 0; }

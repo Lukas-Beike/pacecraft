@@ -483,7 +483,7 @@ class ServerFrontendTests(ServerTestCase):
         self.assertIn('load("/api/bootstrap?local=1", requested)', app)
         self.assertIn('api("/api/library?limit=100")', app)
         self.assertIn('aria-label="Trainingskalender und Trainingsbibliothek"', index)
-        self.assertIn('id="planOverviewTitle">Trainingskalender</h3>', index)
+        self.assertIn('id="planOverviewTitle" class="sr-only">Trainingskalender</h3>', index)
         self.assertNotIn('id="trainingPlans"', index)
         self.assertNotIn('id="libraryLoadButton"', index)
         self.assertIn("state.data?.planning_compliance", plan_views)
