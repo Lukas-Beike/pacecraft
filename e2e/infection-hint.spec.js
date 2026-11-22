@@ -12,15 +12,16 @@ test("@responsive the infection hint expands into symptom chips and saves the se
   const today = todayIn(timeZone);
   // The fixture's nights are ordinary, so today carries a synthetic infection hint (M14, #3762).
   await page.context().route(/\/api\/plan(\?|$)/, async (route) => {
-    // A reload still in flight when the test ends has nothing left to show.
+    // A reload still in flight when the test ends has nothing left to show: its
+    // fetch can fail, or its response be disposed before it is read.
     const response = await route.fetch().catch(() => null);
-    if (!response) return;
-    const data = await response.json();
+    const data = response && (await response.json().catch(() => null));
+    if (!data) return;
     const signal = (label, value, unit, lower, upper) => ({ label, value, unit, lower, upper, source: "Garmin Connect", unusual: true });
     const hint = { method: "infection-hint-v1", status: "hint", signals: [signal("Atemfrequenz", 17, "brpm", 14, 15), signal("Ruhepuls", 56, "bpm", 48, 51)], limits: "Keine Diagnose." };
     const days = (data.daily_planning_context || []).filter((day) => day.date !== today);
     data.daily_planning_context = [...days, { ...(data.daily_planning_context || []).find((day) => day.date === today), date: today, infection_hint: hint }];
-    return route.fulfill({ json: data });
+    return route.fulfill({ json: data }).catch(() => undefined);
   });
   await page.goto("/#plan/overview");
   await page.waitForFunction(() => state.initialStateLoaded);
