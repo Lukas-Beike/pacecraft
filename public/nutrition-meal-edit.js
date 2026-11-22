@@ -67,7 +67,8 @@ function nutritionMealFieldChanges() {
   const { date, time, type, unknown, original } = nutritionMealEdit.meal;
   const changes = { ...(date === original.date ? {} : { meal_date: date }), ...(type === original.type ? {} : { meal_type: type }) };
   if (unknown) { if (!original.unknown) changes.logged_time_known = false; }
-  else if (original.unknown || time !== original.time) changes.meal_time = time;
+  // A new type names the shown time too, so the saved time is the one the athlete saw.
+  else if (original.unknown || time !== original.time || type !== original.type) changes.meal_time = time;
   return Object.keys(changes).length ? changes : null;
 }
 

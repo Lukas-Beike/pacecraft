@@ -18,7 +18,7 @@ from backend.nutrition.components import MealComponentCalculator
 from backend.nutrition.food_database import NUTRIENTS
 
 EDIT_KEYS = {"index", "remove", "amount", "unit", "food_id", "product_id"}
-CLOCK_MINUTES = re.compile(r"\d{2}:\d{2}")
+CLOCK = re.compile(r"(\d{2}:\d{2})(?::(\d{2}))?")
 MEAL_KEYS = {"meal_date", "meal_type", "meal_time", "logged_time_known"}
 INVALID_EDIT = "Ungültige Änderung der Mahlzeitenkomponenten."
 
@@ -148,11 +148,14 @@ def validated_meal_changes(meal: Any) -> dict[str, Any]:
         or {"logged_time_known", "meal_time"} <= keys
     ):
         raise AppError(400, INVALID_EDIT)
-    time = meal.get("meal_time")
-    # A time with seconds like the stored default times, so a default stays recognizable.
-    if isinstance(time, str) and CLOCK_MINUTES.fullmatch(time.strip()):
-        return {**meal, "meal_time": f"{time.strip()}:00"}
-    return dict(meal)
+    if "meal_time" not in keys:
+        return dict(meal)
+    time = meal["meal_time"]
+    clock = CLOCK.fullmatch(time.strip()) if isinstance(time, str) else None
+    if clock is None:
+        raise AppError(400, INVALID_EDIT)
+    # With seconds like the stored default times, so a default stays recognizable.
+    return {**meal, "meal_time": f"{clock[1]}:{clock[2] or '00'}"}
 
 
 def swap_foods(

@@ -106,14 +106,23 @@ test("@responsive the dialog changes a meal's day, type and time with its compon
   await page.locator("#nutritionStatus").getByRole("button", { name: "Rückgängig" }).click();
   await expect(card).toContainText("669 kcal");
 
-  // An unknown time keeps only the type and disables the time; the meal change needs no component edit.
+  // A type without a default time keeps the shown time, and the save names it; the meal change needs no component edit.
+  await card.getByRole("button", { name: "Mahlzeit bearbeiten: Reis mit Tofu" }).click();
+  await type.selectOption("snack");
+  await type.selectOption("dinner");
+  await expect(time).toHaveValue("12:00");
+  await dialog.locator("#nutritionMealEditSave").click();
+  await expect(dialog).toBeHidden();
+  expect(posts[1]).toEqual({ id: MEAL.id, revision: "rev-1", meal: { meal_type: "dinner", meal_time: "12:00" } });
+
+  // An unknown time keeps only the type and disables the time.
   await card.getByRole("button", { name: "Mahlzeit bearbeiten: Reis mit Tofu" }).click();
   await unknown.check();
   await expect(time).toBeDisabled();
   await expect(time).toHaveValue("");
   await dialog.locator("#nutritionMealEditSave").click();
   await expect(dialog).toBeHidden();
-  expect(posts[1]).toEqual({ id: MEAL.id, revision: "rev-1", meal: { logged_time_known: false } });
+  expect(posts[2]).toEqual({ id: MEAL.id, revision: "rev-1", meal: { logged_time_known: false } });
 });
 
 test("@responsive removing every component deletes the meal only after its confirmation; offline saving is disabled", async ({ page, context }) => {

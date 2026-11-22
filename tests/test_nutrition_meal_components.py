@@ -372,6 +372,9 @@ class MealComponentEditTests(unittest.TestCase):
             {"meal_type": "brunch"},
             {"meal_date": "04.11.2026"},
             {"meal_time": "25:99"},
+            {"meal_time": ""},
+            {"meal_time": None},
+            {"meal_time": 930},
         )
         for meal in bad:
             with self.subTest(meal=meal), self.assertRaises(AppError) as raised:
