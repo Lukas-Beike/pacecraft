@@ -196,6 +196,8 @@ athlete's power meter or GPS.
 - Quality (F6): `good` when every effort lies within 1.5 % of the model line
   and leaving any one effort out moves CS or CP by at most 3 %; otherwise
   `low` (shown as "mittel"). A withheld fit is unknown with its reason.
+- Note (athlete decision B2, #3919): the row says the value usually lies a
+  few percent above the sustainable threshold; adoption itself is unchanged.
 
 ## Forbidden statements
 

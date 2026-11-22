@@ -245,7 +245,7 @@ def brief_strength(
 def strength_expected(
     profile_text: str, competitions: Sequence[Mapping[str, Any]], today: date
 ) -> bool:
-    """Whether the profile or the season phase of the next A/B race asks for strength."""
+    """Whether the profile or the season phase of the next A race asks for strength."""
     text = profile_text.strip()
     if text and not _NO_STRENGTH.match(text):
         return True

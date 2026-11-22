@@ -42,7 +42,9 @@ def season_plan_summary(
     }
 
 
-TARGET_PRIORITIES = frozenset({"A", "B"})
+# Only an A race drives the season phase (athlete decision B1, #3919); a B race
+# gets a short lighter run-in from the taper check instead.
+TARGET_PRIORITIES = frozenset({"A"})
 TRANSITION_DAYS = 28
 PHASE_BOUNDARIES = (
     "Phase by days to the race: base over 84, build 43-84, peak 15-42, taper 0-14."
@@ -50,10 +52,10 @@ PHASE_BOUNDARIES = (
 
 
 def target_phase(competitions: list[dict[str, Any]], today: date) -> dict[str, Any]:
-    """Season phase toward the next A/B race; read-only, derived from dates.
+    """Season phase toward the next A race; read-only, derived from dates.
 
-    ``transition`` follows an A/B race of the last 28 days when no later one is
-    planned; without any such race the phase is ``unknown``.
+    ``transition`` follows an A race of the last 28 days when no later one is
+    planned; without any such race the phase is ``unknown`` (B1, #3919).
     """
     targets = [
         {

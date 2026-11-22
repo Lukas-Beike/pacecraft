@@ -29,10 +29,13 @@ Rules (references are observational or practice-based, not individual advice):
   naming heavy, schwer, maximal or a 1-6 RM) and a hard run/ride on one date
   with less than 6 h between start times, or an unknown start time
   (Robineau et al. 2016).
-- missing_taper: a priority A/B competition whose final 14 days carry less
-  than 20 % less duration than the 14 days before them (completed activities
-  before today, planned units from today). Only judged when the plan reaches
-  into the final 14 days (Bosquet et al. 2007: cut volume 40-60 %).
+- missing_taper: an A competition whose final 14 days carry less than 20 %
+  less run and ride time than the 14 days before them, or a final week with
+  run or ride time but no hard session; a B competition whose last 5 days are
+  not 20 % lighter than the 5 before (completed activities before today,
+  planned units from today). Only judged when the plan reaches into the final
+  days before the race (Bosquet et al. 2007: cut volume 40-60 % and keep
+  intensity; #3919).
 - intensity_distribution: computed in ``intensity_distribution`` and added by
   the plan guard, not by ``check_plan``; see that module.
 - leg_strength_before_key_session, leg_strength_frequency: counted and graded in
@@ -140,7 +143,7 @@ EVIDENCE = {
     "load_unknown": load_checks.LOAD_EVIDENCE,
     "back_to_back_hard": "practice-based (hard/easy principle)",
     "strength_hard_same_day": "limited, performance studies (Robineau 2016)",
-    "missing_taper": "meta-analysis, strong (Bosquet 2007); 20 % floor is a local choice",
+    "missing_taper": "meta-analysis, strong (Bosquet 2007: volume down, intensity kept); 20 % floor and the B-race five days are local choices",
     "lighter_week_missing": "practice-based (a lighter week every 3rd to 4th week; Kiely 2012: no periodization model clearly superior)",
     "illness_hard": "medical caution",
     "strength_incomplete": "data completeness for the watch and the plan checks",
@@ -164,7 +167,7 @@ _RULE_TEXT = {
     "lighter_week_missing": "four consecutive weeks each with more run and ride time than the week before, without a lighter week.",
     "back_to_back_hard": "hard run or ride on consecutive days.",
     "strength_hard_same_day": "heavy strength and a hard run or ride less than 6 h apart.",
-    "missing_taper": "final 14 days before an A/B competition less than 20 % lighter than the 14 days before.",
+    "missing_taper": "final 14 days before an A competition less than 20 % lighter in run and ride time than the 14 days before, or a final week without a hard session; before a B competition the last 5 days against the 5 before.",
     "illness_hard": "hard or 90+ minute session within 5 days of a reported illness (today included), or a session above the current stage of the return after an illness pause (today and tomorrow).",
     "strength_incomplete": "a strength unit the Coach created, moved or changed without strength_structure, session_focus and strength_intensity.",
     "focus_missing": "a run or ride unit the Coach created, moved or changed without session_focus.",
@@ -186,6 +189,8 @@ RULE_SUMMARY = {
 MIN_STRENGTH_GAP_H = 6
 TAPER_DAYS = 14
 TAPER_MIN_REDUCTION = 0.20
+# Before a B race only these last days are checked for being lighter (B1, #3919).
+B_RACE_LIGHTER_DAYS = 5
 # Days of caution after a reported illness, today included; the approved pause
 # forecast shares it (today .. today + ILLNESS_DAYS - 1).
 ILLNESS_DAYS = 5
@@ -322,29 +327,6 @@ def _strength_same_day(units: Sequence[Mapping[str, Any]]) -> list[dict]:
     return findings
 
 
-def _window_seconds(
-    start: date,
-    end: date,
-    units: Sequence[Mapping[str, Any]],
-    completed: Iterable[Mapping[str, Any]],
-    today: date,
-) -> float:
-    """Duration in [start, end]: completed before today, planned from today."""
-    first, last = start.isoformat(), end.isoformat()
-    done = sum(
-        number(row.get("moving_duration_s")) or 0.0
-        for row in completed
-        if first <= iso_date_prefix(row.get("started_at_local")) <= last
-        and iso_date_prefix(row.get("started_at_local")) < today.isoformat()
-    )
-    planned = sum(
-        _duration_s(unit)
-        for unit in units
-        if first <= _day(unit) <= last and _day(unit) >= today.isoformat()
-    )
-    return done + planned
-
-
 def competition_day(row: Mapping[str, Any]) -> date | None:
     """Day of a stored competition (event_date, else its local start)."""
     raw = row.get("event_date") or row.get("starts_at_local") or row.get("date")
@@ -354,33 +336,125 @@ def competition_day(row: Mapping[str, Any]) -> date | None:
         return None
 
 
+def _endurance_seconds(
+    start: date,
+    end: date,
+    units: Sequence[Mapping[str, Any]],
+    completed: Iterable[Mapping[str, Any]],
+    today: date,
+) -> float:
+    """Run and ride time in [start, end]: completed before today, planned from today."""
+    first, last, now = start.isoformat(), end.isoformat(), today.isoformat()
+    done = sum(
+        number(row.get("moving_duration_s")) or 0.0
+        for row in completed
+        if str(row.get("sport") or "") in {Sport.RUN.value, Sport.RIDE.value}
+        and first <= iso_date_prefix(row.get("started_at_local")) <= last
+        and iso_date_prefix(row.get("started_at_local")) < now
+    )
+    planned = sum(
+        _duration_s(unit)
+        for unit in units
+        if _sport(unit) in _ENDURANCE
+        and first <= _day(unit) <= last
+        and _day(unit) >= now
+    )
+    return done + planned
+
+
+def _hard_in(
+    start: date,
+    end: date,
+    units: Sequence[Mapping[str, Any]],
+    completed: Iterable[Mapping[str, Any]],
+    today: date,
+) -> bool:
+    """A hard run or ride in [start, end]: completed (by its IF) or planned."""
+    first, last, now = start.isoformat(), end.isoformat(), today.isoformat()
+    for row in completed:
+        day = iso_date_prefix(row.get("started_at_local"))
+        factor = intensity_factor({"planned_intensity": row.get("intensity")})
+        if (
+            str(row.get("sport") or "") in {Sport.RUN.value, Sport.RIDE.value}
+            and first <= day <= last
+            and day < now
+            and factor
+            and factor >= HARD_INTENSITY
+        ):
+            return True
+    return any(
+        first <= _day(unit) <= last and _day(unit) >= now and is_hard(unit)
+        for unit in units
+    )
+
+
 def _taper_for(
     day: date,
     units: Sequence[Mapping[str, Any]],
     completed: Sequence[Mapping[str, Any]],
     today: date,
+    days: int = TAPER_DAYS,
 ) -> dict[str, Any] | None:
-    final_start = day - timedelta(days=TAPER_DAYS)
-    reaching = [unit for unit in units if final_start.isoformat() <= _day(unit)]
+    """The taper of one race: its last ``days`` against the ``days`` before (#3919).
+
+    Run and ride time only, at least 20 % lighter (Bosquet 2007: volume down by
+    41-60 % with intensity and frequency kept). Before an A race each of the two
+    final weeks also keeps a hard session; a B race checks only its last five
+    days for being lighter (B1). A final week without any run or ride time is
+    not yet planned, so only the volume rule judges it.
+    """
+    final_start = day - timedelta(days=days)
+    reaching = [
+        unit
+        for unit in units
+        if final_start.isoformat() <= _day(unit) < day.isoformat()
+    ]
     if not reaching:
         return None
-    before_start = final_start - timedelta(days=TAPER_DAYS)
-    previous = _window_seconds(
+    before_start = final_start - timedelta(days=days)
+    previous = _endurance_seconds(
         before_start, final_start - timedelta(days=1), units, completed, today
     )
-    final = _window_seconds(
+    final = _endurance_seconds(
         final_start, day - timedelta(days=1), units, completed, today
     )
-    if previous <= 0 or final <= previous * (1 - TAPER_MIN_REDUCTION):
+    lighter = previous <= 0 or final <= previous * (1 - TAPER_MIN_REDUCTION)
+    weeks = [
+        (
+            final_start + timedelta(days=7 * week),
+            final_start + timedelta(days=7 * week + 6),
+        )
+        for week in (0, 1)
+    ]
+    weeks_without_hard = (
+        []
+        if days != TAPER_DAYS
+        else [
+            start.isoformat()
+            for start, end in weeks
+            if start >= today - timedelta(days=6)
+            and _endurance_seconds(start, end, units, completed, today) > 0
+            and not _hard_in(start, end, units, completed, today)
+        ]
+    )
+    if lighter and not weeks_without_hard:
         return None
+    message = (
+        f"The final {days} days before the competition are not at least 20 % lighter in run and ride time than the {days} days before."
+        if not lighter
+        else "The taper keeps no hard session in a final week; keep intensity while the volume drops."
+    )
     return _finding(
         "missing_taper",
         [unit for unit in reaching if _day(unit) < day.isoformat()],
-        "The final 14 days before the competition are not at least 20 % lighter than the 14 days before.",
+        message,
         {
             "competition_date": day.isoformat(),
-            "previous_14d_minutes": round(previous / 60),
-            "final_14d_minutes": round(final / 60),
+            "window_days": days,
+            f"previous_{days}d_minutes": round(previous / 60),
+            f"final_{days}d_minutes": round(final / 60),
+            "lighter": lighter,
+            "weeks_without_hard": weeks_without_hard,
         },
     )
 
@@ -483,9 +557,11 @@ def _missing_taper(
     findings = []
     for row in competitions:
         day = competition_day(row)
-        if day is None or day < today or str(row.get("priority") or "B") == "C":
+        priority = str(row.get("priority") or "B")
+        if day is None or day < today or priority == "C":
             continue
-        finding = _taper_for(day, units, completed, today)
+        days = TAPER_DAYS if priority == "A" else B_RACE_LIGHTER_DAYS
+        finding = _taper_for(day, units, completed, today, days)
         if finding is not None:
             findings.append(finding)
     return findings
@@ -1101,6 +1177,12 @@ def _risk(finding: Mapping[str, Any]) -> tuple[Any, ...]:
         return (max(evidence["deviating_bands"].values()),)
     if finding["code"] == "calendar_load":
         return (bool(evidence.get("overlap")), evidence.get("busy_minutes") or 0)
+    if finding["code"] == "missing_taper":
+        # Two failure reasons share the race's key (#3919).
+        return (
+            not evidence.get("lighter", True),
+            len(evidence.get("weeks_without_hard") or ()),
+        )
     return ()
 
 

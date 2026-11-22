@@ -47,7 +47,7 @@ _PLAN_STRUCTURE = """Planning science:
 
 _STRENGTH_LEGS = """- Heavy strength 2 times per week in base and build, 1 (maintenance) in peak and taper (Ronnestad & Mujika 2014; Blagrove 2018), 6 h or more from hard endurance (Robineau 2016). Leg strength (legs, full_body, plyometrics): same counts, at most 3; after or on hard days, or 24 h or more before hard or long sessions. Name deviations."""
 
-_SEASON_PHASE = "- Phase per planned week from planning_brief.season_phase (base, build, peak, taper, transition; unknown without an A/B race: say so, use base rules). Base: build volume, mostly easy. Build: add threshold or VO2max, volume holds. Peak: race-specific intensity, less volume. Taper (about 2 weeks): cut volume 40-60 %, keep intensity and frequency (Bosquet 2007). Transition: easy, strength 1 (light)."
+_SEASON_PHASE = "- Phase per planned week from planning_brief.season_phase (base, build, peak, taper, transition; unknown without an A race: say so, use base rules). Base: build volume, mostly easy. Build: add threshold or VO2max, volume holds. Peak: race-specific intensity, less volume. Taper (about 2 weeks): cut volume 40-60 %, keep intensity and frequency (Bosquet 2007). Transition: easy, strength 1 (light)."
 
 _TESTS = """Tests (session_focus test):
 - When planning_brief.last_tests is 6 to 8 weeks old or null for a sport, plan its test, run and ride in different weeks, after a lighter week or at a block start: a run critical-speed test (3600, 2400, 1200 m on a track or measured flat route, about 30 min easy between; Galbraith 2014), without either a 30-min time trial (McGehee 2005); a Zwift FTP ramp test. None in the last 2 weeks before an A race or with illness or poor recovery; a race counts as a test.
