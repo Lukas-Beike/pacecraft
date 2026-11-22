@@ -1,4 +1,5 @@
 import hashlib
+import io
 import json
 import os
 import shutil
@@ -184,17 +185,20 @@ class GraphifyLocalTests(unittest.TestCase):
         ):
             graph.state(self.root)
 
-    def test_fingerprint_changes_for_content_branch_and_dirty_state(self):
+    def test_fingerprint_follows_content_and_commit_but_not_the_branch(self):
         _, original, _ = graph.state(self.root, time.monotonic() + 5)
         (self.root / "backend" / "one.py").write_text("def one(): return 2\n")
         _, changed, _ = graph.state(self.root, time.monotonic() + 5)
         self.assertNotEqual(original, changed)
         (self.root / "backend" / "one.py").write_text("def one(): return 1\n")
+        metadata = graph._metadata(self.root)
         subprocess.run(
             ["git", "-C", str(self.root), "checkout", "-qb", "other"], check=True
         )
+        # A branch switch at the same commit keeps the graph current (#3921).
         _, branch, _ = graph.state(self.root, time.monotonic() + 5)
-        self.assertNotEqual(original, branch)
+        self.assertEqual(original, branch)
+        self.assertEqual(metadata, graph._metadata(self.root))
 
     def test_deleted_and_renamed_files_change_corpus(self):
         initial, old, _ = graph.state(self.root, time.monotonic() + 5)
@@ -229,7 +233,9 @@ class GraphifyLocalTests(unittest.TestCase):
                         )
                     )
                     return subprocess.CompletedProcess(command, 0)
-                return subprocess.CompletedProcess(command, 1)
+                return subprocess.CompletedProcess(
+                    command, 1, b"", b"x\nboom: no space\n"
+                )
             return real_run(command, **kwargs)
 
         with (
@@ -243,7 +249,10 @@ class GraphifyLocalTests(unittest.TestCase):
             self.assertEqual(graph.update(self.root), 0)
             self.assertEqual(len(invocations), 1)
             (self.root / "backend" / "one.py").write_text("def one(): return 2\n")
-            self.assertEqual(graph.update(self.root), 2)
+            with patch("sys.stdout", new_callable=io.StringIO) as output:
+                self.assertEqual(graph.update(self.root), 2)
+            # A failed update names its cause (#3921).
+            self.assertIn("Graphify update exited 1: boom: no space", output.getvalue())
             current = json.loads((rt / "current.json").read_text())
             self.assertEqual(current["generation"], generation)
             self.assertFalse(current["stale"])
@@ -613,6 +622,18 @@ class GraphifyLocalTests(unittest.TestCase):
                 patch.object(graph, "repo_root", return_value=self.root),
             ):
                 self.assertEqual(graph.main(), 0)
+            # Behind the source, the last graph is served with a note (#3921).
+            (self.root / "backend" / "one.py").write_text("def one(): return 3\n")
+            with patch("sys.stderr", new_callable=io.StringIO) as note:
+                self.assertEqual(graph.active_graph(self.root)[1], graph_file)
+            self.assertIn("last graph, behind by 1 files", note.getvalue())
+            graph_file.write_text('{"nodes":[1],"edges":[]}')
+            with self.assertRaisesRegex(graph.Unavailable, "checksum"):
+                graph.active_graph(self.root)
+        self.assertEqual(
+            graph._cause(subprocess.TimeoutExpired(["graphify"], 180)),
+            "Graphify timed out after 180 s",
+        )
 
     def test_metadata_detects_ctime_when_mtime_and_size_are_restored(self):
         source = self.root / "backend" / "one.py"

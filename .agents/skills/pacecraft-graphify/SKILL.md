@@ -25,7 +25,10 @@ Preparation uses `update --preparation` with a 600-second budget; hooks and
 plain `update` retain 180 seconds. Graphify does not require Sonar or scan
 prompts/source for secrets. Source allowlists,
 credential/runtime exclusions and offline operation remain enforced. An update
-retries once when sources or the branch change during its snapshot.
+retries once when sources change during its snapshot. The graph identity is the
+commit and the source contents, not the branch name; a failed update names its
+cause, and behind the source a query serves the last graph with a "behind by N
+files" note on stderr (#3921).
 Manual `setup` followed by `update` remains the fallback. Only setup and
 preparation may download packages; hooks, updates, queries and exports stay
 offline and never install packages or call external/paid models. Do not bypass
