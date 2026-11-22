@@ -2238,6 +2238,16 @@ class ExpectedTotalTests(unittest.TestCase):
             expected_total_kcal({"split": busy}, latest, 100.0, False),
         )
 
+    def test_garmin_s_row_takes_its_own_everyday_mean(self) -> None:
+        latest = window(END, 2700.0, 1850.0)
+        split = {"resting_kcal": 1800, "neat_kcal": 0, "sport_kcal": 0, "tef_kcal": 0}
+        # Garmin's everyday mean of 400, not the window's 250; no digestion.
+        self.assertEqual(
+            1800 + 400 + 100,
+            expected_total_kcal({"split": split}, latest, 100.0, True, 400.0),
+        )
+        self.assertIsNone(expected_total_kcal({"split": split}, latest, 100.0, True))
+
     def test_it_is_for_today_and_known_parts_only(self) -> None:
         self.assertIsNone(self.view(None)["expected_total_kcal"])
         self.assertIsNone(self.view(177.0, END)["expected_total_kcal"])

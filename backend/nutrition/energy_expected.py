@@ -92,16 +92,18 @@ def expected_total_kcal(
     latest: EnergyWindow,
     planned_kcal: float | None,
     device: bool,
+    device_neat: float | None = None,
 ) -> int | None:
     """Today's expected total on the outlined ``row``: its resting energy and
-    everyday term, the 28-day mean steps and digestion (Garmin's row has no
-    digestion part) and the planned units. Each part is at least what the row
-    counts so far, so the expectation never lies below the total so far. None
-    where any part is unknown."""
+    everyday term, the 28-day mean steps and digestion and the planned units.
+    Garmin's row takes its own 28-day everyday mean (``device_neat``) and has
+    no digestion part. Each part is at least what the row counts so far, so the
+    expectation never lies below the total so far. None where any part is
+    unknown."""
     split = (row or {}).get("split")
     if split is None or split["resting_kcal"] is None or planned_kcal is None:
         return None
-    neat = latest.neat_kcal_raw
+    neat = device_neat if device else latest.neat_kcal_raw
     tef = 0.0 if device else latest.tef_kcal
     if neat is None or tef is None:
         return None

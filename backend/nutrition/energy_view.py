@@ -220,6 +220,25 @@ def _device_split(
     return (neat if neat >= 0 else None), statistics.fmean(sport)
 
 
+def _expected_today(
+    rows: Sequence[Mapping[str, Any]],
+    outlined: str | None,
+    latest: EnergyWindow,
+    planned_kcal: float | None,
+    device_inputs: tuple[Mapping[str, Mapping[str, Any]], Sequence[Mapping[str, Any]]],
+) -> int | None:
+    """The outlined row's expected day total; Garmin's row takes its own
+    everyday mean, not M11's (Gitar, #3917)."""
+    device = outlined == DEVICE
+    return expected_total_kcal(
+        next((row for row in rows if row["source"] == outlined), None),
+        latest,
+        planned_kcal,
+        device,
+        _device_split(*device_inputs, latest)[0] if device else None,
+    )
+
+
 def _comparison(
     errors: Mapping[str, Sequence[float | None]], windows: Sequence[EnergyWindow]
 ) -> tuple[dict[str, float], str | None, dict[str, Any]]:
@@ -727,11 +746,8 @@ def energy_view(
         "goal": _energy_goal(rows, outlined, goal, inputs.days.get(day_window.end)),
         # Today's total with the usual steps and digestion and the planned
         # units; it informs, "Ziel heute" stays on the total so far (#3917).
-        "expected_total_kcal": expected_total_kcal(
-            next((r for r in rows if r["source"] == outlined), None),
-            latest,
-            planned_kcal,
-            outlined == DEVICE,
+        "expected_total_kcal": _expected_today(
+            rows, outlined, latest, planned_kcal, (health, sessions)
         )
         if day_window.end > latest.end
         else None,
