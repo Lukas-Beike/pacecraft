@@ -185,8 +185,11 @@ class ActivityAnalysisReadService(ActivityReadService):
         )
         laps = document.get("laps")
         lap_rows = laps.get("laps") if isinstance(laps, Mapping) else None
+        # A last-minute heart rate needs laps on the stream clock.
+        on_clock = isinstance(laps, Mapping) and laps.get("on_stream_clock") is True
+        streams = document.get("streams") if on_clock else None
         return {
-            **step_test.evaluate(result, lap_rows or [], day, document.get("streams")),
+            **step_test.evaluate(result, lap_rows or [], day, streams),
             "activity_id": session_id,
         }
 

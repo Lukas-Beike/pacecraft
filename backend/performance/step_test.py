@@ -29,7 +29,12 @@ from itertools import pairwise
 from typing import Any, Final
 
 from backend.canonical.activity_detail import ActivityDfaAlpha1
-from backend.canonical.dfa_alpha1 import THRESHOLD_ALPHA1, WINDOW_S, crossing
+from backend.canonical.dfa_alpha1 import (
+    MIN_WINDOWS,
+    THRESHOLD_ALPHA1,
+    WINDOW_S,
+    crossing,
+)
 from backend.canonical.vocabulary import DfaQuality
 from backend.performance.second_threshold_estimate import (
     SECOND_ALPHA1,
@@ -57,8 +62,9 @@ STAGE_PACE_BAND: Final = 0.03
 PACE_BOUNDS_S: Final = (150.0, 540.0)
 # A recorded lap of this length (s) is one stage; a shorter last one was not held.
 STAGE_LAP_S: Final = (150.0, 210.0)
-# The alpha1 range of the stage windows that place LT1 and LT2 (#3916).
+# The alpha1 range of the stage windows that place LT1 (#3916).
 LT1_ALPHA1_RANGE: Final = (0.5, 1.0)
+# The alpha1 range of the stage windows that place LT2 (#3916).
 LT2_ALPHA1_RANGE: Final = (0.3, THRESHOLD_ALPHA1)
 # A stage's heart rate is the mean over its last part (s), after the rise.
 STAGE_HR_TAIL_S: Final = 60.0
@@ -152,28 +158,40 @@ def _stages(laps: Sequence[Mapping[str, Any]]) -> list[Mapping[str, Any]]:
     return stages
 
 
-def _stage_heart_rate(stage: Mapping[str, Any], streams: object) -> float:
-    """The mean heart rate of the stage's last minute, else the lap mean."""
-    end = float(stage["end_offset_s"])
+def _stage_tail(stage: Mapping[str, Any], streams: object) -> float | None:
+    """The mean heart rate of the stage's last minute, None without samples."""
     if not isinstance(streams, Mapping):
-        return float(stage["avg_hr"])
+        return None
+    end = float(stage["end_offset_s"])
     times = streams.get("time_s")
     channels = streams.get("channels")
     channel = channels.get("heart_rate") if isinstance(channels, Mapping) else None
     rates = channel.get("values") if isinstance(channel, Mapping) else None
-    if isinstance(times, list) and isinstance(rates, list):
-        tail = [
-            float(rate)
-            for time, rate in zip(times, rates, strict=False)
-            if isinstance(time, int | float)
-            and isinstance(rate, int | float)
-            and not isinstance(rate, bool)
-            and end - STAGE_HR_TAIL_S <= time <= end
-            and rate > 0
-        ]
-        if tail:
-            return math.fsum(tail) / len(tail)
-    return float(stage["avg_hr"])
+    if not isinstance(times, list) or not isinstance(rates, list):
+        return None
+    tail = [
+        float(rate)
+        for time, rate in zip(times, rates, strict=False)
+        if isinstance(time, int | float)
+        and isinstance(rate, int | float)
+        and not isinstance(rate, bool)
+        and end - STAGE_HR_TAIL_S <= time < end
+        and rate > 0
+    ]
+    return math.fsum(tail) / len(tail) if tail else None
+
+
+def _stage_heart_rates(
+    stages: Sequence[Mapping[str, Any]], streams: object
+) -> list[float]:
+    """Each stage's last-minute heart rate, or the lap means when any stage has none.
+
+    One definition for all stages, so a lap mean never reorders the points.
+    """
+    tails = [_stage_tail(stage, streams) for stage in stages]
+    if all(tail is not None for tail in tails):
+        return [float(tail) for tail in tails if tail is not None]
+    return [float(stage["avg_hr"]) for stage in stages]
 
 
 def _pace_at(
@@ -181,7 +199,11 @@ def _pace_at(
 ) -> int | None:
     """Pace (s/km) at ``bpm`` between the two stages around it; None outside them."""
     points = sorted(
-        (_stage_heart_rate(s, streams), float(s["avg_speed_mps"])) for s in stages
+        zip(
+            _stage_heart_rates(stages, streams),
+            (float(s["avg_speed_mps"]) for s in stages),
+            strict=True,
+        )
     )
     for (low_hr, low_v), (high_hr, high_v) in pairwise(points):
         if low_hr <= bpm <= high_hr:
@@ -226,7 +248,8 @@ def evaluate(
     """LT1 and LT2 of one step-test run, or ``status`` ``no_rr`` without a series.
 
     ``streams`` is the activity detail's stream set (``time_s`` and the
-    ``heart_rate`` channel); without it each stage keeps its lap mean.
+    ``heart_rate`` channel) on the laps' clock; without it each stage keeps its
+    lap mean.
     """
     stages = _stages(laps)
     if result is None or not result.series_evaluated:
@@ -242,10 +265,13 @@ def evaluate(
         if any(_in_stage(window.start_s, stage) for stage in stages)
     ]
     good = analysable >= MIN_GOOD_STAGES
-    lowest = min(window.alpha1 for window in result.series)
-    found = crossing(
-        [w for w in in_stages if _in_range(w.alpha1, LT1_ALPHA1_RANGE)],
-        result.artifact_share,
+    # Without any stage window the whole run says whether alpha1 got there.
+    lowest = min(window.alpha1 for window in in_stages or result.series)
+    lt1_windows = [w for w in in_stages if _in_range(w.alpha1, LT1_ALPHA1_RANGE)]
+    found = (
+        crossing(lt1_windows, result.artifact_share)
+        if len(lt1_windows) >= MIN_WINDOWS
+        else None
     )
     lt1: dict[str, Any]
     if lowest > THRESHOLD_ALPHA1:
@@ -254,12 +280,13 @@ def evaluate(
         lt1 = {"status": "unknown", "reason": NO_CROSSING}
     else:
         lt1 = _value(found[0], found[1], stages, good, streams)
-    # The stage windows stand for the series, and LT2 must lie above this LT1.
+    # The stage windows stand for the series, and LT2 must lie above this LT1,
+    # else above the run's own stored crossing.
     staged = replace(
         result,
         series=tuple(w for w in in_stages if _in_range(w.alpha1, LT2_ALPHA1_RANGE)),
-        estimate_bpm=None if found is None else found[0],
-        quality=None if found is None else found[1],
+        estimate_bpm=result.estimate_bpm if found is None else found[0],
+        quality=result.quality if found is None else found[1],
     )
     second = (
         session_second_threshold(staged, day, late_drift=False)
@@ -275,6 +302,7 @@ def evaluate(
         lt2 = _value(second.bpm, second.quality, stages, good, streams)
     return {
         "protocol": PROTOCOL,
+        "method": METHOD,
         "status": "ok",
         "lt1": lt1,
         "lt2": lt2,

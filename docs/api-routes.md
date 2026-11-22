@@ -201,7 +201,7 @@ planned unit (each step's time in target, the score and zone times),
 `step_test` for a run paired with a step-test unit (#3833: `lt1` and
 `lt2`, each `status` `ok` with `heart_rate_bpm`, `pace_seconds_per_km`
 and `quality`, or `not_reached`/`unknown` with `reason`; `stages`,
-`analysable_stages`, `artifact_share_pct`, `source`; `status` `no_rr`
+`analysable_stages`, `artifact_share_pct`, `source`, `method`; `status` `no_rr`
 without a stored DFA-α1 window series),
 and `session_bundle` (the session's provider copies and merge
 candidates; null when the session is not live).

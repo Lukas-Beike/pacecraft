@@ -415,7 +415,7 @@ comparable.
 | `STAGE_PACE_BAND` | `0.03` | `backend/performance/step_test.py` | Each stage's pace band, ±3 % around its pace (athlete decision, #3833). |
 | `PACE_BOUNDS_S` | `(150.0, 540.0)` | `backend/performance/step_test.py` | Plausible run paces (s/km); another value counts as unknown. |
 | `STAGE_LAP_S` | `(150.0, 210.0)` | `backend/performance/step_test.py` | A recorded lap of this length (s) is one stage; a shorter last one was not held. |
-| `LT1_ALPHA1_RANGE` | `(0.5, 1.0)` | `backend/performance/step_test.py` | The alpha1 range of the stage windows that place LT1 and LT2 (#3916). |
+| `LT1_ALPHA1_RANGE` | `(0.5, 1.0)` | `backend/performance/step_test.py` | The alpha1 range of the stage windows that place LT1 (#3916). |
 | `STAGE_HR_TAIL_S` | `60.0` | `backend/performance/step_test.py` | A stage's heart rate is the mean over its last part (s), after the rise. |
 | `END_NOTE` | `'Ende: wenn die Stufe nicht mehr zu halten ist, spätestens nach Stufe {last}.'` | `backend/performance/step_test.py` |  |
 | `SOURCE` | `'abgeleitet'` | `backend/performance/step_test.py` |  |

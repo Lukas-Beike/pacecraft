@@ -271,6 +271,56 @@ class EvaluationTests(unittest.TestCase):
         # 0.5 is reached after (0.75 - 0.5) / 0.0225 = 11.1 steps: 158.3 bpm.
         self.assertEqual((lt2["status"], lt2["heart_rate_bpm"]), ("ok", 158))
 
+    def test_a_stage_fit_needs_ten_windows_and_lt2_keeps_the_runs_floor(self) -> None:
+        laps = [
+            {"start_offset_s": 0, "end_offset_s": 180, "avg_hr": 140, "avg_speed_mps": 3.0},
+            {"start_offset_s": 180, "end_offset_s": 360, "avg_hr": 150, "avg_speed_mps": 3.5},
+        ]  # fmt: skip
+        # Nine stage windows on a clean line are too few for an LT1 (MIN_WINDOWS 10).
+        few = linear_windows(20)[::2][:9]
+        result = ActivityDfaAlpha1(None, 9, 0.0, None, 3, few)
+        self.assertEqual(step_test.evaluate(result, laps, DAY)["lt1"]["status"], "unknown")
+        # Without a stage LT1, LT2 must still lie above the run's stored crossing.
+        line = tuple(
+            DfaWindow(start_s=15.0 * i, heart_rate_bpm=140 + 0.6 * i, alpha1=round(0.75 - 0.0225 * i, 4), artifact_share=0.0)
+            for i in range(21)
+        )  # fmt: skip
+        floor = ActivityDfaAlpha1(150.0, 21, 0.0, DfaQuality.GOOD, 3, line)
+        self.assertEqual(step_test.evaluate(floor, laps, DAY)["lt2"]["status"], "unknown")
+        free = ActivityDfaAlpha1(140.0, 21, 0.0, DfaQuality.GOOD, 3, line)
+        self.assertEqual(step_test.evaluate(free, laps, DAY)["lt2"]["status"], "ok")
+
+    def test_not_reached_reads_the_stage_windows_not_the_cool_down(self) -> None:
+        laps = [
+            {"start_offset_s": 0, "end_offset_s": 180, "avg_hr": 140, "avg_speed_mps": 3.0},
+            {"start_offset_s": 180, "end_offset_s": 360, "avg_hr": 150, "avg_speed_mps": 3.5},
+        ]  # fmt: skip
+        cool_down = tuple(
+            DfaWindow(start_s=400.0 + 30 * i, heart_rate_bpm=130.0, alpha1=0.45, artifact_share=0.0)
+            for i in range(5)
+        )  # fmt: skip
+        result = ActivityDfaAlpha1(None, 25, 0.0, None, 3, linear_windows(20) + cool_down)
+        self.assertEqual(
+            step_test.evaluate(result, laps, DAY)["lt2"]["status"], "not_reached"
+        )
+
+    def test_a_stage_without_a_last_minute_keeps_all_stages_on_the_lap_mean(
+        self,
+    ) -> None:
+        laps = [
+            {"start_offset_s": 0, "end_offset_s": 180, "avg_hr": 140, "avg_speed_mps": 3.0},
+            {"start_offset_s": 180, "end_offset_s": 360, "avg_hr": 150, "avg_speed_mps": 3.5},
+        ]  # fmt: skip
+        result = ActivityDfaAlpha1(None, 20, 0.0, None, 3, linear_windows(20))
+        # The second stage's last minute is a strap dropout: lap means for both.
+        streams = {
+            "time_s": [130, 160, 280, 310, 340],
+            "channels": {"heart_rate": {"values": [145, 145, 130, None, None]}},
+        }
+        lt1 = step_test.evaluate(result, laps, DAY, streams)["lt1"]
+        self.assertEqual(lt1["pace_seconds_per_km"], 308)
+        self.assertEqual(step_test.evaluate(result, laps, DAY)["method"], "run-step-test-v2")
+
     def test_a_stamped_unit_is_a_step_test_after_its_template_is_gone(self) -> None:
         # The result and its adoption read the unit's own stamp; a unit planned
         # before the stamp still counts through its live template.
