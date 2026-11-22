@@ -1,9 +1,11 @@
 """Print a compact, read-only repository status from the GitHub CLI.
 
-With --state-file, the snapshot's digest is compared with the one stored there:
-exit 0 and one line when nothing changed, else the snapshot is printed, the new
-digest stored, and the exit code is 3, so a small scheduled task can wake the
-orchestrator only on a change (#3926).
+With --changes, the snapshot's digest is compared with the one in STATE_FILE:
+exit 0 and one line when nothing changed, else the snapshot is printed with the
+PRs merged since the last reported change, the new state stored, and the exit
+code is 3, so a small scheduled task can wake the orchestrator only on a change
+(#3926). The state file is fixed, so no command-line text reaches a path or a
+gh argument.
 """
 
 from __future__ import annotations
@@ -14,12 +16,14 @@ import json
 import re
 import subprocess
 import sys
+from datetime import UTC, datetime
 from pathlib import Path
 
 PASSING = {"SUCCESS", "SKIPPED", "NEUTRAL"}
 NONE = "  none"
 SUBJECT_PR = re.compile(r"\(#(\d+)\)\s*$")
 CHANGED = 3
+STATE_FILE = Path.home() / ".pacecraft" / "status-snapshot.json"
 
 
 class SnapshotError(RuntimeError):
@@ -238,7 +242,7 @@ def render(snapshot: dict) -> str:
         for run in snapshot["develop_runs"]
     ] or [NONE]
     if "merged_since" in snapshot:
-        lines.append(f"Merged since the given time ({len(snapshot['merged_since'])}):")
+        lines.append(f"Merged since the last change ({len(snapshot['merged_since'])}):")
         lines += [
             f"  #{pr['number']} {pr['title']} ({pr['merged_at']})"
             for pr in snapshot["merged_since"]
@@ -248,19 +252,27 @@ def render(snapshot: dict) -> str:
     return "\n".join(lines)
 
 
-def changed(snapshot: dict, state_file: Path) -> bool:
-    """Store the snapshot's digest; True when it differs from the stored one."""
-    digest = hashlib.sha256(
-        json.dumps(snapshot, sort_keys=True).encode("utf-8")
-    ).hexdigest()
+def last_state() -> tuple[str, str | None]:
+    """The stored digest and the time of the last reported change, if any."""
     try:
-        if state_file.read_text(encoding="utf-8").strip() == digest:
-            return False
-    except OSError:
-        pass
-    state_file.parent.mkdir(parents=True, exist_ok=True)
-    state_file.write_text(digest + "\n", encoding="utf-8")
-    return True
+        state = json.loads(STATE_FILE.read_text(encoding="utf-8"))
+        at = datetime.fromtimestamp(int(state["at"]), UTC)
+        return str(state["digest"]), at.strftime("%Y-%m-%dT%H:%M:%SZ")
+    except OSError, ValueError, KeyError, TypeError:
+        return "", None
+
+
+def digest(snapshot: dict) -> str:
+    """The snapshot without the time-window list, which moves with every change."""
+    stable = {key: value for key, value in snapshot.items() if key != "merged_since"}
+    text = json.dumps(stable, sort_keys=True).encode("utf-8")
+    return hashlib.sha256(text).hexdigest()
+
+
+def store_state(value: str) -> None:
+    STATE_FILE.parent.mkdir(parents=True, exist_ok=True)
+    stamp = int(datetime.now(UTC).timestamp())
+    STATE_FILE.write_text(json.dumps({"digest": value, "at": stamp}), encoding="utf-8")
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -268,12 +280,9 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--json", action="store_true", help="machine-readable output")
     parser.add_argument("--repo", help="OWNER/NAME (default: current repository)")
     parser.add_argument(
-        "--since", help="also list PRs merged at or after this ISO time"
-    )
-    parser.add_argument(
-        "--state-file",
-        type=Path,
-        help="digest of the last snapshot: exit 0 when unchanged, 3 when changed",
+        "--changes",
+        action="store_true",
+        help="exit 0 when unchanged since the last change, else print and exit 3",
     )
     args = parser.parse_args(argv)
     try:
@@ -283,15 +292,18 @@ def main(argv: list[str] | None = None) -> int:
                 "repo", "view", "--json", "nameWithOwner", "--jq", ".nameWithOwner"
             ).strip()
         )
-        snapshot = collect(repo, args.since)
+        stored, since = last_state() if args.changes else ("", None)
+        snapshot = collect(repo, since)
     except SnapshotError as exc:
         print(f"status_snapshot: {exc}", file=sys.stderr)
         return 1
-    if args.state_file and not changed(snapshot, args.state_file):
-        print("status_snapshot: unchanged")
-        return 0
+    if args.changes:
+        if digest(snapshot) == stored:
+            print("status_snapshot: unchanged")
+            return 0
+        store_state(digest(snapshot))
     print(json.dumps(snapshot, indent=2) if args.json else render(snapshot))
-    return CHANGED if args.state_file else 0
+    return CHANGED if args.changes else 0
 
 
 if __name__ == "__main__":

@@ -181,33 +181,39 @@ class StatusSnapshotTests(unittest.TestCase):
         self.assertNotIn("failure", text)
         self.assertIn("Open issues (1): #3", text)
 
-    def test_since_lists_merged_prs_and_the_state_file_reports_changes(self):
+    def test_changes_reports_only_a_change_and_what_merged_since(self):
         # A scheduled check wakes the orchestrator only on a change (#3926).
         responses = dict(RESPONSES)
+        calls = []
+
+        def run(args, **kwargs):
+            calls.append(args)
+            return fake_gh(responses)(args, **kwargs)
+
         with tempfile.TemporaryDirectory() as directory:
-            state = Path(directory) / "snapshot.sha256"
-            argv = [
-                "--repo",
-                "o/n",
-                "--since",
-                "2026-01-05",
-                "--state-file",
-                str(state),
-            ]
+            state = Path(directory) / "state" / "status-snapshot.json"
             codes, outputs = [], []
             for issues in ([{"number": 3, "title": "Blocker"}],) * 2 + ([],):
                 responses["issue list"] = issues
                 out = io.StringIO()
                 with (
-                    mock.patch.object(snapshot.subprocess, "run", fake_gh(responses)),
+                    mock.patch.object(snapshot, "STATE_FILE", state),
+                    mock.patch.object(snapshot.subprocess, "run", run),
                     redirect_stdout(out),
                 ):
-                    codes.append(snapshot.main(argv))
+                    codes.append(snapshot.main(["--repo", "o/n", "--changes"]))
                 outputs.append(out.getvalue())
         self.assertEqual(codes, [3, 0, 3])
-        self.assertIn("Merged since the given time (1):\n  #30 fix: y (t2)", outputs[0])
+        self.assertNotIn("Merged since", outputs[0])
         self.assertEqual(outputs[1], "status_snapshot: unchanged\n")
         self.assertIn("Open issues (0)", outputs[2])
+        self.assertIn(
+            "Merged since the last change (1):\n  #30 fix: y (t2)", outputs[2]
+        )
+        searches = [
+            args[args.index("--search") + 1] for args in calls if "--search" in args
+        ]
+        self.assertRegex(searches[-1], r"^merged:>=\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ$")
 
     def test_gh_failure_exits_nonzero_with_clear_message(self):
         err = io.StringIO()

@@ -166,7 +166,7 @@ Every 10 minutes, as a session cron (`CronCreate`) with the prompt
 `Periodic orchestrator check (Orchestrator Vn)`, Vn being your own name. A cron
 job lives only in its session, so each successor starts its own from this
 line (#3457). A small scheduled task may instead run status-snapshot with
-`--state-file` and wake you on any non-zero exit (3 changed, 1 failed); lane
+`--changes` and wake you on any non-zero exit (3 changed, 1 failed); lane
 messages reach you directly (#3926). Each check: run [status-snapshot](../pacecraft-status-snapshot/SKILL.md),
 read every lane's thread, and check the `develop` push runs of new merges.
 Read idle lane threads too, newest `ORCHESTRATOR:` lines first: a lane that
