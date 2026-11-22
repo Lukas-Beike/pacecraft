@@ -276,7 +276,14 @@ function appendAnalysisTable(section, title, series, unit, caption = analysisAxi
   scroll.append(grid);
   if (hidden.length) {
     const more = h("button", { type: "button", className: "secondary-button" }, `Alle ${rows.length} ${weekly ? "Wochen" : "Tage"} anzeigen`);
-    more.addEventListener("click", () => { hidden.forEach((row) => { row.hidden = false; }); more.remove(); });
+    more.addEventListener("click", () => {
+      hidden.forEach((row) => { row.hidden = false; });
+      more.remove();
+      // The button had the focus: it moves to the first row that appeared, so a keyboard user keeps their place.
+      const first = hidden[0].children[0];
+      first.tabIndex = -1;
+      first.focus();
+    });
     scroll.append(more);
   }
   section.append(h("details", null, h("summary", null, "Werte ansehen"), scroll));
@@ -2957,7 +2964,7 @@ function recoveryRollingNote(rolling) {
 
 // Daily values on `dates`, or the mean of each calendar week when `weekly`; missing values stay gaps.
 function recoveryPeriodPoints(history, dates, today, weekly) {
-  if (weekly) return analysisWeeklyMeanPoints(history.filter((point) => point.date >= dates[0] && point.date <= today), dates[0], today);
+  if (weekly) return analysisWeeklyMeanPoints(history.filter((point) => point.date >= dates[0] && point.date <= today), dates[0], today, 3);
   const values = new Map(history.filter((point) => point.date <= today).map((point) => [point.date, point.value]));
   return dates.map((date) => ({ date, value: values.get(date) ?? null }));
 }
@@ -3503,9 +3510,11 @@ function analysisWeeklySumPoints(points, start, end) {
   }));
 }
 
-function analysisWeeklyMeanPoints(points, start, end) {
+// `digits` keeps the mean as exact as its display needs: sleep hours are shown to the minute, steps to one decimal.
+function analysisWeeklyMeanPoints(points, start, end, digits = 1) {
+  const scale = 10 ** digits;
   return analysisWeeklyPoints(points, start, end, (known) => ({
-    value: Math.round(known.reduce((sum, point) => sum + Number(point.value), 0) / known.length * 10) / 10, observedDate: known.at(-1).date, count: known.length,
+    value: Math.round(known.reduce((sum, point) => sum + Number(point.value), 0) / known.length * scale) / scale, observedDate: known.at(-1).date, count: known.length,
   }));
 }
 

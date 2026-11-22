@@ -838,6 +838,7 @@ test("a weekly table has the columns Woche ab, Wert, Messungen and Quelle, newes
   assert.equal(more.textContent, "Alle 8 Wochen anzeigen");
   more.fire("click");
   assert.ok(body.children.every((row) => !row.hidden));
+  assert.equal(body.children[6].children[0].focused, true, "the focus moves to the first row that appeared");
 });
 
 test("the element helpers keep values as text and map class, properties, attributes and data", () => {
