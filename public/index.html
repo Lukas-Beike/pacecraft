@@ -736,6 +736,12 @@
       <h2 id="nutritionMealEditTitle">Mahlzeit bearbeiten</h2>
       <p id="nutritionMealEditSubtitle"></p>
       <form id="nutritionMealEditMain">
+        <div class="edit-meal">
+          <label for="nutritionMealEditDate">Datum<input id="nutritionMealEditDate" type="date" required></label>
+          <label for="nutritionMealEditTime">Uhrzeit<input id="nutritionMealEditTime" type="time" required></label>
+          <label for="nutritionMealEditType">Mahlzeit<select id="nutritionMealEditType"></select></label>
+          <label class="chip" for="nutritionMealEditUnknown"><input id="nutritionMealEditUnknown" type="checkbox"><span>Uhrzeit unbekannt</span></label>
+        </div>
         <ul id="nutritionMealEditList" class="edit-list"></ul>
         <output id="nutritionMealEditStatus" class="tab-sync-detail" aria-live="polite"></output>
         <div class="dialog-actions"><button type="button" id="nutritionMealEditCancel" class="secondary-button">Abbrechen</button><button type="submit" id="nutritionMealEditSave" class="push-button">Speichern</button></div>

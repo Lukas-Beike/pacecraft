@@ -36,7 +36,7 @@ test("a diary card marks an estimated meal and its button flips the flag", async
   const receipts = [];
   const opened = [];
   const status = { textContent: "" };
-  const ctx = extractFunctions("nutrition.js", ["nutritionMealTitle", "NUTRITION_SOURCE_LABELS", "nutritionCard", "nutritionEstimateChip", "nutritionEntryActions", "nutritionEditButton", "markNutritionEstimate"], {
+  const ctx = extractFunctions("nutrition.js", ["nutritionMealTitle", "NUTRITION_MEAL_LABELS", "NUTRITION_SOURCE_LABELS", "nutritionCard", "nutritionEstimateChip", "nutritionEntryActions", "nutritionEditButton", "markNutritionEstimate"], {
     h, document: { querySelector: () => status },
     messageActionButton: (icon, label) => h("button", { "aria-label": label }, icon), openNutritionMealEdit: (item) => opened.push(item.id),
     createStatusChip: (label) => h("span", null, label),

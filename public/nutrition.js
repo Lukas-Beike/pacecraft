@@ -232,9 +232,10 @@ function nutritionSessionBlock(item, sessions) {
   return block;
 }
 
+const NUTRITION_MEAL_LABELS = { breakfast: "Frühstück", lunch: "Mittagessen", dinner: "Abendessen", snack: "Snack", pre_session: "Vor der Einheit", during_session: "Während der Einheit" };
+
 function nutritionMealTitle(item) {
-  const mealLabels = { breakfast: "Frühstück", lunch: "Mittagessen", dinner: "Abendessen", snack: "Snack", pre_session: "Vor der Einheit", during_session: "Während der Einheit" };
-  const mealLabel = mealLabels[item.meal_type] || "Mahlzeit";
+  const mealLabel = NUTRITION_MEAL_LABELS[item.meal_type] || "Mahlzeit";
   const mealTime = item.logged_time_known === false ? "" : String(item.logged_at).split("T")[1]?.slice(0, 5) || "";
   return mealTime ? `${mealTime} · ${mealLabel}` : mealLabel;
 }

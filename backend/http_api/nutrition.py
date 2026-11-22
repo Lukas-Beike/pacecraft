@@ -514,9 +514,16 @@ class NutritionPostRoutes:
         handler.send_json(200, {"ok": True, "entry": entry, **_change(changes)})
 
     def _edit_components(self, handler: Any, _request: RouteRequest) -> None:
-        """Remove, resize or swap components of a logged meal (#3948).
+        """Remove, resize or swap components of a logged meal, and change its day, type
+        or time (#3948, #3985).
 
-        Request: JSON body `{"id": string, "revision": string, "edits": [...]}`; `id` is the
+        Request: JSON body `{"id": string, "revision": string, "edits": [...], "meal": {...}}`;
+        `edits` and `meal` are each optional, one is required. `meal` changes the meal
+        itself: `meal_date` (YYYY-MM-DD, both days are marked for the next Intervals.icu
+        synchronization), `meal_type` (a new type moves a default time to the type's
+        default), and `meal_time` (HH:MM) or `logged_time_known: false` (the time is
+        unknown, only the type stays); a `meal` without `edits` leaves the components and
+        the origin as stored. `id` is the
         entry id, `revision` the one `GET /api/nutrition/entry/components` returned, and
         each edit names a component by its `index` (see
         `GET /api/nutrition/entry/components`) and is one of `{"index", "remove": true}`,
@@ -547,6 +554,7 @@ class NutritionPostRoutes:
                 str(payload.get("id") or ""),
                 payload.get("edits"),
                 payload.get("revision"),
+                payload.get("meal"),
             )
         handler.send_json(200, {"ok": True, "entry": entry, **_change(changes)})
 

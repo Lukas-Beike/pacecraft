@@ -19,10 +19,12 @@ from backend.db.repositories import NutritionRepository, nutrition_macro_totals
 from backend.errors import AppError
 from backend.nutrition.food_database import NUTRIENTS
 from backend.nutrition.meal_components import (
+    INVALID_EDIT,
     components_revision,
     edited_components,
     entry_components,
     swap_foods,
+    validated_meal_changes,
     wrapped_component,
 )
 from backend.nutrition.meal_library import (
@@ -472,34 +474,43 @@ class NutritionDiaryService:
         return {"components": components, "revision": components_revision(components)}
 
     def edit_components(
-        self, entry_id: str, edits: Any, revision: Any
+        self, entry_id: str, edits: Any, revision: Any, meal: Any = None
     ) -> dict[str, Any]:
-        """Remove, resize or swap components of a logged meal (#3948).
+        """Remove, resize or swap components of a logged meal, and change its day,
+        type or time, in one write (#3948, #3985).
 
         Nutrients are scaled from the stored snapshot or calculated from the
-        food ID or product ID and the amount; the meal becomes a composite.
+        food ID or product ID and the amount; the meal becomes a composite. A
+        change of `meal` alone leaves the components as stored.
         """
         clean_id = str(entry_id or "").strip()
         if not clean_id:
             raise AppError(400, INVALID_ENTRY_ID)
+        changes = (
+            {}
+            if meal is None
+            else _canonical_meal_changes(validated_meal_changes(meal))
+        )
+        if edits is None and not changes:
+            raise AppError(400, INVALID_EDIT)
         calculator = self._meal_library.component_calculator
         foods = swap_foods(edits, calculator)
         with self._database_manager.unit_of_work() as db:
             existing = self._nutrition_repository.get(db, clean_id)
             if not existing:
                 raise AppError(404, ENTRY_NOT_FOUND)
-            entry = {
-                **existing,
-                "sync_state": "local",
-                "nutrition_basis": {
+            entry = {**_merged_entry(existing, changes), "sync_state": "local"}
+            if _names_time_without_flag(changes):
+                entry["logged_time_known"] = True
+            if edits is not None:
+                entry["nutrition_basis"] = {
                     "kind": "composite",
                     "version": 1,
                     "components": edited_components(
                         existing, edits, revision, calculator, db, foods
                     ),
-                },
-            }
-            self._set_composite_totals(entry)
+                }
+                self._set_composite_totals(entry)
             updated = self._update(
                 db,
                 existing,

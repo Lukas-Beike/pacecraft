@@ -79,6 +79,43 @@ test("@responsive the pencil edits a meal's components: remove, restore, resize 
   await expect(card).toContainText("669 kcal");
 });
 
+test("@responsive the dialog changes a meal's day, type and time with its components, then undoes them", async ({ page }) => {
+  const posts = await mockDiary(page);
+  await page.goto("/#nutrition/diary");
+  const card = page.locator("#nutritionEntries .nutrition-card");
+  await card.getByRole("button", { name: "Mahlzeit bearbeiten: Reis mit Tofu" }).click();
+  const dialog = page.locator("#nutritionMealEditDialog");
+  const [date, time, type, unknown] = ["Date", "Time", "Type", "Unknown"].map((name) => dialog.locator(`#nutritionMealEdit${name}`));
+  await expect(date).toHaveValue(DAY);
+  await expect(time).toHaveValue("12:00");
+  await expect(type).toHaveValue("lunch");
+  await expect(dialog.locator("#nutritionMealEditSave")).toBeDisabled();
+
+  // A default time follows the new type, a named one stays; a new day alone is a change.
+  await type.selectOption("dinner");
+  await expect(time).toHaveValue("18:00");
+  await time.fill("19:30");
+  await type.selectOption("snack");
+  await expect(time).toHaveValue("19:30");
+  await date.fill("2026-11-04");
+  await dialog.locator(".edit-row").first().getByRole("spinbutton").fill("300");
+  await dialog.locator("#nutritionMealEditSave").click();
+  await expect(dialog).toBeHidden();
+  expect(posts).toEqual([{ id: MEAL.id, revision: "rev-1", edits: [{ index: 0, amount: 300 }], meal: { meal_date: "2026-11-04", meal_type: "snack", meal_time: "19:30" } }]);
+  await expect(page.locator("#nutritionStatus")).toContainText("Mahlzeit geändert.");
+  await page.locator("#nutritionStatus").getByRole("button", { name: "Rückgängig" }).click();
+  await expect(card).toContainText("669 kcal");
+
+  // An unknown time keeps only the type and disables the time; the meal change needs no component edit.
+  await card.getByRole("button", { name: "Mahlzeit bearbeiten: Reis mit Tofu" }).click();
+  await unknown.check();
+  await expect(time).toBeDisabled();
+  await expect(time).toHaveValue("");
+  await dialog.locator("#nutritionMealEditSave").click();
+  await expect(dialog).toBeHidden();
+  expect(posts[1]).toEqual({ id: MEAL.id, revision: "rev-1", meal: { logged_time_known: false } });
+});
+
 test("@responsive removing every component deletes the meal only after its confirmation; offline saving is disabled", async ({ page, context }) => {
   const posts = await mockDiary(page);
   await page.goto("/#nutrition/diary");

@@ -1733,6 +1733,10 @@ button:focus-visible, a:focus-visible, summary:focus-visible {
 .nutrition-card-head .message-action { margin: -8px -8px 0 0; }
 .nutrition-meal-edit { display: grid; gap: 15px; }
 .nutrition-meal-edit form, #nutritionMealEditSwap { display: grid; gap: 12px; }
+.edit-meal { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.edit-meal label { min-width: 0; }
+.edit-meal label:nth-child(n+3) { grid-column: 1 / -1; }
+.edit-meal .chip { justify-self: start; }
 .edit-list, .swap-results { display: grid; gap: 10px; margin: 0; padding: 0; list-style: none; }
 .edit-row { display: grid; gap: 8px; padding: 12px; border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--surface); }
 .edit-row.is-removed { opacity: .6; }

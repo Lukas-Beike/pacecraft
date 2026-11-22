@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 from typing import Any
 
 from backend.errors import AppError
@@ -17,6 +18,8 @@ from backend.nutrition.components import MealComponentCalculator
 from backend.nutrition.food_database import NUTRIENTS
 
 EDIT_KEYS = {"index", "remove", "amount", "unit", "food_id", "product_id"}
+CLOCK_MINUTES = re.compile(r"\d{2}:\d{2}")
+MEAL_KEYS = {"meal_date", "meal_type", "meal_time", "logged_time_known"}
 INVALID_EDIT = "Ungültige Änderung der Mahlzeitenkomponenten."
 
 
@@ -132,6 +135,24 @@ def _validated_edits(edits: Any, count: int) -> list[dict[str, Any]]:
             raise AppError(400, INVALID_EDIT)
         seen.add(index)
     return edits
+
+
+def validated_meal_changes(meal: Any) -> dict[str, Any]:
+    """The meal's own fields an edit changes: day, type and time, or an unknown time (#3985)."""
+    keys = set(meal) if isinstance(meal, dict) else set()
+    # A time is either named or unknown; the unknown flag is only ever set, never cleared.
+    if (
+        not keys
+        or not keys <= MEAL_KEYS
+        or ("logged_time_known" in keys and meal["logged_time_known"] is not False)
+        or {"logged_time_known", "meal_time"} <= keys
+    ):
+        raise AppError(400, INVALID_EDIT)
+    time = meal.get("meal_time")
+    # A time with seconds like the stored default times, so a default stays recognizable.
+    if isinstance(time, str) and CLOCK_MINUTES.fullmatch(time.strip()):
+        return {**meal, "meal_time": f"{time.strip()}:00"}
+    return dict(meal)
 
 
 def swap_foods(

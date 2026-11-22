@@ -282,6 +282,105 @@ class MealComponentEditTests(unittest.TestCase):
             pending = NutritionRepository(now=lambda: "").list_unsynced_dates(db)
         self.assertEqual(pending, ["2026-11-04"])
 
+    def change_meal(self, **meal: Any) -> dict[str, Any]:
+        """A change of the meal's own fields alone, as the dialog sends it (#3985)."""
+        return self.diary.edit_components(self.meal["id"], None, None, meal)
+
+    def test_a_meal_change_alone_keeps_the_components_and_the_origin(self) -> None:
+        updated = self.change_meal(meal_type="dinner")
+
+        self.assertEqual(updated["meal_type"], "dinner")
+        self.assertEqual(updated["nutrition_basis"], self.meal["nutrition_basis"])
+        self.assertEqual(updated["kcal"], self.meal["kcal"])
+
+    def test_a_new_type_moves_a_default_time_but_not_a_named_one(self) -> None:
+        # Logged at the entry time, the meal has no default time to move.
+        kept = self.change_meal(meal_type="breakfast")
+        self.assertEqual(kept["logged_at"], self.meal["logged_at"])
+
+        self.assertEqual(
+            self.change_meal(meal_time="09:00")["logged_at"], "2026-11-04T09:00:00"
+        )
+        moved = self.change_meal(meal_type="lunch")
+        self.assertEqual(moved["logged_at"], "2026-11-04T12:00:00")
+
+        named = self.change_meal(meal_time="13:30")
+        self.assertEqual(named["logged_at"], "2026-11-04T13:30:00")
+        self.assertEqual(
+            self.change_meal(meal_type="dinner")["logged_at"], named["logged_at"]
+        )
+
+    def test_a_new_day_moves_the_meal_and_marks_both_days(self) -> None:
+        self.change_meal(meal_type="dinner")
+        with self.manager.unit_of_work() as db:
+            snapshot = NutritionRepository(now=lambda: "").day_sync_snapshot(
+                db, "2026-11-04"
+            )
+        self.assertTrue(
+            self.diary.sync_status.mark_date_synced(
+                "2026-11-04", snapshot["sync_revision"]
+            )
+        )
+
+        moved = self.change_meal(meal_date="2026-11-03")
+
+        self.assertEqual(
+            (moved["meal_date"], moved["logged_at"], moved["sync_state"]),
+            ("2026-11-03", "2026-11-03T14:00:00+00:00", "local"),
+        )
+        with self.manager.read_snapshot() as db:
+            pending = NutritionRepository(now=lambda: "").list_unsynced_dates(db)
+        self.assertEqual(pending, ["2026-11-03", "2026-11-04"])
+
+    def test_an_unknown_time_keeps_only_the_type_and_a_named_time_ends_it(self) -> None:
+        unknown = self.change_meal(meal_type="snack", logged_time_known=False)
+        self.assertFalse(unknown["logged_time_known"])
+        self.assertEqual(
+            self.change_meal(meal_type="lunch")["logged_time_known"], False
+        )
+
+        known = self.change_meal(meal_time="12:45")
+        self.assertEqual(
+            (known["logged_time_known"], known["logged_at"]),
+            (True, "2026-11-04T12:45:00"),
+        )
+
+    def test_the_meal_change_and_the_component_edits_are_one_write(self) -> None:
+        revision = self.diary.meal_components(self.meal["id"])["revision"]
+        with change_history.collect_changes() as changes:
+            updated = self.diary.edit_components(
+                self.meal["id"],
+                [{"index": 2, "remove": True}],
+                revision,
+                {"meal_type": "dinner", "meal_date": "2026-11-05"},
+            )
+
+        self.assertEqual(
+            (updated["meal_date"], updated["meal_type"], len(self.components(updated))),
+            ("2026-11-05", "dinner", 2),
+        )
+        self.assertEqual(len(changes), 1)
+
+    def test_a_bad_meal_change_changes_nothing(self) -> None:
+        revision = self.diary.meal_components(self.meal["id"])["revision"]
+        bad: tuple[Any, ...] = (
+            {},
+            [],
+            {"description": "x"},
+            {"logged_time_known": True},
+            {"logged_time_known": False, "meal_time": "10:00"},
+            {"meal_type": "brunch"},
+            {"meal_date": "04.11.2026"},
+            {"meal_time": "25:99"},
+        )
+        for meal in bad:
+            with self.subTest(meal=meal), self.assertRaises(AppError) as raised:
+                self.diary.edit_components(self.meal["id"], None, revision, meal)
+            self.assertEqual(raised.exception.status, 400)
+        with self.assertRaises(AppError):
+            self.diary.edit_components(self.meal["id"], None, revision, None)
+        self.assertEqual(self.diary.get_meal(self.meal["id"]), self.meal)
+
     def test_the_edit_is_undone_with_its_change_reference(self) -> None:
         with change_history.collect_changes() as changes:
             self.edit(self.meal["id"], [{"index": 0, "remove": True}])

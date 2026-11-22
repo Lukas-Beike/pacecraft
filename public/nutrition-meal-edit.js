@@ -1,15 +1,17 @@
-// A diary meal's components: remove, change the amount or swap for another food (#3948).
+// A diary meal's components: remove, change the amount or swap for another food (#3948), and its day, type and time (#3985).
 // The server recalculates; the dialog sends only the index and the change, never nutrient values.
 let nutritionMealEdit = null;
 
 const NUTRITION_MEAL_UNITS = new Set(["g", "ml", "portion"]);
+// The times a main meal takes when it has no named one, as the server applies them.
+const NUTRITION_DEFAULT_TIMES = { breakfast: "09:00", lunch: "12:00", dinner: "18:00" };
 const NUTRITION_FOOD_ID = /^(bls|off|yazio):/;
 const NUTRITION_FOOD_ORIGINS = { bls: "BLS 4.0", off: "Open Food Facts", yazio: "Yazio" };
 
 function nutritionMealEditNodes() {
   const root = document.querySelector("#nutritionMealEditDialog");
   const pick = (id) => root.querySelector(`#nutritionMealEdit${id}`);
-  return { root, form: pick("Main"), main: pick("Main"), swap: pick("Swap"), title: pick("Title"), subtitle: pick("Subtitle"), list: pick("List"), save: pick("Save"), status: pick("Status"), query: pick("Query"), results: pick("Results"), swapStatus: pick("SwapStatus") };
+  return { root, form: pick("Main"), main: pick("Main"), swap: pick("Swap"), date: pick("Date"), time: pick("Time"), type: pick("Type"), unknown: pick("Unknown"), title: pick("Title"), subtitle: pick("Subtitle"), list: pick("List"), save: pick("Save"), status: pick("Status"), query: pick("Query"), results: pick("Results"), swapStatus: pick("SwapStatus") };
 }
 
 // "BLS 4.0", "Open Food Facts", "Yazio", "Eigenes Produkt" or "Schätzung" for a stored component.
@@ -24,8 +26,11 @@ async function openNutritionMealEdit(item) {
   const status = document.querySelector("#nutritionStatus");
   try {
     const { components, revision } = await api(`/api/nutrition/entry/components?id=${encodeURIComponent(item.id)}`);
+    const known = item.logged_time_known !== false;
+    const time = known ? String(item.logged_at).split("T")[1]?.slice(0, 5) || "" : "";
     nutritionMealEdit = {
       item,
+      meal: { date: item.meal_date, time, type: item.meal_type, unknown: !known, original: { date: item.meal_date, time, type: item.meal_type, unknown: !known } },
       revision,
       generation: state.sessionGeneration,
       rows: components.map((component) => ({ index: component.index, name: component.name, unit: component.unit, originalUnit: component.unit, original: String(component.amount), amount: String(component.amount), kcal: component.kcal, origin: nutritionComponentOrigin(component), removed: false, swap: null })),
@@ -39,6 +44,7 @@ async function openNutritionMealEdit(item) {
   const nodes = nutritionMealEditNodes();
   nodes.subtitle.textContent = [nutritionMealTitle(item), item.description].filter(Boolean).join(" · ");
   nodes.status.textContent = "";
+  nodes.type.replaceChildren(...Object.entries(NUTRITION_MEAL_LABELS).map(([value, label]) => h("option", { value }, label)));
   renderNutritionMealEdit();
   showAccessibleDialog(nodes.root);
 }
@@ -56,6 +62,40 @@ function nutritionMealEditChanges() {
   return edits;
 }
 
+// The meal's own fields that differ from the stored ones, as the server takes them; null when none do.
+function nutritionMealFieldChanges() {
+  const { date, time, type, unknown, original } = nutritionMealEdit.meal;
+  const changes = { ...(date === original.date ? {} : { meal_date: date }), ...(type === original.type ? {} : { meal_type: type }) };
+  if (unknown) { if (!original.unknown) changes.logged_time_known = false; }
+  else if (original.unknown || time !== original.time) changes.meal_time = time;
+  return Object.keys(changes).length ? changes : null;
+}
+
+function renderNutritionMealFields() {
+  const nodes = nutritionMealEditNodes();
+  const { date, time, type, unknown } = nutritionMealEdit.meal;
+  Object.assign(nodes.date, { value: date });
+  Object.assign(nodes.type, { value: type });
+  Object.assign(nodes.time, { value: unknown ? "" : time, disabled: unknown });
+  nodes.unknown.checked = unknown;
+}
+
+function changeNutritionMealField(event) {
+  if (!nutritionMealEdit) return;
+  const nodes = nutritionMealEditNodes();
+  const meal = nutritionMealEdit.meal;
+  if (event.target === nodes.type) {
+    // A default time follows the new type; a time the athlete named stays.
+    if (!meal.unknown && meal.time === NUTRITION_DEFAULT_TIMES[meal.type] && NUTRITION_DEFAULT_TIMES[nodes.type.value]) meal.time = NUTRITION_DEFAULT_TIMES[nodes.type.value];
+    meal.type = nodes.type.value;
+  }
+  if (event.target === nodes.date) meal.date = nodes.date.value;
+  if (event.target === nodes.time) meal.time = nodes.time.value;
+  if (event.target === nodes.unknown) meal.unknown = nodes.unknown.checked;
+  renderNutritionMealFields();
+  updateNutritionMealEditSave();
+}
+
 function renderNutritionMealEdit() {
   const nodes = nutritionMealEditNodes();
   const { rows, swapRow } = nutritionMealEdit;
@@ -67,6 +107,7 @@ function renderNutritionMealEdit() {
     return;
   }
   nodes.title.textContent = "Mahlzeit bearbeiten";
+  renderNutritionMealFields();
   nodes.list.replaceChildren(...rows.map(nutritionMealEditRow));
   updateNutritionMealEditSave();
 }
@@ -74,7 +115,7 @@ function renderNutritionMealEdit() {
 function updateNutritionMealEditSave() {
   const nodes = nutritionMealEditNodes();
   const offline = !navigator.onLine;
-  nodes.save.disabled = offline || nutritionMealEditChanges().length === 0;
+  nodes.save.disabled = offline || nutritionMealEditChanges().length === 0 && !nutritionMealFieldChanges();
   if (offline) nodes.status.textContent = "Offline: Speichern erst mit Verbindung möglich.";
   else if (nodes.status.textContent.startsWith("Offline")) nodes.status.textContent = "";
 }
@@ -170,8 +211,10 @@ async function saveNutritionMealEdit() {
   nodes.save.disabled = true;
   nodes.status.textContent = "";
   let result;
+  const edits = nutritionMealEditChanges();
+  const meal = nutritionMealFieldChanges();
   try {
-    result = await api("/api/nutrition/entry/components", { method: "POST", body: JSON.stringify({ id: item.id, revision, edits: nutritionMealEditChanges() }) });
+    result = await api("/api/nutrition/entry/components", { method: "POST", body: JSON.stringify({ id: item.id, revision, ...(edits.length ? { edits } : {}), ...(meal ? { meal } : {}) }) });
   } catch (error) {
     if (generation !== state.sessionGeneration) return;
     const message = `Mahlzeit konnte nicht gespeichert werden: ${error.message}`;
@@ -189,6 +232,7 @@ async function saveNutritionMealEdit() {
   showNutritionReceipt(document.querySelector("#nutritionStatus"), "Mahlzeit geändert.", result.change, reload);
 }
 
+document.querySelector(".nutrition-meal-edit .edit-meal")?.addEventListener("input", changeNutritionMealField);
 document.querySelector("#nutritionMealEditCancel")?.addEventListener("click", () => document.querySelector("#nutritionMealEditDialog").close());
 document.querySelector("#nutritionMealEditBack")?.addEventListener("click", closeNutritionMealSwap);
 document.querySelector("#nutritionMealEditMain")?.addEventListener("submit", (event) => { event.preventDefault(); void saveNutritionMealEdit(); });
