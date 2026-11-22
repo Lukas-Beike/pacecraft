@@ -131,3 +131,20 @@ test("a chat that fails while the browser claims to be online stays with the rec
   assert.equal(state.chatRequest.phase, "recovering");
   assert.deepEqual(drafts, [null]);
 });
+
+test("an offline draft follows the athlete's edits and ends with an empty composer", () => {
+  const store = new Map([["coachUnsentDraft", "alt"]]);
+  const sessionStorage = {
+    getItem: (key) => (store.has(key) ? store.get(key) : null),
+    setItem: (key, value) => store.set(key, value),
+    removeItem: (key) => store.delete(key),
+  };
+  const context = extractFunctions("coach.js", ["rememberUnsentDraft", "syncUnsentDraft"], { sessionStorage });
+  context.syncUnsentDraft("neu geschrieben");
+  assert.equal(store.get("coachUnsentDraft"), "neu geschrieben");
+  context.syncUnsentDraft("  ");
+  assert.equal(store.has("coachUnsentDraft"), false);
+  // Without a kept draft, typing stores nothing.
+  context.syncUnsentDraft("getippt");
+  assert.equal(store.has("coachUnsentDraft"), false);
+});

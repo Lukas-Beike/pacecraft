@@ -110,14 +110,14 @@ test("analysis and plan menu prefills the chosen period with its request kind an
   await expect(trigger).toHaveAttribute("aria-expanded", "true");
   await expect(page.getByRole("menuitem", { name: "Einheit analysieren" })).toBeFocused();
   await page.keyboard.press("ArrowDown");
-  await expect(page.getByRole("menuitem", { name: "Fortschritt 4 Wochen" })).toBeFocused();
-  const target = await page.getByRole("menuitem", { name: "Plan 3 Wochen" }).boundingBox();
+  await expect(page.getByRole("menuitem", { name: "Fortschritt 4 Wo." })).toBeFocused();
+  const target = await page.getByRole("menuitem", { name: "Plan 3 Wo." }).boundingBox();
   expect(target.width).toBeGreaterThanOrEqual(44);
   expect(target.height).toBeGreaterThanOrEqual(44);
   await page.keyboard.press("Escape");
   await expect(trigger).toHaveAttribute("aria-expanded", "false");
   await trigger.click();
-  await page.getByRole("menuitem", { name: "Plan 3 Wochen" }).click();
+  await page.getByRole("menuitem", { name: "Plan 3 Wo." }).click();
   const sent = await page.evaluate(() => ({ kind: document.querySelector("#messageInput").dataset.requestKind, message: document.querySelector("#messageInput").value, submitted: window.__quickSubmit }));
   expect(sent.submitted).toBeNull();
   expect(sent.kind).toBe("plan_block");
