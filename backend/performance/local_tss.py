@@ -447,9 +447,12 @@ def _pace(
     sport: Sport,
     seconds: float,
     threshold: Threshold | None,
-    ngs: NormalizedGradedSpeed | None = None,
+    speeds: SpeedLookup | None = None,
 ) -> LocalLoad | str | None:
-    chosen = _pace_speed(summary, seconds, ngs) if sport is Sport.RUN else None
+    if sport is not Sport.RUN:
+        return None
+    ngs = None if speeds is None else speeds(str(summary.get("id")))
+    chosen = _pace_speed(summary, seconds, ngs)
     if chosen is None:
         return None
     speed, basis, extra = chosen
@@ -661,7 +664,7 @@ def session_local_load(
     set) chooses the heart-rate branch's TRIMP constants; ``histograms`` gives
     the stored heart-rate histogram of a session id and is called only when the
     session reaches the heart-rate branch; ``speeds`` gives a run's stored normalized
-    graded speed and is called only when it reaches the pace branch.
+    graded speed and is called only for a run that reaches the pace branch.
     """
     sport = _sport(summary)
     if sport is None or sport in NO_TSS_SPORTS:
@@ -674,13 +677,7 @@ def session_local_load(
     reason = "no_inputs"
     for branch in (
         lambda: _power(summary, sport, seconds, thresholds.ftp),
-        lambda: _pace(
-            summary,
-            sport,
-            seconds,
-            thresholds.threshold_pace,
-            None if speeds is None else speeds(str(summary.get("id"))),
-        ),
+        lambda: _pace(summary, sport, seconds, thresholds.threshold_pace, speeds),
         lambda: _heart_rate(summary, sport, seconds, thresholds, sex, histograms),
     ):
         outcome = branch()

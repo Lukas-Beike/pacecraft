@@ -142,7 +142,10 @@ uses only the fourth. The value records which branch gave it
      duration. Otherwise `v` is Garmin's grade-adjusted average speed
      (`avgGradeAdjustedSpeed`, m/s, mapped since Garmin activity mapper
      version 15), `pace_basis: grade_adjusted_speed`, else the average speed,
-     `pace_basis: average_speed`. A steady run has NGS equal to its speed; an
+     `pace_basis: average_speed`. The covered seconds count only rolling means
+     with a full 30 s window, so the first 30 s after each stop or dropout do
+     not count; a stop-and-go run can fall back to Garmin's average for this
+     reason. A steady run has NGS equal to its speed; an
      interval run scores higher than on its average speed.
    - `v_threshold`: the resolver's run threshold pace on the day, stored as
      m/s.

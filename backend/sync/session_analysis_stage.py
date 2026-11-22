@@ -228,6 +228,10 @@ def _value(threshold: Mapping[str, Any] | None) -> float | None:
 class SessionAnalysisStage:
     """Backfill follow-up that keeps the stored canonical session analyses current."""
 
+    # The local load stage, earlier in the pass, reads the stored histogram and
+    # normalized graded speed: after rows were stored the worker runs one more pass.
+    FEEDS_EARLIER_STAGES = True
+
     def __init__(
         self,
         *,
