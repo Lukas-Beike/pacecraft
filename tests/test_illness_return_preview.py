@@ -26,7 +26,14 @@ from backend.planning.adaptive_preview_service import (
 )
 
 GOOD_NIGHT = {
-    "hrv": {"source": "Garmin", "value": 55, "position": "within"},
+    # Usual range 50-60: the M14 margin is 50 - 0.5 x 10 = 45 (#3920).
+    "hrv": {
+        "source": "Garmin",
+        "value": 55,
+        "position": "within",
+        "lower": 50,
+        "upper": 60,
+    },
     "resting_hr": {"source": "Garmin", "value": 50, "median": 48},
 }
 
@@ -161,7 +168,10 @@ class IllnessReturnPreviewTests(unittest.TestCase):
         self.assertFalse(self.service.status()["needs_replan"])
 
     def test_low_hrv_holds_the_stage(self) -> None:
-        self.night = {**GOOD_NIGHT, "hrv": {**GOOD_NIGHT["hrv"], "position": "below"}}
+        self.night = {
+            **GOOD_NIGHT,
+            "hrv": {**GOOD_NIGHT["hrv"], "value": 44, "position": "below"},
+        }
 
         block = self.service.preview()["illness_return"]
 
@@ -268,7 +278,10 @@ class IllnessReturnPreviewTests(unittest.TestCase):
         self.assertEqual(before, self.drafts)
 
     def test_held_stage_still_replaces_sessions_above_it(self) -> None:
-        self.night = {**GOOD_NIGHT, "hrv": {**GOOD_NIGHT["hrv"], "position": "below"}}
+        self.night = {
+            **GOOD_NIGHT,
+            "hrv": {**GOOD_NIGHT["hrv"], "value": 44, "position": "below"},
+        }
         moderate = self.draft("endurance")
 
         preview = self.service.preview()
