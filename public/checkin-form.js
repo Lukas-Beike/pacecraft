@@ -96,7 +96,7 @@ function checkinFormNodes(stored) {
     ...CHECKIN_SCORES.map(([key, label]) => checkinNumberField(key, `${label} (0–10)`, stored[key], 10)),
     checkinNumberField("available_minutes", "Verfügbare Zeit (min)", stored.available_minutes, 1440),
     checkinChips(stored),
-    h("label", null, "Krank", h("input", { name: "illness", type: "text", maxLength: 1000, autocomplete: "off", value: stored.illness || "" })),
+    h("label", null, "Krank", h("textarea", { name: "illness", rows: 2, maxLength: 1000, value: stored.illness || "" })),
     h("fieldset", "chip-field", h("legend", null, "Beschwerden"), complaints, add),
     h("label", null, "Notiz", h("textarea", { name: "notes", rows: 2, maxLength: 4000, value: stored.notes || "" })),
   ];
@@ -126,14 +126,26 @@ async function openCheckinForm(dateKey) {
   const close = () => dialog.close();
   cancel.addEventListener("click", close);
   dialog.addEventListener("close", () => { restoreDialogFocus(dialog); dialog.remove(); });
+  // The date and the day the fields show stay in step: a late or failed read never leaves another day's values under it.
+  let shown = dateKey;
+  let reads = 0;
   date.addEventListener("change", async () => {
     if (!date.value || date.value > today) return;
+    const read = ++reads;
+    save.disabled = true;
     try {
-      stored = await checkinDay(date.value);
+      const next = await checkinDay(date.value);
+      if (read !== reads) return;
+      stored = next;
+      shown = date.value;
       fields.replaceChildren(...checkinFormNodes(stored));
       status.textContent = "";
     } catch (error) {
+      if (read !== reads) return;
+      date.value = shown;
       if (!isSessionEndedError(error)) status.textContent = error.message;
+    } finally {
+      if (read === reads) save.disabled = false;
     }
   });
   form.addEventListener("submit", async (event) => {
@@ -167,5 +179,6 @@ globalThis.addEventListener("hashchange", () => { checkinLinkPending ||= globalT
 document.addEventListener("app:route-rendered", () => {
   if (!checkinLinkPending || !state.data) return;
   checkinLinkPending = false;
+  if (AppRouter.baseRoute() !== "plan") return;
   void openCheckinForm(todayIso());
 });
