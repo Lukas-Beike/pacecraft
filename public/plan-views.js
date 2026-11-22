@@ -495,9 +495,9 @@ function competitionResult(result) {
   let effort = null;
   if (result.sport === "ride") {
     if (Number.isFinite(power) && power > 0) effort = `${Math.round(power)} W`;
-    else if (hasSpeed) effort = `${AppFormat.number(speed * 3.6)} km/h`;
+    else if (hasSpeed) effort = AppFormat.speed(speed * 3.6);
   } else if (hasSpeed) {
-    effort = result.sport === "swim" ? `${AppFormat.clock(100 / speed)} /100 m` : `${AppFormat.clock(1000 / speed)} /km`;
+    effort = result.sport === "swim" ? `${AppFormat.clock(100 / speed)} /100 m` : AppFormat.pace(1000 / speed);
   }
   const time = result.duration_s == null ? null : AppFormat.clock(result.duration_s);
   const value = [time, AppFormat.distance(result.distance_m), effort].filter(Boolean).join(" · ");
@@ -2917,7 +2917,10 @@ function libraryReceiptLine(status, id, receipt) {
 const LIBRARY_STEP_UNITS = { h: "h", m: "min", s: "s", km: "km", mtr: "m" };
 
 function libraryStepLine(line) {
-  const words = line.replace(/^\s*-\s*/, "").split(/\s+/).filter(Boolean).map((word) => {
+  const text = line.replace(/^\s*-\s*/, "");
+  // Only a line that starts with a size is a step; a prose bullet stays as written.
+  if (!/^\d+(?:[.,]\d+)?(?:h|m|s|km|mtr)(?:\s|$)/.test(text)) return line;
+  const words = text.split(/\s+/).filter(Boolean).map((word) => {
     const size = /^(\d+(?:[.,]\d+)?)(h|m|s|km|mtr)$/.exec(word);
     if (size) return `${size[1].replace(".", ",")} ${LIBRARY_STEP_UNITS[size[2]]}`;
     if (/^\d+(?:[.,]\d+)?%$/.test(word)) return `${word.slice(0, -1).replace(".", ",")} %`;

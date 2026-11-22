@@ -86,4 +86,18 @@ test("a library card shows its stored step lines in German words (#3933)", () =>
   const { libraryDescriptionText } = extractFunctions("plan-views.js", ["LIBRARY_STEP_UNITS", "libraryStepLine", "libraryDescriptionText"]);
   assert.equal(libraryDescriptionText("Locker\n- 20m 55%\n- 20m Z1 HR\n- 400mtr"), "Locker\n20 min · 55 %\n20 min · Z1 Herzfrequenz\n400 m");
   assert.equal(libraryDescriptionText(""), "");
+  assert.equal(libraryDescriptionText("- Locker einlaufen"), "- Locker einlaufen", "a prose bullet stays as written");
+});
+
+test("a change that rounds to zero carries no sign (#3933)", () => {
+  const AppFormat = require("../public/format.js");
+  const { analysisChange } = extractFunctions("analysis.js", ["analysisChange"], {
+    analysisValue: (value, unit) => `${AppFormat.number(value, { digits: 1, minDigits: 1 })} ${unit}`,
+    formatPace: AppFormat.pace,
+  });
+  assert.equal(analysisChange(0.4, "kg"), "+0,4 kg");
+  assert.equal(analysisChange(-0.4, "kg"), "−0,4 kg");
+  assert.equal(analysisChange(0.04, "kg"), "0,0 kg");
+  assert.equal(analysisChange(-4, "s/km"), "−0:04 /km");
+  assert.equal(analysisChange(0.2, "s/km"), "0:00 /km");
 });

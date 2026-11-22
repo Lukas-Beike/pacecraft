@@ -185,9 +185,14 @@ function appendAnalysisLineKey(section, series) {
   section.append(h("p", "analysis-line-key", h("span", "analysis-line-key-swatch"), ` Gestrichelt: ${dashed.map((item) => item.legendLabel || item.label).join(", ")}`));
 }
 
+// A change that rounds to zero carries no sign.
 function analysisChange(delta, unit) {
-  if (unit === "s/km") return `${delta < 0 ? "−" : "+"}${formatPace(Math.abs(delta))}`;
-  return `${delta < 0 ? "" : "+"}${analysisValue(delta, unit)}`;
+  const text = unit === "s/km" ? formatPace(Math.abs(delta)) : analysisValue(delta, unit);
+  if (/^[−+]?0([,:]0+)?(\s|$)/.test(text)) return text;
+  // A pace is the absolute time and needs its own minus; a value carries it already.
+  let sign = delta < 0 ? "" : "+";
+  if (unit === "s/km") sign = delta < 0 ? "−" : "+";
+  return `${sign}${text}`;
 }
 
 function appendAnalysisReferenceNotes(section, series, unit) {
