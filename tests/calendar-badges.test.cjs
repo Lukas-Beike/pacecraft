@@ -48,7 +48,7 @@ test("day notes show competition, confirmed rest status and one calendar line wi
   );
   assert.deepEqual(plain(specs), [
     { kind: "competition", icon: "🏁", text: "A-Wettkampf: Stadtlauf" },
-    { kind: "day-status", icon: "", text: "Ruhetag" },
+    { kind: "day-status", icon: "", text: "Ruhetag geplant" },
     { kind: "calendar", icon: "📅", text: "Arzt · Kein Training" },
   ]);
 });
@@ -208,4 +208,22 @@ test("offline, an answer is not queued: the note stays and shows the network mes
   assert.equal(well.disabled || sick.disabled, false);
   await well.fire("click");
   assert.notEqual(infectionHintNote(hint, "2026-11-21", false), null);
+});
+
+test("a rest day is planned only while no session, shown or hidden by the filter, stands on the day", () => {
+  const { plannedDayNoteSpecs } = helpers();
+  const withSession = plannedDayNoteSpecs({ day_status: "rest" }, [], "2026-10-10", true);
+  assert.deepEqual(plain(withSession), []);
+  assert.deepEqual(plain(plannedDayNoteSpecs({ day_status: "rest" }, [], "2026-10-10", false)), [{ kind: "day-status", icon: "", text: "Ruhetag geplant" }]);
+  assert.deepEqual(plain(plannedDayNoteSpecs({ day_status: "pause" }, [], "2026-10-10", true)), [{ kind: "day-status", icon: "", text: "Trainingspause" }]);
+});
+
+test("a competition goal is shown as a duration only when it is a time", () => {
+  const { competitionGoal } = extractFunctions("plan-views.js", ["competitionGoal"], { AppFormat: require("../public/format.js") });
+  assert.equal(competitionGoal("Unter 45 Minuten"), "Unter 45 Minuten");
+  assert.equal(competitionGoal(null), null);
+  assert.equal(competitionGoal("01:45:00"), competitionGoal("1:45:00"));
+  assert.notEqual(competitionGoal("01:45:00"), "01:45:00");
+  // Two parts are ambiguous (3:30 is hours and minutes for a marathon), so they stay as written.
+  assert.equal(competitionGoal("3:30"), "3:30");
 });

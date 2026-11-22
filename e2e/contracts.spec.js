@@ -594,7 +594,7 @@ test("planned agenda prioritizes dates and sessions with compact weather and exp
       { id: "agenda-completed-swim", date: addDateKey(date, 1), name: "Absolvierte Schwimmeinheit", type: "Swim", is_completed_activity: true, moving_duration_s: 1800, distance_m: 1500 },
       { id: "agenda-completed-strength", date: addDateKey(date, 1), name: "Absolvierte Krafteinheit", type: "WeightTraining", is_completed_activity: true, moving_duration_s: 1800 },
       { id: "agenda-completed-other", date: addDateKey(date, 1), name: "Absolvierte sonstige Einheit", type: "Hike", is_completed_activity: true, moving_duration_s: 1800 },
-      // Keeps a plan in the week of date + 1 on Sundays too, so extra activities there still show "Zusätzlich".
+      // Keeps a plan in the week of date + 1 on Sundays too, so extra activities there still show "Ungeplant".
       { id: "agenda-next-plan", date: addDateKey(date, 1), name: "Geplante Folgeeinheit", type: "Run", duration_minutes: 30 },
       { id: "agenda-matched", date: addDateKey(date, -2), name: "Aktivierung", type: "Ride", duration_minutes: 45, training_load: 25,
         compliance: { status: "completed", percentage: 136, basis: "training_load", actual_activity: { name: "Aktivierung absolviert", type: "Ride", moving_duration_s: 3600, distance_m: 24000, training_load: 34, avg_hr: 125, avg_power: 201 } } },

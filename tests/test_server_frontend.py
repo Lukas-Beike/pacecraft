@@ -512,7 +512,7 @@ class ServerFrontendTests(ServerTestCase):
         plan_views = (root / "plan-views.js").read_text(encoding="utf-8")
         styles = (root / "styles.css").read_text(encoding="utf-8")
         self.assertIn(
-            "plannedDayNotes(noteContext, state.data?.competitions, dateKey)",
+            "plannedDayNotes(noteContext, state.data?.competitions, dateKey, daySessions > 0)",
             plan_views,
         )
         self.assertIn("state.data?.competitions, state.data?.weather", plan_views)
