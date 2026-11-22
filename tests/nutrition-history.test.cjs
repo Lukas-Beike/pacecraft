@@ -94,7 +94,7 @@ test("weekly chart averages observed days independently and preserves empty week
   assert.equal(context.nutritionChartDays(days.slice(0, 28)).length, 28);
 });
 
-const BALANCE = ["NUTRITION_WEEK_MACROS", "nutritionStatTile", "nutritionMacroCard", "nutritionGoalText", "nutritionBalanceCard", "nutritionWeekValue", "nutritionChartSeries", "nutritionChartBalance", "nutritionChartDayRow"];
+const BALANCE = ["NUTRITION_WEEK_MACROS", "nutritionStatTile", "nutritionMacroCard", "nutritionGoalText", "nutritionBalanceCard", "nutritionPeriodText", "nutritionDayLabel", "nutritionWeekShown", "nutritionWeekValue", "nutritionChartSeries", "nutritionChartBalance", "nutritionChartDayRow"];
 
 // #3704: the Bilanz card's hero is the mean balance per day, coloured by its distance to the goal.
 test("the Bilanz and Makros cards: hero by goal distance, three tiles, no empty Zucker or Salz tile", () => {
@@ -151,4 +151,17 @@ test("the diary's intake key changes with kcal, macros or the estimate flag of a
   for (const change of [{ kcal: 700 }, { protein_g: 40 }, { estimate_uncertain: true }]) {
     assert.notEqual(nutritionIntakeKey(day({ ...meal, ...change })), shown, JSON.stringify(change));
   }
+});
+
+// #3930 N-01: the start of a period across a year keeps its year, and the days of a long period name theirs.
+test("a Verlauf period keeps the year of its start, and a long period labels its days with the year", () => {
+  const vm = require("node:vm");
+  const ctx = extractFunctions("nutrition.js", ["nutritionExpenditureDate", "nutritionDayLabel", "nutritionPeriodText", "nutritionWeekShown"]);
+  assert.equal(ctx.nutritionPeriodText("2025-11-22", "2026-11-21"), "22.11.2025–21.11.2026");
+  assert.equal(ctx.nutritionPeriodText("2026-10-22", "2026-11-18"), "22.10.–18.11.2026");
+  assert.equal(ctx.nutritionDayLabel("2026-11-18"), "18.11", "no year without a week on screen");
+  vm.runInContext("nutritionWeekShown = { days: new Array(28) }", ctx);
+  assert.equal(ctx.nutritionDayLabel("2026-11-18"), "18.11");
+  vm.runInContext("nutritionWeekShown = { days: new Array(365) }", ctx);
+  assert.equal(ctx.nutritionDayLabel("2026-11-18"), "18.11.2026");
 });

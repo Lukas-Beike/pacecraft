@@ -308,12 +308,12 @@ test("'Offene Kalorien' head the diary's energy card, else a link to the goal (#
   const hold = energyGoalStrip({ ...read, goal: { ...goal, goal: "hold", goal_kcal: 0, target_kcal: 2400, remaining_kcal: 1200 } });
   assert.deepEqual(hold.children[2].children.map(textOf), ["gegessen 1200", "Ziel heute 2400"]);
   assert.equal(energyGoalStrip({ ...read, goal: { ...goal, source: null, total_kcal: null, target_kcal: null, remaining_kcal: null } }).dataset.energyGoal, "pending");
-  // No goal: the link opens Körper and the goal dialog.
+  // No goal: the button opens the goal dialog over the diary (#3930).
   const none = energyGoalStrip({ ...read, goal: null });
   assert.equal(textOf(none), "Ziel festlegen");
   none.children[0].fire("click");
   await new Promise((resolve) => setImmediate(resolve));
-  assert.deepEqual(opened, ["nutrition/body", "dialog"]);
+  assert.deepEqual(opened, ["dialog"]);
   assert.equal(energyGoalText({ energy_goal: "lose", energy_goal_kcal: "500" }), "Abnehmen, 500 kcal/Tag");
   assert.equal(energyGoalText({ energy_goal: "hold" }), "Halten");
 });

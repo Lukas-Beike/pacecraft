@@ -487,7 +487,8 @@ test("@responsive the energy goal is set in Körper and priced in the diary", as
   const strip = page.locator("#nutritionEnergy [data-energy-goal]");
   await expect(strip).toHaveText("Ziel festlegen");
   await strip.getByRole("button", { name: "Ziel festlegen" }).click();
-  await expect(page).toHaveURL(/#nutrition\/body$/);
+  // #3930: the dialog opens over the diary; the athlete does not leave it.
+  await expect(page).toHaveURL(/#nutrition\/diary$/);
   const dialog = page.locator("#energyGoalDialog");
   await expect(dialog).toBeVisible();
   // #3757: the goal control is the app's segmented control: one row of three segments at every

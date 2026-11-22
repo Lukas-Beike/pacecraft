@@ -365,6 +365,18 @@ function nutritionChartDays(days) {
   });
 }
 
+// A day label of the Verlauf: day and month, with the year once the period is longer than three months (#3930).
+function nutritionDayLabel(value) {
+  const full = nutritionExpenditureDate(value);
+  return nutritionWeekShown?.days.length > 91 ? full : full.slice(0, 5);
+}
+
+// The period of the Verlauf: the start keeps its year when it is not the end's year.
+function nutritionPeriodText(startDate, endDate) {
+  const start = nutritionExpenditureDate(startDate);
+  return `${startDate?.slice(0, 4) === endDate?.slice(0, 4) ? start.slice(0, 6) : start}–${nutritionExpenditureDate(endDate)}`;
+}
+
 // Days without intake and expenditure are shown as one row per run (#1789).
 function nutritionChartRows(chartDays) {
   const rows = [];
@@ -378,8 +390,8 @@ function nutritionChartRows(chartDays) {
 }
 
 function nutritionEmptyRunRow({ start, end }) {
-  const first = nutritionExpenditureDate(start).slice(0, 5);
-  const last = nutritionExpenditureDate(end).slice(0, 5);
+  const first = nutritionDayLabel(start);
+  const last = nutritionDayLabel(end);
   return h("div", "nutrition-week-chart-day is-empty", h("strong", null, first === last ? first : `${first}–${last}`), h("span", null, "keine Daten"));
 }
 
@@ -413,7 +425,7 @@ function nutritionChartDayRow(day, scale, goal = null) {
   const bars = h("div", "nutrition-week-chart-bars",
     ...[["intake_kcal", "Aufnahme", "intake"], ["expenditure_kcal", "Verbrauch", "expenditure"]].map((series) => nutritionChartSeries(day, series, scale)));
   return h("div", "nutrition-week-chart-day",
-    h("strong", { "aria-label": (day.end_date && `${nutritionExpenditureDate(day.date)} bis ${nutritionExpenditureDate(day.end_date)}`) || null }, nutritionExpenditureDate(day.date).slice(0, 5)),
+    h("strong", { "aria-label": (day.end_date && `${nutritionExpenditureDate(day.date)} bis ${nutritionExpenditureDate(day.end_date)}`) || null }, nutritionDayLabel(day.date)),
     bars, nutritionChartBalance(day.balance_kcal, goal));
 }
 
@@ -453,7 +465,7 @@ function nutritionBalanceCard(week, goal) {
   if (average == null) markValueMissing(number); else setValueWithUnit(number, nutritionWeekValue(average, "kcal", true));
   const aim = nutritionGoalText(goal);
   const hero = h("p", { className: "verlauf-hero", dataset: distance ? { goalDistance: distance } : {} }, number, h("small", null, "Ø pro Tag"), aim ? h("small", "verlauf-goal", aim) : null);
-  const period = `${nutritionExpenditureDate(week.start_date).slice(0, 6)}–${nutritionExpenditureDate(week.end_date)} · ${week.balance_days}/${dayCount} Tage erfasst`;
+  const period = `${nutritionPeriodText(week.start_date, week.end_date)} · ${week.balance_days}/${dayCount} Tage erfasst`;
   // The period balance's expenditure is the own day total (athlete decision, #3600).
   const tiles = [nutritionStatTile("Aufnahme", week.averages.intake_kcal.value, "kcal", "Ø pro Tag"),
     nutritionStatTile("Verbrauch", week.averages.expenditure_kcal.value, "kcal", week.expenditure_source === "own" ? "Ø pro Tag · aus deinen Daten" : "Ø pro Tag"),
@@ -482,7 +494,7 @@ function renderNutritionWeek(week) {
   // The fit cards, the Bilanz and the rows, which take the goal from the same read.
   renderNutritionFit();
   document.querySelector("#nutritionWeekDays").replaceChildren(...week.days.map((day) => h("tr", null,
-    h("th", { scope: "row" }, nutritionExpenditureDate(day.date).slice(0, 5)),
+    h("th", { scope: "row" }, nutritionDayLabel(day.date)),
     ...["intake_kcal", "expenditure_kcal", "balance_kcal"].map((key) => h("td", null, day[key] == null ? "–" : nutritionWeekValue(day[key], "", key === "balance_kcal"))))));
   document.querySelector("#nutritionWeekDetails").hidden = false;
 }
@@ -738,7 +750,7 @@ function normalizeNutritionProduct(product = {}) {
 
 function nutritionProductForm(product = {}) {
   const form = h("form", "nutrition-product-form");
-  form.innerHTML = `<input name="id" type="hidden"><input name="source" type="hidden"><input name="source_url" type="hidden"><input name="external_id" type="hidden"><input name="provenance" type="hidden"><input name="warnings" type="hidden"><label>Marke<input name="brand" maxlength="120"></label><label>EAN/GTIN<input name="barcode" inputmode="numeric" pattern="[0-9]{8,14}" maxlength="14"></label><div class="nutrition-product-grid"><label>Name<input name="name" required maxlength="160"></label><label>kcal<input name="kcal" type="number" min="0" step="any"></label><label>Kohlenhydrate (g)<input name="carbs_g" type="number" min="0" step="any"></label><label>Protein (g)<input name="protein_g" type="number" min="0" step="any"></label><label>Fett (g)<input name="fat_g" type="number" min="0" step="any"></label><label>Bezugsmenge<input name="basis_amount" type="number" min="0.1" step="0.1" value="100"></label><label>Einheit<select name="basis_unit"><option value="g">pro 100 g</option><option value="ml">pro 100 ml</option><option value="portion">pro Portion</option></select></label><label data-product-size="portion">Portion (<span data-size-unit>g</span>)<input name="portion_amount" type="number" min="0.1" max="10000" step="any"></label><label data-product-size="package">Packung (<span data-size-unit>g</span>)<input name="package_amount" type="number" min="0.1" max="10000" step="any"></label></div><p class="fine-print" data-extraction-confidence></p><ul class="nutrition-warning-checklist" data-extraction-warnings aria-label="Hinweise zur Prüfung" hidden></ul><div class="nutrition-actions"><button type="submit" class="push-button">Produkt lokal speichern</button><button type="button" class="secondary-button" data-product-cancel>Abbrechen</button></div>`;
+  form.innerHTML = `<input name="id" type="hidden"><input name="source" type="hidden"><input name="source_url" type="hidden"><input name="external_id" type="hidden"><input name="provenance" type="hidden"><input name="warnings" type="hidden"><label>Marke<input name="brand" maxlength="120"></label><label>EAN/GTIN<input name="barcode" inputmode="numeric" pattern="[0-9]{8,14}" maxlength="14"></label><div class="nutrition-product-grid"><label>Name<input name="name" required maxlength="160"></label><label>kcal<input name="kcal" type="number" min="0" step="any"></label><label>Kohlenhydrate (g)<input name="carbs_g" type="number" min="0" step="any"></label><label>Protein (g)<input name="protein_g" type="number" min="0" step="any"></label><label>Fett (g)<input name="fat_g" type="number" min="0" step="any"></label><label>Bezugsmenge<input name="basis_amount" type="number" min="0.1" step="0.1" value="100"></label><label>Einheit<select name="basis_unit"><option value="g">pro 100 g</option><option value="ml">pro 100 ml</option><option value="portion">pro Portion</option></select></label><label data-product-size="portion"><span data-size-label="Portion">Portion (g)</span><input name="portion_amount" type="number" min="0.1" max="10000" step="any"></label><label data-product-size="package"><span data-size-label="Packung">Packung (g)</span><input name="package_amount" type="number" min="0.1" max="10000" step="any"></label></div><p class="fine-print" data-extraction-confidence></p><ul class="nutrition-warning-checklist" data-extraction-warnings aria-label="Hinweise zur Prüfung" hidden></ul><div class="nutrition-actions"><button type="submit" class="push-button">Produkt lokal speichern</button><button type="button" class="secondary-button" data-product-cancel>Abbrechen</button></div>`;
   populateNutritionProductFields(form, product);
   form.elements.source.value = product.source || "packaging_label";
   form.append(h("input", { name: "confidence", type: "hidden", value: nutritionProductValue(product.confidence) }));
@@ -790,7 +802,9 @@ function syncNutritionProductSizes(form) {
   const unit = form.elements.basis_unit.value;
   for (const label of form.querySelectorAll("[data-product-size]")) {
     label.hidden = form.dataset.database === "true" || !["g", "ml"].includes(unit);
-    label.querySelector("[data-size-unit]").textContent = unit;
+    // One text node: a label that is a grid would put the name, the unit and the bracket on three lines.
+    const name = label.querySelector("[data-size-label]");
+    name.textContent = `${name.dataset.sizeLabel} (${unit})`;
   }
 }
 
@@ -805,7 +819,10 @@ function setNutritionProductConfidence(form, product) {
   const confidence = Number(product.confidence);
   const warning = Number.isFinite(confidence) && confidence < 0.65 ? "Geringe Erkennungssicherheit. Werte besonders sorgfältig prüfen." : "Erkannte Werte bitte mit dem Etikett abgleichen.";
   const confidenceLine = form.querySelector("[data-extraction-confidence]");
-  confidenceLine.textContent = Number.isFinite(confidence) ? `Erkennungssicherheit: ${Math.round(confidence * 100)} %. ${warning}` : warning;
+  // Only values read from a photo carry a confidence; a manual product or an edit has none, and 0 is no reading (#3930).
+  const extracted = product.confidence != null && Number.isFinite(confidence) && confidence > 0;
+  confidenceLine.hidden = !extracted;
+  confidenceLine.textContent = extracted ? `Erkennungssicherheit: ${Math.round(confidence * 100)} %. ${warning}` : "";
   const checklist = form.querySelector("[data-extraction-warnings]");
   const warnings = Array.isArray(product.warnings) ? product.warnings.map((text) => String(text ?? "").trim()).filter(Boolean) : [];
   checklist.replaceChildren(...warnings.map((text) => h("li", null, text)));
