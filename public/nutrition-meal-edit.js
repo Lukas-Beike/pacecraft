@@ -134,7 +134,8 @@ async function searchNutritionMealSwap() {
     // A food counted in another unit cannot take the amount (no density conversion); only an
     // estimate in portions has no weight to keep, so its swap asks for the amount.
     const fitting = foods.map((food) => ({ ...normalizeNutritionProduct(food), id: food.id })).filter((food) => food.id && NUTRITION_MEAL_UNITS.has(food.basis_unit) && (food.basis_unit === row.unit || row.originalUnit === "portion"));
-    nodes.swapStatus.textContent = fitting.length ? "" : `Keine Treffer${row.originalUnit === "portion" ? "" : ` in ${row.unit}`}.`;
+    const inUnit = row.originalUnit === "portion" ? "" : ` in ${row.unit}`;
+    nodes.swapStatus.textContent = fitting.length ? "" : `Keine Treffer${inUnit}.`;
     nodes.results.replaceChildren(...fitting.map((food) => nutritionMealSwapResult(row, food)));
   } catch (error) {
     if (sequence === nutritionMealEdit?.searchSequence) nodes.swapStatus.textContent = `Suche fehlgeschlagen: ${error.message}`;

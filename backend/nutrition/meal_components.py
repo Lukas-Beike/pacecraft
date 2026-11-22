@@ -108,28 +108,29 @@ def components_revision(components: list[dict[str, Any]]) -> str:
 
 
 def _validated_edits(edits: Any, count: int) -> list[dict[str, Any]]:
+    """Each edit names a free position once: a removal alone or a change of the rest."""
     if not isinstance(edits, list) or not edits:
         raise AppError(400, INVALID_EDIT)
-    seen: set[int] = set()
+    seen: set[Any] = set()
     for edit in edits:
-        index = edit.get("index") if isinstance(edit, dict) else None
-        if (
-            not isinstance(index, int)
-            or isinstance(index, bool)
-            or not 0 <= index < count
-            or index in seen
-            or set(edit) - EDIT_KEYS
-        ):
+        keys = set(edit) if isinstance(edit, dict) else set()
+        index = edit.get("index") if keys else None
+        positioned = (
+            isinstance(index, int)
+            and not isinstance(index, bool)
+            and 0 <= index < count
+            and index not in seen
+        )
+        removal = keys == {"index", "remove"} and edit["remove"] is True
+        change = (
+            "remove" not in keys
+            and 1 < len(keys)
+            and keys <= EDIT_KEYS
+            and not {"food_id", "product_id"} <= keys
+        )
+        if not (positioned and (removal or change)):
             raise AppError(400, INVALID_EDIT)
         seen.add(index)
-        remove = edit.get("remove")
-        target = {"food_id", "product_id"} & set(edit)
-        if (remove is not None and remove is not True) or len(target) > 1:
-            raise AppError(400, INVALID_EDIT)
-        if remove and set(edit) != {"index", "remove"}:
-            raise AppError(400, INVALID_EDIT)
-        if not remove and set(edit) == {"index"}:
-            raise AppError(400, INVALID_EDIT)
     return edits
 
 
@@ -169,6 +170,29 @@ def _scaled(component: dict[str, Any], amount: float) -> dict[str, Any]:
     }
 
 
+def _changed(
+    component: dict[str, Any],
+    edit: dict[str, Any],
+    calculator: MealComponentCalculator,
+    db: Any,
+    food: dict[str, Any] | None,
+) -> dict[str, Any]:
+    """One component resized or swapped; a swap keeps the amount and unit unless named."""
+    key = next((key for key in ("food_id", "product_id") if key in edit), None)
+    if key is None:
+        if "unit" in edit and edit["unit"] != component["unit"]:
+            raise AppError(400, INVALID_EDIT)
+        return _scaled(component, calculator.validated_quantity(edit.get("amount")))
+    spec = {
+        "kind": "database" if key == "food_id" else "local_product",
+        key: edit[key],
+        "amount": edit.get("amount", component["amount"]),
+        "unit": edit.get("unit", component["unit"]),
+    }
+    calculated = calculator.calculate(db, [spec], {0: food} if food else None)
+    return calculated["nutrition_basis"]["components"][0]
+
+
 def edited_components(
     entry: dict[str, Any],
     edits: Any,
@@ -192,36 +216,8 @@ def edited_components(
         edit = by_index.get(index)
         if edit is None:
             result.append(component)
-        elif edit.get("remove"):
-            continue
-        elif "food_id" in edit or "product_id" in edit:
-            amount = edit.get("amount", component["amount"])
-            unit = edit.get("unit", component["unit"])
-            spec = (
-                {
-                    "kind": "database",
-                    "food_id": edit["food_id"],
-                    "amount": amount,
-                    "unit": unit,
-                }
-                if "food_id" in edit
-                else {
-                    "kind": "local_product",
-                    "product_id": edit["product_id"],
-                    "amount": amount,
-                    "unit": unit,
-                }
-            )
-            calculated = calculator.calculate(
-                db, [spec], {0: foods[index]} if "food_id" in edit else None
-            )
-            result.append(calculated["nutrition_basis"]["components"][0])
-        else:
-            if "unit" in edit and edit["unit"] != component["unit"]:
-                raise AppError(400, INVALID_EDIT)
-            result.append(
-                _scaled(component, calculator.validated_quantity(edit.get("amount")))
-            )
+        elif "remove" not in edit:
+            result.append(_changed(component, edit, calculator, db, foods.get(index)))
     if not result:
         raise AppError(
             400,
