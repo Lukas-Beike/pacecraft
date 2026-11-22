@@ -112,6 +112,9 @@ class GuardDestructiveGitTests(unittest.TestCase):
             "docker container remove -v x",
             "ruff format tests 2>&1",
             "ruff format . # all",
+            # Quotes are dropped, so a `#` inside one is no comment.
+            'gh pr merge 12 --body "fix #1" --auto',
+            "ruff format a.py # changed only",
         ):
             with self.subTest(command=command):
                 self.assertEqual(run_hook(command), 2)
@@ -165,7 +168,6 @@ class GuardDestructiveGitTests(unittest.TestCase):
             "git stage backend/x.py",
             "ruff format a.py 2>&1",
             "ruff format a.py > out.txt",
-            "ruff format a.py # changed only",
             "ruff format --extension py:ipynb a.py",
             "ruff format tool.pyw",
             "ruff format --help",

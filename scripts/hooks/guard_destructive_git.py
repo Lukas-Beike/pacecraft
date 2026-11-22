@@ -280,8 +280,6 @@ def _breaks_tool_rule(words: list[str]) -> bool:
     """A gh, docker or ruff call that breaks a rule without exceptions (#3923).
 
     Each check is one pass back to front, like `_discards` (#3124)."""
-    comment = next((i for i, w in enumerate(words) if w.startswith("#")), len(words))
-    words = words[:comment]
     names = [
         w.replace("\\", "/").rsplit("/", 1)[-1].lower().removesuffix(".exe")
         for w in words
