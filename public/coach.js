@@ -482,10 +482,23 @@ async function finishChatStream(context) {
   return completed ? "completed" : "failed";
 }
 
+const OFFLINE_NOT_SENT = "Keine Verbindung – nicht gesendet.";
+
+// Coach turns are online-only: without a connection and without the server's start
+// event nothing was accepted, so the text goes back to the composer at once.
+function unsentOffline({ background, completed, stream }) {
+  return !completed && !background && !stream.operationId && !stream.serverError && globalThis.navigator?.onLine === false;
+}
+
 async function recoverChatRequestFailure(error, context) {
   const { attachments, chatGeneration, clientTurnId, completed, message, request, sessionGeneration, stream } = context;
   if (!chatRequestIsCurrent(sessionGeneration, chatGeneration)) return false;
   cancelScheduledChatStreamRender();
+  if (unsentOffline(context)) {
+    stream.rejected = true;
+    error = new Error(OFFLINE_NOT_SENT);
+    rememberUnsentDraft(message, clientTurnId);
+  }
   if (stream.rejected) {
     rememberChatTurn(null);
     const input = $("#messageInput");
@@ -540,7 +553,7 @@ function finishChatRequest(context) {
 async function requestCoachResponse(message, requestKind = null, attachments = []) {
   const sessionGeneration = state.sessionGeneration;
   const chatGeneration = state.chatGeneration;
-  const clientTurnId = AppState.secureToken("turn");
+  const clientTurnId = reusedTurnId(message) || AppState.secureToken("turn");
   if (chatIsNearBottom()) state.chatFollowLatest = true;
   if (state.data) {
     state.data.messages = mergeChatMessages([{ role: "user", content: message, attachment_names: JSON.stringify(attachments.map(item => item.name)), client_turn_id: clientTurnId, created_at: new Date().toISOString(), optimistic: true }]);
@@ -548,6 +561,7 @@ async function requestCoachResponse(message, requestKind = null, attachments = [
   }
   state.chatStreamText = "";
   rememberChatTurn(clientTurnId);
+  rememberUnsentDraft(null);
   const request = { phase: "running", message, clientTurnId, operationId: null, responseMessageId: null, responseMessageReceived: false, cancelRequested: false };
   state.chatRequest = request;
   const stream = { controller: new AbortController(), operationId: null, cancelRequested: false, request, serverError: false };
@@ -979,24 +993,19 @@ function addStructuredCoachReceipts(payload) {
     .map(([, receipt]) => receipt));
 }
 
-// `send: false` only puts the message into the field for the athlete to finish and send (#2193).
-async function askCoach(message, { send = true, requestKind = null } = {}) {
+// Every hand-over to the Coach only fills the composer; the athlete edits it and sends (#3931).
+async function askCoach(message, { requestKind = null } = {}) {
   const applied = await AppRouter.navigate("coach", { historyMode: "push", focus: false });
   if (!applied) return;
   const input = $("#messageInput");
   if (!input) return;
-  // A prefill keeps an unsent draft and adds the message on its own line; it is the athlete's own
-  // request, so a quick action's kind left in the field no longer applies.
-  // A calendar entry point with a quick-action kind runs on that kind's model (#2744); any other
-  // request, sent or prefilled, drops a kind left in the field.
-  if (send && requestKind) input.dataset.requestKind = requestKind;
+  // The message joins an unsent draft on its own line. A quick action's kind (its own model,
+  // #2744) applies only to an otherwise empty composer, and a typed edit drops it.
+  const hasDraft = Boolean(input.value.trim());
+  if (requestKind && !hasDraft) input.dataset.requestKind = requestKind;
   else delete input.dataset.requestKind;
-  input.value = !send && input.value.trim() ? `${input.value.trimEnd()}\n${message}` : message;
+  input.value = hasDraft ? `${input.value.trimEnd()}\n${message}` : message;
   input.dispatchEvent(new Event("input"));
-  if (send) {
-    $("#chatForm")?.requestSubmit();
-    return;
-  }
   input.focus();
   input.setSelectionRange(input.value.length, input.value.length);
 }
@@ -1427,11 +1436,46 @@ function reconcileCompletedChatMessage(message) {
 }
 
 function rememberChatTurn(clientTurnId) {
-  // Only an opaque operation identity survives a reload. No athlete text or credentials.
+  // Only an opaque operation identity survives a reload. No credentials.
   try {
     if (clientTurnId) sessionStorage.setItem("coachPendingTurn", clientTurnId);
     else sessionStorage.removeItem("coachPendingTurn");
   } catch { }
+}
+
+// A message that never reached the server stays the athlete's draft across a reload.
+// The turn's id stays with its text: the server may have queued the turn before the connection
+// dropped, so sending the same text again reuses the id and is not run twice.
+function rememberUnsentDraft(text, turnId = null) {
+  try {
+    if (text) sessionStorage.setItem("coachUnsentDraft", text);
+    else { sessionStorage.removeItem("coachUnsentDraft"); sessionStorage.removeItem("coachUnsentTurn"); }
+    if (text && turnId) sessionStorage.setItem("coachUnsentTurn", JSON.stringify({ id: turnId, text }));
+  } catch { }
+}
+
+function reusedTurnId(message) {
+  try {
+    const turn = JSON.parse(sessionStorage.getItem("coachUnsentTurn") || "null");
+    return turn?.text === message && typeof turn.id === "string" ? turn.id : null;
+  } catch { return null; }
+}
+
+// While an offline draft is kept, what the athlete edits is kept with it.
+function syncUnsentDraft(text) {
+  try {
+    if (sessionStorage.getItem("coachUnsentDraft") !== null) rememberUnsentDraft(text.trim() ? text : null);
+  } catch { }
+}
+
+function restoreUnsentDraft() {
+  const input = $("#messageInput");
+  let text = "";
+  try { text = sessionStorage.getItem("coachUnsentDraft") || ""; } catch { }
+  if (!text || !input || input.value.trim()) return;
+  input.value = text;
+  state.chatDraftDirty = true;
+  input.dispatchEvent(new Event("input"));
 }
 
 function applyChatReceipt(receipt) {
@@ -2269,12 +2313,7 @@ function setupCoachEvents() {
     const menu = button.closest("[popover]");
     if (menu?.matches(":popover-open")) menu.hidePopover();
     if (state.busy) return;
-    const input = $("#messageInput");
-    input.value = button.dataset.message || "";
-    if (button.dataset.requestKind) input.dataset.requestKind = button.dataset.requestKind;
-    else delete input.dataset.requestKind;
-    input.dispatchEvent(new Event("input"));
-    $("#chatForm").requestSubmit();
+    void askCoach(button.dataset.message || "", { requestKind: button.dataset.requestKind || null });
   };
   $("#quickMessageTemplates").addEventListener("click", startQuickAction);
   $("#composerPlusMenu").addEventListener("click", startQuickAction);
@@ -2298,6 +2337,7 @@ function setupCoachEvents() {
     // A typed edit makes the draft the athlete's own request, not a quick action.
     if (event.isTrusted) delete event.target.dataset.requestKind;
     state.chatDraftDirty = Boolean(event.target.value.trim());
+    syncUnsentDraft(event.target.value);
     updateChatControls();
     if (keepLatestVisible) scrollChatToLatest();
   });
@@ -2320,4 +2360,5 @@ function setupCoachEvents() {
   globalThis.addEventListener("touchmove", handleChatTouchMove, { passive: true });
   globalThis.addEventListener("keydown", handleChatScrollKey);
   $("#messages").addEventListener("scroll", handleChatMessagesScroll, { passive: true });
+  restoreUnsentDraft();
 }

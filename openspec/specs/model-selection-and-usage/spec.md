@@ -366,7 +366,7 @@ The system SHALL let the athlete choose one model and one thinking level for eac
 
 #### Scenario: Turn and helper routing
 - **WHEN** a Coach turn is enqueued or a nutrition helper calls the model
-- **THEN** a quick-action turn (the calendar's "Mit Coach besprechen" sends `session_analysis`) records the planning model and thinking level in its receipt, every other turn the conversation ones, and the label photo and product web search use the nutrition model, the photo with the nutrition thinking level and the web search with its fixed low effort; the bootstrap and the diagnostic report list each task's choice under `model.tasks` and `configuration.tasks`, the bootstrap with `ready` when that task's provider has its key
+- **THEN** a quick-action turn (the calendar's "Mit Coach besprechen" prefills `session_analysis`) records the planning model and thinking level in its receipt, every other turn the conversation ones, and the label photo and product web search use the nutrition model, the photo with the nutrition thinking level and the web search with its fixed low effort; the bootstrap and the diagnostic report list each task's choice under `model.tasks` and `configuration.tasks`, the bootstrap with `ready` when that task's provider has its key
 
 #### Scenario: Settings and answers
 - **WHEN** the athlete opens "Coach-Modell & Thinking" or reads the chat

@@ -643,7 +643,7 @@ function deviceSession(request) {
     sessionStorage: { getItem: () => null, setItem: (key) => sessionWrites.push(key), removeItem() {} },
     $: (selector) => (selector === "#appShell" ? harness.shell : (elements[selector] ??= element())),
     AppState: { setPlanSegment() {} },
-    cancelBootstrapRetry() {}, cancelDeferredLoads() {}, rememberChatTurn() {},
+    cancelBootstrapRetry() {}, cancelDeferredLoads() {}, rememberChatTurn() {}, rememberUnsentDraft() {},
     disconnectStateEvents() {}, resetNutritionView() {}, clearAnalysisReportCache() {}, cancelScheduledChatStreamRender() {},
     renderChatAttachments() {}, showAccessibleDialog() {}, renderConnectivityStatus() {}, renderMaintenanceStatus() {},
     setChatCacheSyncing() {}, retryBootstrapAuth() {}, showAppShellLoading() {}, notePwaActivity() {},

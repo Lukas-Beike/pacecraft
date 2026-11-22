@@ -104,7 +104,7 @@ function frontend({ eventSource = false } = {}) {
     scrollChatToLatest() {},
     reloadForUpdateWhenSafe() {},
     renderMessages() {},
-    rememberChatTurn() {},
+    rememberChatTurn() {}, rememberUnsentDraft() {},
     api(requestPath) {
       calls.push(requestPath);
       if (auto.has(requestPath)) return Promise.resolve(auto.get(requestPath));

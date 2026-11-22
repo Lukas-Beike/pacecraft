@@ -1493,7 +1493,7 @@ function plannedDiscussButton(entry, dateKey) {
     /^[\w:.-]{1,80}$/.test(id) ? `ID ${id}` : null,
   ].filter(Boolean).join(", ");
   const button = h("button", { type: "button", className: "secondary-button" }, "Mit Coach besprechen");
-  button.addEventListener("click", () => void globalThis.askCoach?.(`Zur geplanten Einheit am ${dateLabel(dateKey)} (${reference}): `, { send: false }));
+  button.addEventListener("click", () => void globalThis.askCoach?.(`Zur geplanten Einheit am ${dateLabel(dateKey)} (${reference}): `));
   return button;
 }
 

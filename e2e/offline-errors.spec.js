@@ -32,16 +32,15 @@ test("a failed request without a server response shows an honest German message 
   await expect(page.locator("body")).not.toContainText(TECHNICAL_TEXT);
 });
 
-test("the offline banner states that changes are not saved and promises no later delivery @responsive", async ({ page, context }) => {
+test("the offline banner says that entries wait and are sent later @responsive", async ({ page, context }) => {
   await ready(page);
   // Under 500 px height only critical notices show text (#1784); the offline notice needs a tall screen.
   await page.setViewportSize({ width: page.viewportSize().width, height: 800 });
   const notice = page.locator("#statusStrip .status-strip-main .status-strip-text");
   await context.setOffline(true);
   await expect(notice).toBeVisible();
-  await expect(notice).toContainText("Offline Änderungen können gerade nicht gespeichert werden. Bereits geladene Daten bleiben sichtbar.");
+  await expect(notice).toContainText("Offline Eigene Einträge warten und werden später gesendet.");
   await expect(notice).toContainText(/Stand (gerade eben|vor \d+ min)/);
-  await expect(notice).not.toContainText(/warten|gesendet|sp[äa]ter|Warteschlange/i);
   await context.setOffline(false);
   await expect(page.locator("#statusStrip")).not.toContainText("Offline");
 });
@@ -61,4 +60,22 @@ test("stale provider data is a polite status while real provider errors stay ale
   }));
   await expect(banner).toHaveAttribute("role", "alert");
   await expect(banner).toHaveAttribute("aria-live", "assertive");
+});
+
+test("a Coach message sent without a connection returns to the composer and survives a reload @responsive", async ({ page, context }) => {
+  await ready(page);
+  await page.evaluate(() => { location.hash = "coach"; });
+  const input = page.locator("#messageInput");
+  await expect(input).toBeVisible();
+  await context.setOffline(true);
+  await input.fill("Dieser Satz wurde ohne Verbindung geschrieben.");
+  await page.getByRole("button", { name: "Senden", exact: true }).click();
+  await expect(page.locator("#toast")).toContainText("Keine Verbindung – nicht gesendet.");
+  await expect(input).toHaveValue("Dieser Satz wurde ohne Verbindung geschrieben.");
+  await expect(page.locator("#coachWorking")).toHaveCount(0);
+  await expect(page.locator("#messages")).not.toContainText("Verbindung unterbrochen");
+  await context.setOffline(false);
+  await page.reload();
+  await expect(page.locator("#appShell")).toBeVisible();
+  await expect(page.locator("#messageInput")).toHaveValue("Dieser Satz wurde ohne Verbindung geschrieben.");
 });
