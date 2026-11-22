@@ -415,6 +415,9 @@ h2 {
 .analysis-zero-line { stroke: var(--muted); stroke-dasharray: 3 3; }
 .analysis-chart-card summary { display: flex; align-items: center; min-height: 44px; color: var(--ink); cursor: pointer; font-size: .8rem; }
 .analysis-chart-table { max-height: 300px; overflow: auto; }
+/* The week and day tables show their last rows and open in full: no box that cuts a row (#3928). */
+.analysis-series-table { max-height: none; overflow-y: visible; }
+.analysis-series-table > button { margin-top: 8px; }
 .analysis-chart-table:focus-visible { outline: 3px solid var(--focus-ring); outline-offset: 2px; }
 .analysis-chart-table table { width: 100%; border-collapse: collapse; color: var(--ink); font-size: .75rem; }
 .analysis-chart-table caption { padding: 8px; text-align: left; color: var(--muted); }

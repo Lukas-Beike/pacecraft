@@ -801,7 +801,7 @@ test("the coverage line counts the days or weeks that have a value", () => {
 test("the table behind a chart scrolls in a named region that the keyboard can reach", () => {
   const { makeScrollRegionFocusable } = extractFunctions("shared.js", ["makeScrollRegionFocusable"]);
   const document = fakeDocument();
-  const { appendAnalysisTable } = extractFunctions("analysis.js", ["appendAnalysisTable", "analysisValidPoint", "analysisAxisCaption"], {
+  const { appendAnalysisTable } = extractFunctions("analysis.js", ["appendAnalysisTable", "analysisTableValue", "ANALYSIS_TABLE_ROWS", "analysisValidPoint", "analysisAxisCaption"], {
     document,
     makeScrollRegionFocusable,
     dateLabel: (date) => date,
@@ -810,8 +810,35 @@ test("the table behind a chart scrolls in a named region that the keyboard can r
   });
   const section = new FakeElement("section");
   appendAnalysisTable(section, "Ruhepuls", [{ label: "Garmin", points: [{ date: "2026-10-10", value: 48 }] }], "bpm");
-  const region = section.children[0].children.find((child) => child.className === "analysis-chart-table");
+  const region = section.children[0].children.find((child) => child.className === "analysis-chart-table analysis-series-table");
   assert.deepEqual([region.tabIndex, region.attributes.role, region.attributes["aria-label"]], [0, "region", "Ruhepuls: Einzelwerte"]);
+});
+
+// A-03 (#3928): real columns, the newest week first, the last six rows and the rest on request.
+test("a weekly table has the columns Woche ab, Wert, Messungen and Quelle, newest first, and opens its older rows on request", () => {
+  const { makeScrollRegionFocusable } = extractFunctions("shared.js", ["makeScrollRegionFocusable"]);
+  const { appendAnalysisTable } = extractFunctions("analysis.js", ["appendAnalysisTable", "analysisTableValue", "ANALYSIS_TABLE_ROWS", "analysisValidPoint", "analysisAxisCaption"], {
+    document: fakeDocument(),
+    makeScrollRegionFocusable,
+    dateLabel: (date) => date,
+    analysisPointValue: (_item, point) => `${point.value} kg`,
+    analysisReadingDetails: (point) => (point.count ? ` · ${point.count} Messungen` : "") + (point.observedDate && point.observedDate !== point.date ? ` · letzter Messwert ${point.observedDate}` : ""),
+  });
+  const dates = ["2026-09-07", "2026-09-14", "2026-09-21", "2026-09-28", "2026-10-05", "2026-10-12", "2026-10-19", "2026-10-26"];
+  const points = dates.map((date, index) => ({ date, value: 70 + index, count: 3, observedDate: "2026-11-01" }));
+  const section = new FakeElement("section");
+  appendAnalysisTable(section, "Gewicht", [{ label: "Gewicht", source: "Garmin Connect", cadenceDays: 7, points }], "kg");
+  const region = section.children[0].children[1];
+  const [, head, body] = region.children[0].children;
+  assert.deepEqual(head.children[0].children.map((cell) => cell.textContent), ["Woche ab", "Wert", "Messungen", "Quelle"]);
+  const rows = body.children.map((row) => row.children.map((cell) => cell.textContent));
+  assert.deepEqual(rows[0], [dates[7], "77 kg", "3", "Garmin Connect"], "the newest week is first, its count and source in their own cells");
+  assert.deepEqual(body.children.map((row) => Boolean(row.hidden)), [false, false, false, false, false, false, true, true]);
+  const more = region.children[1];
+  assert.equal(more.textContent, "Alle 8 Wochen anzeigen");
+  more.fire("click");
+  assert.ok(body.children.every((row) => !row.hidden));
+  assert.equal(body.children[6].children[0].focused, true, "the focus moves to the first row that appeared");
 });
 
 test("the element helpers keep values as text and map class, properties, attributes and data", () => {
@@ -855,9 +882,9 @@ test("weekly sums add the known days per week, keep empty weeks as gaps and cut 
 
 test("weekly means round to one decimal over the known days of each week", () => {
   assert.deepEqual(plain(weekly().analysisWeeklyMeanPoints(WEEKLY_POINTS, "2026-10-05", "2026-10-21")), [
-    { date: "2026-10-05", value: 1.4, observedDate: "2026-10-11" },
+    { date: "2026-10-05", value: 1.4, observedDate: "2026-10-11", count: 3 },
     { date: "2026-10-12", value: null },
-    { date: "2026-10-19", value: 5, observedDate: "2026-10-21" },
+    { date: "2026-10-19", value: 5, observedDate: "2026-10-21", count: 2 },
   ]);
 });
 

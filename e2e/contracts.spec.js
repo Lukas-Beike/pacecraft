@@ -799,7 +799,8 @@ test("analysis charts preserve sources, gaps and dated values", { tag: "@respons
   await details.locator(":scope > summary").click();
   await expect(details).toHaveAttribute("open", "");
   await expect(details.getByRole("table")).toBeVisible();
-  await expect(cycling.getByRole("columnheader", { name: /Rad.*FTP.*Garmin Connect/ })).toBeVisible();
+  await expect(details.getByRole("columnheader", { name: "Wert" })).toBeVisible();
+  await expect(details.getByRole("cell", { name: "Garmin Connect" }).first()).toBeVisible();
   const AxeBuilder = require("@axe-core/playwright").default;
   expect((await new AxeBuilder({ page }).include("#analysisHistoryCharts").analyze()).violations).toEqual([]);
   expect(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth)).toBe(false);

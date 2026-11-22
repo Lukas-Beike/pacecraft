@@ -67,6 +67,47 @@ test("@responsive derived values carry no estimate chip and race predictions sho
   expect(unmatched).toEqual([]);
 });
 
+// A-02, A-03 (#3928): beyond 3 months all four Erholung charts plot the mean of each calendar week and say so; the
+// readiness axis is 0 to 100; the table behind a chart has real columns, newest week first, and opens its older rows.
+test("@responsive recovery at 12 Monate plots weekly means for every chart and lists them in a table of columns", async ({ page }) => {
+  test.setTimeout(120_000);
+  await open(page, "analysis/recovery", "#personalRecovery .analysis-subchart");
+  // The longer history arrives once and draws the charts again; read it before anything is opened.
+  const history = page.waitForResponse((response) => new URL(response.url()).pathname === "/api/analysis/trend-history");
+  await page.locator("#personalRecovery .analysis-period-controls").getByRole("button", { name: "12 Monate", exact: true }).click();
+  await history;
+  const cards = page.locator("#personalRecovery .analysis-subchart");
+  await expect(cards.first().locator(".analysis-week-caption")).toHaveText("Woche ab", { timeout: 30_000 });
+  const captions = await cards.evaluateAll((nodes) => nodes.map((card) => ({
+    title: card.querySelector("h3")?.textContent,
+    caption: card.querySelector("svg .analysis-axis-unit")?.textContent,
+    week: Boolean(card.querySelector(".analysis-week-caption")),
+  })));
+  expect(captions.length).toBeGreaterThanOrEqual(3);
+  for (const { title, caption, week } of captions) {
+    expect(caption, `${title} names what a point is`).toContain("Wochenmittel");
+    expect(week, `${title} dates its points by week start`).toBe(true);
+  }
+  const readiness = cards.filter({ has: page.getByRole("heading", { name: /^Trainingsbereitschaft/ }) });
+  if (await readiness.count()) {
+    await expect(readiness.locator(".analysis-value-tick")).toHaveText(["0", "25", "50", "75", "100"]);
+  }
+  // The demo's sleep history is the longest of the four.
+  const chart = cards.filter({ has: page.getByRole("heading", { name: /^Schlafdauer/ }) });
+  const details = chart.locator("details").filter({ has: page.getByText("Werte ansehen", { exact: true }) });
+  await expect(async () => {
+    if (!(await details.evaluate((node) => node.open))) await details.locator(":scope > summary").click();
+    await expect(chart.locator("tbody tr:visible")).toHaveCount(6, { timeout: 1000 });
+  }).toPass();
+  await expect(chart.locator("thead th").first()).toHaveText("Woche ab");
+  const dates = await chart.locator("tbody tr th").allTextContents();
+  const keys = dates.map((text) => text.split(".").reverse().join("-"));
+  expect(keys).toEqual([...keys].sort((a, b) => b.localeCompare(a)));
+  await chart.getByRole("button", { name: /^Alle \d+ Wochen anzeigen$/ }).click();
+  await expect(chart.locator("tbody tr:visible")).toHaveCount(dates.length);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+});
+
 test("@responsive nutrition diary shows calories as hero with one equal macro row", async ({ page }) => {
   await open(page, "nutrition/diary", "#nutritionTotals .nutrition-total");
   const tiles = page.locator("#nutritionTotals .nutrition-total");
