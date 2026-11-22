@@ -22,7 +22,8 @@ Batch user-visible merges into one release: every version commit puts each open
 PR behind `develop` and restarts its CI (#3922). Dispatch with `--when-quiet
 --when-green`: `--when-quiet` first waits until no PR merged into `develop` in
 the last `--quiet` minutes (default 10) and no armed PR is down to its last 3
-running checks, then the green check runs; not quiet within `--timeout` exits 3.
+running checks, then the green check runs; each wait has its own `--timeout`,
+and not quiet within it exits 3. A lasting GitHub error is a later look.
 
 `dispatch` starts `daily-release.yml` on `develop` (without `--version` the
 workflow picks the next patch) and prints the run it started. `follow` prints

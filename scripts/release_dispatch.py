@@ -29,7 +29,7 @@ import io
 import re
 import sys
 import time
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import gh_cli
@@ -170,21 +170,34 @@ def quiet_reason(
     return None
 
 
+def _quiet_round(quiet: int) -> str | None:
+    """One look: why develop is not quiet, or None."""
+    now = datetime.now(UTC)
+    open_prs = gh_json(
+        "pr", "list", "--base", "develop", "--state", "open", "--limit", "100",
+        "--json", "number,autoMergeRequest,statusCheckRollup",
+    )  # fmt: skip
+    # gh lists by creation, not merge time: search the window and take the newest.
+    cutoff = (now - timedelta(minutes=quiet)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    merged = gh_json(
+        "pr", "list", "--base", "develop", "--state", "merged", "--limit", "50",
+        "--search", f"merged:>={cutoff}", "--json", "number,mergedAt",
+    )  # fmt: skip
+    last = max(merged, key=lambda pr: pr["mergedAt"], default=None)
+    return quiet_reason(open_prs, last, now, quiet)
+
+
 def when_quiet(minutes: int, quiet: int) -> int:
-    """Wait until develop is quiet; 0 quiet, 3 not within ``minutes``."""
+    """Wait until develop is quiet; 0 quiet, 3 not within ``minutes``. A
+    transient GitHub error only means a later look, as in ``when_green``."""
     deadline = time.monotonic() + minutes * 60
     while True:
-        open_prs = gh_json(
-            "pr", "list", "--base", "develop", "--state", "open", "--limit", "100",
-            "--json", "number,autoMergeRequest,statusCheckRollup",
-        )  # fmt: skip
-        merged = gh_json(
-            "pr", "list", "--base", "develop", "--state", "merged", "--limit", "1",
-            "--json", "number,mergedAt",
-        )  # fmt: skip
-        reason = quiet_reason(
-            open_prs, merged[0] if merged else None, datetime.now(UTC), quiet
-        )
+        try:
+            reason = _quiet_round(quiet)
+        except CliError as exc:
+            if not TRANSIENT.search(str(exc)):
+                raise
+            reason = "GitHub unavailable"
         if reason is None:
             print("develop quiet")
             return 0

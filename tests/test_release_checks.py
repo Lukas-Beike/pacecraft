@@ -346,20 +346,27 @@ class ReleaseDispatchTests(unittest.TestCase):
                 )
 
     def test_dispatch_when_quiet_waits_and_stops_at_the_time_limit(self):
-        busy = [{"number": 8, "autoMergeRequest": {}, "statusCheckRollup": []}]
-        recent = [{"number": 5, "mergedAt": "2999-01-01T00:00:00Z"}]
-        answers = [busy, recent, [], []]
+        idle = [{"number": 8, "autoMergeRequest": None, "statusCheckRollup": []}]
+        # gh lists by creation: the newest merge is found by mergedAt.
+        recent = [
+            {"number": 5, "mergedAt": "2000-01-01T00:00:00Z"},
+            {"number": 6, "mergedAt": "2999-01-01T00:00:00Z"},
+        ]
+        outage = release_dispatch.CliError("HTTP 503: unavailable")
+        answers = [idle, recent, outage, idle, [], []]
         clock = iter(range(0, 10**6, 30))
         out = io.StringIO()
         with (
-            mock.patch.object(release_dispatch, "gh_json", side_effect=answers),
+            mock.patch.object(release_dispatch, "gh_json", side_effect=answers) as read,
             mock.patch.object(release_dispatch.time, "sleep"),
             mock.patch.object(release_dispatch.time, "monotonic", lambda: next(clock)),
             redirect_stdout(out),
         ):
             self.assertEqual(release_dispatch.when_quiet(60, 10), 0)
-        self.assertIn("waiting for quiet: #5 merged", out.getvalue())
+        self.assertIn("waiting for quiet: #6 merged", out.getvalue())
+        self.assertIn("waiting for quiet: GitHub unavailable", out.getvalue())
         self.assertIn("develop quiet", out.getvalue())
+        self.assertTrue(read.call_args.args[-3].startswith("merged:>="))
         with (
             mock.patch.object(release_dispatch, "when_quiet", return_value=3),
             mock.patch.object(release_dispatch, "dispatch") as start,
