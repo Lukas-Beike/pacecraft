@@ -45,7 +45,7 @@ _PLAN_STRUCTURE = """Planning science:
 - Every run, ride and strength unit you write needs session_focus (named in the Typ column); strength also strength_structure (with garmin_exercise) and strength_intensity; recovery, easy, long runs hr_cap. Progress load or reps weekly, deload in the lighter week; strength_progress top sets at planned reps: progress, else hold.
 - Local units only; no Intervals.icu write."""
 
-_STRENGTH_LEGS = """- Heavy strength 2 times per week in base and build, 1 (maintenance) in peak and taper (Ronnestad & Mujika 2014; Blagrove 2018), 6 h or more from hard endurance (Robineau 2016). Leg strength (legs, full_body, plyometrics): same counts, at most 3; after or on hard days, or 24 h or more before hard or long sessions. Name deviations."""
+_STRENGTH_LEGS = """- Heavy strength 2 times per week in base and build, 1 (maintenance) in peak and taper (Ronnestad & Mujika 2014; Blagrove 2018), 6 h or more from hard endurance (Robineau 2016). Leg strength (legs, full_body, plyometrics): same counts, at most 3; after or on hard days, or heavy 48 h, moderate 24 h or more before hard or long sessions. Name deviations."""
 
 _SEASON_PHASE = "- Phase per planned week from planning_brief.season_phase (base, build, peak, taper, transition; unknown without an A race: say so, use base rules). Base: build volume, mostly easy. Build: add threshold or VO2max, volume holds. Peak: race-specific intensity, less volume. Taper (about 2 weeks): cut volume 40-60 %, keep intensity and frequency (Bosquet 2007). Transition: easy, strength 1 (light)."
 
@@ -125,7 +125,7 @@ Task: plan the requested multi-week block.
 _TASKS["block_review"] = _TASKS["progress_review"]
 
 _ADAPTIVE = """Adaptive changes:
-- Move or shorten a missed key session (session_focus threshold, sweet_spot, vo2max, anaerobic, race, test) to a free day: never next to another hard day, and leave leg strength (legs, full_body, plyometrics) 24 h or more before it; leg strength on or after hard days is fine. Drop it rather than stack hard days; never make up lost load.
+- Move or shorten a missed key session (session_focus threshold, sweet_spot, vo2max, anaerobic, race, test) to a free day: never next to another hard day, and leave leg strength (legs, full_body, plyometrics) 48 h (heavy) or 24 h (moderate) before it; leg strength on or after hard days is fine. Drop it rather than stack hard days; never make up lost load.
 - Run, ride and strength stay combinable; keep the week's training_model distribution as far as possible.
 - Local edits follow the write policy (receipt, undo); plan checks apply as for any plan write. A multi-session replan of calendar events goes through preview_adaptive_replan and needs approval before apply_adaptive_replan. No Intervals.icu write without a named sync.
 - Set session_focus on moved units."""

@@ -45,6 +45,35 @@ def codes(findings):
     return [item["code"] for item in findings]
 
 
+class KeyGapTests(unittest.TestCase):
+    """One gap (#3920): heavy leg work 48 h before a key session, moderate 24 h."""
+
+    def test_heavy_counts_two_days_and_moderate_one(self) -> None:
+        key = intervals("k", "2026-11-05", starts_at_local="2026-11-05T08:00:00")
+        for intensity, start, expected in (
+            ("heavy", "2026-11-03T20:00:00", [leg_strength.BEFORE_KEY]),
+            ("moderate", "2026-11-03T20:00:00", []),
+            ("moderate", "2026-11-04T18:00:00", [leg_strength.BEFORE_KEY]),
+        ):
+            with self.subTest(intensity=intensity, start=start):
+                strength = legs(
+                    "s", start[:10], strength_intensity=intensity, starts_at_local=start
+                )
+                found = [
+                    code
+                    for code in codes(check([strength, key]))
+                    if code == leg_strength.BEFORE_KEY
+                ]
+                self.assertEqual(expected, found)
+
+    def test_dates_alone_count_whole_days(self) -> None:
+        key = intervals("k", "2026-11-05")
+        heavy = legs("s", "2026-11-03", strength_intensity="heavy")
+        moderate = legs("s", "2026-11-03", strength_intensity="moderate")
+        self.assertIn(leg_strength.BEFORE_KEY, codes(check([heavy, key])))
+        self.assertNotIn(leg_strength.BEFORE_KEY, codes(check([moderate, key])))
+
+
 class ClassificationTests(unittest.TestCase):
     def test_leg_vs_upper_body_vs_unknown(self) -> None:
         def classify(item):
