@@ -272,6 +272,5 @@ class SettingsServiceTests(unittest.TestCase):
         self.assertEqual(service.selected_provider("planning"), "anthropic")
 
 
-
 if __name__ == "__main__":
     unittest.main()

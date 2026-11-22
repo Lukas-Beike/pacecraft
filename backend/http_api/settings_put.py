@@ -92,4 +92,3 @@ class SettingsPutRoutes:
                 body.get("thinking_level"), body.get("task", "conversation")
             ),
         )
-

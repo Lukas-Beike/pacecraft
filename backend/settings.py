@@ -277,4 +277,3 @@ class SettingsService:
             )
         self._set_value("selected_service_tier", tier_id)
         return {"service_tier": tier_id}
-
