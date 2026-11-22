@@ -278,8 +278,12 @@ function nutritionEstimateChip(item) {
 function nutritionEntryActions(item) {
   const estimate = h("button", { type: "button", className: "secondary-button" }, item.estimate_uncertain ? "Nicht geschätzt" : "Als geschätzt markieren");
   estimate.addEventListener("click", () => void markNutritionEstimate(item));
-  const remove = h("button", { type: "button", className: "secondary-button", "aria-label": `Mahlzeit löschen: ${item.description}` }, "Löschen");
-  remove.addEventListener("click", () => void deleteNutritionEntry(item));
+  const remove = h("button", { type: "button", className: "secondary-button danger-button", "aria-label": `Mahlzeit löschen: ${item.description}` }, "Löschen");
+  remove.addEventListener("click", async () => {
+    // One tap, one delete: the button waits for the request, as the removed dialog did.
+    remove.disabled = true;
+    try { await deleteNutritionEntry(item); } finally { remove.disabled = false; }
+  });
   return [nutritionComponentDetails(item), estimate, remove].filter(Boolean);
 }
 
@@ -1003,8 +1007,16 @@ function appendNutritionProductActions(card, product, local) {
       ["Aktualisieren", false, (button) => refreshNutritionProduct(product, button)],
       ["Löschen", false, () => deleteNutritionProduct(product)],
     ]) {
-      const button = h("button", { type: "button", className: primary ? "push-button" : "secondary-button" }, label);
-      button.addEventListener("click", () => run(button)); actions.append(button);
+      let buttonClass = primary ? "push-button" : "secondary-button";
+      if (label === "Löschen") buttonClass += " danger-button";
+      const button = h("button", { type: "button", className: buttonClass }, label);
+      button.addEventListener("click", async () => {
+        if (label !== "Löschen") { run(button); return; }
+        // One tap, one delete: the button waits for the request, as the removed dialog did.
+        button.disabled = true;
+        try { await run(button); } finally { button.disabled = false; }
+      });
+      actions.append(button);
       // Without a known unit an amount cannot be counted against the values.
       if (label === "Verwenden" && !product.basis_unit) { button.disabled = true; button.title = "Bezugsmenge unbekannt"; }
     }

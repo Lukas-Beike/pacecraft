@@ -170,6 +170,7 @@ texts.
 | `public/coach.js` `undoCoachTurn` | Änderungen zurücknehmen? | Alle lokalen Änderungen dieser Coach-Antwort werden zurückgenommen. Intervals.icu bleibt unverändert. | Zurücknehmen |
 | `public/diagnostics.js` `deleteServerLogs` | Server-Logs löschen? | Alle gespeicherten Server-Logs werden gelöscht. | Löschen |
 | `public/diagnostics.js` `deleteDiagnostics` | Diagnose löschen? | Alle gespeicherten Diagnosedaten werden gelöscht. | Löschen |
+| `public/nutrition-meal-edit.js` `saveNutritionMealEdit` | Mahlzeit löschen? | (computed) `` `Die Mahlzeit „${item.description}“ wird gelöscht, weil keine Zutat übrig ist.` `` | Löschen |
 | `public/nutrition.js` `deleteNutritionProduct` | Datenbankeintrag entfernen? | (computed) `` `Der Eintrag „${product.name}“ wird aus der Datenbank entfernt. Eigene Produkte bleiben erhalten.` `` | Entfernen |
 | `public/plan-views.js` `adoptStepTestValue` | Gemessenen Wert ersetzen? | Der gemessene Wert wird durch den Wert aus dem Stufentest ersetzt. | Ersetzen |
 | `public/provider-connections.js` `changeMetricExportField` | Intervals.icu-Abgleich ändern? | (computed) ` message ` | Ändern |
