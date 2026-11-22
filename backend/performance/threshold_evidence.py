@@ -35,7 +35,7 @@ def _best_ride(records: Sequence[Mapping[str, Any]]) -> tuple[float, str] | None
         if row.get("sport") == "ride"
         for point in (row.get("power_profile") or {}).get("duration_curve", [])
         if point.get("duration_seconds") == RIDE_EFFORT_SECONDS
-        and point.get("watts") is not None
+        and (point.get("watts") or 0) > 0
     ]
     return max(found, default=None)
 
@@ -51,7 +51,7 @@ def _best_run(records: Sequence[Mapping[str, Any]]) -> tuple[float, str] | None:
         if row.get("sport") == "run"
         for point in (row.get("running_profile") or {}).get("distance", [])
         if point.get("distance_meters") == RUN_EFFORT_METRES
-        and point.get("seconds") is not None
+        and (point.get("seconds") or 0) > 0
     ]
     return min(found, default=None)
 

@@ -511,7 +511,8 @@ class PerformanceContextTests(unittest.TestCase):
         thresholds = result["thresholds"]
         self.assertEqual(thresholds["unsupported_by_recent_effort"], {})
         self.assertIsNone(thresholds["recorded_max_hr_above"])
-        self.assertEqual(set(windows), {90})
+        # No FTP or threshold pace in effect: the sessions are not read for it.
+        self.assertEqual(windows, [])
         self.assertEqual(since, [date(2025, 9, 20)])
 
     def test_a_threshold_above_its_best_recorded_effort_is_named(self):
@@ -580,6 +581,20 @@ class PerformanceContextTests(unittest.TestCase):
                 "duration_curve": [{"duration_seconds": 300, "watts": 330.0}]
             },
         }
+        silent_ride = {
+            "sport": "ride",
+            "date": "2026-09-10",
+            "power_profile": {
+                "duration_curve": [{"duration_seconds": 1200, "watts": 0.0}]
+            },
+        }
+        silent_run = {
+            "sport": "run",
+            "date": "2026-09-11",
+            "running_profile": {
+                "distance": [{"distance_meters": 5000, "seconds": 0.0}]
+            },
+        }
         unknown_ride = {
             "sport": "ride",
             "date": "2026-09-10",
@@ -596,7 +611,7 @@ class PerformanceContextTests(unittest.TestCase):
         }
         for records in (
             [],
-            [short_ride, unknown_ride, unknown_run],
+            [short_ride, unknown_ride, unknown_run, silent_ride, silent_run],
             [{"sport": "swim"}],
         ):
             self.assertEqual(

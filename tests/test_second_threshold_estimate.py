@@ -257,6 +257,51 @@ class ServiceTests(unittest.TestCase):
         self.assertIn("42 Tagen", result["run"]["critical_speed"]["reason"])
         self.assertEqual(set(result["ride"]), {"dfa_alpha1", "critical_power"})
 
+    def test_the_shared_90_day_read_leaves_the_estimates_unchanged(self) -> None:
+        # #3920: the curve records are read for 90 days, the one window the
+        # performance context shares; rows older than 42 days stay out of the fit.
+        days = []
+        old = (TODAY - timedelta(days=75)).isoformat()
+        points = [
+            {
+                "duration_seconds": seconds,
+                "watts": watts,
+                "start_seconds": 0.0,
+                "coverage": 1.0,
+                "status": "ok",
+            }
+            for seconds, watts in (
+                (180, 330.0),
+                (420, 290.0),
+                (720, 275.0),
+                (1200, 262.0),
+            )
+        ]
+        row = {
+            "sport": "ride",
+            "environment": "outdoor",
+            "date": old,
+            "activity_id": "old",
+            "power_profile": {"status": "ok", "duration_curve": points},
+        }
+        profile = Mock()
+        profile.get.return_value = {}
+
+        def estimates(records):
+            return SecondThresholdService(
+                self.manager,
+                profile,
+                lambda: lambda _day: 160.0,
+                lambda window: days.append(window) or list(records),
+                lambda: TODAY,
+            ).estimates()
+
+        self.assertEqual(estimates([row]), estimates([]))
+        self.assertEqual(days, [90, 90])
+        self.assertEqual(
+            estimates([row])["ride"]["critical_power"]["status"], "unknown"
+        )
+
     def test_a_session_uses_its_series_record_and_old_rows_are_not_evaluated(
         self,
     ) -> None:

@@ -194,13 +194,13 @@ def _threshold_evidence(
     today: date,
 ) -> dict[str, Any]:
     """What the recordings say about the thresholds in effect (#3920, C5 and C6)."""
+    ftp_w = metrics["cycling_ftp_watts"]["value"]
+    run_pace = metrics["run_threshold_pace_seconds_per_km"]["value"]
+    # Without a threshold in effect there is nothing to compare: no session read.
+    records = read() if read is not None and (ftp_w or run_pace) else ()
     return {
         "unsupported_by_recent_effort": threshold_evidence.unsupported_by_recent_effort(
-            () if read is None else read(),
-            ftp_w=metrics["cycling_ftp_watts"]["value"],
-            run_pace_seconds_per_km=metrics["run_threshold_pace_seconds_per_km"][
-                "value"
-            ],
+            records, ftp_w=ftp_w, run_pace_seconds_per_km=run_pace
         ),
         "recorded_max_hr_above": threshold_evidence.recorded_max_hr_above(
             metrics["max_hr_bpm"]["value"],

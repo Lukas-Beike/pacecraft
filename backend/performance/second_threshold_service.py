@@ -31,6 +31,7 @@ from backend.performance.second_threshold_estimate import (
     critical_second_threshold,
     dfa_second_threshold,
 )
+from backend.performance.threshold_evidence import EFFORT_WINDOW_DAYS
 
 RUNS_ONLY = {"status": "unknown", "reason": "nur aus Läufen", "sessions": 0}
 # Above this share of the value in effect an adoption needs a second confirmation (F9).
@@ -99,7 +100,9 @@ class SecondThresholdService:
         )
         records = [
             dict(row)
-            for row in self._curve_records(max(LT1_DAYS, CRITICAL_WINDOW_DAYS))
+            for row in self._curve_records(
+                max(LT1_DAYS, CRITICAL_WINDOW_DAYS, EFFORT_WINDOW_DAYS)
+            )
         ]
         if dfa["status"] == "ok":
             pace = output_at_heart_rate(records, "run", dfa["heart_rate_bpm"], today)
