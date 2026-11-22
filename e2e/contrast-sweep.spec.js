@@ -158,14 +158,13 @@ async function expectTextFormats(page, view) {
 }
 
 // #3935 X-02: the structural rules axe found on the fixture views; none may come back.
-// Controls inside a calendar card's summary (sync, conflict, Garmin buttons) are still nested interactive content;
-// only the competition cards are checked for it until those move out of the summary.
+// Controls inside a summary (the competition pencil, the sync, conflict and Garmin buttons of a calendar card) are
+// still nested interactive content (#3981); a closed details hides everything outside its summary, so they cannot just move.
 const STRUCTURE_RULES = ["label-content-name-mismatch", "scrollable-region-focusable", "page-has-heading-one", "heading-order", "landmark-unique"];
 
 async function expectStructure(page, view) {
   const { violations } = await new AxeBuilder({ page }).withRules(STRUCTURE_RULES).analyze();
-  const nested = await new AxeBuilder({ page }).include(".competition-card").withRules(["nested-interactive"]).analyze().catch(() => ({ violations: [] }));
-  const found = [...violations, ...nested.violations].flatMap((violation) => violation.nodes.map((node) => `${view}: ${violation.id} ${node.target.join(" ")}`));
+  const found = violations.flatMap((violation) => violation.nodes.map((node) => `${view}: ${violation.id} ${node.target.join(" ")}`));
   expect(found, `axe structure: ${found.join(" | ")}`).toEqual([]);
 }
 

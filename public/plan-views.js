@@ -3134,8 +3134,12 @@ function competitionCard(competition, todayKey, openIds) {
   const sport = competition.sport_detail || competitionSportLabel(competition.sport, competition.environment);
   const when = AppFormat.relativeDay(competition.event_date, todayKey);
   const edit = messageActionButton("edit", "Wettkampf bearbeiten");
-  // The pencil is a sibling of the summary, drawn over its corner: a control inside a summary is nested interactive content.
-  edit.addEventListener("click", () => openCompetitionDialog(competition));
+  edit.addEventListener("click", (event) => {
+    // The pencil sits in the summary: it must not open or close the card.
+    event.preventDefault();
+    event.stopPropagation();
+    openCompetitionDialog(competition);
+  });
   const summary = h("summary", null,
     h("span", "competition-summary-main",
       h("strong", null, `${competitionDate(competition, todayKey) ? dateLabel(competition.event_date) : "Datum unbekannt"} · ${competition.name || "Wettkampf"}`),
@@ -3158,7 +3162,7 @@ function competitionCard(competition, todayKey, openIds) {
   const upcoming = competitionDate(competition, todayKey) && competition.event_date >= todayKey;
   const plan = upcoming ? h("section", "race-plan") : null;
   const card = h("details", { className: "competition-card", dataset: { competitionId: String(competition.id) }, open: openIds.has(String(competition.id)) },
-    summary, edit, source, facts.length ? h("div", "competition-card-facts", facts) : null, plan);
+    summary, source, facts.length ? h("div", "competition-card-facts", facts) : null, plan);
   if (plan) {
     card.addEventListener("toggle", () => { if (card.open) loadRacePlan(plan, competition); });
     if (card.open) loadRacePlan(plan, competition);

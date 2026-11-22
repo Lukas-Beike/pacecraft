@@ -128,6 +128,6 @@ test("@responsive the Kalender badge sums undecided events and the running week'
   await button.click();
   await expect.poll(() => posted.length).toBeGreaterThan(0);
   await expect(nav.locator("b.nav-count")).toHaveText("1");
-  await expect(nav).toHaveAccessibleName(`Kalender, 1 neuer Termin bis ${until}`);
+  await expect(nav).toHaveAccessibleName(`Kalender 1, 1 neuer Termin bis ${until}`);
   await page.unrouteAll({ behavior: "ignoreErrors" });
 });
