@@ -39,7 +39,7 @@ for (const scheme of ["light", "dark"]) {
     await dialog.getByRole("button", { name: "Speichern" }).click();
     await expect(dialog).toBeHidden();
     await expect(row.locator("td").first()).toHaveText("17,1 %");
-    await expect(row.locator("th small")).toHaveText("Lokal (Hautfalten) · 10.11.2026");
+    await expect(row.locator("th small")).toHaveText("Eingetragen (Hautfalten) · 10.11.2026");
 
     // Prozent, today: the newer own value is the KFA, and the lean mass follows from it.
     await row.getByRole("button", { name: "Körperfett eintragen" }).click();

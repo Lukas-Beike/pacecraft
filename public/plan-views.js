@@ -129,8 +129,10 @@ function stopSummaryToggle(event) {
 
 // A request kind sends the prompt as that quick action, on the planning model (#2744); without a
 // planning key the button is off like the other planning entry points.
-function plannedCoachButton(label, prompt, className = "secondary-button planned-conflict-button", requestKind = null) {
+function plannedCoachButton(label, prompt, className = "secondary-button planned-conflict-button", requestKind = null, purpose = null) {
   const button = h("button", { type: "button", className, dataset: requestKind ? { requestKind } : undefined }, label);
+  // Several hand-over buttons of one card share the label; the name starts with it and says what each is for.
+  if (purpose) button.setAttribute("aria-label", `${label}: ${purpose}`);
   button.disabled = Boolean(requestKind) && !coachConfigured(null, requestKind);
   button.addEventListener("click", (event) => { stopSummaryToggle(event); void globalThis.askCoach?.(prompt, { requestKind }); });
   return button;
@@ -1288,6 +1290,7 @@ function plannedConflict(entry, dateKey) {
   const labels = plannedConflictLabels(entry.conflicts);
   if (!labels.length) return null;
   const button = h("button", { type: "button", className: "secondary-button planned-conflict-button" }, "Mit Coach besprechen");
+  button.setAttribute("aria-label", "Mit Coach besprechen: Konflikt");
   button.addEventListener("click", (event) => {
     // The button sits in the card summary; a click must not toggle the card.
     event.preventDefault();
@@ -1311,7 +1314,7 @@ function plannedGarminBlocked(entry, dateKey, todayKey, actual) {
     return block;
   }
   if (reason !== "unmapped") {
-    block.append(h("span", null, plannedGarminBlockedText(entry)), plannedCoachButton("Mit Coach besprechen", `Strukturiere die Krafteinheit ${unit} für die Uhr: Übungen in Reihenfolge mit Sätzen, Wiederholungen, Last und Garmin-Übung. Frag nach, was fehlt.`));
+    block.append(h("span", null, plannedGarminBlockedText(entry)), plannedCoachButton("Mit Coach besprechen", `Strukturiere die Krafteinheit ${unit} für die Uhr: Übungen in Reihenfolge mit Sätzen, Wiederholungen, Last und Garmin-Übung. Frag nach, was fehlt.`, "secondary-button planned-conflict-button", null, "Kraftstruktur"));
     return block;
   }
   const unmapped = Array.isArray(entry.push_unmapped) ? entry.push_unmapped : [];

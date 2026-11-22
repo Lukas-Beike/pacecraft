@@ -240,7 +240,7 @@ test("body overview: the newest own body fat with its source, weight with its so
   assert.equal(shown[2].children[2].children.length, 0);
   // The folds win a shared day and an older entry.
   shown = rows([["2026-11-10", 15]]);
-  assert.equal(textOf(shown[1].children[0]), "KörperfettLokal (Hautfalten) · 2026-11-10");
+  assert.equal(textOf(shown[1].children[0]), "KörperfettEingetragen (Hautfalten) · 2026-11-10");
   assert.equal(textOf(shown[1].children[1]), "13.9 %");
   // Without any own value the row shows a dash (the profile's 18.5 % is not KFA), and no lean mass.
   reads.skinfolds = { measurements: [] };

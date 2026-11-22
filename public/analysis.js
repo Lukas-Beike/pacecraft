@@ -1494,7 +1494,7 @@ function bodyFoldFat(read, entered) {
     const method = entered.source_label === "Hautfalten" ? "Eingetragen (Hautfalten)" : "Eingetragen";
     return { value: entered.value, note: `${method} · ${dateLabel(entered.date)}` };
   }
-  if (fold) return { value: fold.body_fat_pct, note: `Lokal (Hautfalten) · ${dateLabel(fold.date)}` };
+  if (fold) return { value: fold.body_fat_pct, note: `Eingetragen (Hautfalten) · ${dateLabel(fold.date)}` };
   return newest ? { text: "unbekannt", note: "ohne Geburtsjahr" } : null;
 }
 

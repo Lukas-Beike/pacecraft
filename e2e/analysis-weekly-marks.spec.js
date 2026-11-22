@@ -58,7 +58,7 @@ async function eachWeeklyChart(page, visit) {
     await request.fulfill({ response, json: data });
   });
   for (const [route, root, titles] of [
-    ["load", "#analysisLoadCharts", [/^Trainingszeit/, /^RPE-Belastung/, /^RPE-Belastung kurz und lang/, /^Fitness, Ermüdung, Form/, /^Schritte/]],
+    ["load", "#analysisLoadCharts", [/^Trainingszeit/, /^RPE-Belastung ·/, /^RPE-Belastung kurz und lang/, /^Fitness, Ermüdung, Form/, /^Schritte/]],
     ["running", "#analysisHistoryCharts", [/^VO₂max$/, /^Schwellenpace$/]],
   ]) {
     await page.goto(`/#analysis/${route}`);
