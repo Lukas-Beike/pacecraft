@@ -95,7 +95,7 @@ globalThis.AppRouter = (() => {
 
   // Removed views whose content lives elsewhere now: the single sessions are in the calendar (#2258),
   // the former Leistung segment is split by sport and its links open Laufen (#2265), the week review
-  // sits under the calendar week (#3298).
+  // sits under the calendar week (#3298), and Darstellung became App (#3914).
   const ROUTE_ALIASES = Object.freeze({ "analysis/sessions": "plan/overview", "analysis/performance": "analysis/running", "analysis/week": "plan/overview", "more/appearance": "more/app" });
 
   function routeFromHash(hash = globalThis.location.hash) {

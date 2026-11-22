@@ -33,7 +33,7 @@ test("@responsive the logout button only appears in Betrieb & Diagnose", async (
   await page.goto("/");
   await expect(page.locator("#appShell")).toBeVisible();
   await expect.poll(() => page.evaluate(() => Boolean(state.data))).toBe(true);
-  for (const segment of ["appearance", "equipment", "connections", "coach"]) {
+  for (const segment of ["app", "equipment", "connections", "coach"]) {
     await page.goto(`/#more/${segment}`);
     await expect(page.locator(`#settingsPanel [data-more-segment-panel="${segment}"]`).first()).toBeVisible();
     await expect(page.locator("#logoutButton"), segment).toBeHidden();

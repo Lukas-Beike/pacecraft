@@ -252,7 +252,7 @@ test("@responsive recovery, power, training focus, season and calendar profiles 
   await expect(page.locator("#profilePanel").getByRole("heading", { name: "Mehr", exact: true })).toBeVisible();
   await expect(page.locator("#equipmentItems")).toBeHidden();
   // #3914: the old Darstellung link opens the App tab: colour scheme and notifications, no calendar range.
-  await page.evaluate(async () => { await AppRouter.navigate("more/appearance", { historyMode: "replace" }); });
+  await page.goto("/#more/appearance");
   await expect.poll(() => page.evaluate(() => AppState.state.route)).toBe("more/app");
   const notifications = page.locator("#notificationSettings");
   await expect(notifications).toBeVisible();
