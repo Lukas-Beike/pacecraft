@@ -237,7 +237,7 @@ test("body overview: the newest own body fat with its source, weight with its so
   const reads = { skinfolds: { measurements: [{ date: "2026-11-10", body_fat_pct: 13.9 }] } };
   const { renderBodyAnalysis, bodyFoldFat } = bodyOverviewHarness(root, reads);
   const series = (provider, source, points) => ({ source_provider: provider, source, points: points.map(([date, value]) => ({ date, value })) });
-  const body = (fat) => ({ preferred_providers: { weight_kg: "garmin" }, windows: { "12w": { start: "2026-10-01", end: "2026-11-17", metrics: {
+  const body = (fat) => ({ preferred_providers: { weight_kg: "garmin", body_fat_pct: "garmin" }, windows: { "12w": { start: "2026-10-01", end: "2026-11-17", metrics: {
     weight_kg: [series("garmin", "Garmin Connect", [["2026-11-16", 80]])],
     body_fat_pct: [series("garmin", "Garmin Connect", [["2026-11-17", 22]]), series(null, "Lokal", fat)],
   } } } });
@@ -277,10 +277,16 @@ test("body overview: the newest own body fat with its source, weight with its so
   shown = rows([["2026-11-10", 15]]);
   assert.equal(textOf(shown[1].children[0]), "KörperfettEingetragen (Hautfalten) · 2026-11-10");
   assert.equal(textOf(shown[1].children[1]), "13.9 %");
-  // Without any own value the row shows a dash (the profile's 18.5 % is not KFA), and no lean mass.
+  // Without any own value the row shows the device value in use with its source (#3930), never the profile's 18.5 %,
+  // and no lean mass is derived from it.
   reads.skinfolds = { measurements: [] };
   shown = rows([]);
-  assert.equal(textOf(shown[1].children[1]), "\u2014");
+  assert.equal(textOf(shown[1].children[0]), "KörperfettGarmin Connect · 2026-11-17");
+  assert.equal(textOf(shown[1].children[1]), "22 %");
+  // Without a device value either the row keeps the dash.
+  const none = { preferred_providers: { weight_kg: "garmin" }, windows: { "12w": { start: "2026-10-01", end: "2026-11-17", metrics: { weight_kg: [series("garmin", "Garmin Connect", [["2026-11-16", 80]])], body_fat_pct: [] } } } };
+  renderBodyAnalysis(none);
+  assert.equal(textOf(root.children[0].children[0].children[1].children[1].children[1]), "\u2014");
   // Weight, body fat and the energy goal (#3547), no lean mass.
   assert.equal(shown.length, 3);
   assert.equal(textOf(shown[2].children[0]), "Energieziel");
@@ -1143,7 +1149,9 @@ test("one merged body series names each day's source in the overview and the tab
   assert.equal(bodyOverviewReading("weight_kg", garmin, preferred).note, "Garmin Connect · 2026-11-17");
   // KFA reads only the athlete's own days, also out of the merged series.
   assert.equal(bodyOverviewReading("body_fat_pct", entered, preferred).value, 79.5);
-  assert.equal(bodyOverviewReading("body_fat_pct", garmin, preferred).text, "—");
+  // Without an own day the device value in use is shown with its source (#3930).
+  const device = bodyOverviewReading("body_fat_pct", garmin, preferred);
+  assert.deepEqual([device.value, device.note, device.device], [80, "Garmin Connect · 2026-11-17", true]);
   // #3569: a profile body fat is the athlete's own skinfold and says so.
   const fold = merged([{ date: "2026-11-16", value: 14, source_label: "Garmin" }, { date: "2026-11-17", value: 13.5, source_label: "Hautfalten" }]);
   assert.equal(JSON.stringify(bodyOverviewReading("body_fat_pct", fold, preferred)), JSON.stringify({ value: 13.5, note: "Eingetragen (Hautfalten) · 2026-11-17" }));

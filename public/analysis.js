@@ -1557,7 +1557,13 @@ function bodyFoldFat(read, entered) {
 }
 
 function bodyOverviewReading(metric, body, preferred) {
-  if (metric === "body_fat_pct") return bodyFoldFat(skinfoldRead, bodyOverviewLatest(metric, body, preferred, true)) || { text: "—" };
+  if (metric === "body_fat_pct") {
+    const own = bodyFoldFat(skinfoldRead, bodyOverviewLatest(metric, body, preferred, true));
+    if (own) return own;
+    // Nothing entered: the value the chart and the energy formulas use is shown with its source, as for the weight (#3930).
+    const device = skinfoldRead ? bodyOverviewLatest(metric, body, preferred) : null;
+    return device ? { value: device.value, note: `${device.source} · ${dateLabel(device.observed_at || device.date)}`, device: true } : { text: "—" };
+  }
   const latest = bodyOverviewLatest(metric, body, preferred);
   return latest ? { value: latest.value, date: latest.date, note: `${latest.source} · ${dateLabel(latest.observed_at || latest.date)}` } : { text: "—" };
 }
@@ -2688,7 +2694,7 @@ function renderBodyAnalysis(body) {
   fatRow.addEventListener("click", (event) => { if (!event.target.closest("button")) void openBodyFatDialog(); });
   const rows = [bodyOverviewRow("weight_kg", "Gewicht", "kg", weight, bodyEditButton("Gewicht eintragen", openWeightDialog)), fatRow];
   // The fat-free mass stays derived from the two values, without a pencil (#3402).
-  if (weight.value != null && fat.value != null) rows.push(bodyOverviewRow("lean_mass_kg", "Fettfreie Masse", "kg", { value: weight.value * (1 - fat.value / 100) }, null));
+  if (weight.value != null && fat.value != null && !fat.device) rows.push(bodyOverviewRow("lean_mass_kg", "Fettfreie Masse", "kg", { value: weight.value * (1 - fat.value / 100) }, null));
   rows.push(energyGoalRow());
   root.append(h("section", "analysis-chart-card", h("table", { className: "current-performance-table", dataset: { bodyOverview: "" } }, h("caption", null, "Körperwerte"), h("tbody", null, rows))));
   const key = analysisPeriod(bodyHistoryPeriod).key;
