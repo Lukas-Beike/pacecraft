@@ -899,21 +899,11 @@ h2 {
 .zone-edit { min-height: 44px; padding: 0 4px; border: 0; background: none; color: var(--link); font-weight: 700; }
 .zone-editor { margin-top: 4px; }
 #zoneSummary.is-warning { color: var(--orange); }
-.profile-help {
-  margin: 0;
-  color: var(--muted);
-  font-size: .75rem;
-  line-height: 1.45;
-  text-align: left;
-  text-wrap: pretty;
-}
 .remote-delete-notice { display: grid; gap: 6px; margin: 0 0 16px; padding: 12px 14px; border: 1px solid var(--danger-border-strong); border-radius: 14px; color: var(--ink); background: var(--danger-surface); font-size: .74rem; line-height: 1.4; }
 .remote-delete-notice strong { color: var(--white); }
 .remote-delete-notice .secondary-button { justify-self: start; }
 .danger-button { border-color: var(--danger-border); color: var(--danger-ink); }
 .danger-button:hover { border-color: var(--danger-border-strong); background: var(--danger-surface); }
-.plan-segment-heading { margin-bottom: 12px; }
-.plan-segment-heading h3 { margin: 2px 0 0; font-size: 1rem; }
 .planned-calendar { display: grid; gap: 20px; }
 .planned-week { overflow: hidden; }
 .planned-week-heading { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; padding: 12px 12px 12px 16px; border-bottom: 1px solid var(--line); }
@@ -1161,7 +1151,6 @@ h2 {
 .competition-card > summary, .competition-archive > summary { min-height: 44px; cursor: pointer; color: var(--ink); overflow-wrap: anywhere; }
 .competition-card > summary strong { font-size: .95rem; }
 .competition-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
-.competition-heading h3 { margin: 2px 0 0; font-size: 1rem; }
 .competition-heading .secondary-button { margin-left: auto; }
 .competition-card > summary { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; list-style: none; }
 .competition-card > summary::-webkit-details-marker { display: none; }
@@ -1216,7 +1205,6 @@ h2 {
 .calendar-display-form > .secondary-button { justify-self: start; }
 .context-preview { margin-top: 8px; border-top: 1px solid var(--line); }
 .context-preview-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 14px; }
-.context-preview-heading h3 { margin: 3px 0 0; color: var(--ink); font-size: 1.05rem; letter-spacing: -.02em; }
 .context-preview-heading .secondary-button { flex: 0 0 auto; padding: 8px 11px; font-size: .72rem; }
 .context-preview-status { color: var(--subtle); font-size: .76rem; }
 .context-preview-status.error { color: var(--danger-ink); }

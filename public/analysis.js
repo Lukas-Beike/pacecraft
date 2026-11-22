@@ -1207,7 +1207,7 @@ function renderAnalysisHistory(history) { // NOSONAR
     const periodPoints = (points) => (key === "cycling_ftp_watts" ? points.filter((point) => point.date >= performanceStart && point.date <= end) : analysisWeeklyPerformancePoints(points, performanceStart, end, key.includes("vo2max")));
     return [{
       label: `${label} · ${item.source}`, legendLabel: label.replace(/^Rad · /, ""), source: item.source, unit, color,
-      line: key.includes("vo2max") ? "dashed" : "solid",
+      line: "solid",
       cadenceDays: key === "cycling_ftp_watts" ? 1 : 7,
       explanation: performanceSeriesExplanation(key),
       currentPoint: item.points.filter((point) => point.date <= end).findLast(analysisValidPoint),
