@@ -95,6 +95,52 @@ class TrainingPlanPostRoutesTests(unittest.TestCase):
         self.assertEqual((200, "deleted"), (status, body["status"]))
         self.assertNotIn("plan", body)
 
+    def test_replace_needs_the_confirmation_and_passes_the_period(self) -> None:
+        edit = Mock()
+        change = {"id": "c9", "entity_type": "planned_unit", "after_hash": "h"}
+
+        def replaced(*_args, **_kwargs):
+            change_history._collected_changes.get().append(change)
+            return {"status": "replaced", "archived_count": 2, "created_count": 1}
+
+        edit.replace_period.side_effect = replaced
+        routes = TrainingPlanPostRoutes(lambda: self.service, lambda: edit)
+        path = f"/api/training-plans/{PLAN_ID}/replace"
+        body = {
+            "start": "2026-12-07",
+            "end": "2026-12-20",
+            "replaced_ids": ["u1", "u2"],
+            "workouts": [{"date": "2026-12-08", "name": "Locker"}],
+        }
+
+        handler = self.handler(body)
+        with self.assertRaises(AppError) as raised:
+            dispatch_route(routes, handler, path, method="POST")
+        self.assertEqual("confirmation_required", raised.exception.reason)
+        edit.replace_period.assert_not_called()
+
+        handler = self.handler({**body, "confirmed": True})
+        dispatch_route(routes, handler, path, method="POST")
+
+        edit.replace_period.assert_called_once_with(
+            PLAN_ID,
+            "2026-12-07",
+            "2026-12-20",
+            ["u1", "u2"],
+            body["workouts"],
+            accept=None,
+        )
+        status, answer = handler.send_json.call_args.args
+        self.assertEqual((200, "replaced"), (status, answer["status"]))
+        self.assertEqual([{"id": "c9", "after_hash": "h"}], answer["changes"])
+        with self.assertRaises(AppError):
+            dispatch_route(
+                routes,
+                self.handler({"confirmed": True, "workouts": "x", "replaced_ids": []}),
+                path,
+                method="POST",
+            )
+
 
 if __name__ == "__main__":
     unittest.main()

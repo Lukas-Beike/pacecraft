@@ -525,13 +525,14 @@ def _read_routes(
 
 
 def _unit_edit_service(ctx: Any) -> Callable[[], PlannedUnitEditService]:
-    """The athlete's unit edits and library scheduling over the Coach's use cases and plan checks."""
+    """The athlete's unit edits, library scheduling and plan replacement over the Coach's use cases and plan checks."""
     return lambda: PlannedUnitEditService(
         ctx.database(),
         ctx.planning_workflows.structured_training_change_service,
         ctx.planning.workout_library,
         ctx.plan_guard.plan_guard_service,
         ctx.planning_workflows.workout_library_plan_service,
+        ctx.planning_workflows.structured_training_plan_replacement_service,
     )
 
 
@@ -582,7 +583,7 @@ def _athlete_write_routes(
             _unit_edit_service(ctx),
         ),
         LibraryPostRoutes(ctx.planning.workout_library, _unit_edit_service(ctx)),
-        TrainingPlanPostRoutes(ctx.planning.training_plan),
+        TrainingPlanPostRoutes(ctx.planning.training_plan, _unit_edit_service(ctx)),
         AdaptiveReplanPostRoutes(
             lambda: AdaptiveReplanActionService(
                 ctx.database(),
