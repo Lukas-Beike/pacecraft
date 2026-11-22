@@ -781,6 +781,8 @@ test("@responsive a short Kraft period without sessions offers the longer one", 
   });
   await performanceFixture(page, {}, "strength");
   const root = page.locator("#strengthAnalysis");
+  // With a connected source the empty card names the period and widens it.
+  await page.evaluate(() => { state.data.garmin = { ...state.data.garmin, configured: true }; });
   await root.getByRole("button", { name: "4 Wochen" }).click();
   // The controls stay reachable: the empty card widens the period instead of trapping the choice.
   await expect(page.locator("#analysisEmptyState")).toContainText("Keine Daten in den letzten 4 Wochen");
