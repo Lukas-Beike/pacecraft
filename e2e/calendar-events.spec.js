@@ -18,7 +18,6 @@ async function renderEvents(page) {
       uid, name: uid, start_local: `${start}`, end_local: `${end}`, event_date: start.slice(0, 10), all_day: 0,
       impact, decision_scope: impact === "open" ? null : "event", recurring: 0, ...extra,
     });
-    state.data.calendar_display = { past_weeks: 0, future_weeks: 2 };
     state.data.daily_planning_context = [{ date: day, appointments: [{ name: "Teammeeting", start_local: `${day}T08:00:00` }] }];
     state.data.external_calendar = { ...(state.data.external_calendar || {}), events: [
       event("Teammeeting", `${day}T08:00:00`, `${day}T09:00:00`, "none", { recurring: 1, decision_scope: "series" }),
@@ -179,7 +178,6 @@ test("@responsive the notice walks through undecided events of the next 14 days 
   const today = await page.evaluate(() => {
     const date = timezoneDateKey(state.data?.profile?.timezone, new Date());
     const open = (uid, offset) => ({ uid, name: uid, start_local: `${addDateKey(date, offset)}T19:00:00`, end_local: `${addDateKey(date, offset)}T20:00:00`, all_day: 0, impact: "open", decision_scope: null, recurring: 0 });
-    state.data.calendar_display = { past_weeks: 0, future_weeks: 3 };
     state.data.external_calendar = { ...(state.data.external_calendar || {}), undecided_upcoming: 2, events: [
       open("Elternabend", 2), open("Dienstreise", 5), open("Später", 20),
       { ...open("Teammeeting", 3), impact: "none", decision_scope: "series", recurring: 1 },

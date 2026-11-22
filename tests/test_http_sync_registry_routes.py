@@ -28,7 +28,7 @@ INTERVALS_MESSAGE = (
     "hinterlegen."
 )
 GARMIN_MESSAGE = (
-    "Garmin ist nicht konfiguriert. Unter Mehr → Anbindungen bei Garmin anmelden "
+    "Garmin ist nicht eingerichtet. Unter Mehr → Anbindungen bei Garmin anmelden "
     "oder einen Schlüssel der Garmin Personal API hinterlegen."
 )
 INTERVALS_PERIOD_MESSAGE = (

@@ -134,7 +134,6 @@ function analysisChart(title, series, unit, start, end, note, {
   });
   if (showLegend && analysisLegendRepeatsTitle(series, title)) analysisLegendInfoToHeading(heading, legend, title);
   else if (showLegend) section.append(legend);
-  else appendAnalysisLineKey(section, series);
 
   if (!series.some(analysisPlottable)) {
     section.append(h("p", "empty", "Ein einzelner Messwert zeigt noch keinen Verlauf; mindestens zwei datierte Werte sind erforderlich."));
@@ -176,13 +175,6 @@ function analysisLegendInfoToHeading(heading, legend, title) {
 function analysisLineStyle(item, index) {
   if (item.bars) return "solid";
   return item.line || (index ? "dashed" : "solid");
-}
-
-// Without a legend, a dashed line is named once under the heading.
-function appendAnalysisLineKey(section, series) {
-  const dashed = series.filter((item, index) => analysisLineStyle(item, index) === "dashed" && item.points.filter(analysisValidPoint).length >= 2);
-  if (!dashed.length) return;
-  section.append(h("p", "analysis-line-key", h("span", "analysis-line-key-swatch"), ` Gestrichelt: ${dashed.map((item) => item.legendLabel || item.label).join(", ")}`));
 }
 
 // A change that rounds to zero carries no sign.
@@ -1182,7 +1174,7 @@ function renderAnalysisHistory(history) { // NOSONAR
   const loadTitle = loadAverage == null ? "Akute Belastung" : `Akute Belastung \u00b7 \u00d8 ${analysisValue(loadAverage, "")}`;
   const sourcePrefix = (source) => (source ? `${source}: ` : "");
   const loadMissing = [];
-  const loadChart = collectAnalysisChart(loadMissing, loadTitle, loadSeries, "", start, end, `${sourcePrefix(load.source)}gemessene akute Trainingsbelastung. Gestrichelte Linie: Durchschnitt der angezeigten Werte. Fehlende Messungen bleiben L\u00fccken.`, { calendarWeeks: weekly, caption: analysisBasisCaption("Belastungspunkte", weekly, "state") });
+  const loadChart = collectAnalysisChart(loadMissing, loadTitle, loadSeries, "", start, end, `${sourcePrefix(load.source)}gemessene akute Belastung. Gestrichelte Linie: Durchschnitt der angezeigten Werte. Fehlende Messungen bleiben L\u00fccken.`, { calendarWeeks: weekly, caption: analysisBasisCaption("Belastungspunkte", weekly, "state") });
   if (loadChart) {
     loadChart.querySelector(".analysis-chart-legend")?.remove();
     loadRoot.append(loadChart);
@@ -1215,7 +1207,7 @@ function renderAnalysisHistory(history) { // NOSONAR
     const periodPoints = (points) => (key === "cycling_ftp_watts" ? points.filter((point) => point.date >= performanceStart && point.date <= end) : analysisWeeklyPerformancePoints(points, performanceStart, end, key.includes("vo2max")));
     return [{
       label: `${label} · ${item.source}`, legendLabel: label.replace(/^Rad · /, ""), source: item.source, unit, color,
-      line: key.includes("vo2max") ? "dashed" : "solid",
+      line: "solid",
       cadenceDays: key === "cycling_ftp_watts" ? 1 : 7,
       explanation: performanceSeriesExplanation(key),
       currentPoint: item.points.filter((point) => point.date <= end).findLast(analysisValidPoint),
@@ -1271,14 +1263,14 @@ function sessionRpeSourceLabel(days, rated) {
 function appendSessionRpeLoadChart(report, loadRoot, loadMissing, start, end) {
   const days = (report?.days || []).filter((day) => day.date >= start && day.date <= end);
   const rated = days.reduce((sum, day) => sum + day.rated_sessions, 0);
-  if (!rated) { loadMissing.push("Session-RPE-Last"); return; }
+  if (!rated) { loadMissing.push("RPE-Belastung"); return; }
   const total = days.reduce((sum, day) => sum + day.total_sessions, 0);
   const source = sessionRpeSourceLabel(days, rated);
   const weekly = analysisPeriodWeekly(analysisHistoryPeriod);
   const points = days.map((day) => ({ date: day.date, value: day.value }));
-  const series = [{ label: weekly ? "Session-RPE-Last pro Woche" : "Session-RPE-Last pro Tag", legendLabel: "Session-RPE-Last", source, unit: "AU", color: 2, bars: true, connected: true, cadenceDays: weekly ? 7 : 1, points: weekly ? analysisWeeklySumPoints(points, start, end) : points }];
-  const chart = analysisChart(`Session-RPE-Last · ${rated}/${total} bewertet`, series, "AU", start, end, `${source}: RPE × Gesamtdauer je Einheit.`, { calendarWeeks: weekly, caption: analysisBasisCaption("AU", weekly, "sum") });
-  if (!chart) { loadMissing.push("Session-RPE-Last"); return; }
+  const series = [{ label: weekly ? "RPE-Belastung pro Woche" : "RPE-Belastung pro Tag", legendLabel: "RPE-Belastung", source, unit: "RPE-Punkte", color: 2, bars: true, connected: true, cadenceDays: weekly ? 7 : 1, points: weekly ? analysisWeeklySumPoints(points, start, end) : points }];
+  const chart = analysisChart(`RPE-Belastung · ${rated}/${total} bewertet`, series, "RPE-Punkte", start, end, `${source}: RPE × Gesamtdauer je Einheit.`, { calendarWeeks: weekly, caption: analysisBasisCaption("RPE-Punkte", weekly, "sum") });
+  if (!chart) { loadMissing.push("RPE-Belastung"); return; }
   chart.querySelector(".analysis-chart-legend")?.remove();
   loadRoot.append(chart);
 }
@@ -1286,17 +1278,17 @@ function appendSessionRpeLoadChart(report, loadRoot, loadMissing, start, end) {
 // Smoothed session-RPE load: own AU curves, never compared with provider load; gaps stay gaps.
 function appendSmoothedLoadChart(report, rpeReport, loadRoot, loadMissing, start, end) {
   const days = (report?.days || []).filter((day) => day.date >= start && day.date <= end);
-  if (!days.some((day) => day.short != null || day.long != null)) { loadMissing.push("Kurz-/Langzeitbelastung"); return; }
+  if (!days.some((day) => day.short != null || day.long != null)) { loadMissing.push("RPE-Belastung kurz und lang"); return; }
   const weekly = analysisPeriodWeekly(analysisHistoryPeriod);
   // The curves carry load from before the window, so their label reads every reported day.
   const rpeDays = (rpeReport?.days || []).filter((day) => day.date <= end);
   const source = sessionRpeSourceLabel(rpeDays, rpeDays.reduce((sum, day) => sum + day.rated_sessions, 0));
-  const series = [["short", "Kurzzeitbelastung", 2], ["long", "Langzeitbelastung", 5]].map(([key, label, color]) => {
+  const series = [["short", "RPE-Belastung kurz", 2], ["long", "RPE-Belastung lang", 5]].map(([key, label, color]) => {
     const points = days.map((day) => ({ date: day.date, value: day[key] }));
-    return { label, legendLabel: label, source, unit: "AU", color, connected: true, cadenceDays: weekly ? 7 : 1,
+    return { label, legendLabel: label, source, unit: "RPE-Punkte", color, connected: true, cadenceDays: weekly ? 7 : 1,
       points: weekly ? analysisWeeklyLastPoints(points, start, end) : points, currentPoint: points.findLast(analysisValidPoint) };
   });
-  const chart = collectAnalysisChart(loadMissing, "Kurz-/Langzeitbelastung", series, "AU", start, end, "", { calendarWeeks: weekly, caption: analysisBasisCaption("AU", weekly, "state") });
+  const chart = collectAnalysisChart(loadMissing, "RPE-Belastung kurz und lang", series, "RPE-Punkte", start, end, "", { calendarWeeks: weekly, caption: analysisBasisCaption("RPE-Punkte", weekly, "state") });
   if (chart) loadRoot.append(chart);
 }
 
@@ -1475,7 +1467,7 @@ function bodyOverviewLatest(metric, body, preferred, local = false) {
       .map((point) => {
         // A profile body fat is the athlete's own skinfold (#3569).
         const own = point.source_label ? ["eingetragen", "Hautfalten"].includes(point.source_label) : item.source_provider === null;
-        return { ...point, local: own, source: own ? "Lokal" : item.source };
+        return { ...point, local: own, source: own ? "Eingetragen" : item.source };
       })
       .filter((point) => !local || point.local)));
   readings.sort((a, b) => a.date.localeCompare(b.date) || Number(a.local) - Number(b.local)
@@ -1491,10 +1483,10 @@ function bodyFoldFat(read, entered) {
   const newest = read.failed ? null : read.measurements?.[0];
   const fold = newest?.body_fat_pct == null ? null : newest;
   if (entered && !(fold && fold.date >= entered.date)) {
-    const method = entered.source_label === "Hautfalten" ? "Lokal (Hautfalten)" : "Lokal";
+    const method = entered.source_label === "Hautfalten" ? "Eingetragen (Hautfalten)" : "Eingetragen";
     return { value: entered.value, note: `${method} · ${dateLabel(entered.date)}` };
   }
-  if (fold) return { value: fold.body_fat_pct, note: `Lokal (Hautfalten) · ${dateLabel(fold.date)}` };
+  if (fold) return { value: fold.body_fat_pct, note: `Eingetragen (Hautfalten) · ${dateLabel(fold.date)}` };
   return newest ? { text: "unbekannt", note: "ohne Geburtsjahr" } : null;
 }
 
@@ -3513,7 +3505,7 @@ function trainingFocusZoneInfo(report, model, items) {
 function appendTrainingFocusZones(report, details) {
   const zones = report.zones || [];
   // Pace zones are counted for runs only and follow power (#2808).
-  for (const [sensor, name] of [["heart_rate", "HF-Zonen"], ["power", "Power-Zonen"], ["pace", "Pace-Zonen"]]) {
+  for (const [sensor, name] of [["heart_rate", "Herzfrequenzzonen"], ["power", "Leistungszonen"], ["pace", "Pace-Zonen"]]) {
     const matching = zones.filter((item) => item.sensor === sensor);
     if (!matching.some((item) => item.measured_seconds > 0)) continue;
     for (const model of ["local", "provider"]) {

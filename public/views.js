@@ -253,13 +253,6 @@ function markdownToHtml(markdown) {
   return output.join("");
 }
 
-const CALENDAR_DISPLAY_MAX_WEEKS = 52;
-
-function calendarDisplayValue(value, fallback) {
-  const number = Number(value);
-  return Number.isInteger(number) && number >= 0 && number <= CALENDAR_DISPLAY_MAX_WEEKS ? number : fallback;
-}
-
 function localDateKey(value) {
   if (typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value)) return value;
   const date = value instanceof Date ? value : new Date(value);
@@ -322,7 +315,7 @@ function weatherDirection(value) {
 }
 
 function renderMoreSegments(segment) {
-  const selected = AppNavigation.moreSegments.includes(segment) ? segment : AppNavigation.moreSegments[2];
+  const selected = AppNavigation.moreSegments.includes(segment) ? segment : "connections";
   document.querySelectorAll("[data-more-segment-panel]").forEach((panel) => {
     panel.hidden = panel.dataset.moreSegmentPanel !== selected;
   });
@@ -375,7 +368,7 @@ function populateProfileField(form, key, value) {
   field.value = value || "";
 }
 
-const PROFILE_SPORT_LABELS = { Cycling: "Radfahren", Running: "Laufen", Swimming: "Schwimmen", Strength: "Krafttraining", WeightTraining: "Krafttraining", Triathlon: "Triathlon", Other: "Andere" };
+const PROFILE_SPORT_LABELS = { Cycling: "Radfahren", Running: "Laufen", Swimming: "Schwimmen", Strength: "Kraft", WeightTraining: "Kraft", Triathlon: "Triathlon", Other: "Andere" };
 
 function profileSportsLabel(sports) {
   return String(sports || "").split(",").map((item) => item.trim()).filter(Boolean)
@@ -518,7 +511,7 @@ function renderModel(model) {
   // A task whose provider has no key disables only its own entry points.
   // Every quick-action kind but the morning check-in runs on the planning model,
   // in the "Analyse & Plan" menu, its copies in the composer's "+" menu and the
-  // calendar's "Mit dem Coach analysieren" (#2744).
+  // calendar's "Mit Coach besprechen" (#2744).
   const planningOff = model?.tasks?.planning?.ready === false;
   const planning = $("#quickAnalysisButton");
   if (planning) planning.disabled = planningOff;
@@ -607,7 +600,7 @@ function renderReleaseChangelog(releases) {
   return true;
 }
 
-function aiConnectionConfigurationDetail() { return "OPENAI_API_KEY nicht konfiguriert"; }
+function aiConnectionConfigurationDetail() { return "OpenAI nicht eingerichtet"; }
 
 function aiConnectionErrorDetail(status) {
   const message = status.message || "OpenAI-Anfrage fehlgeschlagen.";
@@ -646,10 +639,10 @@ function intervalsConnectionState(data, configured) {
 
 function intervalsConnectionDetail(intervals) {
   const librarySync = intervals.library_sync || {};
-  if (!intervals.configured) return "API-Schlüssel nicht konfiguriert";
+  if (!intervals.configured) return "API-Schlüssel nicht eingerichtet";
   if (intervals.state === "syncing") return "Intervals.icu wird synchronisiert.";
   if (intervals.state === "error") return intervals.last_error || "Letzter Export fehlgeschlagen";
-  if (intervals.state === "configured") return "Noch nicht getestet";
+  if (intervals.state === "configured") return "Nicht geprüft";
   const usedAt = intervals.last_used_at || librarySync.last_sync_at;
   if (!usedAt) return "Noch keine Synchronisierung durchgeführt";
   const updated = formatTime(usedAt);
@@ -697,19 +690,8 @@ function renderSettingsSyncDayInputs(data) {
   updateUnfocusedInput("#garminSyncDays", data.sync_settings?.garmin_days || 84);
 }
 
-function renderCalendarDisplayInputs(data) {
-  const display = data.calendar_display || CALENDAR_DISPLAY_DEFAULTS;
-  const pastWeeks = calendarDisplayValue(display.past_weeks, CALENDAR_DISPLAY_DEFAULTS.past_weeks);
-  const futureWeeks = calendarDisplayValue(display.future_weeks, CALENDAR_DISPLAY_DEFAULTS.future_weeks);
-  updateUnfocusedInput("#calendarDisplayPastWeeks", pastWeeks);
-  updateUnfocusedInput("#calendarDisplayFutureWeeks", futureWeeks);
-  const summary = $("#calendarDisplaySummary");
-  if (summary) summary.textContent = pastWeeks + " zurück · " + futureWeeks + " voraus";
-}
-
 function renderSettingsInputs(data) {
   renderSettingsSyncDayInputs(data);
-  renderCalendarDisplayInputs(data);
 }
 
 function renderIntervalsSyncControls(configured) {

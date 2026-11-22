@@ -1,5 +1,3 @@
-const CALENDAR_DISPLAY_DEFAULTS = { past_weeks: 1, future_weeks: 4 };
-
 // Profile values as the form presents them; sports is the comma-joined multi-select.
 let profileSaveInFlight = false;
 function profileFormValues(form) {
@@ -85,11 +83,11 @@ async function saveProfile(event) {
   profileSaveInFlight = true;
   // The zone editor's save button sits in the same section list but submits its own form.
   const button = event.submitter || event.currentTarget.querySelector(".save-bar button[type=submit]");
-  const buttonLabel = button?.textContent || "Athletenkontext speichern";
+  const buttonLabel = button?.textContent || "Profil speichern";
   if (button) {
     button.disabled = true;
     button.setAttribute("aria-busy", "true");
-    button.textContent = "Athletenkontext wird gespeichert…";
+    button.textContent = "Profil wird gespeichert…";
   }
   const form = event.currentTarget;
   const generation = state.sessionGeneration;
@@ -110,7 +108,7 @@ async function saveProfile(event) {
     invalidateContextPreview();
     // The birth year and the sex decide the skinfold body fat and sites (#3099).
     if (Object.hasOwn(changed, "birth_year") || Object.hasOwn(changed, "sex")) resetSkinfolds();
-    toast("Profil gespeichert und für den Coach aktiviert");
+    toast("Profil gespeichert");
     if (button) {
       button.disabled = false;
       button.removeAttribute("aria-busy");
@@ -180,33 +178,6 @@ function saveSelectSetting({ currentTarget: select }, name, field, label) {
     await api(`/api/settings/${name}`, { method: "PUT", body: JSON.stringify({ [field]: select.value, ...task }) });
     return `${label}: ${select.options[select.selectedIndex].text}`;
   });
-}
-
-async function saveCalendarDisplaySettings(event) {
-  event.preventDefault();
-  const form = event.currentTarget;
-  const button = $("#calendarDisplaySaveButton");
-  if (!button) return;
-  button.disabled = true;
-  button.textContent = "Wird gespeichert...";
-  try {
-    await api("/api/settings/calendar-display", {
-      method: "PUT",
-      body: JSON.stringify({
-        past_weeks: $("#calendarDisplayPastWeeks")?.value,
-        future_weeks: $("#calendarDisplayFutureWeeks")?.value,
-      }),
-    });
-    toast("Kalenderansicht gespeichert");
-    await load();
-  } catch (error) {
-    toast(error.message, true);
-    renderSettings(state.data || {});
-  } finally {
-    button.disabled = false;
-    button.textContent = "Kalenderansicht speichern";
-    form.querySelectorAll("input").forEach((input) => { input.disabled = false; });
-  }
 }
 
 // Export and deletion run up to minutes: a second click starts nothing, and no deletion runs
@@ -359,6 +330,7 @@ async function deletePrivacyData() {
     // Deleted records must neither stay on screen nor reach the session snapshot.
     clearStateSnapshot();
     void clearOutbox();
+    rememberUnsentDraft(null);
     invalidateProviderChecks();
     void loadProviderChecks();
     // Loads that started before the deletion are dropped instead of rendered.
@@ -381,7 +353,7 @@ const ZONE_SPORTS = {
   run: { kinds: ["pace", "heart_rate", "power"], lt2: ["run_threshold_pace_seconds_per_km", "run_threshold_hr_bpm"], maximum: "running_max_hr_bpm", power: "run_threshold_watts" },
   swim: { kinds: ["pace", "heart_rate"], lt2: [null, null], maximum: null, power: null },
 };
-const ZONE_KIND_TITLES = { power: "Leistungszonen", heart_rate: "Pulszonen", pace: "Pacezonen" };
+const ZONE_KIND_TITLES = { power: "Leistungszonen", heart_rate: "Herzfrequenzzonen", pace: "Pacezonen" };
 const POWER_ZONE_NAMES = ["Regeneration", "Grundlage", "Tempo", "Schwelle", "VO2max", "Anaerob", "Neuromuskulär"];
 let zoneConfigurations = [];
 let zoneEffective = [];
@@ -542,7 +514,7 @@ function zoneSourceText(item) {
   return item.sport == null ? `${provider}, gilt für alle Sportarten` : provider;
 }
 
-const THRESHOLD_ORIGINS = { measured: "gemessen", estimated: "aus der Herzfrequenzvariabilität", own_sessions: "aus eigenen Einheiten", zone_2: "aus Zone 2", fixed_share: "aus festem Anteil von LT2" };
+const THRESHOLD_ORIGINS = { measured: "gemessen", estimated: "aus der Herzfrequenzvariabilität", own_sessions: "aus eigenen Einheiten", fixed_share: "Standardwert" };
 
 // Pure: LT1 and LT2 of a sport (#2262). LT2 comes from the performance values, LT1 from the
 // performance thresholds (#2427); `origins` names where each row's values come from.
@@ -553,7 +525,7 @@ function thresholdRows(sport, metrics = state.data?.performance?.metrics || {}, 
   const values = thresholds.first_thresholds?.[sport] || {};
   const lt1 = { main: (metric === "power" ? values.watts : values.pace_seconds_per_km) ?? null, hr: values.hr_bpm ?? null };
   const sources = [metrics[spec.lt2[0]], metrics[spec.lt2[1]]].filter((item) => item?.value != null);
-  const lt1Origins = [["Puls", values.hr_origin], [metric === "power" ? "Leistung" : "Pace", metric === "power" ? values.power_origin : values.pace_origin]]
+  const lt1Origins = [["Herzfrequenz", values.hr_origin], [metric === "power" ? "Leistung" : "Pace", metric === "power" ? values.power_origin : values.pace_origin]]
     .filter(([, origin]) => THRESHOLD_ORIGINS[origin]).map(([name, origin]) => `${name} ${THRESHOLD_ORIGINS[origin]}`);
   return {
     metric,
@@ -566,7 +538,7 @@ function thresholdRows(sport, metrics = state.data?.performance?.metrics || {}, 
 
 // One provider names the row; providers that differ per value are named per value.
 function lt2Origin(metric, metrics, spec) {
-  const named = [[metric === "power" ? "Leistung" : "Pace", metrics[spec.lt2[0]]], ["Puls", metrics[spec.lt2[1]]]].filter(([, item]) => item?.value != null && item.source);
+  const named = [[metric === "power" ? "Leistung" : "Pace", metrics[spec.lt2[0]]], ["Herzfrequenz", metrics[spec.lt2[1]]]].filter(([, item]) => item?.value != null && item.source);
   if (!named.length) return null;
   if (new Set(named.map(([, item]) => item.source)).size === 1) return `Von ${named[0][1].source}`;
   return named.map(([name, item]) => `${name} von ${item.source}`).join(" · ");
@@ -592,7 +564,7 @@ function thresholdOriginInfo(label, text) {
 function thresholdBox(sport) {
   const rows = thresholdRows(sport);
   const heading = h("h3", null, "Schwellen", rows.validFrom ? h("small", null, `gilt seit ${dateLabel(String(rows.validFrom).slice(0, 10))}`) : null);
-  const grid = h("div", "zone-thresholds", h("span"), h("span", "zone-muted", rows.metric === "power" ? "Leistung" : "Pace"), h("span", "zone-muted", "Puls"));
+  const grid = h("div", "zone-thresholds", h("span"), h("span", "zone-muted", rows.metric === "power" ? "Leistung" : "Pace"), h("span", "zone-muted", "Herzfrequenz"));
   const lt2Label = sport === "ride" ? "Anaerob (LT2) / FTP" : "Anaerob (LT2)";
   const lines = [{ label: "Aerob (LT1)", values: rows.lt1, origin: rows.origins.lt1, main: "lt1-main", hr: "lt1-hr" }, { label: lt2Label, values: rows.lt2, origin: rows.origins.lt2, main: "lt2-main", hr: "lt2-hr" }];
   for (const { label, values, origin, ...names } of lines) {
@@ -628,7 +600,7 @@ function lt2Duration(seconds) {
 function lt2AdoptValues(source, estimate) {
   if (estimate?.status !== "ok") return [];
   const values = [];
-  if (estimate.heart_rate_bpm != null) values.push({ value: "heart_rate", shown: estimate.heart_rate_bpm, label: `Puls ${estimate.heart_rate_bpm} bpm` });
+  if (estimate.heart_rate_bpm != null) values.push({ value: "heart_rate", shown: estimate.heart_rate_bpm, label: `Herzfrequenz ${estimate.heart_rate_bpm} bpm` });
   if (estimate.pace_seconds_per_km != null) values.push({ value: "pace", shown: estimate.pace_seconds_per_km, label: `Pace ${thresholdMainText("pace", estimate.pace_seconds_per_km)}` });
   if (estimate.power_w != null) values.push({ value: "power", shown: estimate.power_w, label: `Leistung ${estimate.power_w} W` });
   return values;
@@ -775,7 +747,7 @@ function lt2NoticeValues(sport, metrics = state.data?.performance?.metrics || {}
 // Minimum change per value before a notice (athlete decision F10): 2 bpm, 3 s/km, 5 W.
 const LT2_NOTICE_MIN = { provider_hr: 2, dfa_hr: 2, provider_pace: 3, dfa_pace: 3, cs_pace: 3, provider_power: 5, cp_power: 5 };
 const LT2_NOTICE_UNITS = { pace: " /km", hr: " bpm", power: " W" };
-const LT2_NOTICE_LABELS = { provider_hr: "Puls", provider_pace: "Pace", provider_power: "FTP", dfa_hr: "DFA-α1 Puls", dfa_pace: "DFA-α1 Pace", cs_pace: "CS", cp_power: "CP" };
+const LT2_NOTICE_LABELS = { provider_hr: "Herzfrequenz", provider_pace: "Pace", provider_power: "FTP", dfa_hr: "DFA-α1 Herzfrequenz", dfa_pace: "DFA-α1 Pace", cs_pace: "CS", cp_power: "CP" };
 
 // Pure: the changes against the seen values; a switch between a value and "unbekannt" counts too.
 function lt2NoticeChanges(seen, current) {

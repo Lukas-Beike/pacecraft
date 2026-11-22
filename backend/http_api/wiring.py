@@ -196,7 +196,6 @@ def build_public_state(
                 athlete.activity_feedback().for_activity_ids, sessions_only=True
             ),
             now=ctx.clock.now,
-            zone_configurations=athlete.zones().configurations,
             lt1_session_records=lambda days: ctx.performance.curve_records(days),
             lt1_history_records=ctx.performance.all_time_records,
         )

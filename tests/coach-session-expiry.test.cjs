@@ -2,7 +2,7 @@ const assert = require("node:assert/strict");
 const { test } = require("node:test");
 const { extractFunctions, loadPublicScript } = require("./frontend-harness.cjs");
 
-const CHAT_REQUEST = ["chatRequestIsCurrent", "chatStreamResponse", "rejectChatStreamResponse", "parseChatStreamEvent", "applyStartedChatStreamEvent", "applyDeltaChatStreamEvent", "applyBackgroundChatStreamEvent", "applyCompletedChatStreamEvent", "applyChatStreamEvent", "consumeChatStreamBlock", "CHAT_STREAM_SILENCE_MS", "readChatStreamChunk", "readChatStream", "refreshCompletedChatStream", "finishChatStream", "recoverChatRequestFailure", "finishChatRequest", "requestCoachResponse"];
+const CHAT_REQUEST = ["chatRequestIsCurrent", "chatStreamResponse", "rejectChatStreamResponse", "parseChatStreamEvent", "applyStartedChatStreamEvent", "applyDeltaChatStreamEvent", "applyBackgroundChatStreamEvent", "applyCompletedChatStreamEvent", "applyChatStreamEvent", "consumeChatStreamBlock", "CHAT_STREAM_SILENCE_MS", "readChatStreamChunk", "readChatStream", "refreshCompletedChatStream", "finishChatStream", "OFFLINE_NOT_SENT", "unsentOffline", "recoverChatRequestFailure", "finishChatRequest", "requestCoachResponse"];
 
 function attachments(count) {
   return Array.from({ length: count }, (_, index) => ({ name: `route-${index}.gpx`, data: "AA==" }));
@@ -16,7 +16,7 @@ function unauthorizedResponse() {
 }
 
 // Sends a chat message whose request is rejected with 401 and returns the observable outcome.
-async function sendChatIntoExpiredSession({ inputValue = "", beforeResponse = () => {} } = {}) {
+async function sendChatIntoExpiredSession({ inputValue = "", beforeResponse = () => {}, respond = unauthorizedResponse, onLine, data = null } = {}) {
   const draftAttachments = attachments(2);
   const input = { value: inputValue, style: {}, dispatchEvent() {}, focus() {} };
   const state = {
@@ -31,9 +31,11 @@ async function sendChatIntoExpiredSession({ inputValue = "", beforeResponse = ()
     chatServerOperationId: null,
     chatQueue: [],
     rejectedMessages: [],
-    data: null,
+    data,
   };
   const counts = { showLogin: 0, renderChatAttachments: 0 };
+  const toasts = [];
+  const drafts = [];
   const context = loadPublicScript("api.js", {
     AbortController,
     Headers,
@@ -41,10 +43,13 @@ async function sendChatIntoExpiredSession({ inputValue = "", beforeResponse = ()
     setTimeout,
     clearTimeout,
     document: { cookie: "ic_csrf=csrf-test" },
-    fetch: async () => { beforeResponse(state); return unauthorizedResponse(); },
+    fetch: async () => { beforeResponse(state); return respond(); },
+    navigator: { onLine },
+    toast(message) { toasts.push(message); },
+    rememberUnsentDraft(text, turnId) { drafts.push(turnId ? [text, turnId] : text); },
+    reusedTurnId: () => null,
     state,
     $: () => input,
-    toast() {},
     // Mirrors the generation and draft effects of public/auth.js showLogin().
     showLogin() {
       counts.showLogin += 1;
@@ -54,6 +59,7 @@ async function sendChatIntoExpiredSession({ inputValue = "", beforeResponse = ()
     },
     renderChatAttachments() { counts.renderChatAttachments += 1; },
     renderMessages() {},
+    mergeChatMessages: (messages) => messages,
     updateChatControls() {},
     rememberChatTurn() {},
     cancelScheduledChatStreamRender() {},
@@ -66,7 +72,7 @@ async function sendChatIntoExpiredSession({ inputValue = "", beforeResponse = ()
   extractFunctions("coach.js", CHAT_REQUEST, context);
   const message = "Mein Entwurf";
   const result = await context.requestCoachResponse(message, null, draftAttachments);
-  return { result, state, input, counts, draftAttachments };
+  return { result, state, input, counts, draftAttachments, toasts, drafts };
 }
 
 test("a chat 401 restores the typed draft and attachments once and shows login once", async () => {
@@ -100,4 +106,65 @@ test("a chat 401 for a superseded chat still shows login once without restoring 
   assert.equal(counts.showLogin, 1);
   assert.equal(input.value, "");
   assert.equal(state.chatDraftDirty, false);
+});
+
+test("a chat sent without a connection goes back to the composer at once and is kept as a draft", async () => {
+  const { result, state, input, toasts, drafts } = await sendChatIntoExpiredSession({
+    onLine: false,
+    data: { messages: [] },
+    respond: () => { throw new TypeError("Failed to fetch"); },
+  });
+  assert.equal(result, false);
+  assert.equal(input.value, "Mein Entwurf");
+  assert.equal(state.chatDraftDirty, true);
+  assert.deepEqual(toasts, ["Keine Verbindung – nicht gesendet."]);
+  // The turn id stays with the text: the server may already have queued it.
+  assert.deepEqual(drafts, [null, ["Mein Entwurf", "turn-test"]]);
+  assert.equal(state.chatRequest, null);
+});
+
+test("a chat that fails while the browser claims to be online stays with the recovery polls", async () => {
+  const { result, state, drafts } = await sendChatIntoExpiredSession({
+    onLine: true,
+    data: { messages: [] },
+    respond: () => { throw new TypeError("Failed to fetch"); },
+  });
+  assert.equal(result, "recovering");
+  assert.equal(state.chatRequest.phase, "recovering");
+  assert.deepEqual(drafts, [null]);
+});
+
+test("an offline draft follows the athlete's edits and ends with an empty composer", () => {
+  const store = new Map([["coachUnsentDraft", "alt"]]);
+  const sessionStorage = {
+    getItem: (key) => (store.has(key) ? store.get(key) : null),
+    setItem: (key, value) => store.set(key, value),
+    removeItem: (key) => store.delete(key),
+  };
+  const context = extractFunctions("coach.js", ["rememberUnsentDraft", "syncUnsentDraft"], { sessionStorage });
+  context.syncUnsentDraft("neu geschrieben");
+  assert.equal(store.get("coachUnsentDraft"), "neu geschrieben");
+  context.syncUnsentDraft("  ");
+  assert.equal(store.has("coachUnsentDraft"), false);
+  // Without a kept draft, typing stores nothing.
+  context.syncUnsentDraft("getippt");
+  assert.equal(store.has("coachUnsentDraft"), false);
+});
+
+test("the same text is sent again under the turn id the server may already know", () => {
+  const store = new Map();
+  const sessionStorage = {
+    getItem: (key) => (store.has(key) ? store.get(key) : null),
+    setItem: (key, value) => store.set(key, value),
+    removeItem: (key) => store.delete(key),
+  };
+  const context = extractFunctions("coach.js", ["rememberUnsentDraft", "syncUnsentDraft", "reusedTurnId"], { sessionStorage });
+  context.rememberUnsentDraft("Plane meine Woche", "turn-1");
+  assert.equal(context.reusedTurnId("Plane meine Woche"), "turn-1");
+  // An edited text is another request and gets its own id; the draft still follows the edit.
+  context.syncUnsentDraft("Plane meine Woche neu");
+  assert.equal(context.reusedTurnId("Plane meine Woche neu"), null);
+  assert.equal(context.reusedTurnId("Plane meine Woche"), "turn-1");
+  context.rememberUnsentDraft(null);
+  assert.equal(context.reusedTurnId("Plane meine Woche"), null);
 });

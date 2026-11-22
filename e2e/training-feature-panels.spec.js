@@ -105,7 +105,7 @@ test("@responsive training focus draws pace-zone time after power zones", async 
     });
   });
   const zones = page.locator("#trainingZoneCharts");
-  await expect(zones.locator("h4")).toHaveText(["HF-Zonen", "Power-Zonen", "Pace-Zonen"].map((name) => new RegExp(`^${name}`)));
+  await expect(zones.locator("h4")).toHaveText(["Herzfrequenzzonen", "Leistungszonen", "Pace-Zonen"].map((name) => new RegExp(`^${name}`)));
   const pace = zones.locator(".training-focus-distribution").nth(2);
   await expect(pace.locator(".training-focus-row > span:first-child")).toHaveText(["Z5", "Z4", "Z3", "Z2", "Z1"]);
   await expect(pace.getByRole("progressbar", { name: "Z2: 55 Prozent" })).toBeVisible();
@@ -151,9 +151,9 @@ test("@responsive recovery, power, training focus, season and calendar profiles 
   const zones = page.locator("#trainingZoneCharts");
   // Power counts in the local zones from the streams; the fixture has no threshold
   // HR and Intervals.icu zone times are never read (#1743).
-  await expect(zones.getByRole("heading", { name: /^HF-Zonen/ })).toHaveCount(0);
+  await expect(zones.getByRole("heading", { name: /^Herzfrequenzzonen/ })).toHaveCount(0);
   await expect(zones).not.toContainText("keine aufgezeichneten");
-  await expect(zones.getByRole("heading", { name: /^Power-Zonen Power-Zonen/ })).toBeVisible();
+  await expect(zones.getByRole("heading", { name: /^Leistungszonen Leistungszonen/ })).toBeVisible();
   await expect(zones.getByRole("heading", { name: /\(Gerät\)/ })).toHaveCount(0);
   await expect(zones.locator("details")).toHaveCount(0);
   expect((await zones.boundingBox()).y).toBeGreaterThan((await report.boundingBox()).y);
@@ -251,13 +251,15 @@ test("@responsive recovery, power, training focus, season and calendar profiles 
   await page.evaluate(async () => { await AppRouter.navigate("more/profile", { historyMode: "replace" }); });
   await expect(page.locator("#profilePanel").getByRole("heading", { name: "Mehr", exact: true })).toBeVisible();
   await expect(page.locator("#equipmentItems")).toBeHidden();
-  await page.evaluate(async () => { await AppRouter.navigate("more/appearance", { historyMode: "replace" }); });
-  const calendarSettings = page.locator("details").filter({ has: page.locator("#calendarDisplayForm") });
-  await expect(calendarSettings).toBeVisible();
-  await calendarSettings.locator("summary").click();
-  await expect(page.locator("#calendarDisplayPastWeeks")).toBeVisible();
+  // #3914: the old Darstellung link opens the App tab: colour scheme and notifications, no calendar range.
+  await page.goto("/#more/appearance");
+  await expect.poll(() => page.evaluate(() => AppState.state.route)).toBe("more/app");
+  const notifications = page.locator("#notificationSettings");
+  await expect(notifications).toBeVisible();
+  await expect(page.locator("#appearanceSelect")).toBeVisible();
+  await expect(page.locator("#calendarDisplayForm")).toHaveCount(0);
   await page.evaluate(async () => { await AppRouter.navigate("more/operations", { historyMode: "replace" }); });
-  await expect(calendarSettings).toBeHidden();
+  await expect(notifications).toBeHidden();
   await page.evaluate(async () => { await AppRouter.navigate("nutrition/diary", { historyMode: "replace" }); });
   await expect(page.locator('[data-nutrition-segment="fueling"], #trainingFueling, #nutritionLog, #nutritionDefine')).toHaveCount(0);
   await expect(page.locator("#nutritionPanel").getByRole("button", { name: /Coach/ })).toHaveCount(0);

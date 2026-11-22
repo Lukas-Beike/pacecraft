@@ -27,7 +27,7 @@ The system SHALL add to every `get_activity_details` result a `session_report` (
 - **WHEN** the session focus is recovery, easy, endurance or long
 - **THEN** the report judges:
   - aerobic decoupling, notable above 5 %;
-  - the share of heart-rate zone time above zone 2, notable above 10 %; the paired plan's own seconds above zone 2 (strides, a fast finish) are taken off, unplanned surges count;
+  - the share of heart-rate time above the LT1 heart rate in effect (85 % of the threshold HR on the session day), notable above 10 %; the paired plan's own seconds above LT1 (strides, a fast finish) are taken off, unplanned surges count; a unit with a heart-rate cap is judged by its cap instead (#3915);
   - a stored heart-rate cap by the verdict the planned targets computed (mean above the cap or more than 10 % of the time above it);
   - for rides the variability index, notable above 1.05.
 
@@ -62,7 +62,7 @@ The system SHALL add to every `get_activity_details` result a `session_report` (
 
 #### Scenario: Strength sets, heat, gaps and hills
 - **WHEN** a strength session has a plan with sets, a run or ride has stored weather, its streams have holes, or a ride has reps
-- **THEN** the report judges completed against planned sets through the plan rule (notable outside ±20 %; sets only, no load). It gives the check `heat` (the activity weather only, never a finding), whose `explains` names the heart-rate checks the report finds notable (decoupling, time above zone 2, cardiac drift) from 25 °C apparent temperature. The execution marks a heart-rate or speed channel `gaps` once more than 5 % of the recorded time (clock jumps over 30 s are pauses) sits in runs of missing values longer than 5 s, so the checks reading it are unknown. The check `hills` lists each ride rep's net elevation change and mean grade as facts (athlete decisions B to E, #3084 Part 3c).
+- **THEN** the report judges completed against planned sets through the plan rule (notable outside ±20 %; sets only, no load). It gives the check `heat` (the activity weather only, never a finding), whose `explains` names the heart-rate checks the report finds notable (decoupling, time above LT1, cardiac drift) from 25 °C apparent temperature. The execution marks a heart-rate or speed channel `gaps` once more than 5 % of the recorded time (clock jumps over 30 s are pauses) sits in runs of missing values longer than 5 s, so the checks reading it are unknown. The check `hills` lists each ride rep's net elevation change and mean grade as facts (athlete decisions B to E, #3084 Part 3c).
 
 #### Scenario: The night before and the load of the days before
 - **WHEN** a run or ride is read

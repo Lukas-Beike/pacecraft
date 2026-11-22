@@ -300,6 +300,8 @@ export const STEPS = [
   // The body values' edit icons are svgs too, so the chart step waits for a body chart.
   { view: "nutrition", name: "Ernährung: Produktzähler", covers: "#3435 product use counts", pre: [tab("nutrition", "products")], opens: ['#nutritionProducts details[data-section="all"] > summary'], ready: "#nutritionProducts details[data-section='all'] .nutrition-usage", kind: "text" },
   { view: "nutrition", name: "Ernährung: Zuletzt genutzt", covers: "#3444 product last use", pre: [tab("nutrition", "products")], opens: ['#nutritionProducts details[data-section="all"] > summary'], ready: "#nutritionProducts details[data-section='all'] .nutrition-last-use", kind: "text" },
+  // Read-only: the walk checks that a meal card has its pencil, it opens no dialog and saves nothing (#3948).
+  { view: "nutrition", name: "Ernährung: Mahlzeit bearbeiten", covers: "#3948 meal pencil", since: "2.2.15", pre: [tab("nutrition", "diary")], ready: ".nutrition-card:has(.nutrition-card-head button[aria-label^='Mahlzeit bearbeiten']) h3", kind: "text", optional: true },
   { view: "nutrition", name: "Ernährung: Körper", covers: "Body analysis", pre: [tab("nutrition", "body")], ready: "#bodyAnalysisCharts [data-body-metric] svg", kind: "chart" },
   { view: "nutrition", name: "Ernährung: Körperwerte", covers: "#3402 weight and body fat with their pencils", pre: [tab("nutrition", "body")], ready: "#bodyAnalysisCharts [data-body-overview] [data-metric='weight_kg'] th small", kind: "text" },
   { view: "nutrition", name: "Ernährung: Energieverbrauch", covers: "#3099 #3252 energy card in the diary, #3550 übriger Alltag, #3577 Übriger Alltag, #3703 one source, #3723 provisional Übriger Alltag", pre: [tab("nutrition", "diary")], ready: "#nutritionEnergy [data-energy] .energy-usage", kind: "text" },
@@ -309,6 +311,8 @@ export const STEPS = [
   // The current release's entry: a listed change, or only its collapsed "Technik (n)" (2.1.20).
   // Read-only: the walk checks that "Wettkämpfe senden" is there and never presses it (#3838).
   { view: "more", name: "Mehr: Wettkämpfe senden", covers: "#3838 competition send button", since: "2.2.12", pre: [tab("more", "connections")], opens: ["#connection-intervals > summary"], ready: "#competitionSendButton", kind: "text", optional: true },
+  // The App tab: colour scheme and the push row (#3914); the walk never presses "Benachrichtigungen aktivieren".
+  { view: "more", name: "Mehr: App", covers: "#3914 App tab and push notifications", since: "2.2.15", pre: [tab("more", "app")], ready: "#notificationSettings #notificationStatus", kind: "text" },
   { view: "more", name: "Mehr: Betrieb, Änderungen", covers: "#2908 changelog", pre: [tab("more", "operations")], ready: ".release-changelog > ul > li, .release-changelog > .release-technical > summary", kind: "text", optional: true },
 ];
 

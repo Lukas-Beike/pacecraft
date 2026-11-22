@@ -46,7 +46,7 @@ test("an activated service worker removes old caches and controls open pages", a
 function page({ controlled = true } = {}) {
   const workerListeners = {};
   const documentListeners = {};
-  const nodes = { "#messageInput": { value: "" }, "#backupRestoreButton": { disabled: false }, "#calendarDisplaySaveButton": { disabled: false }, "dialog[open]": null };
+  const nodes = { "#messageInput": { value: "" }, "#backupRestoreButton": { disabled: false }, "#notificationTypes input[data-push-type]:disabled": null, "dialog[open]": null };
   const credentialFields = [{ value: "" }, { value: "" }];
   const dirtyForms = [];
   const globalListeners = {};
@@ -159,9 +159,10 @@ const blockers = {
   "a state load": ({ state }) => { state.loadPromise = Promise.resolve(); return () => { state.loadPromise = null; }; },
   "a backup restore": ({ nodes }) => { nodes["#backupRestoreButton"].disabled = true; return () => { nodes["#backupRestoreButton"].disabled = false; }; },
   "an open dialog": ({ nodes }) => { nodes["dialog[open]"] = {}; return () => { nodes["dialog[open]"] = null; }; },
+  // #3914: a notification switch is disabled while its save runs.
+  "a notification switch save": ({ nodes }) => { nodes["#notificationTypes input[data-push-type]:disabled"] = {}; return () => { nodes["#notificationTypes input[data-push-type]:disabled"] = null; }; },
   "a typed credential": ({ credentialFields }) => { credentialFields[1].value = "123456"; return () => { credentialFields[1].value = ""; }; },
   "a credential save": ({ providerCredentialBusy }) => { providerCredentialBusy.add("garmin-login"); return () => { providerCredentialBusy.clear(); }; },
-  "a calendar settings save": ({ nodes }) => { nodes["#calendarDisplaySaveButton"].disabled = true; return () => { nodes["#calendarDisplaySaveButton"].disabled = false; }; },
   "an edited form": ({ dirtyForms }) => { dirtyForms.push({ dataset: { dirty: "1" }, closest: () => null }); return () => { dirtyForms.length = 0; }; },
   "an open nutrition extraction": ({ nodes }) => { nodes["#nutritionExtraction"] = { hidden: false, childElementCount: 2 }; return () => { nodes["#nutritionExtraction"] = { hidden: true, childElementCount: 2 }; }; },
   "a focused settings field": ({ document }) => {
@@ -483,4 +484,61 @@ test("disabling push removes the subscription on the server and in the browser",
     ["browser-unsubscribe"],
     ["toast", "Benachrichtigungen ausgeschaltet"],
   ]);
+});
+
+// Runs the per-type switches of public/notifications.js (#3914, variant B) against a stubbed API.
+function pushTypesPage({ failSave = false } = {}) {
+  const calls = [];
+  const toasts = [];
+  const list = { hidden: true, children: [], querySelector: (selector) => (selector === "legend" ? "legend" : null), replaceChildren(...items) { this.children = items; } };
+  const context = extractFunctions("notifications.js", ["PUSH_TYPE_LABELS", "pushTypesEndpoint", "renderPushTypes", "savePushType"], {
+    $: (selector) => (selector === "#notificationTypes" ? list : null),
+    h: (tag, props, ...children) => ({ tag, props, children }),
+    toast: (text, error) => toasts.push([text, Boolean(error)]),
+    api: async (path, options) => {
+      calls.push([path, options?.body ? JSON.parse(options.body) : null]);
+      if (path.startsWith("/api/push?")) return { subscribed: true, types: { weather: false } };
+      if (failSave) throw new Error("Speichern fehlgeschlagen");
+      return {};
+    },
+  });
+  return { context, calls, toasts, list };
+}
+
+test("a switch save in flight is never redrawn from an older read", async () => {
+  const { context, list } = pushTypesPage();
+  list.querySelector = (selector) => (selector === "legend" ? "legend" : {});
+  await context.renderPushTypes({ endpoint: "https://fcm.googleapis.com/fcm/send/fake" });
+  assert.deepEqual(list.children, []);
+});
+
+test("the switch list shows one switch per type in the server's state, read once per device", async () => {
+  const { context, calls, list } = pushTypesPage();
+  const subscription = { endpoint: "https://fcm.googleapis.com/fcm/send/fake" };
+  await context.renderPushTypes(subscription);
+  await context.renderPushTypes(subscription);
+  assert.equal(list.hidden, false);
+  assert.deepEqual(calls.map(([path]) => path), [`/api/push?endpoint=${encodeURIComponent(subscription.endpoint)}`]);
+  const rows = list.children.slice(1);
+  assert.equal(rows.length, 11);
+  const row = (label) => rows.find((item) => item.children[1].children[0] === label);
+  assert.equal(row("Wetter für Outdoor-Einheit").children[0].props.checked, false);
+  assert.equal(row("Coach-Antwort fertig").children[0].props.checked, true);
+  await context.renderPushTypes(null);
+  assert.equal(list.hidden, true);
+});
+
+test("switching a type saves it, and a failed save turns the switch back", async () => {
+  const input = { checked: false, disabled: false, dataset: { pushType: "weather" } };
+  const event = { target: { closest: () => input } };
+  const saved = pushTypesPage();
+  await saved.context.savePushType(event);
+  assert.deepEqual(JSON.parse(JSON.stringify(saved.calls)), [["/api/push/preferences", { types: { weather: false } }]]);
+  assert.equal(input.checked, false);
+  const failed = pushTypesPage({ failSave: true });
+  input.checked = true;
+  await failed.context.savePushType(event);
+  assert.equal(input.checked, false);
+  assert.equal(input.disabled, false);
+  assert.deepEqual(failed.toasts, [["Speichern fehlgeschlagen", true]]);
 });

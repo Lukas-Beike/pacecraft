@@ -17,6 +17,8 @@ LOCAL = {
     "label": "Zoneneinstellungen",
     "heart_rate": _zones({"Z1": 600.0, "Z2": 1200.0}),
     "pace": _zones({"Z1": 300.0, "Z4": 900.0}),
+    # The 3-zone bands (#3915): Z1 low, Z2 moderate, Z3 high.
+    "heart_rate_bands": _zones({"Z1": 1800.0}),
 }
 
 
@@ -51,7 +53,11 @@ class WithZoneTimesTests(unittest.TestCase):
         self.assertEqual(LOCAL["heart_rate"], local["heart_rate_zone_times"])
         self.assertEqual(LOCAL["pace"], local["pace_zone_times"])
         self.assertEqual(
-            {"heart_rate_zone_times": "local", "pace_zone_times": "local"},
+            {
+                "heart_rate_zone_times": "local",
+                "pace_zone_times": "local",
+                "heart_rate_band_times": "local",
+            },
             local["zone_models"],
         )
         self.assertEqual(

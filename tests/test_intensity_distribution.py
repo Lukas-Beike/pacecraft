@@ -71,7 +71,7 @@ class DistributionTests(unittest.TestCase):
         self.assertEqual(["intensity_distribution"], [f["code"] for f in findings])
         self.assertFalse(findings[0]["blocking"])
         self.assertIn("moderate", findings[0]["evidence"]["deviating_bands"])
-        self.assertIn("Z1-Z2 low", findings[0]["evidence"]["zone_mapping"])
+        self.assertIn("low up to LT1", findings[0]["evidence"]["zone_mapping"])
 
     def test_threshold_and_sweet_spot_ranges(self) -> None:
         easy = self.weeks(week(300, 60, 20))[0]
@@ -201,8 +201,17 @@ def done(day: str, sport: str, minutes: int, zone: str) -> dict:
             {"id": f"Z{number}", "secs": minutes * 60 if f"Z{number}" == zone else 0}
             for number in range(1, 8)
         ],
-        "zone_models": {"power_zone_times": "local"},
+        # The stored bands (#3915): power Z1-Z2 lie up to LT1 (75 % FTP), Z5 above
+        # the threshold.
+        "power_band_times": [
+            {"id": f"Z{band}", "secs": minutes * 60 if band == _BAND[zone] else 0}
+            for band in (1, 2, 3)
+        ],
+        "zone_models": {"power_zone_times": "local", "power_band_times": "local"},
     }
+
+
+_BAND = {"Z1": 1, "Z2": 1, "Z3": 2, "Z4": 2, "Z5": 3, "Z6": 3, "Z7": 3}
 
 
 class RunningWeekTests(unittest.TestCase):
@@ -242,7 +251,13 @@ class RunningWeekTests(unittest.TestCase):
         self.assertEqual({}, dist.deviations("pyramidal", week))
 
     def test_coverage_minimum_still_applies(self) -> None:
-        completed = [{**done("2026-11-02", "ride", 150, "Z2"), "power_zone_times": []}]
+        completed = [
+            {
+                **done("2026-11-02", "ride", 150, "Z2"),
+                "power_zone_times": [],
+                "power_band_times": [],
+            }
+        ]
         planned = [unit("p1", "2026-11-05", "Ride", "- 30m Z2\n")]
         week = self.weeks(planned, completed)[0]
         self.assertLess(week["coverage"], dist.MIN_COVERAGE)

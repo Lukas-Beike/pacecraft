@@ -37,14 +37,14 @@ const CREDENTIAL_VISIBLE_FIELDS = new Set(["openai_base_url", "anthropic_base_ur
 const CREDENTIAL_SOURCE_LABELS = Object.freeze({
   db: "In der App gespeichert",
   env: "Server-Einstellung",
-  none: "Nicht gesetzt",
+  none: "Nicht eingerichtet",
 });
 
 const GARMIN_SOURCE_LABELS = Object.freeze({
   db: "In der App gespeichert",
   file: "Aus Token-Datei",
   env: "Server-Einstellung",
-  none: "Nicht gesetzt",
+  none: "Nicht eingerichtet",
 });
 
 // Requests in flight per card (GARMIN_CARD for the Garmin card). Re-renders from
@@ -288,7 +288,7 @@ function toggleMetricExport(button) {
 
 async function configureAutomaticMetricExport(enabled, button) {
   const message = enabled
-    ? "Schwellenpuls (LSHF), maximale HF und Lauf-Schwellenpace künftig automatisch an Intervals.icu senden (lokale Zonen, sonst Garmin, sonst Wahoo)? Abweichende Werte dort werden überschrieben, die HF-Zonen neu berechnet."
+    ? "Schwellenpuls (LSHF), maximale Herzfrequenz und Lauf-Schwellenpace künftig automatisch an Intervals.icu senden (lokale Zonen, sonst Garmin, sonst Wahoo)? Abweichende Werte dort werden überschrieben, die Herzfrequenzzonen neu berechnet."
     : "Den automatischen Abgleich mit Intervals.icu deaktivieren?";
   if (!await requestConfirmation(message, { title: enabled ? "Automatischen Abgleich aktivieren?" : "Automatischen Abgleich deaktivieren?" })) return;
   button.disabled = true;
@@ -383,7 +383,7 @@ async function saveProviderCredentials(event, provider) {
 async function clearProviderCredential(field, provider) {
   const label = CREDENTIAL_FIELD_LABELS[field];
   const confirmed = await requestConfirmation(
-    `${label} aus der App entfernen? Danach gilt wieder der Wert aus der Serverumgebung, falls dort einer gesetzt ist.`,
+    `${label} aus der App entfernen? Danach gilt wieder der Wert aus der Server-Einstellung, falls dort einer gesetzt ist.`,
     { title: `${label} entfernen?` },
   );
   if (!confirmed) return;

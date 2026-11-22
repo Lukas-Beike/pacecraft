@@ -1,8 +1,8 @@
 # M10 — First threshold heart rate from chest-strap RR intervals (DFA-α1)
 
 - **Card:** M10
-- **Card version:** 5
-- **Method ID:** dfa-alpha1-first-threshold v3 (`backend/canonical/dfa_alpha1.py:METHOD_VERSION`), athlete-level value in `backend/performance/first_threshold_estimate.py` (#2131, C-008), running step test run-step-test-v2 in `backend/performance/step_test.py` (#3833, #3916)
+- **Card version:** 6
+- **Method ID:** dfa-alpha1-first-threshold v3 (`backend/canonical/dfa_alpha1.py:METHOD_VERSION`), athlete-level value in `backend/performance/first_threshold_estimate.py` (#2131, C-008), running step test run-step-test-v3 in `backend/performance/step_test.py` (#3833, #3916, #3915)
 - **Status:** implemented (`backend/providers/fit_rr_mapping.py` reads the RR intervals); per-session result stored with the stream set, athlete-level estimate shown in the profile and the Coach context, adopted only by the athlete
 - **Classification:** model estimate
 - **Literature checked:** 2026-11-21
@@ -318,7 +318,7 @@ comparable.
 | Stored percent bounds | 40 to 100 % LSHF | product assumption | `FIRST_THRESHOLD_PERCENT_BOUNDS` of the profile value. |
 | Step test stage length | 3 min | source | R76 validated the 0.5 crossing with 3-minute stages; athlete decision P1 (#3833). `step_test.py:STAGE_MIN`. |
 | Step test speed step | 0.5 km/h | product assumption | Keeps the heart-rate jump per stage near the 8 bpm window rule. `STEP_KMH`. |
-| Step test start | 1.5 km/h below LT1, else 9.5 km/h | product assumption | Athlete decision P1. `BELOW_LT1_KMH`, `FALLBACK_START_KMH`. |
+| Step test start | 1.5 km/h below LT1, else 9.5 km/h, at most 3.5 km/h below LT2 | product assumption | Athlete decision P1; the LT2 bound keeps two stages beyond LT2 when LT1 is far below it (#3915). `BELOW_LT1_KMH`, `FALLBACK_START_KMH`, `BELOW_LT2_KMH`. |
 | Step test stages | 2 beyond LT2, 6 to 10 | product assumption | Athlete decision P1; 6 is the analysable minimum of `good`. `STAGES_BEYOND_LT2`, `MAX_STAGES`, `MIN_GOOD_STAGES`. |
 | Step test warm-up and cool-down | 10 min each, 1.5 to 0.5 km/h below stage 1 | product assumption | Athlete decision P1. `WARMUP_MIN`, `COOLDOWN_MIN`, `EASY_RANGE_KMH`. |
 | Step test stage laps | 150 to 210 s | product assumption | A 3-minute step lap; a shorter last stage was not held. `STAGE_LAP_S`. |
@@ -399,7 +399,7 @@ comparable.
 | `GOOD_MIN_SESSIONS` | `5` | `backend/performance/first_threshold_estimate.py` | The estimate is good with this many sessions that agree within this spread (percentage points of the threshold HR); otherwise it is low. |
 | `GOOD_MAX_SPREAD_PCT` | `5.0` | `backend/performance/first_threshold_estimate.py` |  |
 | `SOURCE_LABEL` | `'Schätzung aus Brustgurt-RR-Intervallen (DFA-α1, Forschungsstand), kein Laborwert'` | `backend/performance/first_threshold_estimate.py` |  |
-| `METHOD` | `'run-step-test-v2'` | `backend/performance/step_test.py` | v1 fitted the crossings over the whole run (#3833), v2 over the stage windows (#3916). |
+| `METHOD` | `'run-step-test-v3'` | `backend/performance/step_test.py` | v1 fitted the crossings over the whole run (#3833), v2 over the stage windows (#3916), v3 starts stage 1 at most 3.5 km/h below LT2 (#3915). |
 | `PROTOCOL` | `'run_step_test'` | `backend/performance/step_test.py` |  |
 | `NAME` | `'Stufentest Laufen (LT1 und LT2)'` | `backend/performance/step_test.py` |  |
 | `WARMUP_MIN` | `10` | `backend/performance/step_test.py` |  |
@@ -407,6 +407,7 @@ comparable.
 | `STAGE_MIN` | `3` | `backend/performance/step_test.py` |  |
 | `STEP_KMH` | `0.5` | `backend/performance/step_test.py` |  |
 | `BELOW_LT1_KMH` | `1.5` | `backend/performance/step_test.py` |  |
+| `BELOW_LT2_KMH` | `3.5` | `backend/performance/step_test.py` | Stage 1 lies at most this far below LT2, so two stages lie beyond it (#3915). |
 | `FALLBACK_START_KMH` | `9.5` | `backend/performance/step_test.py` |  |
 | `STAGES_BEYOND_LT2` | `2` | `backend/performance/step_test.py` |  |
 | `MAX_STAGES` | `10` | `backend/performance/step_test.py` |  |

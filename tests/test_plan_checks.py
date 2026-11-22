@@ -6,6 +6,7 @@ import unittest
 from datetime import date, timedelta
 from typing import Any
 
+from backend.activities.zone_settings import ZoneSettings
 from backend.planning import (
     adaptive,
     adaptive_preview_service,
@@ -220,6 +221,19 @@ class PlanCheckRuleTests(unittest.TestCase):
         found = check([hard_run, hard_ride])
         self.assertEqual(["back_to_back_hard"], codes(found))
         self.assertEqual(["a", "b"], found[0]["local_ids"])
+
+    def test_a_tempo_in_watts_is_hard_with_the_thresholds_used(self) -> None:
+        # 40 min at 220 W of 250 W FTP lie in the moderate band; without the
+        # thresholds a watt target has no band (Gitar, #3918).
+        tempo = unit(
+            "t", "2026-11-04", "ride", 40, name="Tempo", description="- 40m 220W"
+        )
+        settings = ZoneSettings(ftp=250.0)
+        thresholds = load_checks.LoadThresholds(resolver=lambda *_: settings)
+        sessions = load_checks.plan_sessions([tempo], thresholds)
+        (judged,) = plan_checks._with_computed_hard([tempo], sessions)
+        self.assertTrue(plan_checks.is_hard(judged))
+        self.assertFalse(plan_checks.is_hard(tempo))
 
     def test_back_to_back_ignores_unknown_and_gaps(self) -> None:
         first = unit("a", "2026-11-04", "run", planned_intensity=0.9)

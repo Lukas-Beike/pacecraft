@@ -300,7 +300,7 @@ class StreamBackfillService:
         """
         if not self._configured():
             raise AppError(
-                503, "Der Anbieter ist nicht konfiguriert.", reason="not_configured"
+                503, "Der Anbieter ist nicht eingerichtet.", reason="not_configured"
             )
         # A running full resync rejects the work before any state changes.
         with self._operation():

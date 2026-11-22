@@ -18,6 +18,13 @@ from backend.db.manager import DatabaseManager
 from backend.db.repositories import NutritionRepository, nutrition_macro_totals
 from backend.errors import AppError
 from backend.nutrition.food_database import NUTRIENTS
+from backend.nutrition.meal_components import (
+    components_revision,
+    edited_components,
+    entry_components,
+    swap_foods,
+    wrapped_component,
+)
 from backend.nutrition.meal_library import (
     SAVED_MEAL_NOT_FOUND,
     NutritionMealLibraryService,
@@ -425,7 +432,7 @@ class NutritionDiaryService:
             earlier = (
                 list(basis["components"])
                 if basis.get("kind") == "composite" and basis.get("components")
-                else [self._meal_component(existing)]
+                else [wrapped_component(existing)]
             )
             if len(earlier) >= 20:
                 raise AppError(
@@ -459,30 +466,49 @@ class NutritionDiaryService:
         suffix = f" + {name}"[:MAX_DESCRIPTION_LEN]
         return str(description)[: MAX_DESCRIPTION_LEN - len(suffix)] + suffix
 
-    @staticmethod
-    def _meal_component(entry: dict[str, Any]) -> dict[str, Any]:
-        basis = entry.get("nutrition_basis") or {"kind": "manual"}
-        # The intake totals scale a product or database basis by its component
-        # amount, so the wrapped component keeps the amount of that basis.
-        amount = basis.get("amount")
-        unit = basis.get("unit")
-        estimated = basis.get("kind") == "estimate" or entry.get("source") in {
-            "coach",
-            "photo",
-            "voice",
-        }
-        return {
-            "kind": "estimate" if estimated else "manual",
-            "name": str(entry.get("description") or "Mahlzeit")[:200],
-            "amount": amount
-            if isinstance(amount, (int, float))
-            and not isinstance(amount, bool)
-            and amount > 0
-            else 1,
-            "unit": unit if unit in {"g", "ml", "portion"} else "portion",
-            **{key: entry.get(key) for key in NUTRIENTS},
-            "nutrition_basis": basis,
-        }
+    def meal_components(self, entry_id: str) -> dict[str, Any]:
+        """The components a meal is edited by and their `revision` (#3948)."""
+        components = entry_components(self.get_meal(entry_id))
+        return {"components": components, "revision": components_revision(components)}
+
+    def edit_components(
+        self, entry_id: str, edits: Any, revision: Any
+    ) -> dict[str, Any]:
+        """Remove, resize or swap components of a logged meal (#3948).
+
+        Nutrients are scaled from the stored snapshot or calculated from the
+        food ID or product ID and the amount; the meal becomes a composite.
+        """
+        clean_id = str(entry_id or "").strip()
+        if not clean_id:
+            raise AppError(400, INVALID_ENTRY_ID)
+        calculator = self._meal_library.component_calculator
+        foods = swap_foods(edits, calculator)
+        with self._database_manager.unit_of_work() as db:
+            existing = self._nutrition_repository.get(db, clean_id)
+            if not existing:
+                raise AppError(404, ENTRY_NOT_FOUND)
+            entry = {
+                **existing,
+                "sync_state": "local",
+                "nutrition_basis": {
+                    "kind": "composite",
+                    "version": 1,
+                    "components": edited_components(
+                        existing, edits, revision, calculator, db, foods
+                    ),
+                },
+            }
+            self._set_composite_totals(entry)
+            updated = self._update(
+                db,
+                existing,
+                normalize_nutrition_entry(entry, local_now_factory=self._local_now)
+                | {"id": clean_id},
+            )
+        if not updated:
+            raise AppError(404, ENTRY_NOT_FOUND)
+        return updated
 
     def correct_meal(self, entry_id: str, changes: Any) -> dict[str, Any]:
         clean_id = str(entry_id or "").strip()

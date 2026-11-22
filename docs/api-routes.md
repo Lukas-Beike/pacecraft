@@ -105,6 +105,8 @@ handler's docstring. Regenerate it with
 | GET | `/api/nutrition/day` | Session | no | Nutrition day summary with macro ranges. |
 | POST | `/api/nutrition/entry` | Session + CSRF | after access | Log a meal; returns a `change` undo reference. |
 | POST | `/api/nutrition/entry/add-product` | Session + CSRF | after access | Add a saved product to a logged meal as one more component. |
+| GET | `/api/nutrition/entry/components` | Session | no | The components of a logged meal, as the edit addresses them (#3948). |
+| POST | `/api/nutrition/entry/components` | Session + CSRF | after access | Remove, resize or swap components of a logged meal (#3948). |
 | POST | `/api/nutrition/entry/delete` | Session + CSRF | after access | Delete a logged meal. |
 | POST | `/api/nutrition/entry/estimate` | Session + CSRF | after access | Mark a meal's amounts as estimated (restaurant, friends), or clear the mark. |
 | POST | `/api/nutrition/entry/session` | Session + CSRF | after access | Attach a "Vor/Während der Einheit" entry to the session the athlete chose. |
@@ -152,7 +154,6 @@ handler's docstring. Regenerate it with
 | POST | `/api/push/unsubscribe` | Session + CSRF | after access | Remove this device's push subscription. |
 | GET | `/api/readiness` | Public | no | Readiness status; 503 while not ready. |
 | POST | `/api/routes/rename` | Session + CSRF | after access | Rename one recognised activity route; nothing is written remotely. |
-| PUT | `/api/settings/calendar-display` | Session + CSRF | before access | Update the calendar display settings. |
 | PUT | `/api/settings/credentials` | Session + CSRF | before access | Save or clear provider credentials in the encrypted database. |
 | PUT | `/api/settings/model` | Session + CSRF | before access | Select the Coach model of one task. |
 | PUT | `/api/settings/service-tier` | Session + CSRF | before access | Select the OpenAI service tier. |
@@ -1077,7 +1078,7 @@ applied `days`, and for the weather `force: true`.
 Errors: 400 "Der Synchronisationszeitraum muss eine ganze Zahl sein." when
 `days` is not an integer, or "Der Zeitraum für garmin muss -1 oder
 zwischen 1 und 90 Tagen liegen." when it is out of range; 409
-`not_configured` for Garmin ("Garmin ist nicht konfiguriert. Unter Mehr →
+`not_configured` for Garmin ("Garmin ist nicht eingerichtet. Unter Mehr →
 Anbindungen bei Garmin anmelden oder einen Schlüssel der Garmin Personal
 API hinterlegen.") and Wahoo ("Wahoo ist nicht verbunden. Bitte Wahoo in
 den Einstellungen verbinden.") when the provider is not set up.
@@ -1147,7 +1148,7 @@ route of the same path.
 
 Errors: 400 "Zum vollständigen Resync muss FULL_RESYNC bestätigt werden."
 when `confirm` is not `FULL_RESYNC`; 503 `not_configured` when the
-provider is not set up: "Garmin ist nicht konfiguriert. Unter Mehr →
+provider is not set up: "Garmin ist nicht eingerichtet. Unter Mehr →
 Anbindungen bei Garmin anmelden oder einen Schlüssel der Garmin Personal
 API hinterlegen." or "Wahoo ist nicht verbunden. Bitte Wahoo in den
 Einstellungen verbinden."
@@ -1418,6 +1419,47 @@ größer als 0 sein."; 400 "Einheit muss g, ml oder portion sein."; 400
 400 `food_energy_missing` "Für dieses Produkt fehlt der Kalorienwert."; 400
 "Eine Mahlzeit kann höchstens 20 Komponenten enthalten."
 
+### `GET /api/nutrition/entry/components`
+
+Request: query `id`, the entry id.
+
+Response: 200 `{"ok": true, "id", "revision", "components"}`; `revision` is a
+fingerprint of the components that an edit must send back; each component has `index`
+(its position), `kind`, `name`, `amount`, `unit`, the nutrients (`kcal`,
+`carbs_g`, `protein_g`, `fat_g`, `sugar_g`, `fiber_g`, `salt_g`, unknown as
+null) and `nutrition_basis` (its origin). A meal without components is one
+component that keeps its values; a single product or a database meal is
+split into its product or foods.
+
+Errors: 400 "Ungültige Eintrags-ID."; 404 "Ernährungseintrag nicht gefunden."
+
+### `POST /api/nutrition/entry/components`
+
+Request: JSON body `{"id": string, "revision": string, "edits": [...]}`; `id` is the
+entry id, `revision` the one `GET /api/nutrition/entry/components` returned, and
+each edit names a component by its `index` (see
+`GET /api/nutrition/entry/components`) and is one of `{"index", "remove": true}`,
+`{"index", "amount"}` (above 0 up to 10000, the same unit) or a swap
+`{"index", "food_id"}` / `{"index", "product_id"}` with optional `amount` and
+`unit` (default: the component's own, so the amount stays). Every index at
+most once, other components stay as stored. The server scales the nutrients from
+the stored snapshot or calculates them from the food or product and the amount;
+the client sends none. The meal becomes a composite and keeps its description;
+its day is marked for the next Intervals.icu synchronization; templates and
+saved meals are not changed.
+
+Response: 200 `{"ok": true, "entry", "change"}` with the updated entry and the
+undo reference.
+
+Errors: 400 "Ungültige Eintrags-ID."; 404 "Ernährungseintrag nicht gefunden.";
+409 `meal_changed` "Die Mahlzeit hat sich geändert. Bitte erneut öffnen." when the
+components differ from the `revision`; 400 "Ungültige Änderung der
+Mahlzeitenkomponenten." for a malformed edit; 400
+`last_component` when nothing would remain; 400 "Ungültige Komponentenmenge." or
+"Komponentenmenge muss größer als 0 sein."; 404 `food_not_found`, 404
+`nutrition_product_not_found`, 409 `nutrition_product_archived`, 400
+`food_unit_mismatch` and 400 `food_energy_missing` for a swap target.
+
 ### `POST /api/nutrition/entry/delete`
 
 Request: JSON body `{"id": string}` (or `entry_id`), the entry id.
@@ -1566,7 +1608,7 @@ Errors: 409 `nutrition_product_archived` "Archivierte Produkte werden nicht
 aktualisiert."; 400 `nutrition_product_barcode_missing` "Zum Aktualisieren
 braucht das Produkt eine EAN. Trage sie beim Bearbeiten ein."; 404
 `food_not_found` "Datenbankeintrag nicht gefunden."; 409 `not_configured` "Yazio
-ist nicht konfiguriert." for a Yazio food without credentials; 502
+ist nicht eingerichtet." for a Yazio food without credentials; 502
 `food_database_unavailable` "Der Datenbankeintrag konnte nicht aktualisiert
 werden."
 
@@ -2138,19 +2180,6 @@ Errors: 400 "Der Name muss aus 1 bis 60 Zeichen ohne Steuerzeichen
 bestehen." for an invalid `name`; 404 "Nicht gefunden." when `route_id`
 names no stored route.
 
-### `PUT /api/settings/calendar-display`
-
-Request: JSON body `{"past_weeks": integer, "future_weeks": integer}`, each
-0 to 52, at least one required; a field not sent keeps its value.
-
-Response: 200 `{"status": "ok", "past_weeks": integer, "future_weeks":
-integer}` with the stored values (defaults 1 and 4).
-
-Errors: 400 "Wochen zurück muss eine ganze Zahl sein." and "Wochen voraus
-muss eine ganze Zahl sein."; 400 "Wochen zurück muss zwischen 0 und 52
-liegen." and "Wochen voraus muss zwischen 0 und 52 liegen."; 400 "Keine
-Kalenderansicht-Einstellungen eingegeben." when neither field is sent.
-
 ### `PUT /api/settings/credentials`
 
 Request: JSON object whose keys are credential fields and whose values are
@@ -2322,7 +2351,7 @@ pending one. For `/api/wahoo/disconnect` 200 with `status` (`"ok"`),
 deleted).
 
 Errors: for `/api/wahoo/connect`: 503 `not_configured` "Wahoo ist nicht
-konfiguriert. Bitte Client-ID, Client-Secret und Weiterleitungs-URL in
+eingerichtet. Bitte Client-ID, Client-Secret und Weiterleitungs-URL in
 den Server-Einstellungen hinterlegen."; 400 `invalid_redirect_uri` "Die
 Weiterleitungs-URL muss eine vollständige HTTPS-URL ohne Zugangsdaten
 sein." when the configured redirect is not an

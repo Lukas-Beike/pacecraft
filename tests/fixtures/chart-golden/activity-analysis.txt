@@ -290,7 +290,7 @@
         <svg:circle class="activity-analysis-dot" r="3.5" visibility="hidden">
   <section class="activity-analysis-zones">
     <h4>
-      "Zeit in HF-Zonen"
+      "Zeit in Herzfrequenzzonen"
     <ol>
       <li data-zone="Z2">
         <span class="activity-analysis-zone-label">

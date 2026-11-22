@@ -20,11 +20,13 @@ from backend.performance.canonical_session_analysis import ANALYSIS_VERSION
 
 LOCAL_MODEL: Final = "local"
 PROVIDER_MODEL: Final = "provider"
-# Stored sensor -> summary zone key.
+# Stored sensor -> summary zone key; the bands are Z1 low, Z2 moderate, Z3 high.
 ZONE_KEYS: Final = (
     ("power", "power_zone_times"),
     ("heart_rate", "heart_rate_zone_times"),
     ("pace", "pace_zone_times"),
+    ("power_bands", "power_band_times"),
+    ("heart_rate_bands", "heart_rate_band_times"),
 )
 
 

@@ -11,6 +11,7 @@ state it comes from is still there.
 
 from __future__ import annotations
 
+import logging
 from collections.abc import Callable, Iterable
 from contextlib import AbstractContextManager, nullcontext
 from datetime import date, datetime, timedelta
@@ -18,8 +19,23 @@ from typing import Any, Final
 
 from backend.canonical.vocabulary import ProviderId
 from backend.performance.threshold_staleness import REASON_STALE, STALE_AFTER_DAYS
+from backend.push.events import (
+    MISSING_FEEDBACK_HOUR,
+    maintenance_event,
+    missing_feedback_event,
+    morning_data_event,
+    morning_plan_event,
+    new_activity_event,
+    new_sessions,
+    personal_best_event,
+    planned_units,
+    server_event,
+    weather_event,
+)
 from backend.push.service import Notification, PushService
 from backend.sync.retry_hold import ATHLETE_ACTION_ERROR_CODES
+
+_LOGGER = logging.getLogger("intervals_coach")
 
 # Local hours in which notifications are sent.
 DAY_START_HOUR: Final = 7
@@ -42,6 +58,11 @@ class PushChecks:
         *,
         infection_hint: Callable[[], Any] = lambda: None,
         threshold_warnings: Callable[[], Any] = lambda: None,
+        equipment: Callable[[], Any] = lambda: None,
+        records: Callable[[], Any] = lambda: None,
+        weather_days: Callable[[], Any] = lambda: None,
+        server_state: Callable[[], Any] = lambda: None,
+        unrated_sessions: Callable[[date], Any] = lambda day: (),
         operation: Callable[[], AbstractContextManager[Any]] = nullcontext,
     ) -> None:
         self._push = push
@@ -49,6 +70,11 @@ class PushChecks:
         self._local_now = local_now
         self._infection_hint = infection_hint
         self._threshold_warnings = threshold_warnings
+        self._equipment = equipment
+        self._records = records
+        self._weather_days = weather_days
+        self._server_state = server_state
+        self._unrated_sessions = unrated_sessions
         self._operation = operation
 
     def check(self) -> int:
@@ -58,23 +84,27 @@ class PushChecks:
             return 0
         with self._operation():
             events = self._events(local)
-        # Each event is claimed, delivered and settled on its own, so a failure
-        # never leaves an earlier claim recorded as sent without its settle.
-        delivered = 0
-        for event in events:
-            with self._operation():
-                claim = self._push.claim(event)
-            if claim is None:
-                continue
-            try:
-                statuses = self._push.deliver(claim)
-            except Exception:  # noqa: BLE001 - an unsettled claim must be retried
-                statuses = dict.fromkeys(
-                    (item["endpoint"] for item in claim.subscriptions), 0
-                )
-            with self._operation():
-                delivered += self._push.settle(claim, statuses)
-        return delivered
+        return sum(self.notify(event) for event in events)
+
+    def notify(self, event: Notification) -> bool:
+        """Claim, deliver and settle one event; True when a device received it.
+
+        Each event is claimed, delivered and settled on its own, so a failure
+        never leaves an earlier claim recorded as sent without its settle, and
+        no push service call runs inside the maintenance operation.
+        """
+        with self._operation():
+            claim = self._push.claim(event)
+        if claim is None:
+            return False
+        try:
+            statuses = self._push.deliver(claim)
+        except Exception:  # noqa: BLE001 - an unsettled claim must be retried
+            statuses = dict.fromkeys(
+                (item["endpoint"] for item in claim.subscriptions), 0
+            )
+        with self._operation():
+            return self._push.settle(claim, statuses)
 
     def _events(self, local: datetime) -> list[Notification]:
         since = self._push.subscribed_since()
@@ -82,19 +112,63 @@ class PushChecks:
             return []
         today = local.date()
         with self._database().reader() as db:
-            events = [
+            recent = new_sessions(db, since, today)
+            units = planned_units(db, today, today + timedelta(days=1))
+            found = [
                 *provider_problems(db, since),
                 *upcoming_competitions(db, today),
+                morning_data_event(db, today),
+                new_activity_event(recent),
             ]
-        if self._infection_hint():
-            events.append(infection_hint_event(today))
+        if self._source(self._infection_hint):
+            found.append(infection_hint_event(today))
         # The subscription day as the athlete counts days, like the staleness hint.
         subscribed_on = (
             since.astimezone(local.tzinfo).date() if local.tzinfo else since.date()
         )
-        if step_test := step_test_event(self._threshold_warnings(), subscribed_on):
-            events.append(step_test)
-        return events
+        found.append(
+            step_test_event(self._source(self._threshold_warnings), subscribed_on)
+        )
+        found += self._derived_events(local, subscribed_on, units, bool(recent))
+        return [event for event in found if event is not None]
+
+    def _derived_events(
+        self,
+        local: datetime,
+        subscribed_on: date,
+        units: list[tuple[str, dict[str, Any]]],
+        news: bool,
+    ) -> list[Notification | None]:
+        """The events of the other owners; one failing source skips only itself."""
+        today = local.date()
+        found = [
+            morning_plan_event(units, today),
+            weather_event(units, self._source(self._weather_days), local),
+            maintenance_event(self._source(self._equipment)),
+            server_event(self._source(self._server_state), today),
+        ]
+        # A record needs a session; the records are read only while one is recent.
+        if news:
+            found.append(
+                personal_best_event(self._source(self._records), subscribed_on, today)
+            )
+        if local.hour >= MISSING_FEEDBACK_HOUR:
+            found.append(
+                missing_feedback_event(
+                    self._source(self._unrated_sessions, today), today
+                )
+            )
+        return found
+
+    @staticmethod
+    def _source(read: Callable[..., Any], *args: Any) -> Any:
+        try:
+            return read(*args)
+        except Exception:  # noqa: BLE001 - the other checks still run
+            _LOGGER.warning(
+                "Push check source failed", extra={"event": "push_check_source_failed"}
+            )
+            return None
 
 
 def _parse(value: Any) -> datetime | None:

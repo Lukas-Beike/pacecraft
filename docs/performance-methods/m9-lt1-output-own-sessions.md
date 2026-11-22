@@ -1,7 +1,7 @@
 # M9 — LT1 pace and power from own steady sessions
 
 - **Card:** M9
-- **Card version:** 1
+- **Card version:** 2
 - **Method ID:** pace-at-heart-rate-v2 and power-at-heart-rate-v1, read by `backend/performance/pace_at_hr.py:output_at_heart_rate` (#2427)
 - **Status:** implemented; LT1 origin `own_sessions` in `backend/performance/current_metrics.py:first_thresholds`
 - **Classification:** model estimate
@@ -13,16 +13,22 @@
 The running pace and the cycling power that belong to the athlete's LT1 heart
 rate, read from the athlete's own steady sessions. The LT1 heart rate itself
 is not derived here: it keeps its precedence (measured, adopted DFA-α1
-estimate, top of the heart-rate zone 2, 85 % of the threshold HR). The value
-replaces a population stand-in (zone 2 top of the pace or power zones, 88 % of
-the threshold speed, 75 % of the FTP) with the athlete's own heart-rate to
+estimate, else 85 % of the threshold HR, shown as "Standardwert"). The value
+replaces a population stand-in (88 % of the threshold speed, 75 % of the FTP) with the athlete's own heart-rate to
 output relation. It is not a lactate or ventilatory threshold measurement.
 
 Athlete decisions (2026-11-12, #2427): pace and power at the LT1 heart rate,
 no heart-rate value from decoupling; read in a direct heart-rate band, no
-regression; precedence own sessions > zone 2 top > fixed share; labelled by origin
-("aus eigenen Einheiten", "aus Zone 2", "aus festem Anteil von LT2") without a
-"Schätzung" qualifier (#3297).
+regression; precedence own sessions > fixed share; labelled by origin
+("aus eigenen Einheiten", "Standardwert") without a "Schätzung" qualifier
+(#3297).
+
+Athlete decision (2026-11-22, #3915, superseding #2427 for this): the top of a
+zone 2 is no LT1 source for heart rate, pace or power. A watch's five-zone
+effort scheme has an "easy" top that is not a threshold, and the pace read at
+that heart rate was correspondingly slow. The same LT1 heart rate drives the
+display, the default easy cap (84 % below the 85 % stand-in), and the
+low/moderate split of the 3-zone bands.
 
 ## Formula and units
 
@@ -83,7 +89,7 @@ regression; precedence own sessions > zone 2 top > fixed share; labelled by orig
   recording device is not checked.
 - The band may sit up to 2.5 bpm off the LT1 heart rate because the stored
   bins are 5 bpm wide.
-- The error of the LT1 heart rate itself (zone 2 top or fixed share) carries
+- The error of the LT1 heart rate itself (the fixed share) carries
   over fully; a value read at a stand-in heart rate is no better than that
   stand-in.
 - No uncertainty interval is shown.
@@ -110,8 +116,8 @@ regression; precedence own sessions > zone 2 top > fixed share; labelled by orig
 - An LT1 heart rate and an LT2 value of the sport must exist (no LT1 without
   LT2).
 - At least 3 sessions, each with at least 600 s in the band and a coefficient
-  of variation of at most 0.15; otherwise no value, and the zone 2 top or the
-  fixed share applies.
+  of variation of at most 0.15; otherwise no value, and the fixed share
+  applies.
 - Ride profile: at least 30 minutes of recording with power and heart-rate
   streams; run profile: the rules of `pace-at-heart-rate-v2`.
 
@@ -131,7 +137,7 @@ regression; precedence own sessions > zone 2 top > fixed share; labelled by orig
 ## Allowed statements
 
 - "LT1 pace 5:32 /km, an estimate from your own steady runs at the LT1 heart
-  rate of 128 bpm (top of your heart-rate zone 2)."
+  rate of 146 bpm (Standardwert, 85 % of your threshold heart rate)."
 - "No LT1 power from your rides yet: fewer than three steady rides near
   131 bpm in the last 60 days."
 
@@ -158,11 +164,7 @@ regression; precedence own sessions > zone 2 top > fixed share; labelled by orig
 | `LOCAL_SOURCE_LABEL` | `'Lokal'` | `backend/performance/current_metrics.py` | The label of a locally confirmed zone configuration's value. |
 | `PROFILE_SOURCE_LABEL` | `'Manuell'` | `backend/performance/current_metrics.py` | The label of a profile value. |
 | `CURRENT_WEIGHT_LABEL` | `'aktuell'` | `backend/performance/current_metrics.py` | The weight is the weigh-in line's value, not one weigh-in (#3551, #3640). |
-| `LT1_HR_SHARE` | `0.85` | `backend/performance/current_metrics.py` | LT1 as a fixed share of LT2 when no measured or adopted value and no zone 2 of that kind exists (athlete decisions 2026-11-12, #2427): heart rate of the threshold HR, cycling power of the FTP and running speed of the threshold speed. Change them here only. |
-| `LT1_POWER_SHARE` | `0.75` | `backend/performance/current_metrics.py` |  |
-| `LT1_RUN_SPEED_SHARE` | `0.88` | `backend/performance/current_metrics.py` |  |
-| `LT1_OWN_SESSIONS` | `'own_sessions'` | `backend/performance/current_metrics.py` | Where an LT1 value comes from: the profile value (measured, or the adopted DFA-a1 estimate), the athlete's own steady sessions at the LT1 heart rate (pace and power only), the top of the zone 2 in effect, or a fixed share of LT2. |
-| `LT1_ZONE_TWO` | `'zone_2'` | `backend/performance/current_metrics.py` |  |
+| `LT1_OWN_SESSIONS` | `'own_sessions'` | `backend/performance/current_metrics.py` | Where an LT1 value comes from: the profile value (measured, or the adopted DFA-a1 estimate), the athlete's own steady sessions at the LT1 heart rate (pace and power only), or a fixed share of LT2 (the shown "Standardwert"). |
 | `LT1_FIXED_SHARE` | `'fixed_share'` | `backend/performance/current_metrics.py` |  |
 | `METHOD` | `'pace-at-heart-rate-v2'` | `backend/performance/pace_at_hr.py` | v2: treadmill and virtual runs are flat and never grade-adjusted. |
 | `WARMUP_S` | `600` | `backend/performance/pace_at_hr.py` |  |

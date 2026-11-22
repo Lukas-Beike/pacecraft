@@ -124,7 +124,7 @@ test("@responsive Coach links are underlined, keep their contrast in both themes
 test("appearance choice updates the theme and survives reload on this device", { tag: "@responsive" }, async ({ page }) => {
   await ready(page);
   await page.getByRole("link", { name: "Mehr", exact: true }).click();
-  await page.locator("#settingsPanel").getByRole("link", { name: "Darstellung", exact: true }).click();
+  await page.locator("#settingsPanel").getByRole("link", { name: "App", exact: true }).click();
   await page.locator("#appearanceSelect").getByRole("radio", { name: "Hell", exact: true }).check();
   await expect(page.locator("html")).toHaveAttribute("data-theme", "light");
   await expect.poll(() => page.locator('meta[name="theme-color"]').getAttribute("content")).toBe("#f4f5f6");
@@ -401,7 +401,7 @@ test("profile invalid JSON and incomplete success preserve the dirty draft", asy
     await page.route("**/api/profile", (route) => route.request().method() === "PUT"
       ? route.fulfill({ status: 200, contentType: "application/json", body }) : route.continue());
     await page.locator("#profileForm").getByLabel("Name", { exact: true }).fill("Unsaved fixture athlete");
-    await page.getByRole("button", { name: "Athletenkontext speichern", exact: true }).click();
+    await page.getByRole("button", { name: "Profil speichern", exact: true }).click();
     await expect(page.locator("#profileDirtyIndicator")).toBeVisible();
     await expect(page.locator("#profileForm").getByLabel("Name", { exact: true })).toHaveValue("Unsaved fixture athlete");
     await expect(page.locator("#toast")).not.toContainText("Athletenprofil gespeichert");
@@ -574,7 +574,6 @@ test("planned agenda prioritizes dates and sessions with compact weather and exp
   await expect.poll(() => page.evaluate(() => state.loadPromise === null)).toBe(true);
   const today = await page.evaluate(() => {
     const date = timezoneDateKey(state.data?.profile?.timezone, new Date());
-    state.data.calendar_display = { past_weeks: 1, future_weeks: 1 };
     state.data.daily_planning_context = [{ date,
       weather: { weather_code: 2, condition: "Leicht bewölkt", temperature_min: 12, temperature_max: 21, precipitation_probability_max: 0, wind_speed_max: 14, wind_gusts_max: 25, wind_direction_dominant: 225, forecast_location: "Emsdetten",
         air_quality: { european_aqi_max: 64, european_aqi_category: "schlecht", uv_index_max: 5.2 },
@@ -595,7 +594,7 @@ test("planned agenda prioritizes dates and sessions with compact weather and exp
       { id: "agenda-completed-swim", date: addDateKey(date, 1), name: "Absolvierte Schwimmeinheit", type: "Swim", is_completed_activity: true, moving_duration_s: 1800, distance_m: 1500 },
       { id: "agenda-completed-strength", date: addDateKey(date, 1), name: "Absolvierte Krafteinheit", type: "WeightTraining", is_completed_activity: true, moving_duration_s: 1800 },
       { id: "agenda-completed-other", date: addDateKey(date, 1), name: "Absolvierte sonstige Einheit", type: "Hike", is_completed_activity: true, moving_duration_s: 1800 },
-      // Keeps a plan in the week of date + 1 on Sundays too, so extra activities there still show "Zusätzlich".
+      // Keeps a plan in the week of date + 1 on Sundays too, so extra activities there still show "Ungeplant".
       { id: "agenda-next-plan", date: addDateKey(date, 1), name: "Geplante Folgeeinheit", type: "Run", duration_minutes: 30 },
       { id: "agenda-matched", date: addDateKey(date, -2), name: "Aktivierung", type: "Ride", duration_minutes: 45, training_load: 25,
         compliance: { status: "completed", percentage: 136, basis: "training_load", actual_activity: { name: "Aktivierung absolviert", type: "Ride", moving_duration_s: 3600, distance_m: 24000, training_load: 34, avg_hr: 125, avg_power: 201 } } },
@@ -689,7 +688,7 @@ test("planned agenda prioritizes dates and sessions with compact weather and exp
   await expect(facts).toContainText("Belastung 42");
   await expect(facts).not.toContainText("Trainingsload");
   await expect(completed.locator(".planned-entry-details")).not.toContainText(/Belastung 42.*Belastung 42/);
-  const analyse = completed.getByRole("button", { name: "Mit dem Coach analysieren" });
+  const analyse = completed.getByRole("button", { name: "Mit Coach besprechen" });
   const [sent, kind] = await analyse.evaluate((button) => {
     let text = null;
     let requestKind = null;
@@ -705,8 +704,8 @@ test("planned agenda prioritizes dates and sessions with compact weather and exp
   expect(await page.evaluate(() => {
     const planning = state.data.model?.tasks?.planning;
     state.data.model = { ...state.data.model, tasks: { ...state.data.model?.tasks, planning: { ...planning, ready: false } } };
-    const off = plannedCoachButton("Mit dem Coach analysieren", "x", "secondary-button", "session_analysis").disabled;
-    const discuss = plannedCoachButton("Mit dem Coach besprechen", "x").disabled;
+    const off = plannedCoachButton("Mit Coach besprechen", "x", "secondary-button", "session_analysis").disabled;
+    const discuss = plannedCoachButton("Mit Coach besprechen", "x").disabled;
     state.data.model = { ...state.data.model, tasks: { ...state.data.model.tasks, planning } };
     return [off, discuss];
   })).toEqual([true, false]);

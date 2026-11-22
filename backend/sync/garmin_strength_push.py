@@ -174,7 +174,7 @@ class GarminStrengthPushService:
             )
         if not self._configured():
             raise AppError(
-                409, "Garmin ist nicht konfiguriert.", reason="not_configured"
+                409, "Garmin ist nicht eingerichtet.", reason="not_configured"
             )
         if not self._write_ready():
             raise AppError(409, SDK_REQUIRED_MESSAGE, reason="garmin_sdk_required")

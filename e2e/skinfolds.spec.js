@@ -39,7 +39,7 @@ for (const scheme of ["light", "dark"]) {
     await dialog.getByRole("button", { name: "Speichern" }).click();
     await expect(dialog).toBeHidden();
     await expect(row.locator("td").first()).toHaveText("17,1 %");
-    await expect(row.locator("th small")).toHaveText("Lokal (Hautfalten) · 10.11.2026");
+    await expect(row.locator("th small")).toHaveText("Eingetragen (Hautfalten) · 10.11.2026");
 
     // Prozent, today: the newer own value is the KFA, and the lean mass follows from it.
     await row.getByRole("button", { name: "Körperfett eintragen" }).click();
@@ -49,7 +49,7 @@ for (const scheme of ["light", "dark"]) {
     await dialog.getByRole("button", { name: "Speichern" }).click();
     await expect(dialog).toBeHidden();
     await expect(row.locator("td").first()).toHaveText("14,3 %");
-    await expect(row.locator("th small")).toContainText("Lokal · ");
+    await expect(row.locator("th small")).toContainText("Eingetragen · ");
     await expect(page.locator("[data-body-overview] tr[data-metric='lean_mass_kg'] button")).toHaveCount(0);
 
     // A day with an entry fills the dialog; Löschen asks first.

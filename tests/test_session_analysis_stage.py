@@ -473,7 +473,10 @@ class SessionAnalysisStageTests(unittest.TestCase):
         assert row is not None
         zones = row["payload"]["zone_times"]
         self.assertEqual("Zoneneinstellungen", zones["label"])
-        self.assertEqual({"power": "Standardzonen"}, zones["sources"])
+        self.assertEqual(
+            {"power": "Standardzonen", "power_bands": "LT1-Standardwert und Schwelle"},
+            zones["sources"],
+        )
         power = {zone["id"]: zone["secs"] for zone in zones["power"]}
         # 200 W at the Garmin FTP of 200 W is Z4; the Intervals FTP is never read.
         self.assertEqual(float(SECONDS), power["Z4"])
@@ -483,7 +486,10 @@ class SessionAnalysisStageTests(unittest.TestCase):
             read = read_zone_times(db, ["act_g1"])
         summary = with_zone_times([{"id": "act_g1", "sport": "ride"}], read)[0]
         self.assertEqual(zones["power"], summary["power_zone_times"])
-        self.assertEqual({"power_zone_times": "local"}, summary["zone_models"])
+        self.assertEqual(
+            {"power_zone_times": "local", "power_band_times": "local"},
+            summary["zone_models"],
+        )
         self.assertEqual(
             "Zoneneinstellungen: Standardzonen", summary["sources"]["power_zone_times"]
         )

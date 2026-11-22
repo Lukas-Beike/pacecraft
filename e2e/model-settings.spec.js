@@ -60,8 +60,8 @@ test("each task block names in an info popover when its model is used @responsiv
   const offset = () => pair.evaluate((node) => [node.offsetTop, node.offsetHeight]);
   const before = await offset();
   for (const [task, text] of [
-    ["Conversation", "auch den Morgen-Check-in, und für „Besprechen“, „Lösen“ und „Strukturieren“ im Kalender"],
-    ["Planning", "„Analyse & Plan“ und im „+“-Menü sowie „Mit dem Coach analysieren“ im Kalender"],
+    ["Conversation", "auch den Morgen-Check-in, und für „Mit Coach besprechen“ an geplanten Einheiten im Kalender"],
+    ["Planning", "„Analyse & Plan“ und im „+“-Menü sowie „Mit Coach besprechen“ an abgeschlossenen Einheiten im Kalender"],
     ["Nutrition", "„Nährwerttabelle fotografieren“ und die Websuche nach fehlenden Nährwerten"],
   ]) {
     const button = page.locator(`[popovertarget="modelInfo${task}"]`);

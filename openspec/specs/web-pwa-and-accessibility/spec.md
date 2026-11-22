@@ -15,7 +15,7 @@ The client SHALL provide Coach, plan, nutrition, analysis, and more navigation w
 
 #### Scenario: Keyboard shortcuts for the main views
 - **WHEN** the athlete presses Alt+1 to Alt+5 while no text field has focus and no dialog or popover menu is open
-- **THEN** Coach, Kalender, Analyse, Ernährung or Mehr opens as if its navigation item were selected; with Ctrl or AltGr, while typing or behind a dialog or menu nothing changes; the navigation items name their key in `aria-keyshortcuts`, and Mehr › Darstellung lists the keys in a collapsed "Tastenkürzel" section on screens at least 768 px wide.
+- **THEN** Coach, Kalender, Analyse, Ernährung or Mehr opens as if its navigation item were selected; with Ctrl or AltGr, while typing or behind a dialog or menu nothing changes; the navigation items name their key in `aria-keyshortcuts`, and Mehr › App lists the keys in a collapsed "Tastenkürzel" section on screens at least 768 px wide.
 
 #### Scenario: Unsaved profile form
 - **WHEN** navigation would leave a dirty profile panel
@@ -25,7 +25,7 @@ The client SHALL provide Coach, plan, nutrition, analysis, and more navigation w
 - **WHEN** the athlete returns to Coach or opens the plan overview
 - **THEN** route-specific scroll restoration preserves Coach reading position or reveals the planned-today section according to the recorded navigation state.
 
-Evidence: `public/navigation.js::AppRouter.navigate`, `public/shared.js::restoreRouteScroll`, `public/views.js::renderPlanSegments`; `e2e/navigation.spec.js::@responsive each hash navigation renders its target once`, `e2e/navigation.spec.js::@responsive Alt+1 to Alt+5 switch the main views outside text fields and are listed in Darstellung`, `e2e/coach.spec.js::login, main views, dialog and profile form state`, `e2e/settings-hub.spec.js::@responsive sports are toggle chips of at least 44 px and need no hint`, `e2e/contracts.spec.js::plan overview deep link focuses and reveals today after loading`.
+Evidence: `public/navigation.js::AppRouter.navigate`, `public/shared.js::restoreRouteScroll`, `public/views.js::renderPlanSegments`; `e2e/navigation.spec.js::@responsive each hash navigation renders its target once`, `e2e/navigation.spec.js::@responsive Alt+1 to Alt+5 switch the main views outside text fields and are listed in App`, `e2e/coach.spec.js::login, main views, dialog and profile form state`, `e2e/settings-hub.spec.js::@responsive sports are toggle chips of at least 44 px and need no hint`, `e2e/contracts.spec.js::plan overview deep link focuses and reveals today after loading`.
 
 ### Requirement: Responsive controls remain named and keyboard reachable
 The client SHALL use semantic labels, focusable controls and scroll regions, current-route indications, and responsive layouts for the supported mobile, tablet, and desktop views. Icon actions SHALL retain accessible names and the existing touch target sizing.
@@ -88,7 +88,7 @@ The PWA SHALL advertise a standalone manifest named "Pacecraft · AI Coach" (sho
 - **WHEN** navigation cannot reach the server or exceeds the shell's short network wait and a cached page exists
 - **THEN** the cached shell can start; API writes are not queued for later delivery, except the four own-entry saves of the offline outbox (`offline-outbox` requirement below), and loaded data freshness remains governed by `view-refresh-and-client-state`.
 
-Evidence: `public/service-worker.js` (install/activate/fetch listeners, `CACHE`, `ASSETS`, `VERSIONED_ASSETS`), `public/manifest.webmanifest`, `public/notifications.js::registerServiceWorker`, `public/notifications.js::reloadForUpdateWhenSafe`; `e2e/contracts.spec.js::fresh service worker keeps the current shell available offline`, `tests/test_server_frontend.py::ServerFrontendTests.test_pwa_asset_versions_match_service_worker_precache`, `e2e/update-reload.spec.js::a service worker update keeps a typed draft and reloads once it is cleared`, `tests/test_server_frontend.py::ServerFrontendTests.test_service_worker_caches_only_versioned_static_assets_and_not_api`, `tests/test_server_frontend.py::ServerFrontendTests.test_nutrition_and_view_refresh_assets_are_served_as_immutable_javascript`, `e2e/offline-errors.spec.js::the offline banner states that changes are not saved and promises no later delivery @responsive`. The manifest name and short name have no covering test.
+Evidence: `public/service-worker.js` (install/activate/fetch listeners, `CACHE`, `ASSETS`, `VERSIONED_ASSETS`), `public/manifest.webmanifest`, `public/notifications.js::registerServiceWorker`, `public/notifications.js::reloadForUpdateWhenSafe`; `e2e/contracts.spec.js::fresh service worker keeps the current shell available offline`, `tests/test_server_frontend.py::ServerFrontendTests.test_pwa_asset_versions_match_service_worker_precache`, `e2e/update-reload.spec.js::a service worker update keeps a typed draft and reloads once it is cleared`, `tests/test_server_frontend.py::ServerFrontendTests.test_service_worker_caches_only_versioned_static_assets_and_not_api`, `tests/test_server_frontend.py::ServerFrontendTests.test_nutrition_and_view_refresh_assets_are_served_as_immutable_javascript`, `e2e/offline-errors.spec.js::the offline banner says that entries wait and are sent later @responsive`. The manifest name and short name have no covering test.
 
 ### Requirement: Locked and failing sessions show concrete safe states
 The client SHALL keep the application behind the required login dialog until successful authentication, distinguish login failure reasons, clear device state when authentication ends, and show bounded connectivity and maintenance states.
@@ -329,10 +329,10 @@ The client SHALL expose server-advertised model, thinking, and speed capabilitie
 - **THEN** the newer edits remain visible/dirty; invalid JSON or an incomplete save response does not mark the draft saved.
 
 #### Scenario: Device and read settings
-- **WHEN** appearance or the calendar display (weeks back and ahead) changes
-- **THEN** appearance persists on the device with system/light/dark support, while the calendar display uses its explicit API and reports validation errors.
+- **WHEN** the appearance changes in Mehr › App
+- **THEN** it persists on the device with system/light/dark support; the calendar shows a fixed range of one week back and four ahead, with no setting (#3914).
 
-Evidence: `public/settings.js::saveProfile`, `public/settings.js::saveModel`, `public/settings.js::saveThinkingLevel`, `public/settings.js::saveServiceTier`, `public/settings.js::saveCalendarDisplaySettings`, `public/shared.js::applyAppearance`, `public/appearance.js` (early theme projection), `public/views.js::renderModel`; `e2e/model-settings.spec.js::model and speed selection persist with capability checks @responsive`, `e2e/audit-remediation.spec.js::profile edits made while saving remain dirty and visible`, `e2e/contracts.spec.js::appearance choice updates the theme and survives reload on this device`, `tests/test_settings.py::SettingsServiceTests.test_calendar_defaults_clamping_and_write_keys`.
+Evidence: `public/settings.js::saveProfile`, `public/settings.js::saveModel`, `public/settings.js::saveThinkingLevel`, `public/settings.js::saveServiceTier`, `public/plan-views.js::CALENDAR_WEEKS`, `public/shared.js::applyAppearance`, `public/appearance.js` (early theme projection), `public/views.js::renderModel`; `e2e/model-settings.spec.js::model and speed selection persist with capability checks @responsive`, `e2e/audit-remediation.spec.js::profile edits made while saving remain dirty and visible`, `e2e/contracts.spec.js::appearance choice updates the theme and survives reload on this device`, `tests/test_server_http.py` (no `calendar_display` in the start data), `tests/test_http_settings_put_routes.py::test_the_calendar_range_has_no_route_any_more`.
 
 ### Requirement: Diagnostics and destructive operational controls retain reviewable outcomes
 The client SHALL expose operations through their explicit controls, keep downloads and destructive requests visibly pending, request applicable confirmation, and display failures without implying a completed restore/deletion. Diagnostic values SHALL be displayed as inert text.
@@ -360,7 +360,7 @@ The client SHALL present domain-provided planning, performance, activity, and eq
 
 #### Scenario: Compact calendar week
 - **WHEN** the athlete opens the calendar with past, today's and planned sessions
-- **THEN** it shows the current week as a timeline (weekday and date column, today filled) with previous/next week buttons and the ISO week, limited to the configured weeks ahead (the configured weeks back load at once; paging back has no limit and older weeks load their completed sessions on demand); each session is one compact row with sport icon, title, duration and distance and, for a planned unit only, a zone bar for its workout profile (16 px high on narrow screens), and opened, its session-type and intensity labels sit above their selects so no word breaks at phone width; a completed or missed unit is one slim row whose line holds the time and the status ("✓ Absolviert" with the share of the plan, "✓ Zusätzlich", "✕ Nicht absolviert") without zone or compliance bar, its activity name shown without the place prefix of the profile's weather location; opened, it shows its chart, each value once with German labels and per sport (runs and rides have their own lists, a value without data is left out), the plan line, the "Details" toggle, "Mit dem Coach analysieren" and "Feedback" (see "Calendar cards carry the single-session analysis"); planned sessions are dashed, completed ones solid and missed ones outlined in red; identical extra activities of a day form one row; on screens at least 1100 px wide the opened session shows as a detail pane beside the week, level with its card (title, day, status, larger profile with its axis, and the session details), and one session of the week is opened by default; a "Woche | Monat" switch (never stored, entering the calendar shows the week again) shows the month of the selected day as whole weeks Monday to Sunday with neighbouring days muted, one mark per session (a dot coloured by sport, outlined when planned, red when missed; a duration chip and the ISO week with its planned time on wide screens), today filled, the selected day ringed and the current week tinted, and selecting a day shows its week below; "Zusätzlich" appears only in weeks with a plan; the week summary is a fixed planned/completed grid with one duration format and no dash-only rows; calendar notes are neutral text, each conflict is one component with one Coach action, and weeks with workout profiles show a zone legend.
+- **THEN** it shows the current week as a timeline (weekday and date column, today filled) with previous/next week buttons and the ISO week, limited to the configured weeks ahead (the configured weeks back load at once; paging back has no limit and older weeks load their completed sessions on demand); each session is one compact row with sport icon, title, duration and distance and, for a planned unit only, a zone bar for its workout profile (16 px high on narrow screens), and opened, its session-type and intensity labels sit above their selects so no word breaks at phone width; a completed or missed unit is one slim row whose line holds the time and the status ("✓ Absolviert" with the share of the plan, "✓ Ungeplant", "✕ Nicht absolviert") without zone or compliance bar, its activity name shown without the place prefix of the profile's weather location; opened, it shows its chart, each value once with German labels and per sport (runs and rides have their own lists, a value without data is left out), the plan line, the "Details" toggle, "Mit Coach besprechen" and "Feedback" (see "Calendar cards carry the single-session analysis"); planned sessions are dashed, completed ones solid and missed ones outlined in red; identical extra activities of a day form one row; on screens at least 1100 px wide the opened session shows as a detail pane beside the week, level with its card (title, day, status, larger profile with its axis, and the session details), and one session of the week is opened by default; a "Woche | Monat" switch (never stored, entering the calendar shows the week again) shows the month of the selected day as whole weeks Monday to Sunday with neighbouring days muted, one mark per session (a dot coloured by sport, outlined when planned, red when missed; a duration chip and the ISO week with its planned time on wide screens), today filled, the selected day ringed and the current week tinted, and selecting a day shows its week below; "Ungeplant" appears only in weeks with a plan; the week summary is a fixed planned/completed grid with one duration format and no dash-only rows, the planned load only when every planned unit has one (else "–" and the count of units without), a change against the week before named "ggü. Vorwoche", and under a sport filter the header says "Gefiltert: <sport>" and an empty day "Keine Einheit dieser Sportart"; calendar notes are neutral text, each conflict is one component with one Coach action, and weeks with workout profiles show a zone legend.
 
 #### Scenario: Calendar sport filter
 - **WHEN** the athlete picks "Lauf", "Rad" or "Kraft" in the chip row below the week or month switch
@@ -378,12 +378,12 @@ The client SHALL present domain-provided planning, performance, activity, and eq
 - **THEN** the pane lists one row per step with its zone colour mark, duration or distance, zone, and the target range right-aligned ("110–128 bpm", "≤ 109 bpm", pace in min/km) from the zones in effect on the unit's day; a step without a range shows none; the description keeps only its free text, and the stored workout text and its export stay unchanged.
 
 #### Scenario: Discuss a planned unit with the Coach
-- **WHEN** the athlete taps "Mit dem Coach besprechen" on an opened planned unit
+- **WHEN** the athlete taps "Mit Coach besprechen" on an opened planned unit
 - **THEN** the Coach opens with the unit named by date, sport, start time, duration and local id in the message field (after an unsent draft, which stays), focused for the athlete's question; nothing is sent and the stored name is not part of the message.
 
 #### Scenario: Provider send state of plan entries
 - **WHEN** the athlete views a pending planned unit, a strength unit Garmin cannot receive, or a changed Wahoo library workout
-- **THEN** a week with pending units or leftovers at a provider offers one "Woche synchronisieren" button in its heading (unit cards carry none; `garmin-strength-workout-push` and `training-library` define what it sends and removes); a blocked strength unit names the reason (no strength structure or an unmapped exercise) with a "Mit Coach strukturieren" action or exercise suggestions; a changed library workout shows "Wahoo: geändert" with an explicit send, and opening a view sends nothing.
+- **THEN** a week with pending units or leftovers at a provider offers one "Woche synchronisieren" button in its heading (unit cards carry none; `garmin-strength-workout-push` and `training-library` define what it sends and removes); a blocked strength unit names the reason (no strength structure or an unmapped exercise) with a "Mit Coach besprechen" action or exercise suggestions; a changed library workout shows "Wahoo: geändert" with an explicit send, and opening a view sends nothing.
 
 #### Scenario: Loading, empty, missing and failed reads
 - **WHEN** an analysis or session read is pending, has no data yet, lacks a single value, or fails
@@ -435,7 +435,7 @@ Evidence:
 - `e2e/analysis-info.spec.js::@responsive steps and floors show per-day units, whole numbers and the plotted basis`
 - `e2e/calendar-detail-pane.spec.js::@responsive a planned unit lists its steps with zone and target range instead of the workout notation`
 - `e2e/calendar-detail-pane.spec.js::@responsive Löschen asks once in the card, deletes a planned unit and Rückgängig brings it back`
-- `e2e/calendar-detail-pane.spec.js::@responsive Mit dem Coach besprechen puts the planned unit into the Coach field without sending`
+- `e2e/calendar-detail-pane.spec.js::@responsive Mit Coach besprechen puts the planned unit into the Coach field without sending`
 - `e2e/calendar-detail-pane.spec.js::@responsive Verschieben moves a planned unit to a tapped day and Rückgängig puts it back`
 - `e2e/calendar-week-compact.spec.js::@responsive compact calendar week shows one week, groups repeats and keeps one conflict style`
 - `e2e/calendar-week-compact.spec.js::@responsive the Monat switch shows the month grid and the calendar returns to the week`
@@ -499,7 +499,7 @@ The client SHALL name each dashed line and show no "Schätzung" qualifier on der
 
 #### Scenario: Estimates and predictions
 - **WHEN** a derived value (VO2max, race predictions, CP/CS, load, fitness/fatigue/form, heart-rate drift, projected daily expenditure) is shown
-- **THEN** it carries no "Schätzung" chip, 5 and 10 km predictions show minutes and seconds while half marathon and marathon show hours and minutes, VO2max keeps the precise provider value's one decimal, and a dashed line is named in the legend or a line key.
+- **THEN** it carries no "Schätzung" chip, 5 and 10 km predictions show minutes and seconds while half marathon and marathon show hours and minutes, VO2max keeps the precise provider value's one decimal, and a dashed line is named in the legend.
 
 #### Scenario: Hit areas and contrast
 - **WHEN** the analysis or nutrition routes render in the light theme
@@ -513,7 +513,7 @@ The client SHALL name each dashed line and show no "Schätzung" qualifier on der
 - **WHEN** an Analyse tab or another view with the two-column chart grid renders on a desktop
 - **THEN** two cards in a row have the same height, and a card alone in its row spans the full row width; the phone layout keeps one column (#3154).
 
-Evidence: `public/performance-view.js::currentPerformanceRows`, `public/performance-view.js::predictionTime`, `public/analysis.js::appendAnalysisLineKey`, `public/nutrition.js::nutritionChartRows`, `tests/test_css_design_tokens.py::test_training_focus_percentages_use_neutral_text_in_both_themes`, `tests/analysis-presentation.test.cjs::race prediction rows exclude body weight and empty states give a reason`, `backend/providers/garmin_health_mapping.py:_map_max_metrics`, `tests/test_performance_garmin_metrics.py:test_precise_vo2max_wins_over_its_rounded_twin`, `e2e/estimates-targets.spec.js`.
+Evidence: `public/performance-view.js::currentPerformanceRows`, `public/performance-view.js::predictionTime`, `public/nutrition.js::nutritionChartRows`, `tests/test_css_design_tokens.py::test_training_focus_percentages_use_neutral_text_in_both_themes`, `tests/analysis-presentation.test.cjs::race prediction rows exclude body weight and empty states give a reason`, `backend/providers/garmin_health_mapping.py:_map_max_metrics`, `tests/test_performance_garmin_metrics.py:test_precise_vo2max_wins_over_its_rounded_twin`, `e2e/estimates-targets.spec.js`.
 
 ### Requirement: Selection, sources and axes read consistently
 The client SHALL fill the selected tab or range with one accent style everywhere, show the app name, a password toggle and an invalid-field border on the login, and show a meal source only when it differs from the manual local default. Charts SHALL keep a minimum axis span, draw a flat series as a line and space tick labels evenly, naming weeks "Woche ab". Session detail SHALL show one muted source line with the provenance folded away.
@@ -533,7 +533,7 @@ The client SHALL fill the selected tab or range with one accent style everywhere
 Evidence: `public/analysis.js::appendAnalysisDateTicks`, `public/activity-analysis.js::chartRange`, `public/activity-details.js::providerNotes`, `public/nutrition.js::nutritionCard`, `public/auth.js::setLoginError`, `e2e/ux-polish.spec.js`.
 
 ### Requirement: Calendar cards carry the single-session analysis
-The calendar card of a completed session SHALL carry its single-session analysis behind a "Details" toggle, with "Mit dem Coach analysieren" and "Feedback" beside it. The Analyse tab SHALL have no separate list of sessions, the calendar SHALL page back without limit so every stored session stays reachable, and the Coach SHALL NOT receive per-second running dynamics.
+The calendar card of a completed session SHALL carry its single-session analysis behind a "Details" toggle, with "Mit Coach besprechen" and "Feedback" beside it. The Analyse tab SHALL have no separate list of sessions, the calendar SHALL page back without limit so every stored session stays reachable, and the Coach SHALL NOT receive per-second running dynamics.
 
 #### Scenario: Details in the card
 - **WHEN** the athlete opens "Details" of a completed session
@@ -541,7 +541,7 @@ The calendar card of a completed session SHALL carry its single-session analysis
 
 #### Scenario: Time in zones
 - **WHEN** the athlete opens a completed session's card
-- **THEN** below its values one slim bar shows the session's time per zone (power zones for a ride that has them, else heart-rate zones) with the minutes per zone below and the zone kind and source ("HF-Zonen · Garmin Connect"), read from the same session read as "Details" (one request per session and calendar data while both are open; a failed read is read again); a session without zones or with a failed read shows no bar.
+- **THEN** below its values one slim bar shows the session's time per zone (power zones for a ride that has them, else heart-rate zones) with the minutes per zone below and the zone kind and source ("Herzfrequenzzonen · Garmin Connect"), read from the same session read as "Details" (one request per session and calendar data while both are open; a failed read is read again); a session without zones or with a failed read shows no bar.
 
 #### Scenario: Session chart scale
 - **WHEN** a session channel is charted
@@ -552,8 +552,8 @@ The calendar card of a completed session SHALL carry its single-session analysis
 - **THEN** each available one is charted per second with the same name as its average in the value list and named in the data coverage, and the Coach's activity details carry only the averages.
 
 #### Scenario: Feedback and Coach actions
-- **WHEN** the athlete taps "Feedback" or "Mit dem Coach analysieren" on an opened completed session
-- **THEN** "Feedback" opens the dialog with the session type, session RPE, deviation reason, notes and the confirm, split and delete actions, and the Coach button starts one session-analysis turn (`session_analysis`, on the planning model; off without that model's key) that names the session by date, sport, time, duration and id, never by its stored name.
+- **WHEN** the athlete taps "Feedback" or "Mit Coach besprechen" on an opened completed session
+- **THEN** "Feedback" opens the dialog with the session type, session RPE, deviation reason, notes and the confirm, split and delete actions, and the Coach button fills the composer with a session-analysis message (`session_analysis`, on the planning model; off without that model's key) that names the session by date, sport, time, duration and id, never by its stored name.
 
 #### Scenario: No sessions segment in Analyse
 - **WHEN** the athlete opens the Analyse tab or an old `#analysis/sessions` link
@@ -620,23 +620,6 @@ The Analyse tab SHALL show the segments Laufen, Radfahren, Kraft, Belastung, Erh
 - **THEN** the table lists all thirteen all-time durations from 5 s to 1 h, a value from an indoor ride with a dashed "Indoor" chip, and the line "Experimentell · CP (28 Tage): …" (CS for running) names per fit CP and W′ (kJ) or CS and D′ with "(unsicher)", the count of race efforts, or "—" for a fit that is not `ok`.
 
 Evidence: `public/analysis.js::renderAnalysisSegments`, `public/analysis.js::renderStrengthAnalysis`, `backend/performance/report_service.py::TrainingReportReadService.strength`, `public/analysis.js::renderRunningBestEfforts`, `public/analysis.js::renderActivityRecords`, `backend/performance/activity_records.py::activity_records`, `public/analysis.js::criticalPowerLine`, `public/analysis.js::renderAnalysisHistory`, `public/performance-view.js::renderCurrentPerformance`, `public/navigation.js::routeFromHash`; `tests/analysis-presentation.test.cjs::an analysis segment is empty only when every content container reports no data`, `tests/analysis-presentation.test.cjs::current performance shows the status lines below its heading`, `e2e/performance-values.spec.js::@responsive Laufen and Radfahren each show only their sport`, `e2e/analysis-on-demand.spec.js::@responsive Rekorde shows the single-activity records and opens a record's activity`, `tests/test_activity_records.py`.
-
-### Requirement: Calendar display range setting
-The system SHALL store how many weeks the training calendar shows back and ahead as `past_weeks` and `future_weeks`, each a whole number from 0 to 52 with defaults 1 and 4, stored under `calendar_display_past_weeks` and `calendar_display_future_weeks`. `PUT /api/settings/calendar-display` SHALL change only the values it names and return `status: "ok"` with both (contract in `docs/api-routes.md`).
-
-#### Scenario: Partial update
-- **WHEN** only `future_weeks` is sent
-- **THEN** only that value changes.
-
-#### Scenario: Invalid input
-- **WHEN** the body is not an object, names neither value, or a value cannot be converted to an integer or lies outside 0 to 52 (a convertible value such as `3.7` or `true` is stored as its integer)
-- **THEN** the request fails with 400 and nothing changes, also when one of two sent values is valid.
-
-#### Scenario: Stored value out of range
-- **WHEN** a stored value is not a number or lies outside the range
-- **THEN** the default is used for the first, and the value is clamped to 0 to 52 for the second.
-
-Evidence: `backend/settings.py::SettingsService._calendar_display_settings`, `backend/settings.py::SettingsService.save_calendar_display_settings`, `backend/http_api/settings_put.py`, `public/settings.js`; `tests/test_server_weather_calendar.py::test_calendar_display_settings_are_persisted_and_validated`, `tests/test_http_settings_put_routes.py::test_calendar_display_route_passes_whole_payload`, `tests/test_settings.py::test_calendar_defaults_clamping_and_write_keys`, `tests/test_settings.py::test_calendar_invalid_values_have_exact_errors_and_no_partial_write`.
 
 ### Requirement: Stamping inputs and refusal
 
@@ -828,7 +811,7 @@ Evidence: `public/coach.js::coachActionCard`; `public/coach.js::coachActionButto
 
 ### Requirement: Calendar day notes and week figures
 
-A calendar day SHALL show plain note lines for a competition ("<priority>-Wettkampf: <name>"), a day status ("Ruhetag", "Trainingspause") and one calendar line with the appointment names without marker tokens, each with " · ganztägig" or its start time, followed by the markers "Kein Training", "Keine Intensität" and "Nur kurze Einheiten". An empty day SHALL read "Keine Aktivität" (past) or "Keine Einheit geplant" (today and later), an empty week "Keine Einheiten".
+A calendar day SHALL show plain note lines for a competition ("<priority>-Wettkampf: <name>"), a day status ("Ruhetag geplant" without a session, "Trainingspause") and one calendar line with the appointment names without marker tokens, each with " · ganztägig" or its start time, followed by the markers "Kein Training", "Keine Intensität" and "Nur kurze Einheiten". An empty day SHALL read "Keine Aktivität" (past) or "Keine Einheit geplant" (today and later), an empty week "Keine Einheiten".
 
 #### Scenario: Week figures with missing values
 - **WHEN** a completed ride, run, walk, hike, swim, nordic ski or row has no distance, or a session has no load

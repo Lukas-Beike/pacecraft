@@ -476,7 +476,6 @@ class ServerDatabaseTests(ServerTestCase):
         settings.available_model_options.return_value = []
         settings.selected_thinking_level.return_value = ""
         settings.available_thinking_level_options.return_value = []
-        settings.calendar_display_settings.return_value = {}
         owners = {
             field.name: Mock()
             for field in dataclasses.fields(PublicBootstrapDependencies)

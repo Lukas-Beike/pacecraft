@@ -56,7 +56,6 @@ class PublicPerformanceStateService:
         *,
         session_feedback: FeedbackLookup | None = None,
         now: Callable[[], datetime] | None = None,
-        zone_configurations: Callable[[], Any] = tuple,
         lt1_session_records: Callable[[int], Sequence[Mapping[str, Any]]] | None = None,
         lt1_history_records: Callable[
             [], tuple[Sequence[Mapping[str, Any]], bool] | None
@@ -67,7 +66,6 @@ class PublicPerformanceStateService:
         self._lt1_session_records = lt1_session_records
         # The all-time session read built off the request path (#2694, #2693).
         self._lt1_history_records = lt1_history_records
-        self._zone_configurations = zone_configurations
         self._profile_service = profile_service
         self._garmin_projection_service = garmin_projection_service
         self._today = today
@@ -190,7 +188,6 @@ class PublicPerformanceStateService:
     ) -> dict[str, Any]:
         """Project canonical values into the public performance state."""
         profile = self._profile_service.get()
-        zones = tuple(self._zone_configurations())
         inputs = canonical or EMPTY_PERFORMANCE_INPUTS
         if inputs.pending:
             # Nothing is served before the first completed backfill: no history,
@@ -203,7 +200,6 @@ class PublicPerformanceStateService:
             today,
             canonical=inputs,
             session_feedback=self._session_feedback,
-            zone_configurations=zones,
             lt1_session_records=self._lt1_session_records,
         )
         timezone = str(profile.get("timezone") or "UTC")
@@ -216,7 +212,7 @@ class PublicPerformanceStateService:
                 **(
                     {
                         "first_thresholds": self._first_threshold_history(
-                            performance, profile, inputs, today, zones
+                            performance, profile, inputs, today
                         )
                     }
                     if first_thresholds
@@ -261,7 +257,6 @@ class PublicPerformanceStateService:
         profile: Mapping[str, Any],
         inputs: CanonicalPerformanceInputs,
         today: date,
-        zones: Sequence[Any],
     ) -> dict[str, Any]:
         """LT1 of the threshold charts (#2693); pending until its sessions are read.
 
@@ -288,7 +283,6 @@ class PublicPerformanceStateService:
                 garmin_history=(
                     inputs.garmin or GarminCanonicalMetrics()
                 ).performance_history,
-                zone_configurations=zones,
                 records=records,
             ),
         }

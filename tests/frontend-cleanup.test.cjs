@@ -110,8 +110,8 @@ test("only the kept explanations remain as helper texts", () => {
 // Each Coach model block says when its model is used (#2744); the entry points follow the routing.
 test("the three Coach model blocks name their entry points in an info popover", () => {
   for (const [task, points] of [
-    ["Conversation", ["im Chat schreibst", "Morgen-Check-in", "„Besprechen“", "„Lösen“", "„Strukturieren“ im Kalender"]],
-    ["Planning", ["„Analyse &amp; Plan“", "„+“-Menü", "„Mit dem Coach analysieren“ im Kalender"]],
+    ["Conversation", ["im Chat schreibst", "Morgen-Check-in", "„Mit Coach besprechen“ an geplanten Einheiten im Kalender"]],
+    ["Planning", ["„Analyse &amp; Plan“", "„+“-Menü", "„Mit Coach besprechen“ an abgeschlossenen Einheiten im Kalender"]],
     ["Nutrition", ["„Nährwerttabelle fotografieren“", "Websuche nach fehlenden Nährwerten"]],
   ]) {
     assert.ok(index.includes(`popovertarget="modelInfo${task}"`), `${task} info button`);

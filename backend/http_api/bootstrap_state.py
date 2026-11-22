@@ -201,7 +201,6 @@ class PublicBootstrapService:
                         for provider_id in DEFAULT_PROVIDER_REGISTRY.sync_period_defaults()
                     },
                 },
-                "calendar_display": deps.settings.calendar_display_settings(),
                 "morning_checkin": deps.morning_checkin_state_service().state(),
                 "coach_quick_actions": deps.coach_quick_actions_service().state(),
                 "model": {

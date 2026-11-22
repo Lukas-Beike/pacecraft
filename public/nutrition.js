@@ -108,13 +108,14 @@ function showNutritionReceipt(status, message, change, afterUndo) {
 }
 
 async function deleteNutritionEntry(item) {
-  if (!await requestConfirmation(`Mahlzeit „${item.description}“ wirklich löschen?`, { title: "Mahlzeit löschen?", confirmLabel: "Löschen" })) return;
+  if (!await requestConfirmation(`Mahlzeit „${item.description}“ wirklich löschen?`, { title: "Mahlzeit löschen?", confirmLabel: "Löschen" })) return false;
   const status = document.querySelector("#nutritionStatus");
   try {
     const result = await api("/api/nutrition/entry/delete", { method: "POST", body: JSON.stringify({ id: item.id }) });
     await loadNutrition({ preserve: true });
     showNutritionReceipt(status, "Mahlzeit gelöscht.", result.change, () => loadNutrition({ preserve: true }));
-  } catch (error) { status.textContent = `Mahlzeit konnte nicht gelöscht werden: ${error.message}`; }
+    return true;
+  } catch (error) { status.textContent = `Mahlzeit konnte nicht gelöscht werden: ${error.message}`; return false; }
 }
 
 // Flags or clears a meal as estimated; the logged values stay, the energy table reads again (#3100).
@@ -247,14 +248,22 @@ function nutritionCard(item, template, sessions = []) {
   const sourceSuffix = template ? "" : syncLabel;
   const sourceText = basisLabel && !isDefaultSource ? basisLabel + sourceSuffix : "";
   const volume = item.volume_ml > 0 ? ` · ${AppFormat.number(item.volume_ml, { digits: 0 })} ml` : "";
+  const title = h("h3", null, template ? item.name : nutritionMealTitle(item), ...(template ? [] : nutritionEstimateChip(item)));
   const card = h("article", "nutrition-card",
-    h("h3", null, template ? item.name : nutritionMealTitle(item), ...(template ? [] : nutritionEstimateChip(item))),
+    template ? title : h("div", "nutrition-card-head", title, nutritionEditButton(item)),
     template ? null : nutritionSessionBlock(item, sessions),
     h("p", null, item.description),
     h("p", null, `${nutritionNumber(item.kcal)} kcal · KH ${nutritionNumber(item.carbs_g, "g")} g · Protein ${nutritionNumber(item.protein_g, "g")} g · Fett ${nutritionNumber(item.fat_g, "g")} g${template ? " / Portion" : ""}${volume}`),
     sourceText ? h("small", null, sourceText) : null);
   if (!template) card.append(...nutritionEntryActions(item));
   return card;
+}
+
+// The pencil in a meal card's head opens its components (#3948).
+function nutritionEditButton(item) {
+  const button = messageActionButton("edit", `Mahlzeit bearbeiten: ${item.description}`);
+  button.addEventListener("click", () => void openNutritionMealEdit(item));
+  return button;
 }
 
 // A meal whose amounts were estimated (restaurant, friends) says so in its title (#3100).
@@ -547,7 +556,7 @@ function renderNutritionDay(day) {
   if (energyIntakeKey !== null && energyIntakeKey !== intake && JSON.parse(energyIntakeKey)[0] === day.date) resetEnergy();
   energyIntakeKey = intake;
   renderDiaryEnergy();
-  document.querySelector("#nutritionStatus").textContent = day.entry_count ? "" : "Noch keine Mahlzeiten erfasst. Das bedeutet nicht, dass du nichts gegessen hast.";
+  document.querySelector("#nutritionStatus").textContent = day.entry_count ? "" : "Noch keine Mahlzeiten erfasst.";
   const totals = document.querySelector("#nutritionTotals");
   totals.replaceChildren();
   appendNutritionTotals(totals, day);
@@ -724,7 +733,7 @@ function normalizeNutritionProduct(product = {}) {
 
 function nutritionProductForm(product = {}) {
   const form = h("form", "nutrition-product-form");
-  form.innerHTML = `<input name="id" type="hidden"><input name="source" type="hidden"><input name="source_url" type="hidden"><input name="external_id" type="hidden"><input name="provenance" type="hidden"><input name="warnings" type="hidden"><label>Marke<input name="brand" maxlength="120"></label><label>EAN/GTIN<input name="barcode" inputmode="numeric" pattern="[0-9]{8,14}" maxlength="14"></label><div class="nutrition-product-grid"><label>Name<input name="name" required maxlength="160"></label><label>kcal<input name="kcal" type="number" min="0" step="any"></label><label>Kohlenhydrate (g)<input name="carbs_g" type="number" min="0" step="any"></label><label>Protein (g)<input name="protein_g" type="number" min="0" step="any"></label><label>Fett (g)<input name="fat_g" type="number" min="0" step="any"></label><label>Bezugsmenge<input name="basis_amount" type="number" min="0.1" step="0.1" value="100"></label><label>Einheit<select name="basis_unit"><option value="g">pro 100 g</option><option value="ml">pro 100 ml</option><option value="portion">pro Portion</option></select></label><label data-product-size="portion">Portion (<span data-size-unit>g</span>)<input name="portion_amount" type="number" min="0.1" max="10000" step="any"></label><label data-product-size="package">Packung (<span data-size-unit>g</span>)<input name="package_amount" type="number" min="0.1" max="10000" step="any"></label></div><p class="fine-print" data-extraction-confidence></p><ul class="nutrition-warning-checklist" data-extraction-warnings aria-label="Hinweise zur Prüfung" hidden></ul><p class="fine-print">Leere Nährwerte bleiben unbekannt. Bitte prüfe jede erkannte Zahl vor dem Speichern.</p><div class="nutrition-actions"><button type="submit" class="push-button">Produkt lokal speichern</button><button type="button" class="secondary-button" data-product-cancel>Abbrechen</button></div>`;
+  form.innerHTML = `<input name="id" type="hidden"><input name="source" type="hidden"><input name="source_url" type="hidden"><input name="external_id" type="hidden"><input name="provenance" type="hidden"><input name="warnings" type="hidden"><label>Marke<input name="brand" maxlength="120"></label><label>EAN/GTIN<input name="barcode" inputmode="numeric" pattern="[0-9]{8,14}" maxlength="14"></label><div class="nutrition-product-grid"><label>Name<input name="name" required maxlength="160"></label><label>kcal<input name="kcal" type="number" min="0" step="any"></label><label>Kohlenhydrate (g)<input name="carbs_g" type="number" min="0" step="any"></label><label>Protein (g)<input name="protein_g" type="number" min="0" step="any"></label><label>Fett (g)<input name="fat_g" type="number" min="0" step="any"></label><label>Bezugsmenge<input name="basis_amount" type="number" min="0.1" step="0.1" value="100"></label><label>Einheit<select name="basis_unit"><option value="g">pro 100 g</option><option value="ml">pro 100 ml</option><option value="portion">pro Portion</option></select></label><label data-product-size="portion">Portion (<span data-size-unit>g</span>)<input name="portion_amount" type="number" min="0.1" max="10000" step="any"></label><label data-product-size="package">Packung (<span data-size-unit>g</span>)<input name="package_amount" type="number" min="0.1" max="10000" step="any"></label></div><p class="fine-print" data-extraction-confidence></p><ul class="nutrition-warning-checklist" data-extraction-warnings aria-label="Hinweise zur Prüfung" hidden></ul><div class="nutrition-actions"><button type="submit" class="push-button">Produkt lokal speichern</button><button type="button" class="secondary-button" data-product-cancel>Abbrechen</button></div>`;
   populateNutritionProductFields(form, product);
   form.elements.source.value = product.source || "packaging_label";
   form.append(h("input", { name: "confidence", type: "hidden", value: nutritionProductValue(product.confidence) }));

@@ -204,6 +204,42 @@ class QualityBaselineTests(unittest.TestCase):
         self.assertEqual(result, 1)
         self.assertIn("NEW ruff backend/example.py:4", output)
 
+    def test_instruction_files_may_not_grow(self):
+        # #3925: AGENTS.md and SKILL.md files grew without a counterweight.
+        self.baseline["instruction_lines"] = {"AGENTS.md": 10, "a/SKILL.md": 5}
+        output = io.StringIO()
+        for sizes, code, lines in (
+            ({"AGENTS.md": 10, "a/SKILL.md": 5}, 0, []),
+            ({"AGENTS.md": 11, "a/SKILL.md": 4}, 1,
+             ["NEW size AGENTS.md: 10 -> 11 lines",
+              "OBSOLETE size a/SKILL.md: 5 -> 4 lines"]),
+            ({"AGENTS.md": 10, "a/SKILL.md": 5, "b/SKILL.md": 1}, 1,
+             ["NEW size b/SKILL.md: 0 -> 1 lines"]),
+            ({"AGENTS.md": 10}, 1, ["OBSOLETE size a/SKILL.md: 5 -> 0 lines"]),
+        ):  # fmt: skip
+            output = io.StringIO()
+            with self.subTest(sizes=sizes), contextlib.redirect_stdout(output):
+                result = quality_baseline.check(
+                    self.baseline, self.versions, [self.existing], sizes=sizes
+                )
+            self.assertEqual(result, code, output.getvalue())
+            for line in lines:
+                self.assertIn(line, output.getvalue())
+        self.assertIn("may not grow", self.check_sizes({"AGENTS.md": 12}))
+        # The recorded files are this repository's instruction files.
+        sizes = quality_baseline.instruction_lines(quality_baseline.ROOT)
+        self.assertIn("AGENTS.md", sizes)
+        self.assertIn(".agents/skills/deliver-issue/SKILL.md", sizes)
+        self.assertIn("tests/AGENTS.md", sizes)
+
+    def check_sizes(self, sizes):
+        output = io.StringIO()
+        with contextlib.redirect_stdout(output):
+            quality_baseline.check(
+                self.baseline, self.versions, [self.existing], sizes=sizes
+            )
+        return output.getvalue()
+
     def test_duplicate_diagnostics_are_not_collapsed(self):
         self.assertEqual(self.check([self.existing, self.existing])[0], 1)
 

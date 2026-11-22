@@ -44,7 +44,7 @@ test("@responsive compact calendar week shows one week, groups repeats and keeps
   const conflict = planned.locator(".planned-conflict");
   await expect(conflict).toContainText("Konflikt: Kein Training");
   await expect(conflict.getByRole("button")).toHaveCount(1);
-  await expect(conflict.getByRole("button")).toHaveText("Mit Coach lösen");
+  await expect(conflict.getByRole("button")).toHaveText("Mit Coach besprechen");
   const result = await conflict.evaluate((element) => {
     let sent = null;
     const original = globalThis.askCoach;
@@ -84,8 +84,8 @@ test("@responsive compact calendar week shows one week, groups repeats and keeps
   await showCalendarDay(page, yesterday);
   const facts = await page.evaluate(() => [...document.querySelectorAll(".planned-actual-facts")].map((node) => [...node.children].map((item) => item.textContent)));
   expect(facts).toEqual([
-    ["Pace 5:00 /km", "Ø Puls 150 bpm", "Schrittfrequenz 172 spm", "Ø Leistung 270 W", "Belastung 80", "Bodenkontaktzeit 249 ms", "Höhenmeter 40 m"],
-    ["Normalized Power 225 W", "Ø Leistung 210 W", "Intensitätsfaktor 0,86", "Ø Puls 140 bpm", "Trittfrequenz 90 rpm", "Belastung 70", "RPE 6/10", "Ø Tempo 30,0 km/h", "Höhenmeter 0 m"],
+    ["Pace 5:00 /km", "Ø Herzfrequenz 150 bpm", "Schrittfrequenz 172 spm", "Ø Leistung 270 W", "Belastung 80", "Bodenkontaktzeit 249 ms", "Höhenmeter 40 m"],
+    ["Normalized Power 225 W", "Ø Leistung 210 W", "Intensitätsfaktor 0,86", "Ø Herzfrequenz 140 bpm", "Trittfrequenz 90 rpm", "Belastung 70", "RPE 6/10", "Ø Geschwindigkeit 30,0 km/h", "Höhenmeter 0 m"],
   ]);
 });
 
@@ -164,7 +164,7 @@ test("the desktop detail pane starts at the top of the week for its top and bott
   expect(paneBox.y + paneBox.height).toBeLessThanOrEqual(weekBox.y + weekBox.height + 1);
 });
 
-test("extra activities show no Zusätzlich badge in a week without a plan", async ({ page, request }) => {
+test("extra activities show no Ungeplant badge in a week without a plan", async ({ page, request }) => {
   await openCalendar(page, request);
   await page.evaluate(() => {
     const today = timezoneDateKey(state.data?.profile?.timezone, new Date());
@@ -177,7 +177,7 @@ test("extra activities show no Zusätzlich badge in a week without a plan", asyn
     renderPlanned(entries);
   });
   const day = page.locator(".planned-day.is-today");
-  await expect(day).not.toContainText("Zusätzlich");
+  await expect(day).not.toContainText("Ungeplant");
   await expect(day.locator(".planned-group > summary .planned-session-title")).toHaveText("2× Trainingseinheit");
   // A week without a plan counts no session as extra.
   await expect(page.locator(".week-review")).not.toContainText("zusätzlich");
@@ -189,7 +189,6 @@ test("@responsive a unit missed on a confirmed rest day is dropped, missing weat
     const today = timezoneDateKey(state.data?.profile?.timezone, new Date());
     const day = addDateKey(today, -1);
     state.data.weather = null;
-    state.data.calendar_display = { past_weeks: 1, future_weeks: 1 };
     state.data.daily_planning_context = [{ date: day, day_status: "rest" }];
     state.data.training_calendar = [
       { id: "rest-missed", date: day, name: "Radausfahrt mit einem sehr langen Bezeichnungswort", type: "Ride", duration_minutes: 45, compliance: { status: "missed", percentage: 0 } },
@@ -364,7 +363,7 @@ test("@responsive the week review sits under a past or running week and follows 
   await expect(review.locator(".week-review-head span")).toHaveText(/^KW \d+$/);
   await expect(labels).toHaveText(["Plan", "Einheiten", "Zeit", "Belastung", "Schlaf Ø", "HRV Ø", "Check-ins", "Besondere Einheiten", "Beschwerden"]);
   await expect(review.locator(".week-review-tile").first()).toHaveText(/^Plan5 von 6verpasst: Mi Kraft$/);
-  await expect(review.locator(".week-review-change")).toHaveText(["+12 %", "+8 %", "−0:10", "3 → 5"]);
+  await expect(review.locator(".week-review-change")).toHaveText(["+12 % ggü. Vorwoche", "+8 % ggü. Vorwoche", "−0:10 ggü. Vorwoche", "3 → 5"]);
   await expect(review.getByText("im Normalbereich · Garmin")).toBeVisible();
   await expect(review.locator(".week-review-wide").first().locator("li")).toHaveText(/^So Langer Lauf · höchste Belastung \(120\)$/);
   // #3766 (athlete: layout A): one line per body area and side, a worsening in the danger colour.

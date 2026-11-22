@@ -16,7 +16,6 @@ from datetime import UTC, date, datetime, timedelta
 from typing import Any
 from unittest.mock import MagicMock, Mock, patch
 
-from canonical_domain_support import local_zone_configuration
 from canonical_recovery_support import NoActivityRows, recovery_only_inputs
 from intervals_compaction import compact_snapshot
 from performance_day_support import (
@@ -26,7 +25,6 @@ from performance_day_support import (
     garmin_metrics_from_payload,
 )
 
-from backend.canonical.vocabulary import Sport, ZoneConfigurationMetric
 from backend.coach.context import (
     COACH_CONTEXT_SECTION_LIMITS,
     COACH_PLANNED_EVENT_LIMIT,
@@ -141,7 +139,6 @@ def _context(
     garmin: dict[str, Any],
     profile: dict[str, Any],
     today: date,
-    zone_configurations: tuple[Any, ...] = (),
     lt1_session_records: Any = None,
 ) -> dict[str, Any]:
     """Current performance with recovery observations mapped from the fixtures."""
@@ -157,7 +154,6 @@ def _context(
         )
         if canonical is not None
         else _recovery(garmin, snapshot),
-        zone_configurations=zone_configurations,
         lt1_session_records=lt1_session_records,
     )
 
@@ -388,75 +384,26 @@ class CurrentPerformanceProvenanceTests(unittest.TestCase):
         self.assertNotIn("ftp_alternatives", result["thresholds"])
         self.assertNotIsInstance(result["thresholds"]["ftp_w"], dict)
 
-    def test_lt1_power_is_the_configured_zone_two_or_else_a_share_of_the_ftp(
+    def test_lt1_power_is_a_share_of_the_ftp(
         self,
     ) -> None:
-        # 75 % of the Garmin FTP of 265 W; a local power zone 2 ends at 200 W.
+        # 75 % of the Garmin FTP of 265 W; the top of a zone 2 is no LT1 (#3915).
         shared = _context(_intervals_snapshot(), _garmin_payload(), {}, TODAY)
-        zoned_zones = (
-            local_zone_configuration(
-                metric=ZoneConfigurationMetric.POWER,
-                sport=Sport.RIDE,
-                threshold=265.0,
-                maximum=None,
-                resting=None,
-                limits=(150.0, 200.0, 240.0),
-            ),
-        )
-        zoned = _context(
-            _intervals_snapshot(), _garmin_payload(), {}, TODAY, zoned_zones
-        )
-        self.assertEqual(
-            (199, "fixed_share"),
-            tuple(shared["thresholds"]["first_thresholds"]["ride"][key]
-                  for key in ("watts", "power_origin")),
-        )  # fmt: skip
-        self.assertEqual(
-            (200, "zone_2"),
-            tuple(zoned["thresholds"]["first_thresholds"]["ride"][key]
-                  for key in ("watts", "power_origin")),
-        )  # fmt: skip
-        # Three steady rides at the heart-rate zone 2 top of 131 bpm win (#2427).
-        heart_rate_zone = local_zone_configuration(
-            metric=ZoneConfigurationMetric.HEART_RATE,
-            sport=Sport.RIDE,
-            threshold=160.0,
-            maximum=None,
-            resting=None,
-            limits=(115.0, 131.0, 150.0),
-        )
-        steady = {
-            "status": "ok",
-            "bins": {
-                "130": {
-                    "seconds": 900.0,
-                    "work_j": 900.0 * 185,
-                    "watts_sq": 900.0 * 185**2,
-                }
-            },
-        }
-        rides = [{"date": f"2026-05-0{day}", "sport": "ride", "environment": "outdoor",
-                  "power_at_hr_profile": steady} for day in (1, 2, 3)]  # fmt: skip
-        own = _context(
-            _intervals_snapshot(), _garmin_payload(), {}, TODAY,
-            (*zoned_zones, heart_rate_zone), lambda days: rides,
-        )  # fmt: skip
-        self.assertEqual(
-            {"hr_bpm": 131, "hr_origin": "zone_2",
-             "watts": 185, "power_origin": "own_sessions"},
-            own["thresholds"]["first_thresholds"]["ride"],
-        )  # fmt: skip
+        ride = shared["thresholds"]["first_thresholds"]["ride"]
+        self.assertEqual((199, "fixed_share"), (ride["watts"], ride["power_origin"]))
+        # Without a ride threshold HR there is no LT1 heart rate to read own rides at;
+        # own sessions are covered in tests/test_current_thresholds.py.
+        self.assertNotIn("hr_bpm", ride)
 
         # A failed session read falls back instead of failing the projection.
         def unreadable(days: int) -> Any:
             raise RuntimeError("power profiles need the canonical source and curves")
 
         fallback = _context(
-            _intervals_snapshot(), _garmin_payload(), {}, TODAY,
-            zoned_zones, unreadable,
-        )  # fmt: skip
+            _intervals_snapshot(), _garmin_payload(), {}, TODAY, unreadable
+        )
         self.assertEqual(
-            (200, "zone_2"),
+            (199, "fixed_share"),
             tuple(fallback["thresholds"]["first_thresholds"]["ride"][key]
                   for key in ("watts", "power_origin")),
         )  # fmt: skip

@@ -7,6 +7,7 @@ async function deleteWith(result) {
   const nodes = { "#privacyDeleteNotice": new FakeElement("p"), "#privacyDeleteResult": new FakeElement("p"), "#privacyDeleteButton": new FakeElement("button") };
   nodes["#privacyDeleteButton"].removeAttribute = (name) => { delete nodes["#privacyDeleteButton"].attributes[name]; };
   const toasts = [];
+  const drafts = [];
   const posts = [];
   const context = extractFunctions("settings.js", ["privacyInFlight", "setPrivacyButtonBusy", "privacyDeleteLeftovers", "deletePrivacyData"], {
     $: (selector) => nodes[selector],
@@ -18,14 +19,16 @@ async function deleteWith(result) {
       return result;
     },
     requestConfirmation: async () => "LOKALE DATEN LÖSCHEN",
-    downloadDatabaseBackup() {}, clearStateSnapshot() {}, clearOutbox: async () => {}, invalidateProviderChecks() {}, loadProviderChecks: async () => {}, load: async () => {},
+    downloadDatabaseBackup() {}, clearStateSnapshot() {}, clearOutbox: async () => {}, rememberUnsentDraft: (text) => drafts.push(text), invalidateProviderChecks() {}, loadProviderChecks: async () => {}, load: async () => {},
   });
   await context.deletePrivacyData();
-  return { notice: nodes["#privacyDeleteNotice"], result: nodes["#privacyDeleteResult"], toasts, posts };
+  return { notice: nodes["#privacyDeleteNotice"], result: nodes["#privacyDeleteResult"], toasts, posts, drafts };
 }
 
 test("a deletion that reached every provider shows no problem notice", async () => {
-  const { notice, result, toasts, posts } = await deleteWith({ deleted_categories: { chat: 3 }, remote_delete_attempted: true, remote_conversation_deleted: true });
+  const { notice, result, toasts, posts, drafts } = await deleteWith({ deleted_categories: { chat: 3 }, remote_delete_attempted: true, remote_conversation_deleted: true });
+  // An unsent Coach draft is device data and goes with the deletion (#3931).
+  assert.deepEqual(drafts, [null]);
   assert.equal(notice.hidden, true);
   assert.equal(notice.textContent, "");
   assert.equal(result.hidden, false);

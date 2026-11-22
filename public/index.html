@@ -28,6 +28,7 @@
       <symbol id="icon-refresh" viewBox="0 0 24 24"><path d="M20 11a8 8 0 0 0-14.5-4L4 9M4 5v4h4M4 13a8 8 0 0 0 14.5 4L20 15m0 4v-4h-4"/></symbol>
       <symbol id="icon-copy" viewBox="0 0 24 24"><rect x="8.5" y="8.5" width="12" height="12" rx="2.5"/><path d="M15.5 8.5V6a2.5 2.5 0 0 0-2.5-2.5H6A2.5 2.5 0 0 0 3.5 6v7A2.5 2.5 0 0 0 6 15.5h2.5"/></symbol>
       <symbol id="icon-edit" viewBox="0 0 24 24"><path d="M4 20h4L19 9l-4-4L4 16z"/><path d="m13.5 6.5 4 4"/></symbol>
+      <symbol id="icon-trash" viewBox="0 0 24 24"><path d="M5 7h14M10 7V4.5h4V7M7 7l1 13h8l1-13M10 11v6M14 11v6"/></symbol>
     </svg>
     <aside class="desktop-nav" aria-label="Hauptnavigation">
       <a class="nav-item active" href="#coach" aria-current="page" aria-controls="chatPanel" aria-label="Coach" data-panel="chatPanel" data-route="coach" aria-keyshortcuts="Alt+1"><svg class="nav-icon" aria-hidden="true"><use href="#icon-coach"></use></svg><span>Coach</span></a>
@@ -64,9 +65,9 @@
             <button id="quickAnalysisButton" type="button" aria-haspopup="menu" aria-expanded="false" aria-controls="quickAnalysisMenu" popovertarget="quickAnalysisMenu">Analyse &amp; Plan</button>
             <div id="quickAnalysisMenu" class="quick-action-menu" popover="auto" role="menu" aria-label="Analyse und Plan">
               <button type="button" role="menuitem" data-request-kind="session_analysis" data-message="Aktualisiere zuerst meine Garmin- und Wahoo-Daten. Analysiere danach meine letzte absolvierte Einheit: Was lief gut, was sollte ich anpassen und wie beeinflusst sie die nächste Einheit? Nutze bei einer nahezu gleichen Wahoo- und Garmin-Radaufzeichnung immer Wahoo.">Einheit analysieren</button>
-              <div class="quick-action-periods"><span aria-hidden="true">Fortschritt</span><button type="button" role="menuitem" aria-label="Fortschritt 4 Wochen" data-request-kind="progress_review" data-message="Werde ich besser? Werte meine Entwicklung der letzten 4 Wochen aus.">4</button><button type="button" role="menuitem" aria-label="Fortschritt 8 Wochen" data-request-kind="progress_review" data-message="Werde ich besser? Werte meine Entwicklung der letzten 8 Wochen aus.">8</button><button type="button" role="menuitem" aria-label="Fortschritt 12 Wochen" data-request-kind="progress_review" data-message="Werde ich besser? Werte meine Entwicklung der letzten 12 Wochen aus.">12</button><button type="button" role="menuitem" aria-label="Fortschritt seit dem letzten Test" data-request-kind="progress_review" data-message="Werde ich besser? Werte meine Entwicklung seit meinem letzten Test aus.">Test</button></div>
+              <div class="quick-action-periods"><span aria-hidden="true">Fortschritt</span><button type="button" role="menuitem" aria-label="Fortschritt 4 Wo." data-request-kind="progress_review" data-message="Werde ich besser? Werte meine Entwicklung der letzten 4 Wochen aus.">4 Wo.</button><button type="button" role="menuitem" aria-label="Fortschritt 8 Wo." data-request-kind="progress_review" data-message="Werde ich besser? Werte meine Entwicklung der letzten 8 Wochen aus.">8 Wo.</button><button type="button" role="menuitem" aria-label="Fortschritt 12 Wo." data-request-kind="progress_review" data-message="Werde ich besser? Werte meine Entwicklung der letzten 12 Wochen aus.">12 Wo.</button><button type="button" role="menuitem" aria-label="Fortschritt seit Test" data-request-kind="progress_review" data-message="Werde ich besser? Werte meine Entwicklung seit meinem letzten Test aus.">seit Test</button></div>
               <button type="button" role="menuitem" data-request-kind="plan_week" data-message="Plane meine nächste Woche.">Plan nächste Woche</button>
-              <div class="quick-action-periods"><span aria-hidden="true">Plan 2–4 Wochen</span><button type="button" role="menuitem" aria-label="Plan 2 Wochen" data-request-kind="plan_block" data-message="Plane meine nächsten 2 Wochen als Trainingsblock.">2</button><button type="button" role="menuitem" aria-label="Plan 3 Wochen" data-request-kind="plan_block" data-message="Plane meine nächsten 3 Wochen als Trainingsblock.">3</button><button type="button" role="menuitem" aria-label="Plan 4 Wochen" data-request-kind="plan_block" data-message="Plane meine nächsten 4 Wochen als Trainingsblock.">4</button></div>
+              <div class="quick-action-periods"><span aria-hidden="true">Planblock</span><button type="button" role="menuitem" aria-label="Plan 2 Wo." data-request-kind="plan_block" data-message="Plane meine nächsten 2 Wochen als Trainingsblock.">2 Wo.</button><button type="button" role="menuitem" aria-label="Plan 3 Wo." data-request-kind="plan_block" data-message="Plane meine nächsten 3 Wochen als Trainingsblock.">3 Wo.</button><button type="button" role="menuitem" aria-label="Plan 4 Wo." data-request-kind="plan_block" data-message="Plane meine nächsten 4 Wochen als Trainingsblock.">4 Wo.</button></div>
               <button type="button" role="menuitem" data-request-kind="adjust_week" data-message="Vergleiche in meiner aktuellen Woche Plan und Ist und passe die restlichen Tage an, falls nötig.">Woche anpassen</button>
             </div>
           </section>
@@ -103,16 +104,16 @@
         </nav>
         <output id="planListStatus" class="sr-only"></output>
         <section id="seasonPreparation" class="plan-segment" data-plan-segment-panel="season" aria-labelledby="competitionsTitle" hidden>
-          <div class="competition-heading"><h3 id="competitionsTitle">Wettkämpfe</h3><button type="button" id="competitionAdd" class="secondary-button">Hinzufügen</button></div>
+          <div class="competition-heading"><h3 id="competitionsTitle" class="sr-only">Wettkämpfe</h3><button type="button" id="competitionAdd" class="secondary-button">Hinzufügen</button></div>
           <div class="competition-read-state"><output id="competitionReadStatus">Wettkämpfe werden geladen …</output><button id="competitionRetry" type="button" class="secondary-button" hidden>Erneut laden</button></div>
           <div id="competitionList" class="competition-list"></div>
         </section>
         <section id="planOverviewSegment" class="plan-segment" data-plan-segment-panel="overview" aria-labelledby="planOverviewTitle">
-          <div class="plan-segment-heading"><div><h3 id="planOverviewTitle">Trainingskalender</h3></div></div>
+          <h3 id="planOverviewTitle" class="sr-only">Trainingskalender</h3>
           <div id="plannedCalendar" class="planned-calendar"></div>
         </section>
         <section id="planLibrarySegment" class="plan-segment" data-plan-segment-panel="library" aria-labelledby="planLibraryTitle" hidden>
-          <div class="plan-segment-heading"><div><h3 id="planLibraryTitle">Bibliothek</h3><span id="librarySummary" class="tab-sync-detail"></span></div></div>
+          <h3 id="planLibraryTitle" class="sr-only">Bibliothek</h3>
           <div id="library" class="library"></div>
         </section>
       </section>
@@ -212,22 +213,22 @@
           <div><h2>Mehr</h2></div>
         </div>
         <nav class="more-segment-nav" aria-label="Mehr-Bereiche">
-          <a href="#more/appearance" data-more-segment="appearance">Darstellung</a>
           <a href="#more/profile" data-more-segment="profile" aria-current="page">Profil</a>
-          <a href="#more/equipment" data-more-segment="equipment">Ausrüstung und Wartung</a>
           <a href="#more/connections" data-more-segment="connections">Anbindungen</a>
+          <a href="#more/equipment" data-more-segment="equipment">Ausrüstung und Wartung</a>
           <a href="#more/coach" data-more-segment="coach">Coach &amp; Modell</a>
+          <a href="#more/app" data-more-segment="app">App</a>
           <a href="#more/operations" data-more-segment="operations">Betrieb &amp; Diagnose</a>
         </nav>
         <form id="profileForm" class="profile-form">
           <details class="profile-section collapsible-section">
             <summary class="collapsible-summary"><span class="collapsible-summary-title">Person</span><span id="profileSummary" class="collapsible-summary-meta">Noch nicht ausgefüllt</span></summary>
             <div class="form-grid"><label>Name<input name="name" autocomplete="name"></label></div>
-            <fieldset class="chip-field"><legend>Sportarten</legend><div class="chip-group"><label class="chip"><input type="checkbox" name="sports" value="Cycling"><span>Radfahren</span></label><label class="chip"><input type="checkbox" name="sports" value="Running"><span>Laufen</span></label><label class="chip"><input type="checkbox" name="sports" value="Swimming"><span>Schwimmen</span></label><label class="chip"><input type="checkbox" name="sports" value="Strength"><span>Krafttraining</span></label><label class="chip"><input type="checkbox" name="sports" value="Triathlon"><span>Triathlon</span></label><label class="chip"><input type="checkbox" name="sports" value="Other"><span>Andere</span></label></div></fieldset>
+            <fieldset class="chip-field"><legend>Sportarten</legend><div class="chip-group"><label class="chip"><input type="checkbox" name="sports" value="Cycling"><span>Radfahren</span></label><label class="chip"><input type="checkbox" name="sports" value="Running"><span>Laufen</span></label><label class="chip"><input type="checkbox" name="sports" value="Swimming"><span>Schwimmen</span></label><label class="chip"><input type="checkbox" name="sports" value="Strength"><span>Kraft</span></label><label class="chip"><input type="checkbox" name="sports" value="Triathlon"><span>Triathlon</span></label><label class="chip"><input type="checkbox" name="sports" value="Other"><span>Andere</span></label></div></fieldset>
             <label>Trainingserfahrung<textarea name="training_background" rows="3" placeholder="Erfahrung, Trainingshistorie, Stärken und Schwächen…"></textarea></label>
             <div class="form-grid">
             <label>Größe (cm)<input name="height_cm" type="number" min="50" max="250" step="0.1"></label>
-            <label>Geschlecht<select name="sex"><option value="">Nicht gesetzt (männlich angenommen)</option><option value="male">Männlich</option><option value="female">Weiblich</option></select></label>
+            <label>Geschlecht<select name="sex"><option value="">Keine Angabe (männlich angenommen)</option><option value="male">Männlich</option><option value="female">Weiblich</option></select></label>
             <label>Geburtsjahr<input name="birth_year" type="number" min="1920" max="2010" step="1" inputmode="numeric"></label>
             </div>
           </details>
@@ -249,7 +250,6 @@
               <label>Messdatum<input name="first_threshold_on" type="date"></label>
               <label><span id="firstThresholdStoredLabel">Gespeichert (% LSHF)</span><input name="first_threshold_pct" type="number" min="40" max="100" step="0.1" inputmode="decimal"></label>
               <div id="firstThresholdEstimate" class="profile-estimate" hidden><output id="firstThresholdEstimateText"></output><button id="firstThresholdAdopt" type="button" class="secondary-button">Übernehmen</button></div>
-              <p class="fine-print profile-help">Garmin schreibt RR-Intervalle nur, wenn die HRV-Aufzeichnung für den Brustgurt aktiviert ist.</p>
             </fieldset>
             <div id="zoneEditor" class="zone-editor" hidden>
               <div class="form-grid" hidden>
@@ -275,7 +275,7 @@
               <label>Laufen<textarea name="training_preferences_running" rows="2" placeholder="Strecken, Untergrund, Laufband, bevorzugte Einheiten…"></textarea></label>
               <label>Radfahren<textarea name="training_preferences_cycling" rows="2" placeholder="Rolle oder draußen, Gruppenfahrten, bevorzugte Intervalle…"></textarea></label>
               <label>Schwimmen<textarea name="training_preferences_swimming" rows="2" placeholder="Becken oder Freiwasser, Technik, Hilfsmittel…"></textarea></label>
-              <label>Krafttraining<textarea name="training_preferences_strength" rows="2" placeholder="Gym oder zu Hause, Geräte, Übungen, Häufigkeit…"></textarea></label>
+              <label>Kraft<textarea name="training_preferences_strength" rows="2" placeholder="Gym oder zu Hause, Geräte, Übungen, Häufigkeit…"></textarea></label>
               <label>Mobilität<textarea name="training_preferences_mobility" rows="2" placeholder="Yoga, Dehnen, Faszienrolle, Dauer, Tageszeit…"></textarea></label>
               <label>Trainingsmodell<select name="training_model"><option value="pyramidal">Pyramidal</option><option value="polarized">Polarisiert</option><option value="threshold">Schwellenbetont</option><option value="sweet_spot">Sweet Spot</option></select></label>
             </fieldset>
@@ -290,7 +290,7 @@
             </div>
             <label>Wetter-/Urlaubsstandort<input name="weather_location" placeholder="Stadt oder PLZ, z. B. Münster"></label>
           </details>
-          <div class="save-bar"><span id="profileDirtyIndicator" class="dirty-indicator" hidden>Ungespeichert</span><span class="save-clean">Gespeichert</span><button type="submit">Athletenkontext speichern</button></div>
+          <div class="save-bar"><span id="profileDirtyIndicator" class="dirty-indicator" hidden>Ungespeichert</span><span class="save-clean">Gespeichert</span><button type="submit">Profil speichern</button></div>
         </form>
         <form id="zoneForm" hidden></form>
       </section>
@@ -300,19 +300,26 @@
           <div><h2>Mehr</h2></div>
         </div>
         <nav class="more-segment-nav" aria-label="Mehr-Bereiche">
-          <a href="#more/appearance" data-more-segment="appearance">Darstellung</a>
           <a href="#more/profile" data-more-segment="profile">Profil</a>
-          <a href="#more/equipment" data-more-segment="equipment">Ausrüstung und Wartung</a>
           <a href="#more/connections" data-more-segment="connections" aria-current="page">Anbindungen</a>
+          <a href="#more/equipment" data-more-segment="equipment">Ausrüstung und Wartung</a>
           <a href="#more/coach" data-more-segment="coach">Coach &amp; Modell</a>
+          <a href="#more/app" data-more-segment="app">App</a>
           <a href="#more/operations" data-more-segment="operations">Betrieb &amp; Diagnose</a>
         </nav>
         <section class="settings-section" data-more-segment-panel="equipment" hidden>
           <section id="equipmentItems" class="analysis-chart-card" aria-label="Ausrüstung und Wartung"></section>
         </section>
-        <section class="settings-section appearance-settings" data-more-segment-panel="appearance" aria-labelledby="appearanceTitle">
-          <div><h3 id="appearanceTitle">Darstellung</h3></div>
+        <section class="settings-section appearance-settings" data-more-segment-panel="app" aria-labelledby="appearanceTitle">
+          <div><h3 id="appearanceTitle">App</h3></div>
           <fieldset id="appearanceSelect" class="appearance-control"><legend>Farbschema</legend><div class="segmented-control"><label><input type="radio" name="appearance" value="system" checked>System</label><label><input type="radio" name="appearance" value="light">Hell</label><label><input type="radio" name="appearance" value="dark">Dunkel</label></div></fieldset>
+        </section>
+        <section id="notificationSettings" class="settings-section notification-settings" data-more-segment-panel="app" aria-label="Benachrichtigungen">
+          <div class="settings-inline-action notification-actions">
+            <div><strong>PWA-Benachrichtigungen</strong><span id="notificationStatus">Noch nicht aktiviert</span></div>
+            <button id="notificationEnableButton" type="button" class="secondary-button">Benachrichtigungen aktivieren</button>
+          </div>
+          <fieldset id="notificationTypes" class="notification-types" hidden><legend class="sr-only">Benachrichtigungsarten</legend></fieldset>
         </section>
         <section class="settings-section" data-more-segment-panel="connections" aria-label="Anbindungen">
           <output id="connectionsSyncProgress" class="connections-sync-progress" aria-label="Laufende Synchronisierungen" aria-live="polite" hidden></output>
@@ -413,7 +420,7 @@
                 <div id="wahooConnectionActions" class="connection-actions" hidden><button id="wahooConnectButton" class="secondary-button" type="button" hidden>Wahoo verbinden</button><button id="wahooDisconnectButton" class="secondary-button danger-button" type="button" hidden>Wahoo trennen</button></div>
                 <div id="wahooSyncActions" class="connection-actions connection-sync-actions" hidden><button data-check-button="wahoo" data-check-group="wahoo wahoo-connection" class="secondary-button" type="button">Verbindung prüfen</button><button id="wahooSyncButton" class="secondary-button" type="button">Jetzt synchronisieren</button><button id="wahooFullResyncButton" class="secondary-button" type="button">Vollständig neu synchronisieren</button></div>
                 <small id="wahooFullResyncStatus" class="connection-resync-status" hidden></small>
-                <p id="wahooSetupHint" class="provider-setup-hint" hidden>Wahoo ist optional und nicht konfiguriert. Hinterlege Client-ID und Client-Secret unter „Zugang“ oder in den Server-Einstellungen; die Weiterleitungs-URL bleibt eine Server-Einstellung.</p>
+                <p id="wahooSetupHint" class="provider-setup-hint" hidden>Wahoo ist optional und nicht eingerichtet. Hinterlege Client-ID und Client-Secret unter „Zugang“ oder in den Server-Einstellungen; die Weiterleitungs-URL bleibt eine Server-Einstellung.</p>
               </div>
             </details>
             <details id="connection-intervals" class="connection-card">
@@ -441,7 +448,7 @@
                   <button id="cred-submit-intervals" class="secondary-button" type="submit">Speichern</button>
                 </form>
                 <div class="connection-actions"><button data-check-button="intervals" class="secondary-button" type="button">Verbindung prüfen</button></div>
-                <p id="intervalsSetupHint" class="provider-setup-hint" hidden>Intervals.icu ist nicht konfiguriert. Hinterlege API-Schlüssel und Athleten-ID unter „Zugang“ oder in den Server-Einstellungen.</p>
+                <p id="intervalsSetupHint" class="provider-setup-hint" hidden>Intervals.icu ist nicht eingerichtet. Hinterlege API-Schlüssel und Athleten-ID unter „Zugang“ oder in den Server-Einstellungen.</p>
               </div>
             </details>
             <details id="connection-openai" class="connection-card">
@@ -551,17 +558,7 @@
             </details>
           </div>
         </section>
-        <details class="settings-section collapsible-section" data-more-segment-panel="appearance">
-          <summary class="collapsible-summary"><span class="collapsible-summary-title">Kalenderansicht</span><span id="calendarDisplaySummary" class="collapsible-summary-meta">Einstellungen werden geladen...</span></summary>
-          <form id="calendarDisplayForm" class="calendar-display-form">
-            <div class="calendar-display-fields">
-              <label for="calendarDisplayPastWeeks">Wochen zurück<input id="calendarDisplayPastWeeks" type="number" min="0" max="52" step="1" value="1"></label>
-              <label for="calendarDisplayFutureWeeks">Wochen voraus<input id="calendarDisplayFutureWeeks" type="number" min="0" max="52" step="1" value="4"></label>
-            </div>
-            <button id="calendarDisplaySaveButton" class="secondary-button" type="submit">Kalenderansicht speichern</button>
-          </form>
-        </details>
-        <details class="settings-section collapsible-section shortcut-help" data-more-segment-panel="appearance">
+        <details class="settings-section collapsible-section shortcut-help" data-more-segment-panel="app">
           <summary class="collapsible-summary"><span class="collapsible-summary-title">Tastenkürzel</span></summary>
           <dl class="shortcut-list"><dt><kbd>Alt</kbd>+<kbd>1</kbd></dt><dd>Coach</dd><dt><kbd>Alt</kbd>+<kbd>2</kbd></dt><dd>Kalender</dd><dt><kbd>Alt</kbd>+<kbd>3</kbd></dt><dd>Analyse</dd><dt><kbd>Alt</kbd>+<kbd>4</kbd></dt><dd>Ernährung</dd><dt><kbd>Alt</kbd>+<kbd>5</kbd></dt><dd>Mehr</dd></dl>
         </details>
@@ -570,7 +567,7 @@
           <div id="modelSettingsTarget">
             <div class="task-model">
               <div class="task-model-heading"><h3>Gespräch</h3><button type="button" class="analysis-legend-info analysis-info-icon" data-model-info aria-label="Gespräch: Wann dieses Modell genutzt wird" popovertarget="modelInfoConversation">i</button></div>
-              <div id="modelInfoConversation" class="analysis-info-tooltip" popover="auto" role="tooltip">Für alles, was du im Chat schreibst, auch den Morgen-Check-in, und für „Besprechen“, „Lösen“ und „Strukturieren“ im Kalender.</div>
+              <div id="modelInfoConversation" class="analysis-info-tooltip" popover="auto" role="tooltip">Für alles, was du im Chat schreibst, auch den Morgen-Check-in, und für „Mit Coach besprechen“ an geplanten Einheiten im Kalender.</div>
               <div class="task-model-pair">
                 <label for="modelSelect">Modell<select id="modelSelect" data-task="conversation"></select></label>
                 <label for="thinkingLevelSelect">Thinking<select id="thinkingLevelSelect" data-task="conversation"></select></label>
@@ -579,7 +576,7 @@
             </div>
             <div class="task-model">
               <div class="task-model-heading"><h3>Planen &amp; Analysieren</h3><button type="button" class="analysis-legend-info analysis-info-icon" data-model-info aria-label="Planen und Analysieren: Wann dieses Modell genutzt wird" popovertarget="modelInfoPlanning">i</button></div>
-              <div id="modelInfoPlanning" class="analysis-info-tooltip" popover="auto" role="tooltip">Für die Schnellaktionen unter „Analyse &amp; Plan“ und im „+“-Menü sowie „Mit dem Coach analysieren“ im Kalender.</div>
+              <div id="modelInfoPlanning" class="analysis-info-tooltip" popover="auto" role="tooltip">Für die Schnellaktionen unter „Analyse &amp; Plan“ und im „+“-Menü sowie „Mit Coach besprechen“ an abgeschlossenen Einheiten im Kalender.</div>
               <div class="task-model-pair">
                 <label for="planningModelSelect">Modell<select id="planningModelSelect" data-task="planning"></select></label>
                 <label for="planningThinkingLevelSelect">Thinking<select id="planningThinkingLevelSelect" data-task="planning"></select></label>
@@ -626,7 +623,7 @@
         <details class="settings-section context-preview collapsible-section" data-more-segment-panel="coach" aria-label="Chat-Kontext und Prompt">
           <summary class="collapsible-summary"><span class="collapsible-summary-title">Chat-Kontext und Prompt</span></summary>
           <div class="context-preview-heading">
-            <div><h3 id="systemContextPreviewTitle">Chat-Kontext und Prompt</h3></div>
+            <h3 id="systemContextPreviewTitle" class="sr-only">Chat-Kontext und Prompt</h3>
             <button type="button" id="systemContextPreviewButton" class="secondary-button">Kontext laden</button>
           </div>
           <div id="systemContextPreviewStatus" class="context-preview-status">Noch nicht geladen.</div>
@@ -634,15 +631,11 @@
         </details>
         <details class="settings-section logs-section collapsible-section" data-more-segment-panel="operations">
           <summary class="collapsible-summary"><span class="collapsible-summary-title">Server-Logs</span></summary>
-          <div class="settings-section-heading"><div><h3>Server-Logs</h3></div><div class="settings-inline-action"><button id="logsDownloadButton" type="button" class="secondary-button">Logs herunterladen</button><button id="logsRefreshButton" type="button" class="secondary-button">Logs aktualisieren</button><button id="logsDeleteButton" type="button" class="secondary-button danger-button">Logs löschen</button></div></div>
+          <div class="settings-section-heading"><h3 class="sr-only">Server-Logs</h3><div class="settings-inline-action"><button id="logsDownloadButton" type="button" class="secondary-button">Logs herunterladen</button><button id="logsRefreshButton" type="button" class="secondary-button">Logs aktualisieren</button><button id="logsDeleteButton" type="button" class="secondary-button danger-button">Logs löschen</button></div></div>
           <pre id="logsOutput" class="logs-output">Logs werden beim Öffnen geladen…</pre>
         </details>
         <details id="privacySection" class="settings-section collapsible-section" data-more-segment-panel="operations">
           <summary class="collapsible-summary"><span class="collapsible-summary-title">Datenschutz &amp; Backup</span></summary>
-          <div class="settings-inline-action notification-actions">
-            <div><strong>PWA-Benachrichtigungen</strong><span id="notificationStatus">Noch nicht aktiviert</span></div>
-            <button id="notificationEnableButton" type="button" class="secondary-button">Benachrichtigungen aktivieren</button>
-          </div>
           <div class="settings-inline-action">
             <button id="privacyExportButton" type="button" class="secondary-button">Daten exportieren</button>
             <button id="privacyDeleteButton" type="button" class="secondary-button danger-button">Lokale Daten löschen</button>
@@ -741,6 +734,26 @@
       <div class="dialog-actions"><button type="button" id="nutritionProductUseCancel" class="secondary-button">Abbrechen</button><button type="button" id="nutritionProductUseCoach" class="secondary-button">Zur Coach-Nachricht</button><button type="submit" id="nutritionProductUseAdd" class="adaptive-planning-button">Erfassen</button></div>
     </form>
   </dialog>
+  <dialog id="nutritionMealEditDialog" aria-labelledby="nutritionMealEditTitle">
+    <div class="confirmation-dialog nutrition-meal-edit">
+      <h2 id="nutritionMealEditTitle">Mahlzeit bearbeiten</h2>
+      <p id="nutritionMealEditSubtitle"></p>
+      <form id="nutritionMealEditMain">
+        <ul id="nutritionMealEditList" class="edit-list"></ul>
+        <output id="nutritionMealEditStatus" class="tab-sync-detail" aria-live="polite"></output>
+        <div class="dialog-actions"><button type="button" id="nutritionMealEditCancel" class="secondary-button">Abbrechen</button><button type="submit" id="nutritionMealEditSave" class="push-button">Speichern</button></div>
+      </form>
+      <div id="nutritionMealEditSwap" hidden>
+        <form id="nutritionMealEditSearch" class="nutrition-search">
+          <label for="nutritionMealEditQuery" class="sr-only">Datenbank durchsuchen</label>
+          <div class="nutrition-search-row"><input id="nutritionMealEditQuery" type="search" autocomplete="off" placeholder="Name, Marke oder EAN"><button type="submit" class="secondary-button">Suchen</button></div>
+        </form>
+        <output id="nutritionMealEditSwapStatus" class="tab-sync-detail" aria-live="polite"></output>
+        <ul id="nutritionMealEditResults" class="swap-results"></ul>
+        <div class="dialog-actions"><button type="button" id="nutritionMealEditBack" class="secondary-button">Zurück</button></div>
+      </div>
+    </div>
+  </dialog>
   <dialog id="bodyFatDialog" aria-labelledby="bodyFatDialogTitle">
     <form id="bodyFatDialogForm" class="confirmation-dialog">
       <h2 id="bodyFatDialogTitle">Körperfett eintragen</h2>
@@ -778,7 +791,7 @@
       <label for="competitionDialogName">Name<input id="competitionDialogName" name="name" type="text" maxlength="200" autocomplete="off" required></label>
       <label for="competitionDialogDate">Datum<input id="competitionDialogDate" name="event_date" type="date" required></label>
       <label for="competitionDialogTime">Startzeit<input id="competitionDialogTime" name="start_time" type="time"></label>
-      <label for="competitionDialogSport">Sportart<select id="competitionDialogSport" name="sport"><option value="Ride">Radfahren</option><option value="VirtualRide">Rad indoor</option><option value="Run">Laufen</option><option value="WeightTraining">Krafttraining</option></select></label>
+      <label for="competitionDialogSport">Sportart<select id="competitionDialogSport" name="sport"><option value="Ride">Radfahren</option><option value="VirtualRide">Rad indoor</option><option value="Run">Laufen</option><option value="WeightTraining">Kraft</option></select></label>
       <fieldset class="appearance-control"><legend>Priorität</legend><div class="segmented-control"><label><input type="radio" name="priority" value="A">A</label><label><input type="radio" name="priority" value="B" checked>B</label><label><input type="radio" name="priority" value="C">C</label></div></fieldset>
       <label for="competitionDialogDistance">Distanz (km)<input id="competitionDialogDistance" name="distance" type="text" maxlength="80" autocomplete="off"></label>
       <label for="competitionDialogTarget">Ziel<input id="competitionDialogTarget" name="target" type="text" maxlength="1000" autocomplete="off"></label>
@@ -847,6 +860,7 @@
   <script src="/view-refresh.js" defer></script>
   <script src="/notifications.js" defer></script>
   <script src="/nutrition.js" defer></script>
+  <script src="/nutrition-meal-edit.js" defer></script>
   <script src="/analysis.js" defer></script>
   <script src="/activity-details.js" defer></script>
   <script src="/activity-analysis.js" defer></script>

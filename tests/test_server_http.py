@@ -877,7 +877,6 @@ class ServerHttpTests(ServerTestCase):
                 "sync",
                 "library_sync",
                 "sync_settings",
-                "calendar_display",
                 "morning_checkin",
                 "coach_quick_actions",
                 "model",
@@ -1284,9 +1283,8 @@ class ServerHttpTests(ServerTestCase):
         self.assertEqual(state["app"]["version"], server.APP_VERSION)
         self.assertEqual(state["activities"][0]["name"], "Morgenlauf")
         self.assertEqual(state["planned"][0]["name"], "Intervalle")
-        self.assertEqual(
-            state["calendar_display"], {"past_weeks": 1, "future_weeks": 4}
-        )
+        # #3914: the calendar range is fixed in the client; the start data has none.
+        self.assertNotIn("calendar_display", state)
 
     def test_json_response_ignores_client_disconnect(self):
         handler = object.__new__(server.HTTP_API.request_handler_class())

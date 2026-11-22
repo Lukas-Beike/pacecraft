@@ -85,11 +85,7 @@ every named number the code fixes. A test fails when it is out of date.
 | `LOCAL_SOURCE_LABEL` | `'Lokal'` | `backend/performance/current_metrics.py` | The label of a locally confirmed zone configuration's value. |
 | `PROFILE_SOURCE_LABEL` | `'Manuell'` | `backend/performance/current_metrics.py` | The label of a profile value. |
 | `CURRENT_WEIGHT_LABEL` | `'aktuell'` | `backend/performance/current_metrics.py` | The weight is the weigh-in line's value, not one weigh-in (#3551, #3640). |
-| `LT1_HR_SHARE` | `0.85` | `backend/performance/current_metrics.py` | LT1 as a fixed share of LT2 when no measured or adopted value and no zone 2 of that kind exists (athlete decisions 2026-11-12, #2427): heart rate of the threshold HR, cycling power of the FTP and running speed of the threshold speed. Change them here only. |
-| `LT1_POWER_SHARE` | `0.75` | `backend/performance/current_metrics.py` |  |
-| `LT1_RUN_SPEED_SHARE` | `0.88` | `backend/performance/current_metrics.py` |  |
-| `LT1_OWN_SESSIONS` | `'own_sessions'` | `backend/performance/current_metrics.py` | Where an LT1 value comes from: the profile value (measured, or the adopted DFA-a1 estimate), the athlete's own steady sessions at the LT1 heart rate (pace and power only), the top of the zone 2 in effect, or a fixed share of LT2. |
-| `LT1_ZONE_TWO` | `'zone_2'` | `backend/performance/current_metrics.py` |  |
+| `LT1_OWN_SESSIONS` | `'own_sessions'` | `backend/performance/current_metrics.py` | Where an LT1 value comes from: the profile value (measured, or the adopted DFA-a1 estimate), the athlete's own steady sessions at the LT1 heart rate (pace and power only), or a fixed share of LT2 (the shown "Standardwert"). |
 | `LT1_FIXED_SHARE` | `'fixed_share'` | `backend/performance/current_metrics.py` |  |
 | `DAILY_HEALTH_FIELDS` | `('steps', 'floors', 'calories')` | `backend/performance/daily_health.py` | The 7-day averaged daily totals and the energy components of one day. |
 | `DAILY_EXPENDITURE_FIELDS` | `('active_kcal', 'resting_kcal', 'total_kcal')` | `backend/performance/daily_health.py` |  |
@@ -212,10 +208,10 @@ every named number the code fixes. A test fails when it is out of date.
 | `MAX_RUNNING_NET_GRADE` | `0.01` | `backend/performance/power_profile.py` |  |
 | `MAX_DISTANCE_GAP_S` | `600` | `backend/performance/power_profile.py` | A distance best is timed like a race clock (athlete decision, #2818): a stop inside the window counts as elapsed time, and so does a recording gap (auto-pause, signal loss) of at most this many seconds; a longer gap breaks the window. |
 | `MAX_GAP_SPEED_MPS` | `1000 / 150` | `backend/performance/power_profile.py` | A recording gap (a step above 5 s) across which the distance implies a pace faster than 2:30 min/km is a measurement error and breaks the window (#2818). |
-| `METHOD` | `'weekly-progress-v1'` | `backend/performance/progress_report.py` |  |
+| `METHOD` | `'weekly-progress-v2'` | `backend/performance/progress_report.py` |  |
 | `SPORT_BUCKETS` | `('run', 'ride', 'strength')` | `backend/performance/progress_report.py` |  |
-| `ZONE_BANDS` | `{'many': (3, 5), 'five': (3, 4)}` | `backend/performance/progress_report.py` | First zone number of the moderate and of the high band, by the number of zones of the session's zone set: 6 or more (default 7-zone power and heart rate) or up to 5 (5-zone heart rate). |
-| `ZONE_MAPPING` | `'Approximation of the 3-zone model from local zone times: with 6 or more zones Z1-Z2 low, Z3-Z4 m... (sha256 bc7fa894)` | `backend/performance/progress_report.py` |  |
+| `BANDS` | `('low', 'moderate', 'high')` | `backend/performance/progress_report.py` | The stored band times hold Z1 low, Z2 moderate and Z3 high (#3915). |
+| `ZONE_MAPPING` | `'3-zone model from the local band times: low up to LT1 (85 % of the threshold HR, 75 % of the FTP... (sha256 a1862de2)` | `backend/performance/progress_report.py` |  |
 | `PROFILE_DURATIONS` | `(60, 300, 1200)` | `backend/performance/progress_report.py` |  |
 | `AVERAGE_DAYS` | `7` | `backend/performance/recovery.py` |  |
 | `PROFILE_WINDOW_DAYS` | `(28, 90)` | `backend/performance/report_service.py` | Analysis windows of the power and running profiles, shortest first. |
@@ -339,7 +335,7 @@ every named number the code fixes. A test fails when it is out of date.
 | `CARDIAC_DRIFT_PCT` | `5.0` | `backend/performance/session_report.py` | Cardiac drift across reps at equal output, the decoupling rule applied to reps. |
 | `HEART_RATE_RISE_MIN_S` | `180.0` | `backend/performance/session_report.py` | A ride without power (athlete, #3293): heart rate only, on labelled work laps this long and within this share of each other's duration. |
 | `HEART_RATE_RISE_DURATION_SHARE` | `0.1` | `backend/performance/session_report.py` |  |
-| `EASY_ABOVE_SHARE_PCT` | `10.0` | `backend/performance/session_report.py` | Easy, recovery and long sessions: share of moving time above zone 2 (Seiler; #2830). |
+| `EASY_ABOVE_SHARE_PCT` | `10.0` | `backend/performance/session_report.py` | Easy, recovery and long sessions: share of time above the LT1 heart rate in effect (Seiler; #2830, #3915). |
 | `RIDE_VARIABILITY_INDEX` | `1.05` | `backend/performance/session_report.py` | Ride steadiness: variability index (Coggan / Allen, TrainingPeaks: <= 1.05 steady). |
 | `HEART_RATE_DROP_BELOW_BPM` | `5.0` | `backend/performance/session_report.py` | HR drop 60 s into recoveries: notable this far below the athlete's own median. |
 | `MIN_PERSONAL` | `5` | `backend/performance/session_report.py` | A personal basis needs this many own comparable values. |
@@ -396,7 +392,7 @@ every named number the code fixes. A test fails when it is out of date.
 | `WAHOO_CURRENT_MAX_AGE_DAYS` | `90` | `backend/performance/source_policy.py` | A Wahoo FTP or weight observed longer ago than this is history, not the current value. |
 | `GARMIN_THRESHOLD_MAX_AGE_DAYS` | `180` | `backend/performance/source_policy.py` | A Garmin threshold observed longer ago than this is history, not current. |
 | `FAMILY_LOOKBACK_DAYS` | `84` | `backend/performance/source_policy.py` | Days, ending on the latest day read, of recovery history every reader uses. |
-| `METHOD` | `'run-step-test-v2'` | `backend/performance/step_test.py` | v1 fitted the crossings over the whole run (#3833), v2 over the stage windows (#3916). |
+| `METHOD` | `'run-step-test-v3'` | `backend/performance/step_test.py` | v1 fitted the crossings over the whole run (#3833), v2 over the stage windows (#3916), v3 starts stage 1 at most 3.5 km/h below LT2 (#3915). |
 | `PROTOCOL` | `'run_step_test'` | `backend/performance/step_test.py` |  |
 | `NAME` | `'Stufentest Laufen (LT1 und LT2)'` | `backend/performance/step_test.py` |  |
 | `WARMUP_MIN` | `10` | `backend/performance/step_test.py` |  |
@@ -404,6 +400,7 @@ every named number the code fixes. A test fails when it is out of date.
 | `STAGE_MIN` | `3` | `backend/performance/step_test.py` |  |
 | `STEP_KMH` | `0.5` | `backend/performance/step_test.py` |  |
 | `BELOW_LT1_KMH` | `1.5` | `backend/performance/step_test.py` |  |
+| `BELOW_LT2_KMH` | `3.5` | `backend/performance/step_test.py` | Stage 1 lies at most this far below LT2, so two stages lie beyond it (#3915). |
 | `FALLBACK_START_KMH` | `9.5` | `backend/performance/step_test.py` |  |
 | `STAGES_BEYOND_LT2` | `2` | `backend/performance/step_test.py` |  |
 | `MAX_STAGES` | `10` | `backend/performance/step_test.py` |  |
@@ -430,7 +427,7 @@ every named number the code fixes. A test fails when it is out of date.
 | `REVIEW_WEEKS_BACK` | `51` | `backend/performance/week_review.py` | The check-ins are read as the newest 365 days (CheckinStore.list), so the oldest week reviewed must end within them: its Sunday at most 363 days back, 51 weeks before this one. |
 | `LOCAL_MODEL` | `'local'` | `backend/performance/zone_time_reads.py` |  |
 | `PROVIDER_MODEL` | `'provider'` | `backend/performance/zone_time_reads.py` |  |
-| `ZONE_KEYS` | `(('power', 'power_zone_times'), ('heart_rate', 'heart_rate_zone_times'), ('pace', 'pace_zone_time... (sha256 9ca35d98)` | `backend/performance/zone_time_reads.py` | Stored sensor -> summary zone key. |
+| `ZONE_KEYS` | `(('power', 'power_zone_times'), ('heart_rate', 'heart_rate_zone_times'), ('pace', 'pace_zone_time... (sha256 778a2ebe)` | `backend/performance/zone_time_reads.py` | Stored sensor -> summary zone key; the bands are Z1 low, Z2 moderate, Z3 high. |
 
 ## `backend/activities`
 
@@ -448,7 +445,7 @@ every named number the code fixes. A test fails when it is out of date.
 | `ENTITY_TYPE` | `'activity_feedback'` | `backend/activities/feedback.py` |  |
 | `FEEDBACK_CONTENT_FIELDS` | `('notes', 'session_rpe', 'deviation_reason', 'purpose')` | `backend/activities/feedback.py` |  |
 | `ACTIVITY_FEEDBACK_TEXT_LIMITS` | `{'activity_name': 200, 'activity_date': 40, 'notes': 4000}` | `backend/activities/feedback.py` |  |
-| `HR_CAP_PERCENT` | `{'recovery': 80.0, 'easy': 87.0, 'long': 87.0}` | `backend/activities/hr_cap.py` | Default upper limit in percent of the threshold HR by the unit's session_focus. The athlete decides these values; change them here only. |
+| `HR_CAP_PERCENT` | `{'recovery': 80.0, 'easy': 84.0, 'long': 84.0}` | `backend/activities/hr_cap.py` | Default upper limit in percent of the threshold HR by the unit's session_focus. The athlete decides these values (easy and long 84 %, #3915: below the LT1 stand-in of 85 %); change them here only. |
 | `MEASURED_MARGIN_PCT` | `3.0` | `backend/activities/hr_cap.py` | With a measured first threshold: the easy and long cap is that threshold's percent of the threshold HR minus this margin (percentage points), and the recovery cap is the lower of its default and the easy cap minus the gap. |
 | `RECOVERY_BELOW_EASY_PCT` | `7.0` | `backend/activities/hr_cap.py` |  |
 | `EXPORT_FLOOR_PERCENT` | `65.0` | `backend/activities/hr_cap.py` | The lower bound of the exported range, in percent of the threshold HR, never above the cap minus the gap (percentage points): a wide range so that only the cap alerts the athlete on the watch. |
@@ -480,9 +477,10 @@ every named number the code fixes. A test fails when it is out of date.
 | `COMPETITION_SOURCE_LABEL` | `'Lokale Wettkämpfe'` | `backend/activities/session_purpose.py` |  |
 | `MARKED_SOURCE_LABEL` | `'Von dir markiert'` | `backend/activities/session_purpose.py` |  |
 | `MIN_HINT_SHARE_OF_PLANNED` | `0.5` | `backend/activities/session_purpose.py` | A hint needs at least this share of the competition's planned duration. |
-| `METHOD_VERSION` | `1` | `backend/activities/stream_zones.py` |  |
-| `ZONE_TIMES_VERSION` | `2` | `backend/activities/stream_zones.py` | Bump when zone_times counts or names its zones differently, so stored report zones recompute (2: the zone source of each sensor, the Garmin watch zones). |
+| `METHOD_VERSION` | `2` | `backend/activities/stream_zones.py` |  |
+| `ZONE_TIMES_VERSION` | `3` | `backend/activities/stream_zones.py` | Bump when zone_times counts or names its zones differently, so stored report zones recompute (2: the zone source of each sensor, the Garmin watch zones; 3: the 3-zone bands, #3915). |
 | `LABEL` | `'Zoneneinstellungen'` | `backend/activities/stream_zones.py` |  |
+| `BAND_SOURCE` | `'LT1-Standardwert und Schwelle'` | `backend/activities/stream_zones.py` |  |
 | `MIN_GAP_S` | `30.0` | `backend/activities/stream_zones.py` |  |
 | `GAP_FACTOR` | `3.0` | `backend/activities/stream_zones.py` |  |
 | `MAX_SESSIONS` | `6` | `backend/activities/strength_progress.py` |  |
@@ -491,12 +489,15 @@ every named number the code fixes. A test fails when it is out of date.
 | `MAX_EXERCISES` | `20` | `backend/activities/strength_sets.py` |  |
 | `STRENGTH_KEY` | `'strength_sets'` | `backend/activities/strength_sets.py` |  |
 | `SOURCE` | `'derived'` | `backend/activities/workout_load.py` |  |
-| `METHOD` | `'workout-steps-v1'` | `backend/activities/workout_load.py` |  |
+| `METHOD` | `'workout-steps-v2'` | `backend/activities/workout_load.py` |  |
 | `BANDS` | `('low', 'moderate', 'high')` | `backend/activities/workout_load.py` |  |
 | `SINGLE_TARGET_SHARE` | `0.025` | `backend/activities/workout_load.py` | A single-value target (no range) is read as this share either side of it. |
 | `POWER_ZONE_LIMITS` | `(55, 75, 90, 105, 120, 150)` | `backend/activities/zone_settings.py` | Upper zone limits as percent of the threshold; everything above the last limit is the top zone. Power: Z1..Z6, above is Z7 (Intervals.icu). Heart rate: Coggan's five zones as percent of LTHR, Z1..Z4, above 105 % is Z5. |
 | `HR_ZONE_LIMITS` | `(68, 83, 94, 105)` | `backend/activities/zone_settings.py` |  |
 | `PACE_ZONE_LIMITS` | `(77.5, 87.7, 94.3, 100, 103.4, 111.5)` | `backend/activities/zone_settings.py` |  |
+| `LT1_HR_SHARE` | `0.85` | `backend/activities/zone_settings.py` | LT1 as a fixed share of LT2 when no measured or adopted value exists (athlete decisions 2026-11-12, #2427, and 2026-11-22, #3915): heart rate of the threshold HR, cycling power of the FTP and running speed of the threshold speed. The zone 2 top of a zone set is no LT1 (#3915). Change them here only. |
+| `LT1_POWER_SHARE` | `0.75` | `backend/activities/zone_settings.py` |  |
+| `LT1_RUN_SPEED_SHARE` | `0.88` | `backend/activities/zone_settings.py` |  |
 | `LTHR_SHARE_OF_MAX_HR` | `0.9` | `backend/activities/zone_settings.py` | Heart-rate steps are usually written as percent of max HR; threshold HR is about 90 % of it. |
 | `ZONE_STAND_IN_MAX_DAYS` | `90` | `backend/activities/zone_settings.py` | A provider configuration valid only after a session day stands in for it when its first day is at most this many days later (local_tss uses the same cap for thresholds). |
 | `DEFAULT_ZONE_SOURCE` | `'Standardzonen'` | `backend/activities/zone_settings.py` |  |

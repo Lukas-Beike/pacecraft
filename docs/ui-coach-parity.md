@@ -21,7 +21,7 @@ case on both sides, so the guards match.
 tool and route exists, the parity value matches the two columns, each gap names
 its issue and the counts below match the table.
 
-Counts: both 41, UI only 23, Coach only 22, neither 1, UI by rule 8.
+Counts: both 42, UI only 23, Coach only 21, neither 0, UI by rule 8.
 
 ## Matrix
 
@@ -78,7 +78,7 @@ Counts: both 41, UI only 23, Coach only 22, neither 1, UI by rule 8.
 | Nutrition | Log a saved product as a meal | Produkt dialog `POST /api/nutrition/entry` | `save_nutrition_entry` | receipt, undo | both | |
 | Nutrition | Log a composed meal from several foods | — | `save_nutrition_entry` | receipt, undo | Coach only | #3952 |
 | Nutrition | Add a saved product to a meal | Tagebuch card `POST /api/nutrition/entry/add-product` | `update_nutrition_entry` (`components`) | receipt, undo | both | |
-| Nutrition | Remove, resize or swap a meal component | — | `update_nutrition_entry` (`components`) | receipt, undo | Coach only | #3948 |
+| Nutrition | Remove, resize or swap a meal component | Tagebuch card pencil `GET /api/nutrition/entry/components`, `POST /api/nutrition/entry/components` | `update_nutrition_entry` (`components`) | receipt, undo | both | |
 | Nutrition | Change a meal's date, time or type | — | `update_nutrition_entry` | receipt, undo | Coach only | #3952 |
 | Nutrition | Mark a meal as estimated | Tagebuch card `POST /api/nutrition/entry/estimate` | `update_nutrition_entry` (`estimate_uncertain`) | receipt, undo | both | |
 | Nutrition | Attach a session meal to its session | Tagebuch card `POST /api/nutrition/entry/session` | `update_nutrition_entry` (`session_id`) | receipt | both | |
@@ -110,7 +110,7 @@ Counts: both 41, UI only 23, Coach only 22, neither 1, UI by rule 8.
 | Syncs | Check a provider connection | Anbindungen `POST /api/providers/{provider}/check`, `POST /api/nutrition/yazio/check` | — | read-only | UI only | #3960 |
 | Syncs | Switch the automatic metric export | Anbindungen `POST /api/metric-export/automatic` | — | consent per field | UI only | #3960 |
 | Settings | Select model, thinking level and service tier | Coach & Modell `PUT /api/settings/model`, `PUT /api/settings/thinking-level`, `PUT /api/settings/service-tier` | — | — | UI only | #3960 |
-| Settings | Change the calendar display | Darstellung `PUT /api/settings/calendar-display` | — | — | UI only | #3960 |
+| Settings | Switch a notification type on or off | App `POST /api/push/preferences` | — | — | UI only | #3960 |
 | Settings | Turn GPS-track storage on or off | Datenschutz `POST /api/privacy/gps` | — | — | UI only | #3960 |
 | Settings | Reset the Coach conversation | Coach & Modell `POST /api/chat/reset` | — | confirmation | UI only | #3960 |
 | Settings | Save or clear provider credentials | Anbindungen `PUT /api/settings/credentials` | — | secrets stay server-side | UI by rule | |
@@ -120,8 +120,7 @@ Counts: both 41, UI only 23, Coach only 22, neither 1, UI by rule 8.
 | Privacy | Download the privacy export | Datenschutz `GET /api/privacy/export` | — | — | UI by rule | |
 | Privacy | Delete the local athlete data | Datenschutz `POST /api/privacy/delete` | — | typed confirmation | UI by rule | |
 | Privacy | Delete stored GPS tracks | Datenschutz `POST /api/privacy/gps/delete` | — | typed confirmation | UI by rule | |
-| Notifications | Turn notifications on or off on this device | Datenschutz `POST /api/push/key`, `POST /api/push/subscribe`, `POST /api/push/unsubscribe` | — | device permission | UI by rule | |
-| Notifications | Switch notification types on or off | — | — | — | neither | #3914, #3960 |
+| Notifications | Turn notifications on or off on this device | App `POST /api/push/key`, `POST /api/push/subscribe`, `POST /api/push/unsubscribe` | — | device permission | UI by rule | |
 
 ## Outside the matrix
 
@@ -134,6 +133,5 @@ Write routes that are no athlete action on data: `POST /api/login`,
 `POST /api/coach/actions/execute`, `POST /api/diagnostics/delete`,
 `POST /api/logs/delete`, `PUT /api/zones/lt2/notice-baseline`.
 
-`POST /api/push/preferences` switches the notification types; its UI switch
-list follows in #3914 and a Coach path is part of #3960. G-14 in #3936 adds
+A Coach path for the notification switches is part of #3960. G-14 in #3936 adds
 interim "Dem Coach sagen" hints on the screens with a Coach-only action.

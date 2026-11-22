@@ -3,20 +3,18 @@
 from __future__ import annotations
 
 import functools
-from collections.abc import Callable, Iterable, Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from datetime import date, timedelta
 from typing import Any, Final
 
-from backend.activities.zone_settings import effective_zone_configuration, zone_two_top
 from backend.canonical.activity_summary import summary_local_date
-from backend.canonical.domain_records import ZoneConfiguration
 from backend.canonical.first_threshold import (
     FIRST_THRESHOLD_FIELD,
     first_threshold_estimated,
     first_threshold_origin,
     first_threshold_percent,
 )
-from backend.canonical.vocabulary import ProviderId, Sport, ZoneConfigurationMetric
+from backend.canonical.vocabulary import ProviderId
 from backend.errors import DatabaseBusyError
 from backend.performance import activity_validation, garmin_projection
 from backend.performance import comparisons as performance_comparisons
@@ -144,36 +142,13 @@ def _unavailable_context(
     return unavailable
 
 
-def _zone_two_tops(
-    configurations: list[ZoneConfiguration],
-    metrics: dict[str, Any],
-    today: date,
-) -> dict[str, float]:
-    """The top of zone 2 of the heart-rate, run pace and ride power zones, where set."""
-    pace = performance_current_metrics.as_number(
-        metrics["run_threshold_pace_seconds_per_km"]["value"]
-    )
-    tops: dict[str, float] = {}
-    for key, metric, sport in (
-        ("run_pace", ZoneConfigurationMetric.PACE, Sport.RUN),
-        ("ride_power", ZoneConfigurationMetric.POWER, Sport.RIDE),
-        ("run_hr", ZoneConfigurationMetric.HEART_RATE, Sport.RUN),
-        ("ride_hr", ZoneConfigurationMetric.HEART_RATE, Sport.RIDE),
-    ):
-        chosen = effective_zone_configuration(configurations, metric, sport, day=today)
-        top = zone_two_top(chosen, pace) if chosen is not None else None
-        if top is not None and top > 0:
-            tops[key] = top
-    return tops
-
-
 def _at_heart_rate(
     records: Callable[[int], Sequence[Mapping[str, Any]]] | None, today: date
 ) -> performance_current_metrics.OutputAtHeartRate | None:
     """Pace or power at a heart rate from the session records, read at most once.
 
     A busy database or a missing session source reads as no sessions, so LT1
-    falls back to zone 2 or the fixed share instead of failing the projection.
+    falls back to the fixed share instead of failing the projection.
     """
     if records is None:
         return None
@@ -221,7 +196,6 @@ def first_threshold_history(
     today: date,
     *,
     garmin_history: Mapping[str, Mapping[date, float]],
-    zone_configurations: Iterable[ZoneConfiguration],
     records: Sequence[Mapping[str, Any]],
 ) -> dict[str, list[dict[str, Any]]]:
     """LT1 per sport at the end of each of the last twelve calendar weeks (#2693).
@@ -233,7 +207,6 @@ def first_threshold_history(
     does not come from at least three own sessions is a gap (athlete decisions,
     2026-11-14). Each point keeps its heart rate and both origins.
     """
-    configurations = list(zone_configurations)
     first = today - timedelta(days=7 * LT1_HISTORY_WEEKS + LT1_DAYS)
     # Only sessions the chart's weeks can use; the rule narrows each week further.
     records = [
@@ -253,7 +226,6 @@ def first_threshold_history(
             metrics,
             pct,
             origin,
-            _zone_two_tops(configurations, metrics, day),
             functools.partial(output_at_heart_rate, records, today=day),
         )
         for sport, (key, origin_key) in _LT1_MAIN.items():
@@ -290,13 +262,11 @@ def current_performance_context(
     *,
     canonical: CanonicalPerformanceInputs,
     session_feedback: FeedbackLookup | None = None,
-    zone_configurations: Iterable[ZoneConfiguration] = (),
     lt1_session_records: Callable[[int], Sequence[Mapping[str, Any]]] | None = None,
 ) -> dict[str, Any]:
     """Compose the current performance projection from canonical inputs only.
 
-    ``zone_configurations`` give LT1 the top of zone 2 of the sport's heart-rate,
-    pace or power zones in effect. ``lt1_session_records(days)`` reads the ride
+    ``lt1_session_records(days)`` reads the ride
     and run sessions of the last days with their heart-rate profiles, so LT1 pace and power come from the
     athlete's own steady sessions at the LT1 heart rate; read once, when needed.
 
@@ -424,7 +394,6 @@ def current_performance_context(
                 metrics,
                 first_threshold_percent(profile.get(FIRST_THRESHOLD_FIELD)),
                 first_threshold_origin(profile),
-                _zone_two_tops(list(zone_configurations), metrics, today),
                 _at_heart_rate(lt1_session_records, today),
             ),
         },

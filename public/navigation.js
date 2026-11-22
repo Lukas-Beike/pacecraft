@@ -20,7 +20,7 @@ const NAV_ROUTES = Object.freeze({
   "more/connections": "settingsPanel",
   "more/coach": "settingsPanel",
   "more/operations": "settingsPanel",
-  "more/appearance": "settingsPanel",
+  "more/app": "settingsPanel",
   "more/profile": "profilePanel",
   "more/equipment": "settingsPanel",
 });
@@ -37,7 +37,7 @@ const NAV_VIEWS = (() => {
   const ENTRIES = ["loading", "empty", "error", "offline"];
   const sport = view(["/api/performance", "/api/analysis/power-profiles"], ANALYSIS_ACTIONS, ALL_STATES);
   const period = view(["/api/performance"], [...ANALYSIS_ACTIONS, ...PERIODS, "3 Monate anzeigen"], ALL_STATES);
-  const overview = view([...PLAN_READS, "/api/activities?limit=100", "/api/analysis/week-review"], [...PLAN_ACTIONS, "Woche", "Monat", "Woche synchronisieren", "Verschieben", "Feedback", "Mit dem Coach analysieren", "Mit Coach lösen"], ALL_STATES);
+  const overview = view([...PLAN_READS, "/api/activities?limit=100", "/api/analysis/week-review"], [...PLAN_ACTIONS, "Woche", "Monat", "Woche synchronisieren", "Verschieben", "Feedback", "Mit Coach besprechen", "Mit Coach besprechen"], ALL_STATES);
   const diary = view(["/api/nutrition/day", "/api/body/energy"], ["Ernährung aktualisieren", "Vorheriger Tag", "Nächster Tag", "Heute", "Als geschätzt markieren", "Nicht geschätzt", "Löschen", "Rückgängig", "Erneut laden"], ENTRIES);
   const connections = view([...MORE_READS, "/api/providers/connections", "/api/nutrition/yazio/status"], ["Verbindung prüfen", "Mit Garmin anmelden", "Garmin trennen", "Wahoo verbinden", "Synchronisieren", "Speichern", "Entfernen"], ["loading", "error", "notConfigured", "offline"]);
   return Object.freeze({
@@ -61,9 +61,9 @@ const NAV_VIEWS = (() => {
     more: connections,
     "more/connections": connections,
     "more/coach": view(MORE_READS, ["Chat zurücksetzen", "Kontext laden"], ["loading", "error", "offline"]),
-    "more/operations": view([...MORE_READS, "/api/privacy/gps"], ["Logs herunterladen", "Benachrichtigungen aktivieren", "Daten exportieren", "Lokale Daten löschen", "Backup herunterladen", "Backup wiederherstellen", "Diagnose herunterladen", "Diagnose löschen", "Abmelden"], ENTRIES),
-    "more/appearance": view(MORE_READS, ["System", "Hell", "Dunkel", "Kalenderansicht speichern"], ["loading", "offline"]),
-    "more/profile": view([...MORE_READS, "/api/profile", "/api/zones"], ["Athletenkontext speichern", "Lokal speichern", "Übernehmen"], ["empty", "offline"]),
+    "more/operations": view([...MORE_READS, "/api/privacy/gps"], ["Logs herunterladen", "Daten exportieren", "Lokale Daten löschen", "Backup herunterladen", "Backup wiederherstellen", "Diagnose herunterladen", "Diagnose löschen", "Abmelden"], ENTRIES),
+    "more/app": view([...MORE_READS, "/api/push"], ["System", "Hell", "Dunkel", "Benachrichtigungen aktivieren"], ["loading", "offline"]),
+    "more/profile": view([...MORE_READS, "/api/profile", "/api/zones"], ["Profil speichern", "Lokal speichern", "Übernehmen"], ["empty", "offline"]),
     "more/equipment": view([...MORE_READS, "/api/analysis/training-records"], ["Fahrrad", "Laufschuhe", "Wartung erledigt", "Rückgängig"], ENTRIES),
   });
 })();
@@ -76,7 +76,7 @@ const NAV_LINK_ROUTES = Object.freeze({
 });
 const DEFAULT_NAV_ROUTE = "coach";
 const PLAN_SEGMENTS = Object.freeze(["overview", "library", "season"]);
-const MORE_SEGMENTS = Object.freeze(["profile", "equipment", "connections", "coach", "operations", "appearance"]);
+const MORE_SEGMENTS = Object.freeze(["profile", "connections", "equipment", "coach", "app", "operations"]);
 
 globalThis.AppNavigation = Object.freeze({
   routes: NAV_ROUTES,
@@ -95,8 +95,8 @@ globalThis.AppRouter = (() => {
 
   // Removed views whose content lives elsewhere now: the single sessions are in the calendar (#2258),
   // the former Leistung segment is split by sport and its links open Laufen (#2265), the week review
-  // sits under the calendar week (#3298).
-  const ROUTE_ALIASES = Object.freeze({ "analysis/sessions": "plan/overview", "analysis/performance": "analysis/running", "analysis/week": "plan/overview" });
+  // sits under the calendar week (#3298), and Darstellung became App (#3914).
+  const ROUTE_ALIASES = Object.freeze({ "analysis/sessions": "plan/overview", "analysis/performance": "analysis/running", "analysis/week": "plan/overview", "more/appearance": "more/app" });
 
   function routeFromHash(hash = globalThis.location.hash) {
     const rawRoute = String(hash || "").replace(/^#/, "").toLowerCase();
@@ -121,7 +121,7 @@ globalThis.AppRouter = (() => {
 
   function moreSegmentFromRoute(route = AppState.state.route) {
     const segment = String(route || "").split("/")[1];
-    return moreSegments.includes(segment) ? segment : moreSegments[2];
+    return moreSegments.includes(segment) ? segment : "connections";
   }
 
   function activatePanel(panelRoute, navigationRoute) {

@@ -162,7 +162,7 @@ class ServerFrontendTests(ServerTestCase):
             ),
             "settings.js": (
                 "saveProfile",
-                "saveCalendarDisplaySettings",
+                "downloadDatabaseBackup",
             ),
         }
         for module, names in moved.items():
@@ -483,7 +483,9 @@ class ServerFrontendTests(ServerTestCase):
         self.assertIn('load("/api/bootstrap?local=1", requested)', app)
         self.assertIn('api("/api/library?limit=100")', app)
         self.assertIn('aria-label="Trainingskalender und Trainingsbibliothek"', index)
-        self.assertIn('id="planOverviewTitle">Trainingskalender</h3>', index)
+        self.assertIn(
+            'id="planOverviewTitle" class="sr-only">Trainingskalender</h3>', index
+        )
         self.assertNotIn('id="trainingPlans"', index)
         self.assertNotIn('id="libraryLoadButton"', index)
         self.assertIn("state.data?.planning_compliance", plan_views)
@@ -510,7 +512,7 @@ class ServerFrontendTests(ServerTestCase):
         plan_views = (root / "plan-views.js").read_text(encoding="utf-8")
         styles = (root / "styles.css").read_text(encoding="utf-8")
         self.assertIn(
-            "plannedDayNotes(noteContext, state.data?.competitions, dateKey)",
+            "plannedDayNotes(noteContext, state.data?.competitions, dateKey, daySessions > 0)",
             plan_views,
         )
         self.assertIn("state.data?.competitions, state.data?.weather", plan_views)

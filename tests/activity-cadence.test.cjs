@@ -12,6 +12,6 @@ test("foot sports show step frequency of both legs, other sports per-leg cadence
     assert.deepEqual({ ...cadenceDisplay({ sport }) }, { label: "Schrittfrequenz", unit: "spm", factor: 2 }, sport);
   }
   for (const sport of ["ride", "swim", "", undefined]) {
-    assert.deepEqual({ ...cadenceDisplay({ sport }) }, { label: "Kadenz", unit: "rpm", factor: 1 }, String(sport));
+    assert.deepEqual({ ...cadenceDisplay({ sport }) }, { label: "Trittfrequenz", unit: "rpm", factor: 1 }, String(sport));
   }
 });

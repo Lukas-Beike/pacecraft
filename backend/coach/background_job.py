@@ -46,7 +46,9 @@ class CoachBackgroundJobRunner:
         maintenance: MaintenanceGate,
         redactor: Redactor,
         logger: logging.Logger,
+        on_answer: Callable[[str], None] | None = None,
     ) -> None:
+        self._on_answer = on_answer
         self._jobs = jobs
         self._chat_turn = chat_turn
         self._sessions = sessions
@@ -62,7 +64,7 @@ class CoachBackgroundJobRunner:
         """Discard generations invalidated by restore without failure writes."""
         try:
             with self._maintenance.operation(job["_maintenance_generation"]):
-                self._run_claimed(job)
+                answered = self._run_claimed(job)
         except AppError as exc:
             if exc.reason not in {"operation_invalidated", "maintenance"}:
                 self._end_exhausted_job(job)
@@ -70,6 +72,25 @@ class CoachBackgroundJobRunner:
         except Exception:
             self._end_exhausted_job(job)
             raise
+        else:
+            if answered:
+                self._announce(job)
+
+    def _announce(self, job: dict[str, Any]) -> None:
+        """Tell the athlete's phone the answer is there (#3914).
+
+        Every job here is the athlete's own stored message; it runs after the
+        turn's operation, so a failing delivery never fails or holds the turn.
+        """
+        if self._on_answer is None:
+            return
+        try:
+            self._on_answer(str(job.get("client_turn_id") or ""))
+        except Exception:  # noqa: BLE001 - the answer is stored; the push is a courtesy
+            self._logger.warning(
+                "Coach answer notification failed",
+                extra={"event": "coach_answer_push_failed"},
+            )
 
     def _end_exhausted_job(self, job: dict[str, Any]) -> None:
         """Count a failure that escaped job handling and end a job that keeps failing.
@@ -102,7 +123,8 @@ class CoachBackgroundJobRunner:
                 extra={"event": "coach_background_job_exhaustion_failed"},
             )
 
-    def _run_claimed(self, job: dict[str, Any]) -> None:
+    def _run_claimed(self, job: dict[str, Any]) -> bool:
+        """Run the job; whether the turn finished with an answer."""
         receipt = job.get("receipt") if isinstance(job.get("receipt"), dict) else {}
         operation_id = str(receipt.get("operation_id") or "")
         client_turn_id = str(job.get("client_turn_id") or "")
@@ -126,12 +148,14 @@ class CoachBackgroundJobRunner:
                 stream_attached,
             )
             self._publish_receipt(operation_id, result)
+            return result.get("status") == "completed" and bool(result.get("message"))
         except AppError as exc:
             self._handle_app_error(client_turn_id, operation_id, exc)
         except Exception as exc:  # noqa: BLE001 - terminal worker boundary must persist unexpected failures
             self._handle_exception(client_turn_id, operation_id, exc)
         finally:
             self._streams.remove_background_event(operation_id)
+        return False
 
     def _delta_callback(
         self,

@@ -92,7 +92,7 @@ test("single-line draft shows no textarea scrollbar @responsive", async ({ page 
   expect(await height()).toBeLessThanOrEqual(single + 1);
 });
 
-test("analysis and plan menu sends the chosen period with its request kind @responsive", async ({ page }) => {
+test("analysis and plan menu prefills the chosen period with its request kind and sends nothing @responsive", async ({ page }) => {
   await openCoach(page);
   await page.evaluate(() => {
     state.quickTemplatesVisible = true;
@@ -102,7 +102,7 @@ test("analysis and plan menu sends the chosen period with its request kind @resp
       event.preventDefault();
       event.stopImmediatePropagation();
       const input = document.querySelector("#messageInput");
-      window.__quickSubmit = { kind: input.dataset.requestKind, message: input.value };
+      window.__quickSubmit = true;
     }, { capture: true });
   });
   const trigger = page.getByRole("button", { name: "Analyse & Plan" });
@@ -110,28 +110,30 @@ test("analysis and plan menu sends the chosen period with its request kind @resp
   await expect(trigger).toHaveAttribute("aria-expanded", "true");
   await expect(page.getByRole("menuitem", { name: "Einheit analysieren" })).toBeFocused();
   await page.keyboard.press("ArrowDown");
-  await expect(page.getByRole("menuitem", { name: "Fortschritt 4 Wochen" })).toBeFocused();
-  const target = await page.getByRole("menuitem", { name: "Plan 3 Wochen" }).boundingBox();
+  await expect(page.getByRole("menuitem", { name: "Fortschritt 4 Wo." })).toBeFocused();
+  const target = await page.getByRole("menuitem", { name: "Plan 3 Wo." }).boundingBox();
   expect(target.width).toBeGreaterThanOrEqual(44);
   expect(target.height).toBeGreaterThanOrEqual(44);
   await page.keyboard.press("Escape");
   await expect(trigger).toHaveAttribute("aria-expanded", "false");
   await trigger.click();
-  await page.getByRole("menuitem", { name: "Plan 3 Wochen" }).click();
-  const sent = await page.evaluate(() => window.__quickSubmit);
+  await page.getByRole("menuitem", { name: "Plan 3 Wo." }).click();
+  const sent = await page.evaluate(() => ({ kind: document.querySelector("#messageInput").dataset.requestKind, message: document.querySelector("#messageInput").value, submitted: window.__quickSubmit }));
+  expect(sent.submitted).toBeNull();
   expect(sent.kind).toBe("plan_block");
   expect(sent.message).toContain("3 Wochen");
+  await page.evaluate(() => { document.querySelector("#messageInput").value = ""; });
   await trigger.click();
   const adjust = page.getByRole("menuitem", { name: "Woche anpassen" });
   await expect(adjust).toBeVisible();
   const box = await adjust.boundingBox();
   expect(box.height).toBeGreaterThanOrEqual(44);
   await adjust.click();
-  const adjusted = await page.evaluate(() => window.__quickSubmit);
-  expect(adjusted.kind).toBe("adjust_week");
+  const adjusted = await page.evaluate(() => ({ kind: document.querySelector("#messageInput").dataset.requestKind, submitted: window.__quickSubmit }));
+  expect(adjusted).toEqual({ kind: "adjust_week", submitted: null });
 });
 
-test("composer plus menu starts a session analysis anytime and fits the viewport @responsive", async ({ page }) => {
+test("composer plus menu prefills a session analysis anytime and fits the viewport @responsive", async ({ page }) => {
   await openCoach(page);
   await page.evaluate(() => {
     state.quickTemplatesVisible = false;
@@ -141,7 +143,7 @@ test("composer plus menu starts a session analysis anytime and fits the viewport
       event.preventDefault();
       event.stopImmediatePropagation();
       const input = document.querySelector("#messageInput");
-      window.__quickSubmit = { kind: input.dataset.requestKind, message: input.value };
+      window.__quickSubmit = true;
     }, { capture: true });
   });
   const trigger = page.locator("#attachmentButton");
@@ -167,8 +169,8 @@ test("composer plus menu starts a session analysis anytime and fits the viewport
   await expect(trigger).toBeFocused();
   await trigger.click();
   await menu.getByRole("menuitem", { name: "Einheit analysieren" }).click();
-  const sent = await page.evaluate(() => window.__quickSubmit);
-  expect(sent.kind).toBe("session_analysis");
+  const sent = await page.evaluate(() => ({ kind: document.querySelector("#messageInput").dataset.requestKind, submitted: window.__quickSubmit }));
+  expect(sent).toEqual({ kind: "session_analysis", submitted: null });
   await trigger.click();
   const chooser = page.waitForEvent("filechooser");
   await menu.getByRole("menuitem", { name: "Datei anhängen" }).click();

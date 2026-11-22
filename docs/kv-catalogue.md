@@ -16,7 +16,7 @@ read. A new key needs no entry: it appears here when its write is added.
   `profile` is only set when absent.
 
 <!-- BEGIN GENERATED KEYS -->
-106 keys and 25 key patterns; `<value>` stands for a value the code computes.
+106 keys and 24 key patterns; `<value>` stands for a value the code computes.
 
 | Key | Written by | Deleted by | Export | Reset at start | Purge |
 | --- | --- | --- | --- | --- | --- |
@@ -30,7 +30,6 @@ read. A new key needs no entry: it appears here when its write is added.
 | `activity_weather_state` | backend/sync/activity_weather.py:ActivityWeatherStage._save | - | yes | - | - |
 | `anthropic_status` | backend/providers/state.py:ProviderStateService._record_status_unlocked | - | no | - | - |
 | `anthropic_usage` | backend/providers/state.py:ProviderStateService.record_usage | - | yes | - | - |
-| `calendar_display_<value>` | backend/settings.py:SettingsService.save_calendar_display_settings | - | yes | - | - |
 | `calendar_weather_history` | backend/weather/service.py:WeatherCacheStore.store_refresh | - | yes | - | - |
 | `canonical_backfill_state` | backend/sync/canonical_backfill.py:CanonicalBackfill._save | - | yes | - | - |
 | `canonical_coverage:<value>` | backend/sync/canonical_coverage_store.py:CanonicalCoverageStore.persist | - | yes | - | - |

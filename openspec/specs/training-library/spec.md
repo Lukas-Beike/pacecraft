@@ -640,7 +640,7 @@ Local planning records SHALL use provider-neutral names for planned load, intens
 Evidence: `backend/planning/library.py`, `backend/planning/target_snapshot.py`, `backend/providers/intervals_workouts.py`; `tests/test_workout_export_intervals.py`, `tests/test_target_snapshot_summaries.py`.
 
 ### Requirement: Planned workout estimate from steps
-The system SHALL estimate a planned run or ride at read time from its workout steps and the athlete's thresholds on the unit's day (method `workout-steps-v1`, source `derived`), SHALL store nothing, and SHALL leave every value that depends on an unresolved step unknown with its reason.
+The system SHALL estimate a planned run or ride at read time from its workout steps and the athlete's thresholds on the unit's day (method `workout-steps-v2`, source `derived`), SHALL store nothing, and SHALL leave every value that depends on an unresolved step unknown with its reason.
 
 #### Scenario: Step intensity
 - **WHEN** a step target is resolved
@@ -648,7 +648,7 @@ The system SHALL estimate a planned run or ride at read time from its workout st
 
 #### Scenario: Unit values
 - **WHEN** every step has a duration and an intensity
-- **THEN** the intensity factor is the time-weighted 4th-power mean when every step is a power step, else the quadratic mean, and the load is `hours × IF² × 100`; the band seconds are low, moderate and high (with 6 or more zones Z1-2, Z3-4 and Z5 upward, with up to 5 zones Z1-2, Z3 and Z4 upward); `load_basis` is `normalized_power_over_ftp`, `relative_pace_speed`, `relative_lthr` or `mixed_step_intensity`.
+- **THEN** the intensity factor is the time-weighted 4th-power mean when every step is a power step, else the quadratic mean, and the load is `hours × IF² × 100`; the band seconds are low, moderate and high by each step's intensity: low up to LT1 (85 % of the threshold HR, 75 % of the FTP, 88 % of the threshold speed), moderate up to the threshold, high above it, for every sensor (#3915); `load_basis` is `normalized_power_over_ftp`, `relative_pace_speed`, `relative_lthr` or `mixed_step_intensity`.
 
 #### Scenario: Unknown values
 - **WHEN** a value cannot be resolved
@@ -736,7 +736,7 @@ A run unit whose focus has a cap in `HR_CAP_PERCENT` (`backend/activities/hr_cap
 
 #### Scenario: Cap values
 - **WHEN** a cap is derived
-- **THEN** the default is 80 % of the run threshold HR for recovery units and 87 % for easy and long units; from a measured or adopted first threshold the easy and long cap is that percent minus 3.0 points and the recovery cap the lower of 80 and the easy cap minus 7.0 points, each rounded down to one decimal, and the defaults apply (source `default`) when the easy cap would exceed 100 or a cap or its exported lower bound would fall below 20; the exported lower bound `low_percent_lthr` is the lower of 65 and the cap minus 15 points, rounded down to one decimal.
+- **THEN** the default is 80 % of the run threshold HR for recovery units and 84 % for easy and long units (below the 85 % LT1 stand-in, #3915); from a measured or adopted first threshold the easy and long cap is that percent minus 3.0 points and the recovery cap the lower of 80 and the easy cap minus 7.0 points, each rounded down to one decimal, and the defaults apply (source `default`) when the easy cap would exceed 100 or a cap or its exported lower bound would fall below 20; the exported lower bound `low_percent_lthr` is the lower of 65 and the cap minus 15 points, rounded down to one decimal.
 
 #### Scenario: Stored cap
 - **WHEN** a cap is validated or resolved

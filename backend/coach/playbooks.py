@@ -12,8 +12,9 @@ References (only author and year appear in the model text):
 - Robineau et al. 2016, J Strength Cond Res, recovery between
   concurrent strength and aerobic sessions.
 - Bosquet et al. 2007, Med Sci Sports Exerc, tapering meta-analysis.
-- Kiviniemi et al. 2007, Eur J Appl Physiol; Javaloyes et al. 2019,
-  IJSPP, HRV-guided training.
+- Plews et al. 2012, Eur J Appl Physiol 112(11):3729-3741; Plews et al. 2014,
+  IJSPP 9(5):784-791: the 7-day mean of ln(RMSSD) against the athlete's own
+  range follows training better than single nights (register R47, R48).
 - Impellizzeri et al. 2020, IJSPP 15:907-913, acute:chronic workload ratio.
 - Galbraith et al. 2014, IJSPP 9(6):931-935, single-visit field test of
   critical speed (3600/2400/1200 m, CV 0.4 % for CS).
@@ -40,7 +41,7 @@ _PLAN_STRUCTURE = """Planning science:
 - Periodize with progressive overload and a lighter week every 3rd to 4th week (practice-based; no model clearly superior, Kiely 2012).
 - Alternate hard and easy days, never back-to-back hard days; distribute intensity per training_model.
 - Plan no single run much longer than the longest of the last 30 days (Frandsen 2025).
-- Adjust load to HRV or readiness data when present (Kiviniemi 2007; Javaloyes 2019; moderate).
+- HRV: interpret the 7-day mean against the own range, not one night (Plews 2012/2014).
 - Every run, ride and strength unit you write needs session_focus (named in the Typ column); strength also strength_structure (with garmin_exercise) and strength_intensity; recovery, easy, long runs hr_cap. Progress load or reps weekly, deload in the lighter week; strength_progress top sets at planned reps: progress, else hold.
 - Local units only; no Intervals.icu write."""
 

@@ -37,7 +37,7 @@ _INTERVALS_NOT_CONFIGURED_MESSAGE = (
     "hinterlegen."
 )
 GARMIN_NOT_CONFIGURED_MESSAGE = (
-    "Garmin ist nicht konfiguriert. Unter Mehr → Anbindungen bei Garmin anmelden "
+    "Garmin ist nicht eingerichtet. Unter Mehr → Anbindungen bei Garmin anmelden "
     "oder einen Schlüssel der Garmin Personal API hinterlegen."
 )
 WAHOO_NOT_CONFIGURED_MESSAGE = (

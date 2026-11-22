@@ -89,7 +89,7 @@ def _is_app_error_call(node: ast.AST) -> bool:
 
 def _is_not_configured_message(node: ast.AST) -> bool:
     if isinstance(node, ast.Constant) and isinstance(node.value, str):
-        return "nicht konfiguriert" in node.value
+        return "nicht eingerichtet" in node.value
     if isinstance(node, ast.Name):
         return node.id in NOT_CONFIGURED_CONSTANTS
     return False
@@ -121,7 +121,7 @@ class NotConfiguredClassificationTests(unittest.TestCase):
 
     def test_not_configured_public_contract_keeps_reason(self):
         error = AppError(
-            503, "Intervals.icu ist nicht konfiguriert.", reason="not_configured"
+            503, "Intervals.icu ist nicht eingerichtet.", reason="not_configured"
         )
         self.assertEqual(public_error_contract(error), (503, "not_configured"))
 
@@ -181,14 +181,14 @@ class NotConfiguredSyncRouteTests(unittest.TestCase):
 
     def test_manual_garmin_refresh_is_rejected_before_period_or_job(self):
         self.assert_rejected_before_mutation(
-            "/api/garmin/sync", {"days": 7}, "Garmin ist nicht konfiguriert"
+            "/api/garmin/sync", {"days": 7}, "Garmin ist nicht eingerichtet"
         )
 
     def test_garmin_job_is_rejected_before_enqueue(self):
         self.assert_rejected_before_mutation(
             "/api/sync/jobs",
             {"provider": "garmin", "type": "refresh", "payload": {"days": 7}},
-            "Garmin ist nicht konfiguriert",
+            "Garmin ist nicht eingerichtet",
         )
 
 

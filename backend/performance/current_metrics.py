@@ -11,6 +11,11 @@ from typing import Any, Final
 
 from backend.activities.hr_cap import effective_caps, resolved_range
 from backend.activities.identity import activity_kind
+from backend.activities.zone_settings import (
+    LT1_HR_SHARE,
+    LT1_POWER_SHARE,
+    LT1_RUN_SPEED_SHARE,
+)
 from backend.athlete.body_records import CurrentBody
 from backend.canonical.decimal_text import provider_number as as_number
 from backend.canonical.records import Observation
@@ -95,18 +100,10 @@ def coach_thresholds(
     return result
 
 
-# LT1 as a fixed share of LT2 when no measured or adopted value and no zone 2 of
-# that kind exists (athlete decisions 2026-11-12, #2427): heart rate of the
-# threshold HR, cycling power of the FTP and running speed of the threshold
-# speed. Change them here only.
-LT1_HR_SHARE: Final = 0.85
-LT1_POWER_SHARE: Final = 0.75
-LT1_RUN_SPEED_SHARE: Final = 0.88
 # Where an LT1 value comes from: the profile value (measured, or the adopted
 # DFA-a1 estimate), the athlete's own steady sessions at the LT1 heart rate
-# (pace and power only), the top of the zone 2 in effect, or a fixed share of LT2.
+# (pace and power only), or a fixed share of LT2 (the shown "Standardwert").
 LT1_OWN_SESSIONS: Final = "own_sessions"
-LT1_ZONE_TWO: Final = "zone_2"
 LT1_FIXED_SHARE: Final = "fixed_share"
 
 type OutputAtHeartRate = Callable[[str, float], float | None]
@@ -127,27 +124,24 @@ def first_thresholds(
     metrics: Mapping[str, Mapping[str, Any]],
     first_threshold_pct: float | None,
     origin: str,
-    zone_two_tops: Mapping[str, float] | None = None,
     at_heart_rate: OutputAtHeartRate | None = None,
 ) -> dict[str, dict[str, Any]]:
     """LT1 of running and cycling with the origin of each value.
 
     Heart rate: the stored share of the threshold HR (``origin``, measured or
-    estimated), else the top of the heart-rate zone 2, else ``LT1_HR_SHARE``.
-    Pace and power: ``at_heart_rate(sport, LT1 bpm)`` from the athlete's own
-    steady sessions, else the top of zone 2, else the fixed share of the
-    threshold pace or the FTP. ``zone_two_tops`` holds the tops in effect by
-    ``<sport>_hr`` (bpm) and ``run_pace`` (s/km) or ``ride_power`` (W). A value
-    with none of these is left out, and a sport without any LT2 value has no LT1.
+    estimated), else ``LT1_HR_SHARE``. Pace and power: ``at_heart_rate(sport,
+    LT1 bpm)`` from the athlete's own steady sessions, else the fixed share of
+    the threshold pace or the FTP. The top of a zone 2 is no LT1 (#3915). A
+    value without its base is left out, and a sport without any LT2 value has
+    no LT1.
     """
-    tops = zone_two_tops or {}
     hr_share = first_threshold_pct / 100 if first_threshold_pct else None
     result: dict[str, dict[str, Any]] = {}
-    for sport, lthr_key, lt2_key, (main_key, main_origin_key, top_key), share in (
+    for sport, lthr_key, lt2_key, (main_key, main_origin_key), share in (
         ("run", "run_threshold_hr_bpm", "run_threshold_pace_seconds_per_km",
-         ("pace_seconds_per_km", "pace_origin", "run_pace"), 1 / LT1_RUN_SPEED_SHARE),
+         ("pace_seconds_per_km", "pace_origin"), 1 / LT1_RUN_SPEED_SHARE),
         ("ride", "bike_threshold_hr_bpm", "cycling_ftp_watts",
-         ("watts", "power_origin", "ride_power"), LT1_POWER_SHARE),
+         ("watts", "power_origin"), LT1_POWER_SHARE),
     ):  # fmt: skip
         lthr = as_number(metrics.get(lthr_key, {}).get("value"))
         lt2 = as_number(metrics.get(lt2_key, {}).get("value"))
@@ -155,8 +149,7 @@ def first_thresholds(
             continue
         values: dict[str, Any] = {}
         heart_rate = _first_candidate(
-            ((lthr, hr_share, origin), (tops.get(f"{sport}_hr"), 1, LT1_ZONE_TWO),
-             (lthr, LT1_HR_SHARE, LT1_FIXED_SHARE))
+            ((lthr, hr_share, origin), (lthr, LT1_HR_SHARE, LT1_FIXED_SHARE))
         )  # fmt: skip
         if heart_rate:
             values["hr_bpm"], values["hr_origin"] = round(heart_rate[0]), heart_rate[1]
@@ -166,8 +159,7 @@ def first_thresholds(
             else None
         )
         main = _first_candidate(
-            ((own, 1, LT1_OWN_SESSIONS), (tops.get(top_key), 1, LT1_ZONE_TWO),
-             (lt2, share, LT1_FIXED_SHARE))
+            ((own, 1, LT1_OWN_SESSIONS), (lt2, share, LT1_FIXED_SHARE))
         )  # fmt: skip
         if main:
             values[main_key], values[main_origin_key] = round(main[0]), main[1]

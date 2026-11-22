@@ -292,6 +292,24 @@ class ActivityAnalysisReadService(ActivityReadService):
             )
         return rated
 
+    def unrated_sessions(self, day: date) -> list[str]:
+        """The ids of ``day``'s sessions without an effective RPE (#3914)."""
+        summaries = self.summaries_between(day, day) or []
+        feedback = feedback_by_session(
+            summaries,
+            functools.partial(
+                self._feedback_service.for_activity_ids, sessions_only=True
+            ),
+        )
+        return [
+            str(summary.get("id"))
+            for summary in summaries
+            if session_load(summary, feedback.get(stored_activity_key(summary)))[0][
+                "rpe"
+            ]
+            is None
+        ]
+
     def session_headwind(self, session_id: str) -> dict[str, Any] | None:
         """The stored headwind of a session with its derivation (#3084).
 

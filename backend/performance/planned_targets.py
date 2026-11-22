@@ -207,6 +207,17 @@ def heart_rate_cap_execution(
     }
 
 
+def heart_rate_above(
+    bpm: float, streams: Mapping[str, Any] | None
+) -> tuple[float, float] | None:
+    """Seconds of the heart-rate stream above ``bpm`` and all its counted seconds."""
+    spans = _Timeline(streams).spans("heartrate", float("-inf"), float("inf"))
+    total = sum(span for _, span in spans)
+    if total <= 0:
+        return None
+    return sum(span for value, span in spans if value > bpm), total
+
+
 def _levels(
     ranges: Sequence[TargetRange], thresholds: ZoneSettings
 ) -> list[tuple[int, float]]:

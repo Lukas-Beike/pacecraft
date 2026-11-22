@@ -80,8 +80,6 @@ _THINKING_KEYS = {
     "planning": "selected_thinking_level_planning",
     "nutrition": "selected_thinking_level_nutrition",
 }
-CALENDAR_DISPLAY_DEFAULTS = {"past_weeks": 1, "future_weeks": 4}
-CALENDAR_DISPLAY_MAX_WEEKS = 52
 
 
 def _copy_options(
@@ -170,16 +168,6 @@ class SettingsService:
         if task != "conversation":
             return self._selected_model(config)
         return config.openai_model
-
-    def _calendar_display_settings(self) -> dict[str, int]:
-        settings: dict[str, int] = {}
-        for key, default in CALENDAR_DISPLAY_DEFAULTS.items():
-            try:
-                value = int(self._get_value(f"calendar_display_{key}") or default)
-            except TypeError, ValueError:
-                value = default
-            settings[key] = max(0, min(value, CALENDAR_DISPLAY_MAX_WEEKS))
-        return settings
 
     def available_model_options(self) -> list[dict[str, Any]]:
         config = self._config_supplier()
@@ -289,33 +277,3 @@ class SettingsService:
             )
         self._set_value("selected_service_tier", tier_id)
         return {"service_tier": tier_id}
-
-    def calendar_display_settings(self) -> dict[str, int]:
-        self._config_supplier()
-        return self._calendar_display_settings()
-
-    def save_calendar_display_settings(self, values: Any) -> dict[str, Any]:
-        self._config_supplier()
-        if not isinstance(values, dict):
-            raise AppError(400, "Die Kalenderansicht muss als Objekt gesendet werden.")
-        updates: dict[str, int] = {}
-        for key, label in (("past_weeks", "zurück"), ("future_weeks", "voraus")):
-            if key not in values:
-                continue
-            try:
-                value = int(values[key])
-            except (TypeError, ValueError) as exc:
-                raise AppError(
-                    400, f"Wochen {label} muss eine ganze Zahl sein."
-                ) from exc
-            if not 0 <= value <= CALENDAR_DISPLAY_MAX_WEEKS:
-                raise AppError(
-                    400,
-                    f"Wochen {label} muss zwischen 0 und {CALENDAR_DISPLAY_MAX_WEEKS} liegen.",
-                )
-            updates[key] = value
-        if not updates:
-            raise AppError(400, "Keine Kalenderansicht-Einstellungen eingegeben.")
-        for key, value in updates.items():
-            self._set_value(f"calendar_display_{key}", str(value))
-        return {"status": "ok", **self._calendar_display_settings()}

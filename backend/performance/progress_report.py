@@ -29,17 +29,15 @@ from backend.performance.session_rpe_load import period_load, session_load
 from backend.performance.training_report import metric_sum, valid_zones
 from backend.performance.zone_time_reads import LOCAL_MODEL, zone_model
 
-METHOD = "weekly-progress-v1"
+METHOD = "weekly-progress-v2"
 SPORT_BUCKETS = ("run", "ride", "strength")
-# First zone number of the moderate and of the high band, by the number of zones
-# of the session's zone set: 6 or more (default 7-zone power and heart rate)
-# or up to 5 (5-zone heart rate).
-ZONE_BANDS = {"many": (3, 5), "five": (3, 4)}
+# The stored band times hold Z1 low, Z2 moderate and Z3 high (#3915).
+BANDS = ("low", "moderate", "high")
 ZONE_MAPPING = (
-    "Approximation of the 3-zone model from local zone times: with 6 or more "
-    "zones Z1-Z2 low, Z3-Z4 moderate, Z5+ high; with up to 5 zones Z1-Z2 low, Z3 "
-    "moderate, Z4+ high. Per session power zones, else heart-rate zones; pace "
-    "zones and provider zone times unused."
+    "3-zone model from the local band times: low up to LT1 (85 % of the "
+    "threshold HR, 75 % of the FTP), moderate up to the threshold, high above it, "
+    "for every sensor alike. Per session power, else heart rate; pace and "
+    "provider zone times unused."
 )
 PROFILE_DURATIONS = (60, 300, 1200)
 # Fitness (the ``ctl`` key) is the local curve (card M7), never Intervals.icu CTL.
@@ -50,18 +48,10 @@ def _sport(summary: Mapping[str, Any]) -> str:
     return str(summary.get("sport") or "other")
 
 
-def _zone_number(zone_id: str) -> int | None:
+def _band(zone_id: str) -> str | None:
     digits = zone_id[1:]
-    return int(digits) if digits.isdigit() else None
-
-
-def _band(zone: int | None, zone_count: int) -> str | None:
-    if zone is None:
-        return None
-    moderate, high = ZONE_BANDS["many" if zone_count >= 6 else "five"]
-    if zone < moderate:
-        return "low"
-    return "moderate" if zone < high else "high"
+    index = int(digits) if digits.isdigit() else 0
+    return BANDS[index - 1] if 1 <= index <= len(BANDS) else None
 
 
 def intensity_3zone(sessions: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
@@ -70,21 +60,16 @@ def intensity_3zone(sessions: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
     measured = 0
     for row in sessions:
         for sensor, key in (
-            ("power", "power_zone_times"),
-            ("heart_rate", "heart_rate_zone_times"),
+            ("power", "power_band_times"),
+            ("heart_rate", "heart_rate_band_times"),
         ):
             # Bands are only added up in the local zone model (#1743).
             if zone_model(row, key) != LOCAL_MODEL:
                 continue
-            zones = [
-                (_zone_number(str(zone["id"])), float(zone["secs"]))
-                for zone in valid_zones(row.get(key))
-            ]
-            count = max((number or 0 for number, _ in zones), default=0)
             bands = [
-                (band, secs)
-                for number, secs in zones
-                if (band := _band(number, count)) is not None
+                (band, float(zone["secs"]))
+                for zone in valid_zones(row.get(key))
+                if (band := _band(str(zone["id"]))) is not None
             ]
             if bands:
                 measured += 1

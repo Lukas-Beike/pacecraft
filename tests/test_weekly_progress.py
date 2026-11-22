@@ -66,16 +66,17 @@ class WeeklyProgressTests(unittest.TestCase):
                 moving_duration_s=3600,
                 training_load=50,
                 sources={"training_load": "Intervals.icu"},
-                power_zone_times=_zones(600, 600, 600, 600, 600, 300, 300),
-                zone_models={"power_zone_times": "local"},
+                # The stored band times (#3915): Z1 low, Z2 moderate, Z3 high.
+                power_band_times=_zones(1200, 1200, 1200),
+                zone_models={"power_band_times": "local"},
             ),
             _summary(
                 "u1",
                 "2026-09-23T08:00:00",
                 sport="run",
                 moving_duration_s=1800,
-                heart_rate_zone_times=_zones(100, 100, 100, 100, 100),
-                zone_models={"heart_rate_zone_times": "local"},
+                heart_rate_band_times=_zones(200, 100, 200),
+                zone_models={"heart_rate_band_times": "local"},
             ),
             _summary(
                 "s1",
@@ -236,7 +237,7 @@ class WeeklyProgressTests(unittest.TestCase):
         self.assertEqual({"athlete_feedback": 1, "provider": 1}, load["rpe_sources"])
         self.assertEqual("AU", load["unit"])
 
-    def test_seven_zone_heart_rate_uses_the_seven_zone_bands(self):
+    def test_heart_rate_band_times_count_and_zone_times_do_not(self):
         rows = [
             _summary(
                 "u",
@@ -244,7 +245,11 @@ class WeeklyProgressTests(unittest.TestCase):
                 sport="run",
                 moving_duration_s=700,
                 heart_rate_zone_times=_zones(100, 100, 100, 100, 100, 100, 100),
-                zone_models={"heart_rate_zone_times": "local"},
+                heart_rate_band_times=_zones(200, 200, 300),
+                zone_models={
+                    "heart_rate_zone_times": "local",
+                    "heart_rate_band_times": "local",
+                },
             )
         ]
         week = self._progress({"days": 7}, rows=rows)["week_list"][0]

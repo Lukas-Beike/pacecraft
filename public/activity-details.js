@@ -119,11 +119,11 @@
 
   function sessionLoadText(load) {
     if (!load || load.reason === "no_rating") return "";
-    if (load.value == null) return `Session-RPE-Last: offen · ${SESSION_LOAD_REASONS[load.reason] || "unbekannt"}`;
+    if (load.value == null) return `RPE-Belastung: offen · ${SESSION_LOAD_REASONS[load.reason] || "unbekannt"}`;
     const value = AppFormat.number(load.value, { digits: 1 });
     const rpe = Number(load.rpe).toLocaleString("de-DE");
     const minutes = AppFormat.number(load.duration_min, { digits: 1 });
-    const text = `Session-RPE-Last: ${value} AU · RPE ${rpe} (${load.rpe_source_label}) × ${minutes} min`;
+    const text = `RPE-Belastung: ${value} RPE-Punkte · RPE ${rpe} (${load.rpe_source_label}) × ${minutes} min`;
     if (load.duration_flag !== "deviating_duration") return text;
     const moving = AppFormat.number(load.moving_duration_min, { digits: 1 });
     return `${text} · lange Unterbrechung, ${moving} min in Bewegung`;
@@ -358,7 +358,7 @@
     };
     more.addEventListener("click", page);
     page();
-    const head = h("thead", null, h("tr", null, ["Datum", "Dauer", "HF", pace ? "/km" : "km/h", "°C"].map((label) => h("th", { scope: "col" }, label))));
+    const head = h("thead", null, h("tr", null, ["Datum", "Dauer", "Herzfrequenz", pace ? "/km" : "km/h", "°C"].map((label) => h("th", { scope: "col" }, label))));
     const scroll = h("div", "table-scroll", h("table", "race-predictions-table route-visits", head, body));
     return h("details", { className: "activity-values", open: true }, h("summary", null, `Alle ${visits.length} Besuche ansehen`), scroll, more);
   }
@@ -401,7 +401,7 @@
     content.append(card);
   }
 
-  const COVERAGE_LABELS = { power_w: "Leistung", heart_rate_bpm: "Herzfrequenz", speed_mps: "Geschwindigkeit", altitude_m: "Höhe", distance_m: "Distanz", grade_pct: "Steigung", cadence_rpm: "Kadenz", temperature_c: "Temperatur", moving: "Bewegung", ground_contact_time_ms: "Bodenkontaktzeit", ground_contact_balance_pct: "Bodenkontakt links", vertical_oscillation_cm: "Vertikale Oszillation", vertical_ratio_pct: "Vertikales Verhältnis", step_length_m: "Schrittlänge", respiration_rate_brpm: "Atemfrequenz", performance_condition: "Leistungszustand", stamina_137_pct: "Ausdauer A", stamina_138_pct: "Ausdauer B" };
+  const COVERAGE_LABELS = { power_w: "Leistung", heart_rate_bpm: "Herzfrequenz", speed_mps: "Geschwindigkeit", altitude_m: "Höhe", distance_m: "Distanz", grade_pct: "Steigung", cadence_rpm: "Trittfrequenz", temperature_c: "Temperatur", moving: "Bewegung", ground_contact_time_ms: "Bodenkontaktzeit", ground_contact_balance_pct: "Bodenkontakt links", vertical_oscillation_cm: "Vertikale Oszillation", vertical_ratio_pct: "Vertikales Verhältnis", step_length_m: "Schrittlänge", respiration_rate_brpm: "Atemfrequenz", performance_condition: "Leistungszustand", stamina_137_pct: "Ausdauer A", stamina_138_pct: "Ausdauer B" };
 
   // Per provider: the load state and the data coverage, with readable channel names.
   function providerFacts(entry) {
@@ -448,7 +448,7 @@
         if (state.data?.configured?.[entry.provider] !== false) continue;
         const link = h("a", { href: "#more/connections", dataset: { connection: entry.provider } }, "Anbindung einrichten");
         link.addEventListener("click", onSetup);
-        actions.append(h("p", "muted provider-setup-hint", `${label} ist nicht konfiguriert. `, link));
+        actions.append(h("p", "muted provider-setup-hint", `${label} ist nicht eingerichtet. `, link));
         continue;
       }
       const button = h("button", { className: "secondary-button", type: "button" }, `${label}: Detaildaten ${entry.fetched_at ? "aktualisieren" : "laden"}`);
@@ -473,7 +473,7 @@
   // Running cadence is stored per leg; foot sports show steps per minute of both legs.
   function cadenceDisplay(activity) {
     if (["run", "walk", "hike"].includes(activity?.sport)) return { label: "Schrittfrequenz", unit: "spm", factor: 2 };
-    return { label: "Kadenz", unit: "rpm", factor: 1 };
+    return { label: "Trittfrequenz", unit: "rpm", factor: 1 };
   }
 
   // Running dynamics averages (#1870): label, unit and decimals per served metric key.

@@ -197,7 +197,6 @@ class PublicPerformanceStateTests(unittest.TestCase):
             today,
             canonical=EMPTY_PERFORMANCE_INPUTS,
             session_feedback=None,
-            zone_configurations=(),
             # LT1 pace and power read the session records (#2427).
             lt1_session_records=list,
         )

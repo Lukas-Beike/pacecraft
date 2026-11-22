@@ -35,6 +35,13 @@ test("week load sums known values and names the sessions without one", () => {
   assert.equal(calendarWeekLoad([{ training_load: 40 }]).note, null);
 });
 
+test("a planned week load is one value of the whole week or none", () => {
+  const partial = calendarWeekLoad([{ training_load: 40 }, { training_load: 35 }, { training_load: null }], { all: true });
+  assert.deepEqual({ ...partial }, { value: "–", note: "1 Einheit ohne Belastung" });
+  assert.equal(calendarWeekLoad([{ training_load: 40 }, { training_load: 35 }], { all: true }).value, "75");
+  assert.equal(calendarWeekLoad([{ training_load: null }], { all: true }), null);
+});
+
 test("week durations always use hours and minutes", () => {
   assert.equal(calendarHours(1800), "0:30 h");
   assert.equal(calendarHours(29100), "8:05 h");

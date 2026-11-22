@@ -88,12 +88,48 @@ class NutritionGetRoutes:
             ),
         }
 
+    def _components(self, handler: Any, request: RouteRequest) -> None:
+        """The components of a logged meal, as the edit addresses them (#3948).
+
+        Request: query `id`, the entry id.
+
+        Response: 200 `{"ok": true, "id", "revision", "components"}`; `revision` is a
+        fingerprint of the components that an edit must send back; each component has `index`
+        (its position), `kind`, `name`, `amount`, `unit`, the nutrients (`kcal`,
+        `carbs_g`, `protein_g`, `fat_g`, `sugar_g`, `fiber_g`, `salt_g`, unknown as
+        null) and `nutrition_basis` (its origin). A meal without components is one
+        component that keeps its values; a single product or a database meal is
+        split into its product or foods.
+
+        Errors: 400 "Ungültige Eintrags-ID."; 404 "Ernährungseintrag nicht gefunden."
+        """
+        entry_id = request.query.get("id", [""])[0]
+        read = self._diary_service().meal_components(entry_id)
+        handler.send_json(
+            200,
+            {
+                "ok": True,
+                "id": entry_id,
+                "revision": read["revision"],
+                "components": [
+                    {"index": index, **component}
+                    for index, component in enumerate(read["components"])
+                ],
+            },
+        )
+
     def routes(self) -> list[Route]:
         routes = [
             Route("GET", "/api/nutrition/yazio/status", Access.SESSION, self._yazio),
             Route("GET", "/api/nutrition/day", Access.SESSION, self._day),
             Route("GET", "/api/nutrition/week", Access.SESSION, self._week),
             Route("GET", NUTRITION_PRODUCTS_PATH, Access.SESSION, self._product_list),
+            Route(
+                "GET",
+                f"{NUTRITION_ENTRY_PATH}/components",
+                Access.SESSION,
+                self._components,
+            ),
         ]
         if self._session_fuelling is not None:
             routes.append(
@@ -268,6 +304,7 @@ class NutritionPostRoutes:
                     (NUTRITION_ENTRY_PATH, self._create),
                     (f"{NUTRITION_ENTRY_PATH}/delete", self._delete),
                     (f"{NUTRITION_ENTRY_PATH}/add-product", self._add_product),
+                    (f"{NUTRITION_ENTRY_PATH}/components", self._edit_components),
                     (f"{NUTRITION_ENTRY_PATH}/session", self._set_session),
                     (f"{NUTRITION_ENTRY_PATH}/estimate", self._set_estimate),
                     ("/api/nutrition/refresh", self._refresh),
@@ -467,6 +504,43 @@ class NutritionPostRoutes:
                 str(payload.get("product_id") or ""),
                 payload.get("amount"),
                 str(payload.get("unit") or ""),
+            )
+        handler.send_json(200, {"ok": True, "entry": entry, **_change(changes)})
+
+    def _edit_components(self, handler: Any, _request: RouteRequest) -> None:
+        """Remove, resize or swap components of a logged meal (#3948).
+
+        Request: JSON body `{"id": string, "revision": string, "edits": [...]}`; `id` is the
+        entry id, `revision` the one `GET /api/nutrition/entry/components` returned, and
+        each edit names a component by its `index` (see
+        `GET /api/nutrition/entry/components`) and is one of `{"index", "remove": true}`,
+        `{"index", "amount"}` (above 0 up to 10000, the same unit) or a swap
+        `{"index", "food_id"}` / `{"index", "product_id"}` with optional `amount` and
+        `unit` (default: the component's own, so the amount stays). Every index at
+        most once, other components stay as stored. The server scales the nutrients from
+        the stored snapshot or calculates them from the food or product and the amount;
+        the client sends none. The meal becomes a composite and keeps its description;
+        its day is marked for the next Intervals.icu synchronization; templates and
+        saved meals are not changed.
+
+        Response: 200 `{"ok": true, "entry", "change"}` with the updated entry and the
+        undo reference.
+
+        Errors: 400 "Ungültige Eintrags-ID."; 404 "Ernährungseintrag nicht gefunden.";
+        409 `meal_changed` "Die Mahlzeit hat sich geändert. Bitte erneut öffnen." when the
+        components differ from the `revision`; 400 "Ungültige Änderung der
+        Mahlzeitenkomponenten." for a malformed edit; 400
+        `last_component` when nothing would remain; 400 "Ungültige Komponentenmenge." or
+        "Komponentenmenge muss größer als 0 sein."; 404 `food_not_found`, 404
+        `nutrition_product_not_found`, 409 `nutrition_product_archived`, 400
+        `food_unit_mismatch` and 400 `food_energy_missing` for a swap target.
+        """
+        payload = _read_object(handler)
+        with change_history.collect_changes() as changes:
+            entry = self._diary_service().edit_components(
+                str(payload.get("id") or ""),
+                payload.get("edits"),
+                payload.get("revision"),
             )
         handler.send_json(200, {"ok": True, "entry": entry, **_change(changes)})
 
@@ -731,7 +805,7 @@ class NutritionPostRoutes:
         aktualisiert."; 400 `nutrition_product_barcode_missing` "Zum Aktualisieren
         braucht das Produkt eine EAN. Trage sie beim Bearbeiten ein."; 404
         `food_not_found` "Datenbankeintrag nicht gefunden."; 409 `not_configured` "Yazio
-        ist nicht konfiguriert." for a Yazio food without credentials; 502
+        ist nicht eingerichtet." for a Yazio food without credentials; 502
         `food_database_unavailable` "Der Datenbankeintrag konnte nicht aktualisiert
         werden."
         """
@@ -812,9 +886,10 @@ class NutritionPostRoutes:
 class NutritionPutRoutes:
     """Handle authenticated product updates.
 
-    Diary entries change only through the Coach correction, which enforces the
-    field whitelist, the ``manual_correction`` basis and the undo reference; the
-    old ``PUT /api/nutrition/entry`` skipped all three (#2137, F-018).
+    Diary entries change only through the Coach correction or the component edit
+    (``POST /api/nutrition/entry/components``, #3948), which enforce the field
+    whitelist, the nutrient recalculation and the undo reference; the old
+    ``PUT /api/nutrition/entry`` skipped all three (#2137, F-018).
     """
 
     def __init__(
