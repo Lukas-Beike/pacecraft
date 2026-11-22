@@ -205,6 +205,11 @@ class SymptomReturnTests(unittest.TestCase):
         )
         with self.assertRaises(AppError):
             normalize_symptoms(["fieber", "unbekannt"])
+        # An object or list item is a 400, not a server error (Gitar, #3919).
+        bad: tuple[object, ...] = ({}, [], 3)
+        for item in bad:
+            with self.subTest(item=item), self.assertRaises(AppError):
+                normalize_symptoms([item])
 
 
 class ReturnStateTests(unittest.TestCase):

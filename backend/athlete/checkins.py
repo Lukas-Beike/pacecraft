@@ -76,7 +76,9 @@ def reports_complaint(text: Any) -> bool:
 
 def normalize_symptoms(value: Any) -> list[str]:
     """The selected symptom ids, known ones only, once each, in list order."""
-    if not isinstance(value, list) or any(item not in SYMPTOM_LABELS for item in value):
+    if not isinstance(value, list) or any(
+        not isinstance(item, str) or item not in SYMPTOM_LABELS for item in value
+    ):
         raise AppError(400, "Symptome müssen aus der Liste bekannter Symptome stammen.")
     return [key for key in SYMPTOM_LABELS if key in value]
 
