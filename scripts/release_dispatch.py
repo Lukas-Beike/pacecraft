@@ -235,6 +235,17 @@ def contained(version: str) -> list[int] | None:
     )
 
 
+def contains_line(version: str) -> str:
+    """The contained PRs, best effort: the links alone decide the exit code."""
+    try:
+        numbers = contained(version)
+    except CliError:
+        return "contains unknown (GitHub unavailable)"
+    if numbers is None:
+        return "contains unknown (no previous version PR)"
+    return "contains " + (" ".join(f"#{n}" for n in numbers) or "no PRs")
+
+
 def follow_wait(version: str | None, since: str | None, minutes: int) -> int:
     """Follow until published or failed, printing only what changed; 3 at the
     time limit. A transient GitHub error is a pending round, not the end."""
@@ -347,8 +358,8 @@ def follow(version: str | None, since: str | None) -> int:
     links.append((state, f"publish {detail}"))
     for state, text in links:
         print(f"{state} {text}")
-    if links[0][0] == "ok" and (numbers := contained(version)) is not None:
-        print("contains " + (" ".join(f"#{n}" for n in numbers) or "no PRs"))
+    if links[0][0] == "ok":
+        print(contains_line(version))
     states = {state for state, _ in links}
     if "failed" in states:
         return 1

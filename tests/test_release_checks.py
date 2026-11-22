@@ -403,6 +403,16 @@ class ReleaseDispatchTests(unittest.TestCase):
         with mock.patch.object(release_dispatch, "contained", return_value=[40, 42]):
             _code, out, _ = follow("--version", V, prs=[VERSION_PR])
         self.assertIn("contains #40 #42", out)
+        # Best effort: an unreadable list never changes a published verdict.
+        failing = release_dispatch.CliError("HTTP 422: search failed")
+        with mock.patch.object(release_dispatch, "contained", side_effect=failing):
+            code, out, _ = follow(
+                "--version", V, prs=[VERSION_PR, PROMOTION_PR],
+                release={"tagName": V, "isDraft": False, "targetCommitish": "abc"},
+                publish=[{"databaseId": 9, "status": "completed", "conclusion": "success", "headBranch": V, "url": "u"}],
+            )  # fmt: skip
+        self.assertEqual(code, 0, out)
+        self.assertIn("contains unknown (GitHub unavailable)", out)
 
     def test_follow_wait_loops_until_published_and_prints_only_changes(self):
         published = {"tagName": V, "isDraft": False, "targetCommitish": "abc"}
