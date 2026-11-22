@@ -495,6 +495,10 @@ The client SHALL show the working state of a turn, offer a retry on a failed ans
 - **WHEN** the outcome of an accepted turn is unknown, also after a reload
 - **THEN** the client reads `/api/chat/receipt?client_turn_id=…` until the status is neither `queued` nor `running`; a 403 or 404 parks the message with "Die Nachricht wurde nicht angenommen. Bitte erneut senden."; only the opaque turn id is kept, in `sessionStorage["coachPendingTurn"]`
 
+#### Scenario: Sent without a connection
+- **WHEN** the athlete sends a message while the browser is offline and the server has not started the turn
+- **THEN** the client enters no recovery state, shows "Keine Verbindung – nicht gesendet.", returns the text to the composer and keeps it in `sessionStorage["coachUnsentDraft"]` until the next send, so a reload restores it into an empty composer
+
 #### Scenario: Chat reset in another tab
 - **WHEN** the history generation changes while an own message is not in the new history
 - **THEN** that message is parked with "Der Chat wurde zurückgesetzt. Prüfe den Verlauf, bevor du diese Nachricht erneut sendest."
@@ -507,19 +511,23 @@ The client SHALL show the working state of a turn, offer a retry on a failed ans
 - **WHEN** queued follow-ups would hold more than 16,000,000 characters of encoded attachment data, or the athlete resets the chat while messages are queued
 - **THEN** the message is refused with "Die Warteschlange enthält bereits zu viele Bilddaten. Warte auf die laufende Coach-Antwort." or the reset with "Bitte warte, bis die wartenden Nachrichten gesendet sind. Danach kannst du den Chat zurücksetzen."
 
-Evidence: `public/coach.js:CHAT_STREAM_SILENCE_MS`, `public/coach.js:CHAT_STATUS_SAFETY_POLL_MS`, `public/coach.js:MAX_QUEUED_ATTACHMENT_BYTES`, `public/coach.js:queueChatMessage`, `public/coach.js:appendFailedTurnRetry`, `public/coach.js:resetCoachChat`; `tests/coach-recovery-queue.test.cjs:a message sent while a chat recovers is queued with its attachments`, `tests/coach-stream-silence.test.cjs:the silence window is three missed heartbeats`, `public/coach.js:pollPendingChatReceipt`, `public/coach.js:resetChatAfterGenerationChange`, `e2e/audit-remediation.spec.js:a missing acceptance receipt leaves a recoverable failed message`, `e2e/audit-remediation.spec.js:cross-tab reset retains a new turn already accepted in the new history`, `tests/test_coach_turn_failures.py:test_failed_quick_action_keeps_its_kind_for_the_retry`, `e2e/coach-queue.spec.js`.
+Evidence: `public/coach.js:CHAT_STREAM_SILENCE_MS`, `public/coach.js:CHAT_STATUS_SAFETY_POLL_MS`, `public/coach.js:MAX_QUEUED_ATTACHMENT_BYTES`, `public/coach.js:queueChatMessage`, `public/coach.js:appendFailedTurnRetry`, `public/coach.js:resetCoachChat`, `public/coach.js:rememberUnsentDraft`; `tests/coach-recovery-queue.test.cjs:a message sent while a chat recovers is queued with its attachments`, `tests/coach-stream-silence.test.cjs:the silence window is three missed heartbeats`, `public/coach.js:pollPendingChatReceipt`, `public/coach.js:resetChatAfterGenerationChange`, `e2e/audit-remediation.spec.js:a missing acceptance receipt leaves a recoverable failed message`, `e2e/audit-remediation.spec.js:cross-tab reset retains a new turn already accepted in the new history`, `tests/test_coach_turn_failures.py:test_failed_quick_action_keeps_its_kind_for_the_retry`, `e2e/coach-queue.spec.js`, `e2e/offline-errors.spec.js:a Coach message sent without a connection returns to the composer and survives a reload @responsive`, `tests/coach-session-expiry.test.cjs:a chat sent without a connection goes back to the composer at once and is kept as a draft`.
 
 ### Requirement: CC15 Quick-action controls and context preview
 
-The composer SHALL offer "Morgen-Check-in" and the menu "Analyse & Plan" (session analysis; progress over 4, 8, 12 weeks or since the last test; next week; a block of 2, 3 or 4 weeks; adjust the week), each sending a fixed German message with its request kind at once; the "+" menu repeats them after "Datei anhängen". A typed edit SHALL drop the kind. "Kontext laden" under Coach & Modell SHALL show `/api/context-preview`.
+The composer SHALL offer "Morgen-Check-in" and the menu "Analyse & Plan" (session analysis; progress over 4, 8, 12 weeks or since the last test; next week; a block of 2, 3 or 4 weeks; adjust the week), each filling the composer with a fixed German message and its request kind, which the athlete edits and sends; the "+" menu repeats them after "Datei anhängen". A typed edit SHALL drop the kind. "Kontext laden" under Coach & Modell SHALL show `/api/context-preview`.
 
 #### Scenario: Menu keys
 - **WHEN** a quick-action menu is open
 - **THEN** arrow keys move with wrap-around and Home and End jump to the first and last item
 
+#### Scenario: Hand-over to the Coach
+- **WHEN** the athlete chooses a quick action or taps "Mit Coach lösen" or "Mit dem Coach analysieren" in the calendar
+- **THEN** the Coach opens with the message in the composer, nothing is sent; an unsent draft keeps its text and the message follows on its own line; the request kind applies to an otherwise empty composer
+
 #### Scenario: Busy Coach
 - **WHEN** a quick action is chosen while a turn runs
-- **THEN** nothing is sent and the draft stays
+- **THEN** the composer stays as it is
 
 #### Scenario: Context preview
 - **WHEN** the preview is loaded

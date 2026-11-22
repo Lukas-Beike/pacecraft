@@ -219,7 +219,7 @@ function renderConnectivityStatus(online = navigator.onLine) {
     offline: online ? null : {
       level: "warning",
       title: "Offline",
-      detail: "Änderungen können gerade nicht gespeichert werden. Bereits geladene Daten bleiben sichtbar.",
+      detail: "Einträge warten und werden später gesendet.",
       stand: true,
     },
   });

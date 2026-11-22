@@ -20,7 +20,7 @@ function coach() {
   };
   const calls = { polls: [], history: 0, toasts: 0 };
   // The silence window is shortened to 30 ms; the production constant is pinned by the test below.
-  const context = extractFunctions("coach.js", ["readChatStreamChunk", "readChatStream", "recoverChatRequestFailure"], {
+  const context = extractFunctions("coach.js", ["readChatStreamChunk", "readChatStream", "unsentOffline", "recoverChatRequestFailure"], {
     CHAT_STREAM_SILENCE_MS: 30,
     AbortController,
     TextDecoder,
