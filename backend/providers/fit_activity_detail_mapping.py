@@ -151,7 +151,8 @@ from backend.providers.fit_sensor_mapping import DEVICE_INFO_MESSAGE, sensor_pro
 # and a file that does not names why in its issue field (#3337).
 # Version 12: Garmin's undocumented performance condition (record 90) and its two
 # stamina fields (record 137 and 138) as unofficial channels (#3374).
-MAPPER_VERSION: Final = 12
+# Version 13: DFA-a1 method 4 detrends the 4 Hz resampled RR series (#3919).
+MAPPER_VERSION: Final = 13
 
 # Same limit as the Garmin and Intervals mappers, so issues stay bounded.
 MAX_FIT_ACTIVITY_ID_LENGTH: Final = 200

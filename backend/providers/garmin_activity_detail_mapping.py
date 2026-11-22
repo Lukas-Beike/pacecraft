@@ -113,7 +113,8 @@ from backend.providers.garmin_activity_mapping import GARMIN_LABEL
 # heart rate sensor markers (0, 255) are missing values, not out of range (#3337).
 # Version 13: the watch's undocumented performance condition and stamina fields
 # of FIT sets as unofficial channels (#3374).
-MAPPER_VERSION: Final = 13
+# Version 14: DFA-a1 method 4 detrends the 4 Hz resampled RR series (#3919).
+MAPPER_VERSION: Final = 14
 
 # Same limit as the Intervals mapper; kept local so providers do not import each other.
 MAX_GARMIN_ACTIVITY_ID_LENGTH: Final = 200

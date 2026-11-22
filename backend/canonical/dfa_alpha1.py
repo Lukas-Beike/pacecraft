@@ -53,7 +53,7 @@ from backend.canonical.activity_detail import (
 )
 from backend.canonical.vocabulary import DfaQuality
 
-METHOD_VERSION: Final = 3
+METHOD_VERSION: Final = 4
 
 MIN_RR_MS: Final = 300.0
 MAX_RR_MS: Final = 2000.0
@@ -61,8 +61,11 @@ MAX_BEAT_CHANGE: Final = 0.20
 # After this many beats in a row rejected only for their change, the new level is
 # taken as real: a bad first beat must not reject the whole recording.
 REANCHOR_AFTER: Final = 5
-# Smoothness priors detrending strength (Kubios and the DFA-a1 studies use 500).
+# Smoothness priors detrending strength (Kubios and the DFA-a1 studies use 500),
+# applied to the RR series resampled at this rate (Hz), as Kubios does: on the
+# beat series the cut-off moved with heart rate (method 4, #3919).
 DETREND_LAMBDA: Final = 500.0
+RESAMPLE_HZ: Final = 4.0
 WINDOW_S: Final = 120.0
 STRIDE_S: Final = 30.0
 BOX_SIZES: Final = tuple(range(4, 17))
@@ -262,6 +265,45 @@ def detrend(series: Sequence[float], smoothing: float = DETREND_LAMBDA) -> list[
     return [series[i] - trend[i] for i in range(count)]
 
 
+def _interpolate(xs: Sequence[float], ys: Sequence[float], at: float) -> float:
+    """``ys`` linearly interpolated at ``at`` over ascending ``xs``, held at the ends."""
+    index = bisect_right(xs, at)
+    if index <= 0:
+        return ys[0]
+    if index >= len(xs):
+        return ys[-1]
+    left, right = xs[index - 1], xs[index]
+    share = 0.0 if right == left else (at - left) / (right - left)
+    return ys[index - 1] + share * (ys[index] - ys[index - 1])
+
+
+def detrend_beats(times_s: Sequence[float], rr_ms: Sequence[float]) -> list[float]:
+    """Residuals of the beats after a trend fitted on the evenly resampled series.
+
+    The beat series is resampled at ``RESAMPLE_HZ`` by linear interpolation,
+    the smoothness-priors trend is fitted there with ``DETREND_LAMBDA`` (the
+    Kubios cut-off of about 0.035 Hz, Tarvainen et al. 2002), and each beat
+    keeps its interval minus the trend at its own time (method 4, #3919).
+    """
+    count = len(rr_ms)
+    if count < 3 or times_s[-1] <= times_s[0]:
+        return detrend(rr_ms)
+    step = 1.0 / RESAMPLE_HZ
+    grid = [
+        times_s[0] + step * index
+        for index in range(int((times_s[-1] - times_s[0]) / step) + 1)
+    ]
+    resampled = [_interpolate(times_s, rr_ms, at) for at in grid]
+    if len(resampled) < 3:
+        return detrend(rr_ms)
+    residual = detrend(resampled)
+    trend = [value - rest for value, rest in zip(resampled, residual, strict=True)]
+    return [
+        value - _interpolate(grid, trend, at)
+        for value, at in zip(rr_ms, times_s, strict=True)
+    ]
+
+
 def _segment_windows(
     rr_ms: Sequence[float], offset_s: float = 0.0
 ) -> tuple[list[Window], int, float]:
@@ -272,14 +314,20 @@ def _segment_windows(
     flags = artifact_flags(rr_ms)
     artifacts = sum(flags)
     kept_index = [i for i, flagged in enumerate(flags) if not flagged]
-    residual_at: dict[int, float] = dict(
-        zip(kept_index, detrend([rr_ms[i] for i in kept_index]), strict=True)
-    )
     ends: list[float] = []
     elapsed = 0.0
     for value in rr_ms:
         elapsed += min(max(value, MIN_RR_MS), MAX_RR_MS) / 1000.0
         ends.append(elapsed)
+    residual_at: dict[int, float] = dict(
+        zip(
+            kept_index,
+            detrend_beats(
+                [ends[i] for i in kept_index], [rr_ms[i] for i in kept_index]
+            ),
+            strict=True,
+        )
+    )
     windows: list[Window] = []
     start = 0.0
     while start + WINDOW_S <= elapsed:
