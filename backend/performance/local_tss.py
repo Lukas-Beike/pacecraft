@@ -433,6 +433,32 @@ def _trimp(minutes: float, reserve: float, sex: str) -> float:
     return minutes * reserve * prefactor * math.exp(coefficient * reserve)
 
 
+def heart_rate_step_load(
+    seconds: float,
+    bpm: float,
+    rest: float,
+    threshold: float,
+    maximum: float,
+    sex: str | None,
+) -> float | None:
+    """The TSS-scale load of ``seconds`` at ``bpm`` by the M6 heart-rate branch.
+
+    Banister TRIMP normalised so 60 minutes at the threshold HR is 100, as a
+    completed heart-rate session is scored; for planned heart-rate steps
+    (#3918). None when the reference heart rates are not in order.
+    """
+    if not rest < threshold < maximum:
+        return None
+    span = maximum - rest
+    used, _assumed = trimp_sex(sex)
+    reserve = min(max((bpm - rest) / span, 0.0), 1.0)
+    return (
+        _trimp(seconds / 60, reserve, used)
+        / _trimp(60, (threshold - rest) / span, used)
+        * 100
+    )
+
+
 def trimp_sex(sex: str | None) -> tuple[str, bool]:
     """The sex whose TRIMP constants apply and whether it was assumed."""
     if sex in TRIMP_CONSTANTS:

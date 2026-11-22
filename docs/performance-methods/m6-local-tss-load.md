@@ -17,7 +17,11 @@ session's day. The sessions sum to the day, week and period load of the
 rollups and of the local fitness and fatigue curves (#1726), and the plan
 checks compare planned load with the stored values (athlete decision
 2026-11-11, #2082: one completed-session load for plan checks and charts; a
-session without a stored value is unknown there). It is not
+session without a stored value is unknown there). A planned unit of heart-rate
+steps is scored with the same heart-rate branch (the newest resting HR of 7
+days, the threshold and maximum HR in effect, the profile sex), so planned and
+completed loads share one scale; without those references its planned load is
+unknown with its reason (#3918). It is not
 measured fatigue, readiness, metabolic stress or injury risk, and not the
 session-RPE load M1.
 

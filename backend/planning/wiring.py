@@ -314,6 +314,7 @@ def build_plan_guard(ctx: AppContext) -> PlanGuardServices:
             ctx.canonical_read,
             local_date(),
             ctx.athlete.zones().configurations(),
+            sex=str(ctx.athlete.profile().get().get("sex") or "") or None,
         )
 
     def planned_unit_estimator() -> PlannedUnitEstimator:
@@ -323,6 +324,7 @@ def build_plan_guard(ctx: AppContext) -> PlanGuardServices:
             zone_configurations=lambda: ctx.athlete.zones().configurations(),
             today=local_date,
             first_threshold_bpm=lambda: stored_bpm(ctx.athlete.profile().get()),
+            heart_rate_references=thresholds,
         )
 
     def block_lessons() -> list[dict[str, object]]:

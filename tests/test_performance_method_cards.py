@@ -347,7 +347,7 @@ METHOD_NUMBER_PINS = {
     "backend/performance/critical_power.py": (2, "c13f8b44f8df8be3"),
     "backend/performance/fitness_fatigue.py": (1, "6c4b32888188ff3f"),
     "backend/performance/form_drift.py": (1, "974248a978784012"),
-    "backend/performance/local_tss.py": (7, "7da9af9913a0ec5c"),
+    "backend/performance/local_tss.py": (7, "40b1030257d71dbc"),
     "backend/performance/morning_battery_service.py": (1, "b52b0cf1b6965a40"),
     "backend/performance/power_profile.py": (3, "ea4854aa8f5c3b8c"),
     "backend/performance/session_metrics.py": (5, "57491cb2710b5ca7"),

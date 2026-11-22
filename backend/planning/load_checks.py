@@ -36,7 +36,11 @@ from backend.canonical.vocabulary import (
     ZoneConfigurationMetric,
 )
 from backend.performance.local_tss import METHOD_ID as LOCAL_LOAD_METHOD_ID
-from backend.performance.local_tss import PACE_BRANCH, POWER_BRANCH
+from backend.performance.local_tss import (
+    PACE_BRANCH,
+    POWER_BRANCH,
+    heart_rate_step_load,
+)
 from backend.planning.planned_unit_load import estimate_planned_unit, resolve_thresholds
 from backend.planning.running_week import unit_date as _unit_date
 from backend.planning.running_week import unit_day as _day
@@ -70,6 +74,24 @@ class LoadThresholds:
 
     unavailable: str | None = None
     resolver: Callable[[Sport, Environment, date | None], ZoneSettings] | None = None
+    # The M6 heart-rate references of planned heart-rate steps (#3918): the
+    # resting HR of the last 7 days and the profile sex.
+    resting_hr: float | None = None
+    sex: str | None = None
+
+    def heart_rate_load(
+        self, settings: ZoneSettings
+    ) -> Callable[[float, float], float | None]:
+        """Score heart-rate steps like a completed heart-rate session (M6 TRIMP)."""
+
+        def score(seconds: float, bpm: float) -> float | None:
+            if not (self.resting_hr and settings.lthr and settings.max_hr):
+                return None
+            return heart_rate_step_load(
+                seconds, bpm, self.resting_hr, settings.lthr, settings.max_hr, self.sex
+            )
+
+        return score
 
     def for_sport(
         self,
@@ -121,7 +143,12 @@ def _has_configuration(
 
 
 def load_thresholds(
-    inputs: Any, today: date, configurations: Sequence[ZoneConfiguration] = ()
+    inputs: Any,
+    today: date,
+    configurations: Sequence[ZoneConfiguration] = (),
+    *,
+    resting_hr: float | None = None,
+    sex: str | None = None,
 ) -> LoadThresholds:
     """Thresholds with the Coach precedence: locally confirmed values, then providers.
 
@@ -142,7 +169,7 @@ def load_thresholds(
             observed, configurations, sport, environment, day or today
         )
 
-    return LoadThresholds(resolver=resolve)
+    return LoadThresholds(resolver=resolve, resting_hr=resting_hr, sex=sex)
 
 
 def plan_sessions(
@@ -154,8 +181,9 @@ def plan_sessions(
         sport = planned_sport_environment(unit)[0]
         if sport in LOAD_SPORTS:
             environment = planned_sport_environment(unit)[1]
+            settings = thresholds.for_sport(sport, environment, _unit_date(unit))
             estimate = estimate_planned_unit(
-                unit, thresholds.for_sport(sport, environment, _unit_date(unit))
+                unit, settings, thresholds.heart_rate_load(settings)
             )
             sessions.append(PlannedSession(unit, sport, _day(unit), estimate))
     return sessions

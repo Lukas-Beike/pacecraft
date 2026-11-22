@@ -648,7 +648,7 @@ The system SHALL estimate a planned run or ride at read time from its workout st
 
 #### Scenario: Unit values
 - **WHEN** every step has a duration and an intensity
-- **THEN** the intensity factor is the time-weighted 4th-power mean when every step is a power step, else the quadratic mean, and the load is `hours × IF² × 100`; the band seconds are low, moderate and high by each step's intensity: low up to LT1 (the stored first threshold as share of the threshold HR, else 85 %; 75 % of the FTP; 88 % of the threshold speed), moderate up to the threshold, high above it, for every sensor (#3915); `load_basis` is `normalized_power_over_ftp`, `relative_pace_speed`, `relative_lthr` or `mixed_step_intensity`.
+- **THEN** the intensity factor is the time-weighted 4th-power mean when every step is a power step, else the quadratic mean, and the load is `hours × IF² × 100`, except that a unit of only heart-rate steps is scored with the M6 heart-rate (TRIMP) branch in the plan checks and the Coach's session report, unknown (`missing_heart_rate_reference`) without a resting, threshold and maximum heart rate (#3918); the band seconds are low, moderate and high by each step's intensity: low up to LT1 (the stored first threshold as share of the threshold HR, else 85 %; 75 % of the FTP; 88 % of the threshold speed), moderate up to the threshold, high above it, for every sensor (#3915); `load_basis` is `normalized_power_over_ftp`, `relative_pace_speed`, `relative_lthr` or `mixed_step_intensity`.
 
 #### Scenario: Unknown values
 - **WHEN** a value cannot be resolved
