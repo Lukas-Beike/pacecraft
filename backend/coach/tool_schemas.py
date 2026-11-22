@@ -1496,9 +1496,9 @@ def build_structured_tool_schemas(
         ),
     ]
     for name, description, properties, required in body_schemas:
-        tool = _canonical_coach_tool(name, description, properties)
-        tool["parameters"]["required"] = required
-        COACH_STRUCTURED_TOOLS.append(tool)
+        body_tool = _canonical_coach_tool(name, description, properties)
+        body_tool["parameters"]["required"] = required
+        COACH_STRUCTURED_TOOLS.append(body_tool)
     COACH_STRUCTURED_TOOLS.append(
         _canonical_coach_tool(
             "read_training_records",
