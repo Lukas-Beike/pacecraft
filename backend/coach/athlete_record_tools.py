@@ -15,6 +15,7 @@ from backend.coach.authorization import (
     structured_action_payload,
 )
 from backend.errors import AppError
+from backend.nutrition.catalog import NOTHING_FILLED_NOTICE
 from backend.nutrition.diary import NutritionDiaryService
 from backend.nutrition.meal_library import NutritionMealLibraryService
 from backend.planning.competition_service import CompetitionService
@@ -545,8 +546,14 @@ class CoachAthleteRecordToolService:
                         503, "Die Produktaktualisierung ist nicht verfügbar."
                     )
                 # The background run of "Alle aktualisieren"; one at a time.
-                return {"ok": True, "run": self._product_refresh.start()}
-            return library.refresh_database_food(product_id)
+                # Starting it changes nothing yet: no receipt for the turn.
+                run = self._product_refresh.start()
+                return {"ok": True, "status": "unchanged", "run": run}
+            refreshed = library.refresh_database_food(product_id)
+            if NOTHING_FILLED_NOTICE in str(refreshed.get("notice") or ""):
+                # An own product with nothing left to fill shows no receipt.
+                return {**refreshed, "status": "unchanged"}
+            return refreshed
         action, catalog = payload.get("action"), library.product_catalog
         if action == "favorite":
             product = catalog.set_favorite(product_id, payload.get("favorite"))

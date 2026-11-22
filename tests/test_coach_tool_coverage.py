@@ -2831,7 +2831,10 @@ class CoachToolCoverageTests(DialogueHarness, unittest.TestCase):
                 message="Aktualisiere alle Produkte.",
             )
         self.assertEqual(0.3, refreshed["food"]["per_100"]["salt_g"])
-        self.assertEqual({"running": True}, everything["run"])
+        # Starting the background run changes nothing yet: no receipt.
+        self.assertEqual(
+            ({"running": True}, "unchanged"), (everything["run"], everything["status"])
+        )
         started.assert_called_once_with()
         manage({"action": "forget", "id": food["id"]}, "Vergiss den Riegel.")
         self.assertIsNone(mirror.get(food["id"]))
