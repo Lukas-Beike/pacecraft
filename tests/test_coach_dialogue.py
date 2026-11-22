@@ -2143,8 +2143,8 @@ class CoachDialogueTests(DialogueHarness, unittest.TestCase):
         self.assertEqual(result["pending_operations"], [])
         self.assertEqual(result["diagnostic_error"]["reason"], "provider_unavailable")
         text = result["message"]["content"]
-        self.assertIn("KI-Dienst ist vorübergehend nicht verfügbar", text)
-        self.assertIn("erneut", text)
+        self.assertIn("ist vorübergehend nicht verfügbar", text)
+        self.assertIn("noch einmal", text)
         self.assertIn(
             "Bereits erfolgreich ausgeführt: Plansynchronisierung beauftragt", text
         )

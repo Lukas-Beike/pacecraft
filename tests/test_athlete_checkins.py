@@ -14,6 +14,7 @@ from backend.athlete.checkins import (
     normalize_checkin,
     recurring_complaints,
 )
+from backend.canonical.change_detail import day_label
 from backend.coach.change_receipts import change_summary, turn_changes
 from backend.db.repositories import CheckinRepository
 from backend.errors import AppError
@@ -590,6 +591,10 @@ class AthleteCheckinHistoryTests(unittest.TestCase):
         summary = change_summary([receipt])
         self.assertTrue(summary["undoable"])
         self.assertEqual(turn_changes([receipt]), changes)
+        # The line names the day and what the save did (#3931).
+        self.assertEqual(
+            summary["details"], [f"Check-in, {day_label(TODAY.isoformat())}: neu"]
+        )
 
     def test_infection_hint_illness_is_the_check_in_record_and_undo_removes_it(self):
         # #3821: "Ich bin krank" writes what a Coach check-in with the same text writes.

@@ -5,8 +5,9 @@ from __future__ import annotations
 from datetime import date
 from typing import Any
 
+from backend.canonical.change_detail import detail_line
 from backend.coach.outcomes import coach_effect_label
-from backend.coach.tool_specs import TOOL_DOMAIN
+from backend.coach.tool_specs import DELETE_TOOLS, TOOL_DOMAIN
 from backend.planning.plan_checks import BLOCKING_CODES, FINDING_CODES
 
 # Write tools whose success leaves athlete records unchanged: previews and
@@ -168,6 +169,34 @@ def _append_new(target: list[Any], items: list[Any]) -> None:
             target.append(item)
 
 
+_MAX_DETAILS = 12
+_REFUSED_DELETE = "Löschen nicht ausgeführt – bitte bestätigen"
+
+
+def _detail_lines(entry: dict[str, Any]) -> list[str]:
+    """One line per tracked change of a write, as far as its record names it."""
+    lines = []
+    for change in entry.get("changes") or []:
+        if isinstance(change, dict) and (
+            line := detail_line(
+                str(change.get("entity_type")),
+                str(change.get("action")),
+                change.get("detail"),
+            )
+        ):
+            lines.append(line)
+    return lines
+
+
+def _undo_note(blockers: list[tuple[Any, str]]) -> str:
+    """Why the turn has no undo: the writes whose effects change history misses."""
+    if not blockers:
+        return ""
+    if all(TOOL_DOMAIN.get(tool) == "planning" for tool, _ in blockers):
+        return "Rückgängig im Kalender"
+    return f"Nicht rückgängig zu machen: {' · '.join(dict.fromkeys(label for _, label in blockers))}"
+
+
 def change_summary(command_receipts: list[dict[str, Any]]) -> dict[str, Any] | None:
     """Summarize a turn's applied writes for the chat, or ``None`` without any.
 
@@ -175,28 +204,47 @@ def change_summary(command_receipts: list[dict[str, Any]]) -> dict[str, Any] | N
     change history; otherwise undo would silently keep part of the turn.
     """
     labels: list[str] = []
+    details: list[str] = []
+    blockers: list[tuple[Any, str]] = []
     notes: list[dict[str, Any]] = []
-    undoable = True
+    # A removal that waits for the athlete's confirmation (AGENTS.md): not done, not failed.
+    refused = False
     for entry in command_receipts:
         tool = entry.get("tool")
         if not _is_change(tool, entry.get("result")):
+            result = entry.get("result")
+            refused |= (
+                tool in DELETE_TOOLS
+                and not entry.get("resolved")
+                and isinstance(result, dict)
+                and result.get("status") == "approval_required"
+            )
             continue
-        undoable = (
-            undoable and tool in _FULLY_TRACKED_TOOLS and bool(entry.get("changes"))
-        )
         label = coach_effect_label(entry)
+        if not (tool in _FULLY_TRACKED_TOOLS and entry.get("changes")):
+            blockers.append((tool, label))
+        _append_new(details, _detail_lines(entry))
         if detail := _slot_detail(entry["result"]):
             label = f"{label} · {detail}"
         _append_new(labels, [label, *_gap_fill_lines(tool, entry)])
         # A card-free sync names each deletion at the provider, alike or not (#2342).
         labels.extend(entry["result"].get("remote_removals", []))
         _append_new(notes, _plan_notes(entry["result"]))
-    if not labels:
+    if not labels and not refused:
         return None
-    summary = {"labels": labels, "undoable": undoable, "undone_at": None}
-    if notes:
-        summary["plan_check_notes"] = notes
-    return summary
+    note = _undo_note([item for item in blockers if item[0] != "undo_training_change"])
+    extras = {
+        "not_done": [_REFUSED_DELETE] if refused else [],
+        "details": details[:_MAX_DETAILS],
+        "undo_note": note,
+        "plan_check_notes": notes,
+    }
+    return {
+        "labels": labels,
+        "undoable": bool(labels) and not blockers,
+        "undone_at": None,
+        **{key: value for key, value in extras.items() if value},
+    }
 
 
 def turn_changes(command_receipts: list[dict[str, Any]]) -> list[dict[str, Any]]:

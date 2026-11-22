@@ -2,7 +2,7 @@ const assert = require("node:assert/strict");
 const { test } = require("node:test");
 const { extractFunctions, fakeDocument, FakeElement } = require("./frontend-harness.cjs");
 
-const TURN_RENDERERS = ["appendMessageChanges", "groupPlanNotes", "appendPlanNotes", "undoCoachTurn", "appendFailedTurnRetry", "resendChatText", "profileSetupButton"];
+const TURN_RENDERERS = ["appendMessageChanges", "changesLine", "groupPlanNotes", "appendPlanNotes", "weekMonday", "appendChangeLines", "undoCoachTurn", "FAILURE_NEEDS_CONNECTIONS", "appendFailedTurnActions", "resendChatText", "profileSetupButton"];
 
 function harness({ confirmed = true, apiResult, apiError } = {}) {
   const calls = { api: [], confirm: [], toasts: [], loads: [], renders: 0 };
@@ -60,12 +60,12 @@ test("plan notes render safe labels, dates, evidence and warning emphasis", () =
       { code: "calendar_load", dates: ["2026-11-03"], severity: "notice" }],
   }) });
   assert.equal(node.children[1].className, "message-plan-note is-warning");
-  assert.match(node.children[1].textContent, /Warnung: Laufsprung · 02\.11\.2026 · Beobachtungsstudie/);
-  assert.match(node.children[2].textContent, /Hinweis: Harte Tage in Folge · Praxisbasiert/);
-  assert.match(node.children[3].textContent, /Hinweis: Lastsprung · Aus Distanzstudien übertragen/);
+  assert.match(node.children[1].textContent, /Warnung: Laufsprung am 02\.11\.2026 \(Beobachtungsstudie/);
+  assert.match(node.children[2].textContent, /Hinweis: Harte Tage in Folge \(Praxisbasiert\)\./);
+  assert.match(node.children[3].textContent, /Hinweis: Lastsprung \(Aus Distanzstudien übertragen/);
   assert.match(node.children[4].textContent, /Hinweis: Wochenlast steigt/);
   assert.match(node.children[5].textContent, /Hinweis: Last unbekannt/);
-  assert.match(node.children[6].textContent, /Hinweis: Kalender und Einheit · 03\.11\.2026/);
+  assert.match(node.children[6].textContent, /Hinweis: Kalender und Einheit am 03\.11\.2026 \(/);
 });
 
 test("repeated plan notes condense to one line, distribution weeks by their first day (#2617)", () => {
@@ -78,11 +78,15 @@ test("repeated plan notes condense to one line, distribution weeks by their firs
         { code: "calendar_load", dates: ["2026-11-03", "2026-11-05"], severity: "notice" }]),
   }) });
   assert.equal(node.children.length, 3);
-  assert.equal(node.children[1].textContent, "Hinweis: Intensitätsverteilung · Wochen ab 09.11.2026, 16.11.2026, 23.11.2026 · Praxisbasierte Referenzbereiche");
-  assert.match(node.children[2].textContent, /^Hinweis: Kalender und Einheit · 03\.11\.2026, 05\.11\.2026 · /);
+  assert.equal(node.children[1].textContent, "Hinweis: Intensitätsverteilung in den Wochen ab 09.11.2026, 16.11.2026, 23.11.2026 (Praxisbasierte Referenzbereiche).");
+  assert.match(node.children[2].textContent, /^Hinweis: Kalender und Einheit am 03\.11\.2026, 05\.11\.2026 \(/);
   const single = new FakeElement("div");
   context.appendPlanNotes(single, [{ code: "intensity_distribution", dates: week(16), severity: "notice" }]);
-  assert.match(single.children[0].textContent, /Intensitätsverteilung · Woche ab 16\.11\.2026 · /);
+  assert.match(single.children[0].textContent, /Intensitätsverteilung in der Woche ab 16\.11\.2026 \(/);
+  // A note dated on a Sunday names its week by the Monday before (#3931).
+  const sunday = new FakeElement("div");
+  context.appendPlanNotes(sunday, [{ code: "intensity_distribution", dates: ["2026-11-22"], severity: "notice" }]);
+  assert.match(sunday.children[0].textContent, /in der Woche ab 16\.11\.2026 \(/);
 });
 
 test("undone, untracked and turn-less changes show no undo button", () => {
@@ -185,7 +189,7 @@ test("the newest failed reply sends its request again and keeps the draft", () =
   const { context, state, input, submitted } = retryHarness(messages, { draft: "Entwurf", attachments: ["a.fit"] });
   input.dataset.requestKind = "morning_checkin";
   const node = new FakeElement("div");
-  context.appendFailedTurnRetry(node, messages[1], true);
+  context.appendFailedTurnActions(node, messages[1], true);
   const retry = node.children[0];
   assert.equal(retry.textContent, "Erneut senden");
   assert.match(node.className, /is-failed/);
@@ -207,7 +211,65 @@ test("older, attached or successful replies offer no retry", () => {
   for (const [messages, message, latest] of cases) {
     const { context } = retryHarness(messages);
     const node = new FakeElement("div");
-    context.appendFailedTurnRetry(node, message, latest);
+    context.appendFailedTurnActions(node, message, latest);
     assert.equal(node.children.length, 0);
   }
+});
+
+test("a receipt lists one line per change, why undo is missing and a removal not carried out", () => {
+  const { context } = harness();
+  const node = new FakeElement("div");
+  context.appendMessageChanges(node, { role: "assistant", client_turn_id: "turn-1", coach_changes: changes({
+    undoable: false,
+    details: ["Langer Lauf, So 22.11.: Dauer 80 → 85 min"],
+    undo_note: "Rückgängig im Kalender",
+    not_done: ["Löschen nicht ausgeführt – bitte bestätigen"],
+  }) });
+  assert.equal(node.children[1].className, "message-changes-details");
+  assert.equal(node.children[1].children[0].textContent, "Langer Lauf, So 22.11.: Dauer 80 → 85 min");
+  assert.deepEqual(node.children.slice(2).map((child) => child.textContent), ["Rückgängig im Kalender", "Löschen nicht ausgeführt – bitte bestätigen"]);
+});
+
+test("a refused removal alone still shows its line", () => {
+  const { context } = harness();
+  const node = new FakeElement("div");
+  context.appendMessageChanges(node, { role: "assistant", client_turn_id: "turn-1", coach_changes: changes({ labels: [], undoable: false, not_done: ["Löschen nicht ausgeführt – bitte bestätigen"] }) });
+  assert.equal(node.children.length, 1);
+  assert.equal(node.children[0].textContent, "Löschen nicht ausgeführt – bitte bestätigen");
+});
+
+test("an undone turn shows its receipt as taken back and no undo note", () => {
+  const { context } = harness();
+  const node = new FakeElement("div");
+  context.appendMessageChanges(node, { role: "assistant", client_turn_id: "turn-1", coach_changes: changes({ undone_at: "2026-10-14T10:00:00Z", undo_note: "Rückgängig im Kalender" }) });
+  assert.match(node.className, /is-undone/);
+  assert.equal(node.children.length, 1);
+});
+
+test("an undo refused because a record changed says so on the receipt", async () => {
+  const error = Object.assign(new Error("Änderung seitdem"), { status: 409 });
+  const { context, state, calls } = harness({ apiError: error });
+  state.data.messages = [{ role: "assistant", client_turn_id: "turn-1", coach_changes: changes() }];
+  await context.undoCoachTurn("turn-1", { disabled: false });
+  assert.equal(state.data.messages[0].coach_changes.undoable, false);
+  assert.match(state.data.messages[0].coach_changes.undo_note, /^Nicht mehr rückgängig zu machen$/);
+  assert.equal(calls.renders, 1);
+});
+
+test("a stopped or failed reply keeps its status style; the newest offers retry or the connections", () => {
+  const user = { role: "user", client_turn_id: "turn-1", content: "Analyse" };
+  const stopped = { role: "assistant", client_turn_id: "turn-1", content: "x", coach_cancelled: true };
+  const noKey = { role: "assistant", client_turn_id: "turn-1", content: "x", coach_failed: true, coach_failure_reason: "credit_balance_exhausted" };
+  const stoppedNode = new FakeElement("div");
+  retryHarness([user, stopped]).context.appendFailedTurnActions(stoppedNode, stopped, true);
+  assert.match(stoppedNode.className, /is-stopped/);
+  assert.equal(stoppedNode.children[0].textContent, "Erneut senden");
+  const keyNode = new FakeElement("div");
+  retryHarness([user, noKey]).context.appendFailedTurnActions(keyNode, noKey, true);
+  assert.equal(keyNode.children[0].textContent, "Anbindungen öffnen");
+  assert.equal(keyNode.children.length, 1);
+  const olderNode = new FakeElement("div");
+  retryHarness([user, noKey]).context.appendFailedTurnActions(olderNode, noKey, false);
+  assert.match(olderNode.className, /is-failed/);
+  assert.equal(olderNode.children.length, 0);
 });

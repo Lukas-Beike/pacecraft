@@ -236,7 +236,7 @@ The client SHALL display incremental response text and distinguish started, back
 
 #### Scenario: Failed reply
 - **WHEN** the newest Coach reply of a turn failed and the request was plain text
-- **THEN** that reply shows its error with one "Erneut senden" action that sends the same text and request kind as a new turn without disturbing the current draft or attachments; older replies and requests with attachments offer no retry.
+- **THEN** that reply shows its error with one "Erneut senden" action that sends the same text and request kind as a new turn without disturbing the current draft or attachments, or "Anbindungen öffnen" for a failure only the connections can fix; every failed or stopped reply keeps its status style without a model label, older ones without action, and a stopped reply reads "Abgebrochen" with the same retry.
 
 Evidence: `public/coach.js::readChatStream`, `public/coach.js::recoverChatRequestFailure`, `public/coach.js::drainChatQueue`, `public/coach.js::cancelChat`, `public/coach.js::appendFailedTurnRetry`; `e2e/contracts.spec.js::every definite HTTP rejection retains the draft and concrete error`, `e2e/contracts.spec.js::a completed answer accepts an immediate follow-up without showing a queue`, `e2e/audit-remediation.spec.js::cancel before stream identity is retained for the matching operation`, `tests/coach-turn-undo.test.cjs::the newest failed reply sends its request again and keeps the draft`, `tests/coach-turn-undo.test.cjs::older, attached or successful replies offer no retry`. Durable Coach effects, receipts, approvals, and undo use the Coach/history specifications.
 
@@ -757,7 +757,11 @@ Evidence: `public/coach.js::chatSendLabel`; `public/coach.js::updateChatSendButt
 
 ### Requirement: Reply annotations and receipts
 
-Under a Coach reply the client SHALL show its change labels joined by " · ", then one line per plan note code and severity as "Warnung|Hinweis: <label> · <dates> · <evidence>" using a fixed label and evidence phrase per note code, the dates of all its notes merged (an intensity distribution note names its week as "Woche ab <first planned day>", several as "Wochen ab <days>"); unknown codes are skipped. A user message with files SHALL show "Anhänge: <names>" and offer no edit action.
+Under a Coach reply the client SHALL show its change labels joined by " · ", the records changed, why no undo is offered, a removal not carried out and one sentence per plan note code and severity (scenario "Receipt lines"); unknown codes are skipped. A user message with files SHALL show "Anhänge: <names>" and offer no edit action.
+
+#### Scenario: Receipt lines
+- **WHEN** a Coach reply carries a change summary
+- **THEN** the labels are struck after "Zurückgenommen: " once undone and the reply text is muted; one line per changed record follows when the receipt has them (for example "Langer Lauf, So 22.11.: Dauer 80 → 85 min"), then why no undo is offered ("Rückgängig im Kalender" or "Nicht rückgängig zu machen: <changes>", after a refused undo "Nicht mehr rückgängig zu machen"), "Löschen nicht ausgeführt – bitte bestätigen" for a removal not carried out, and plan notes as "Warnung|Hinweis: <label> am <dates> (<evidence>)." with the dates of all notes merged; an intensity distribution note names its week by its Monday ("in der Woche ab <date>", several "in den Wochen ab <dates>")
 
 #### Scenario: Receipt toast
 - **WHEN** a turn reports command receipts

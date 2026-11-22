@@ -5,6 +5,7 @@ from __future__ import annotations
 import unittest
 from typing import Any
 
+from backend.canonical.change_detail import change_detail, detail_line
 from backend.coach.change_receipts import change_summary, turn_changes
 from backend.coach.request_payload import model_confirmed_steps
 
@@ -238,6 +239,95 @@ class ChangeSummaryTests(unittest.TestCase):
         ]
 
         self.assertEqual(turn_changes(receipts), [_PROFILE_CHANGE])
+
+    def test_a_change_names_its_record_and_the_values_it_replaced(self) -> None:
+        update = _LIBRARY_CHANGE | {
+            "entity_type": "planned_unit",
+            "action": "update",
+            "detail": {
+                "subject": "Langer Lauf",
+                "date": "2026-11-22",
+                "fields": [["duration_minutes", 80, 85]],
+            },
+        }
+        created = _LIBRARY_CHANGE | {
+            "entity_type": "nutrition_template",
+            "detail": {"subject": "Haferbrei", "date": "", "fields": []},
+        }
+        summary = change_summary(
+            [
+                _step("apply_training_patch", changes=[update]),
+                _step("save_nutrition_template", changes=[created, created]),
+            ]
+        )
+
+        assert summary is not None
+        self.assertEqual(
+            summary["details"],
+            ["Langer Lauf, So 22.11.: Dauer 80 → 85 min", "Haferbrei: neu"],
+        )
+
+    def test_a_turn_without_undo_says_why(self) -> None:
+        planning = change_summary([_step("apply_training_patch")])
+        mixed = change_summary([_step("apply_training_patch"), _step("save_checkin")])
+        tracked = change_summary([_step("update_profile", changes=[_PROFILE_CHANGE])])
+
+        assert planning is not None and mixed is not None and tracked is not None
+        self.assertEqual(planning["undo_note"], "Rückgängig im Kalender")
+        self.assertEqual(
+            mixed["undo_note"],
+            "Nicht rückgängig zu machen: Geplante Einheiten angepasst"
+            " · Tages-Check-in gespeichert",
+        )
+        self.assertNotIn("undo_note", tracked)
+
+    def test_a_removal_that_was_not_carried_out_says_so(self) -> None:
+        waiting = {"ok": True, "status": "approval_required"}
+        refused = change_summary([_step("delete_nutrition_entry", waiting)])
+        beside_change = change_summary(
+            [
+                _step("update_profile", changes=[_PROFILE_CHANGE]),
+                _step("delete_nutrition_entry", waiting),
+            ]
+        )
+        # A delete that failed, or failed and then succeeded, was not waiting for a confirmation.
+        failed = change_summary(
+            [_step("delete_nutrition_entry", {"ok": False, "error": "x"})]
+        )
+        retried = change_summary(
+            [
+                {**_step("delete_nutrition_entry", waiting), "resolved": True},
+                _step("update_profile", changes=[_PROFILE_CHANGE]),
+            ]
+        )
+        self.assertIsNone(failed)
+        assert retried is not None
+        self.assertNotIn("not_done", retried)
+
+        self.assertEqual(
+            refused,
+            {
+                "labels": [],
+                "undoable": False,
+                "undone_at": None,
+                "not_done": ["Löschen nicht ausgeführt – bitte bestätigen"],
+            },
+        )
+        assert beside_change is not None
+        self.assertTrue(beside_change["undoable"])
+        self.assertEqual(len(beside_change["not_done"]), 1)
+
+    def test_a_profile_line_is_titled_profile_not_with_the_athletes_name(self) -> None:
+        detail = change_detail(
+            "profile",
+            {"name": "Ada", "weight_kg": 70},
+            {"name": "Ada", "weight_kg": 72},
+        )
+        assert detail is not None
+        self.assertEqual(detail["subject"], "")
+        self.assertEqual(
+            detail_line("profile", "update", detail), "Profil: Gewicht 70 → 72 kg"
+        )
 
     def test_the_model_never_receives_undo_references(self) -> None:
         steps = [_step("update_profile", changes=[_PROFILE_CHANGE])]
