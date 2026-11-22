@@ -272,7 +272,7 @@ The diary SHALL subtly color complete macro totals outside athlete-specific dail
 
 #### Scenario: Training-adjusted carbohydrate range
 - **WHEN** the day's training is known
-- **THEN** the base range is 3–5 g/kg below 90 minutes, 5–7 g/kg from 90 minutes, and 6–10 g/kg from 120 minutes; at least ten minutes in zone 4 or above within one session raises it one range, capped at 6–10 g/kg.
+- **THEN** the base range is 3–5 g/kg below 60 minutes, 5–7 g/kg from 60 minutes, and 6–10 g/kg from 90 minutes; at least ten minutes in zone 4 or above within one session raises it one range, capped at 6–10 g/kg; from 240 minutes it is 8–12 g/kg (Thomas, Erdman & Burke 2016, Table 1, #3920).
 
 #### Scenario: Planned and completed sessions
 - **WHEN** a completed activity is matched to a planned session
