@@ -128,3 +128,26 @@ test("@responsive a meal that changed meanwhile is refused and a failed reload s
   await expect(page.locator("#nutritionStatus")).toContainText("Mahlzeit geändert.");
   expect(posts).toHaveLength(1);
 });
+
+test("@responsive an error that arrives after the dialog was closed shows as a toast", async ({ page }) => {
+  await mockDiary(page);
+  let release;
+  const gate = new Promise((resolve) => { release = resolve; });
+  await page.route("**/api/nutrition/entry/components", async (route) => {
+    if (route.request().method() !== "POST") return route.fallback();
+    await gate;
+    return route.fulfill({ status: 500, json: { ok: false, error: "Serverfehler" } });
+  });
+  const errors = [];
+  page.on("pageerror", (error) => errors.push(error.message));
+  await page.goto("/#nutrition/diary");
+  await page.locator("#nutritionEntries .nutrition-card").getByRole("button", { name: "Mahlzeit bearbeiten: Reis mit Tofu" }).click();
+  const dialog = page.locator("#nutritionMealEditDialog");
+  await dialog.locator(".edit-row").first().getByRole("spinbutton").fill("1");
+  await dialog.locator("#nutritionMealEditSave").click();
+  await dialog.locator("#nutritionMealEditCancel").click();
+  await expect(dialog).toBeHidden();
+  release();
+  await expect(page.locator(".toast")).toContainText("Mahlzeit konnte nicht gespeichert werden");
+  expect(errors).toEqual([]);
+});

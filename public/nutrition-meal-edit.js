@@ -158,7 +158,8 @@ function nutritionMealSwapResult(row, food) {
 
 async function saveNutritionMealEdit() {
   const nodes = nutritionMealEditNodes();
-  const { item, rows, revision, generation } = nutritionMealEdit;
+  const edit = nutritionMealEdit;
+  const { item, rows, revision, generation } = edit;
   if (!nodes.form.reportValidity()) return;
   // Without a component the meal goes, after its own confirmation.
   if (rows.every((row) => row.removed)) {
@@ -172,7 +173,10 @@ async function saveNutritionMealEdit() {
     result = await api("/api/nutrition/entry/components", { method: "POST", body: JSON.stringify({ id: item.id, revision, edits: nutritionMealEditChanges() }) });
   } catch (error) {
     if (generation !== state.sessionGeneration) return;
-    nodes.status.textContent = `Mahlzeit konnte nicht gespeichert werden: ${error.message}`;
+    const message = `Mahlzeit konnte nicht gespeichert werden: ${error.message}`;
+    // The dialog was closed while the request ran: a toast carries the error.
+    if (!nodes.root.open || nutritionMealEdit !== edit) { toast(message, true); return; }
+    nodes.status.textContent = message;
     updateNutritionMealEditSave();
     return;
   }
