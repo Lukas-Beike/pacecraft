@@ -23,6 +23,9 @@ from backend.http_api.route_table import CONTRACT_LABELS, route_reference
 DOC = Path(__file__).resolve().parents[1] / "docs" / "api-routes.md"
 BEGIN = "<!-- BEGIN GENERATED ROUTES -->\n"
 END = "<!-- END GENERATED ROUTES -->\n"
+PARITY_DOC = DOC.with_name("ui-coach-parity.md")
+PARITY_VALUES = ("both", "UI only", "Coach only", "neither", "UI by rule")
+GAPS = {"UI only", "Coach only", "neither"}
 PROSE_ROUTE = re.compile(r"`(GET|POST|PUT) (/api/[^`\s]+)`")
 # Former aliases the document names as no longer registered.
 RETIRED_ALIASES = {"/api/logs/clear", "/api/diagnostics/clear"}
@@ -99,6 +102,45 @@ class ApiRoutesDocTests(unittest.TestCase):
         for alias in RETIRED_ALIASES:
             self.assertIn(f"`{alias}`", document)
             self.assertNotIn(alias, {path for _, path in registered})
+
+    def test_ui_coach_parity_matrix_names_every_tool_and_write_route(self):
+        # #3949: every Coach tool and athlete write route has its row, a gap its issue.
+        document = PARITY_DOC.read_text(encoding="utf-8")
+        tools = {tool["name"] for tool in server.COACH_DIALOGUE_TOOLS}
+        routes = {
+            (route.method, re.sub(r"\{(\w+)(?::[^}]+)?\}", r"{\1}", route.path)): route
+            for route in server.HTTP_API.route_table.routes
+        }
+        named_routes = set(PROSE_ROUTE.findall(document))
+        self.assertEqual(sorted(named_routes - set(routes)), [])
+        writes = {
+            key for key, route in routes.items() if route.access == "session+csrf"
+        }
+        self.assertEqual(sorted(writes - named_routes), [])
+        rows = [
+            [cell.strip() for cell in line.strip("|").split("|")]
+            for line in document.splitlines()
+            if line.startswith("| ") and not line.startswith(("| Domain", "| ---"))
+        ]
+        named_tools = set()
+        counts = dict.fromkeys(PARITY_VALUES, 0)
+        for _, action, ui, coach, _, parity, gap in rows:
+            # A parenthesis names the tool's action or field, not a tool.
+            outside = " ".join(part.split(")")[-1] for part in coach.split("("))
+            row_tools = set(re.findall(r"`([a-z_]+)`", outside))
+            self.assertEqual(sorted(row_tools - tools), [], action)
+            named_tools |= row_tools
+            sides = (ui != "—", bool(row_tools))
+            expected = {(True, True): "both", (True, False): "UI only"}
+            expected |= {(False, True): "Coach only", (False, False): "neither"}
+            if parity != "UI by rule" or sides != (True, False):
+                self.assertEqual(parity, expected[sides], action)
+            self.assertEqual(bool(re.fullmatch(r"#\d+", gap)), parity in GAPS, action)
+            counts[parity] += 1
+        mechanics = set(re.findall(r"`([a-z_]+)`", document.split("## Outside")[1]))
+        self.assertEqual(sorted(tools - named_tools - mechanics), [])
+        stated = ", ".join(f"{value} {count}" for value, count in counts.items())
+        self.assertIn(f"Counts: {stated}.", document)
 
 
 def write_document(path: Path = DOC) -> None:
