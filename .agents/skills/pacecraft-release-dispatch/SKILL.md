@@ -6,7 +6,7 @@ description: Base skill. Dispatch the daily release workflow on develop and foll
 # Dispatch and follow a release
 
 ```powershell
-python scripts/release_dispatch.py dispatch [--version <MAJOR.MINOR.PATCH>] [--when-green [--timeout <min>]]
+python scripts/release_dispatch.py dispatch [--version <MAJOR.MINOR.PATCH>] [--when-quiet [--quiet <min>]] [--when-green] [--timeout <min>]
 python scripts/release_dispatch.py follow [--version <MAJOR.MINOR.PATCH>] [--since <time printed by dispatch>] [--wait [--timeout <min>]]
 ```
 
@@ -18,10 +18,19 @@ green run within the time limit (60 min) exits 3. `--wait` follows the chain by
 itself, printing only links that changed, until published (0), failed (1) or
 the time limit (90 min, exit 3).
 
+Batch user-visible merges into one release: every version commit puts each open
+PR behind `develop` and restarts its CI (#3922). Dispatch with `--when-quiet
+--when-green`: `--when-quiet` first waits until no PR merged into `develop` in
+the last `--quiet` minutes (default 10) and no armed PR is down to its last 3
+running checks, then the green check runs; each wait has its own `--timeout`,
+and not quiet within it exits 3. A lasting GitHub error is a later look.
+
 `dispatch` starts `daily-release.yml` on `develop` (without `--version` the
 workflow picks the next patch) and prints the run it started. `follow` prints
 one line per link: version PR, promotion PR to `main`, the GitHub Release, and
-the `Test and publish container image` run for that tag. Exit 0 published,
+the `Test and publish container image` run for that tag. Once the version PR
+merged, `contains #a #b` lists the PRs merged after the previous version PR, so
+a late merge that missed the release shows. Exit 0 published,
 1 a link failed or a PR was closed unmerged, 3 still in progress (call it
 again later), 2 bad input or a failed `gh` call. A transient GitHub error
 (HTTP 5xx, a timeout) is retried with a backoff and, if it lasts, reported as
