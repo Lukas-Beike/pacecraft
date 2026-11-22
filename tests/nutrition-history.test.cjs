@@ -165,3 +165,18 @@ test("a Verlauf period keeps the year of its start, and a long period labels its
   vm.runInContext("nutritionWeekShown = { days: new Array(365) }", ctx);
   assert.equal(ctx.nutritionDayLabel("2026-11-18"), "18.11.2026");
 });
+
+// #3930 N-06: only a missing confidence hides the line; a photo read of 0 is the lowest reading and keeps its warning.
+test("the confidence line is hidden for a manual product and shown, with its warning, for a photo read of 0", () => {
+  const line = { hidden: false, textContent: "" };
+  const checklist = { hidden: false, replaceChildren() {} };
+  const form = { querySelector: (selector) => (selector === "[data-extraction-confidence]" ? line : checklist), elements: { namedItem: () => null } };
+  const { setNutritionProductConfidence } = extractFunctions("nutrition.js", ["setNutritionProductConfidence"], { h: () => ({}) });
+  setNutritionProductConfidence(form, { confidence: null });
+  assert.deepEqual([line.hidden, line.textContent], [true, ""]);
+  setNutritionProductConfidence(form, { confidence: 0 });
+  assert.equal(line.hidden, false);
+  assert.match(line.textContent, /^Erkennungssicherheit: 0 %\. Geringe Erkennungssicherheit/);
+  setNutritionProductConfidence(form, { confidence: 0.9 });
+  assert.match(line.textContent, /^Erkennungssicherheit: 90 %\. Erkannte Werte/);
+});

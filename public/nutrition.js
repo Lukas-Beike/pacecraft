@@ -819,8 +819,8 @@ function setNutritionProductConfidence(form, product) {
   const confidence = Number(product.confidence);
   const warning = Number.isFinite(confidence) && confidence < 0.65 ? "Geringe Erkennungssicherheit. Werte besonders sorgfältig prüfen." : "Erkannte Werte bitte mit dem Etikett abgleichen.";
   const confidenceLine = form.querySelector("[data-extraction-confidence]");
-  // Only values read from a photo carry a confidence; a manual product or an edit has none, and 0 is no reading (#3930).
-  const extracted = product.confidence != null && Number.isFinite(confidence) && confidence > 0;
+  // Only values read from a photo carry a confidence; a manual product or an edit has none. 0 is a real, lowest reading (#3930).
+  const extracted = product.confidence != null && product.confidence !== "" && Number.isFinite(confidence);
   confidenceLine.hidden = !extracted;
   confidenceLine.textContent = extracted ? `Erkennungssicherheit: ${Math.round(confidence * 100)} %. ${warning}` : "";
   const checklist = form.querySelector("[data-extraction-warnings]");
