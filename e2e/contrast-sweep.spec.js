@@ -203,9 +203,13 @@ async function expectContrast(page, view, theme, scopes = SCOPES) {
     return `${view} [${theme}] ${node.target.join(" ")}: ${data.contrastRatio} < ${data.expectedContrastRatio} (${data.fgColor} on ${data.bgColor}, ${data.fontSize}, ${data.fontWeight})`;
   }));
   expect(failures, `colour contrast violations: ${failures.join(" | ")}`).toEqual([]);
-  const undecided = incomplete.flatMap((result) => result.nodes.map((node) => ({ target: node.target.join(" "), message: node.any[0]?.message || result.help })))
+  // The elements axe names as covering the node say what to fix.
+  const undecided = incomplete.flatMap((result) => result.nodes.map((node) => ({
+    target: node.target.join(" "), message: node.any[0]?.message || result.help,
+    by: (node.any[0]?.relatedNodes || []).map((related) => related.target.join(" ")).join(", "),
+  })))
     .filter(({ target, message }) => !INCOMPLETE_ALLOWED.some((allowed) => allowed.target.test(target) && allowed.message.test(message)))
-    .map(({ target, message }) => `${view} [${theme}] ${target}: ${message}`);
+    .map(({ target, message, by }) => `${view} [${theme}] ${target}: ${message}${by ? ` (by ${by})` : ""}`);
   expect(undecided, `colour contrast axe could not decide: ${undecided.join(" | ")}`).toEqual([]);
 }
 

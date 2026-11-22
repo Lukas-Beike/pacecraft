@@ -159,6 +159,8 @@ test("@responsive whole screens keep their controls and words intact at 200 % te
     await page.evaluate((target) => AppRouter.navigate(target, { historyMode: "replace" }), route);
     await page.waitForTimeout(600);
     await page.evaluate(() => document.querySelectorAll(".panel.active details:not([open])").forEach((element) => { if (!element.matches(".planned-entry")) element.open = true; }));
+    // A race plan is read when its card opens; the screen is measured with it, not before.
+    await page.waitForFunction(() => !document.querySelector(".panel.active [data-state='loading']"));
     await page.waitForTimeout(400);
     const problems = await wholeScreenProblems(page);
     if (problems.length) {
