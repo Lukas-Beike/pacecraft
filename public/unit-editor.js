@@ -110,33 +110,32 @@ function unitEditorFrom({ kind, entry, dateKey }) {
   };
 }
 
+// The content a strength or an endurance unit sends: exercises, or the steps as text with their duration.
+function unitContentFields(editor) {
+  if (editor.sport === "WeightTraining") {
+    const structure = unitExercises(editor.exercises);
+    // The server writes the text from the exercises; the lines only name them.
+    return { strength_intensity: editor.intensity || null, strength_structure: structure, description: structure.map((item) => `${item.name}: ${item.sets}x${item.reps}`).join("\n"), duration_minutes: Number(editor.duration) };
+  }
+  const text = editor.textMode ? editor.text.trim() : unitStepsText(editor.rows);
+  return { strength_intensity: null, description: text, duration_minutes: editor.textMode ? Number(editor.duration) : unitStepsMinutes(editor.rows) };
+}
+
+// Where and when a unit stands: its day, a time (midnight is the stored form of none), its library entry and plan.
+function unitPlacementFields(editor) {
+  const body = { date: editor.date };
+  if (editor.time || editor.originalTime) body.starts_at_local = `${editor.date}T${editor.time || "00:00"}:00`;
+  if (editor.templateId) body.template_id = editor.templateId;
+  if (editor.planId && !editor.entry) body.plan_id = editor.planId;
+  return body;
+}
+
 function unitEditorBody(editor) {
   const strength = editor.sport === "WeightTraining";
-  const sportKey = UNIT_EDITOR_SPORT_KEY[editor.sport];
-  const body = { name: editor.name.trim(), target: strength ? "AUTO" : editor.target };
+  const focus = FOCUS_OPTIONS[UNIT_EDITOR_SPORT_KEY[editor.sport]] ? editor.focus || null : null;
+  const body = { name: editor.name.trim(), target: strength ? "AUTO" : editor.target, session_focus: focus, ...unitContentFields(editor) };
   if (!editor.entry || editor.sport !== editor.originalSport) body.sport = editor.sport;
-  body.session_focus = editor.focus || null;
-  if (strength) {
-    body.strength_intensity = editor.intensity || null;
-    body.strength_structure = unitExercises(editor.exercises);
-    // The server writes the text from the exercises; the lines only name them.
-    body.description = body.strength_structure.map((item) => `${item.name}: ${item.sets}x${item.reps}`).join("\n");
-    body.duration_minutes = Number(editor.duration);
-  } else {
-    body.strength_intensity = null;
-    const text = editor.textMode ? editor.text.trim() : unitStepsText(editor.rows);
-    body.description = text;
-    body.duration_minutes = editor.textMode ? Number(editor.duration) : unitStepsMinutes(editor.rows);
-  }
-  if (!FOCUS_OPTIONS[sportKey]) body.session_focus = null;
-  if (editor.kind === "unit") {
-    body.date = editor.date;
-    // Midnight is the stored form of a unit without a time.
-    if (editor.time || editor.originalTime) body.starts_at_local = `${editor.date}T${editor.time || "00:00"}:00`;
-    if (editor.templateId) body.template_id = editor.templateId;
-    if (editor.planId && !editor.entry) body.plan_id = editor.planId;
-  }
-  return body;
+  return editor.kind === "unit" ? { ...body, ...unitPlacementFields(editor) } : body;
 }
 
 function unitEditorTitle(editor) {
