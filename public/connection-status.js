@@ -9,7 +9,7 @@ const CONNECTION_CHIPS = Object.freeze({
   unchecked: "Nicht geprüft",
 });
 
-// Mehr › Anbindungen is the shown route ("more" alone lands there too).
+// Mehr › Anbindungen is the shown route.
 function connectionsShown() {
   return globalThis.AppRouter?.baseRoute() === "more" && AppRouter.moreSegmentFromRoute() === "connections";
 }

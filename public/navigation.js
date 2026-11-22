@@ -15,7 +15,7 @@ const NAV_ROUTES = Object.freeze({
   "analysis/load": "dataPanel",
   "nutrition/body": "nutritionPanel",
   "analysis/recovery": "dataPanel",
-  more: "settingsPanel",
+  more: "profilePanel",
   "more/connections": "settingsPanel",
   "more/coach": "settingsPanel",
   "more/operations": "settingsPanel",
@@ -38,6 +38,7 @@ const NAV_VIEWS = (() => {
   const period = view(["/api/performance"], [...ANALYSIS_ACTIONS, ...PERIODS, "3 Monate anzeigen"], ALL_STATES);
   const overview = view([...PLAN_READS, "/api/activities?limit=100", "/api/analysis/week-review"], [...PLAN_ACTIONS, "Woche", "Monat", "Woche synchronisieren", "Verschieben", "Feedback", "Mit Coach besprechen", "Mit Coach besprechen"], ALL_STATES);
   const diary = view(["/api/nutrition/day", "/api/body/energy"], ["Ernährung aktualisieren", "Vorheriger Tag", "Nächster Tag", "Heute", "Als geschätzt markieren", "Nicht geschätzt", "Löschen", "Rückgängig", "Erneut laden"], ENTRIES);
+  const profile = view([...MORE_READS, "/api/profile", "/api/zones"], ["Profil speichern", "Lokal speichern", "Übernehmen"], ["empty", "offline"]);
   const connections = view([...MORE_READS, "/api/providers/connections", "/api/nutrition/yazio/status"], ["Verbindung prüfen", "Mit Garmin anmelden", "Garmin trennen", "Wahoo verbinden", "Synchronisieren", "Speichern", "Entfernen"], ["loading", "error", "notConfigured", "offline"]);
   return Object.freeze({
     coach: view(["/api/chat/history?limit=100"], ["Senden", "Morgen-Check-in", "Analyse & Plan", "Antwort stoppen", "Weitere Nachrichten laden", "Coach fragen"], ALL_STATES),
@@ -56,12 +57,12 @@ const NAV_VIEWS = (() => {
     "analysis/load": period,
     "nutrition/body": view(["/api/performance", "/api/body/skinfolds", "/api/body/energy"], ["Ernährung aktualisieren", ...PERIODS, "Gewicht eintragen", "Körperfett eintragen", "Prozent", "Hautfalten", "Speichern", "Löschen", "Abbrechen"], ENTRIES),
     "analysis/recovery": period,
-    more: connections,
+    more: profile,
     "more/connections": connections,
     "more/coach": view(MORE_READS, ["Chat zurücksetzen", "Kontext laden"], ["loading", "error", "offline"]),
     "more/operations": view([...MORE_READS, "/api/privacy/gps"], ["Logs herunterladen", "Daten exportieren", "Lokale Daten löschen", "Backup herunterladen", "Backup wiederherstellen", "Diagnose herunterladen", "Diagnose löschen", "Abmelden"], ENTRIES),
     "more/app": view([...MORE_READS, "/api/push"], ["System", "Hell", "Dunkel", "Benachrichtigungen aktivieren"], ["loading", "offline"]),
-    "more/profile": view([...MORE_READS, "/api/profile", "/api/zones"], ["Profil speichern", "Lokal speichern", "Übernehmen"], ["empty", "offline"]),
+    "more/profile": profile,
     "more/equipment": view([...MORE_READS, "/api/analysis/training-records"], ["Fahrrad", "Laufschuhe", "Wartung erledigt", "Rückgängig"], ENTRIES),
   });
 })();
@@ -121,7 +122,7 @@ globalThis.AppRouter = (() => {
 
   function moreSegmentFromRoute(route = AppState.state.route) {
     const segment = String(route || "").split("/")[1];
-    return moreSegments.includes(segment) ? segment : "connections";
+    return moreSegments.includes(segment) ? segment : moreSegments[0];
   }
 
   function activatePanel(panelRoute, navigationRoute) {

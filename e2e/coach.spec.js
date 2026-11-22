@@ -6,7 +6,7 @@ const navigation = [
   ["Kalender", "workoutsPanel", "plan/overview"],
   ["Analyse", "dataPanel", "analysis/running"],
   ["Ernährung", "nutritionPanel", "nutrition/diary"],
-  ["Mehr", "settingsPanel", "more"],
+  ["Mehr", "profilePanel", "more"],
 ];
 
 
@@ -224,7 +224,7 @@ test.describe("critical browser states", { tag: "@responsive" }, () => {
     await expect(page.locator("#dataPanel")).toHaveClass(/active/);
     await expect(page).toHaveURL(/#analysis\/running$/);
     await page.getByRole("link", { name: "Mehr", exact: true }).click();
-    await expect(page.locator("#settingsPanel")).toHaveClass(/active/);
+    await expect(page.locator("#profilePanel")).toHaveClass(/active/);
     await expect(page).toHaveURL(/#more$/);
     // An old Leistung link opens Laufen (#2265).
     await page.goto("/#analysis/performance");
@@ -237,14 +237,14 @@ test.describe("critical browser states", { tag: "@responsive" }, () => {
     const settingsNav = page.locator("#settingsPanel .more-segment-nav");
     await page.getByRole("link", { name: "Mehr", exact: true }).click();
     await expect(page).toHaveURL(/#more$/);
-    await expect(page.locator('[data-more-segment-panel="connections"]').first()).toBeVisible();
+    await expect(page.locator("#profilePanel")).toHaveClass(/active/);
     await page.getByRole("link", { name: "Coach & Modell", exact: true }).focus();
     await page.keyboard.press("Enter");
     await expect(page).toHaveURL(/#more\/coach$/);
     await page.getByRole("link", { name: "Mehr", exact: true }).focus();
     await page.keyboard.press("Enter");
     await expect(page).toHaveURL(/#more$/);
-    await settingsNav.getByRole("link", { name: "Coach & Modell", exact: true }).click();
+    await page.locator("#profilePanel .more-segment-nav").getByRole("link", { name: "Coach & Modell", exact: true }).click();
     await expect(page).toHaveURL(/#more\/coach$/);
     await expect(page.locator('[data-more-segment-panel="coach"]')).toHaveCount(3);
     await expect(page.locator('[data-more-segment-panel="coach"]').first()).toBeVisible();

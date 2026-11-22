@@ -2391,8 +2391,10 @@ date), `configurations` (each with `key`, `source` `local` or the provider,
 `label`, `sport`, `metric`, `environment`, `valid_from`, `valid_until`,
 `threshold`, `maximum`, `limits`, `percent_limits`, `percent_basis`),
 `effective` (per sport, metric and environment the configuration in effect
-today: `sport`, `metric`, `environment`, `key`) and, only when there is one,
-`threshold_warnings`.
+today: `sport`, `metric`, `environment`, `key`), `defaults` (the standard
+zones that apply where no configuration exists: per metric `power`,
+`heart_rate` and `pace` the upper limits in percent of the threshold) and,
+only when there is one, `threshold_warnings`.
 
 Errors: none beyond the common ones.
 

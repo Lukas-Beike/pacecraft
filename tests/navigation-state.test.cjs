@@ -119,7 +119,7 @@ test("the route parts fall back to the first plan segment and the connections se
   assert.equal(planSegmentFromRoute("plan/library"), "library");
   assert.equal(planSegmentFromRoute("plan/other"), "overview");
   assert.equal(moreSegmentFromRoute("more/operations"), "operations");
-  assert.equal(moreSegmentFromRoute("more"), "connections");
+  assert.equal(moreSegmentFromRoute("more"), "profile");
   assert.equal(baseRoute("analysis/running"), "analysis");
   assert.equal(baseRoute(null), "coach");
 });

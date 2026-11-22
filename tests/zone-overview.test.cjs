@@ -2,7 +2,7 @@ const assert = require("node:assert/strict");
 const { test } = require("node:test");
 const { extractFunctions } = require("./frontend-harness.cjs");
 
-const NAMES = ["zoneMetricValue", "ZONE_METRIC_LABELS", "ZONE_SPORTS", "POWER_ZONE_NAMES", "zoneConfigurationFor", "zoneLimitsOf", "zoneLimitsText", "zoneLimitValue", "zoneValueText", "zoneRows", "zoneRange", "zoneSourceText", "zoneEditorValues", "THRESHOLD_ORIGINS", "lt2Origin", "thresholdRows"];
+const NAMES = ["zoneMetricValue", "ZONE_METRIC_LABELS", "ZONE_SPORTS", "POWER_ZONE_NAMES", "zoneConfigurationFor", "zoneLimitsOf", "zoneLimitsText", "zoneLimitValue", "zoneValueText", "zoneRows", "zoneRange", "zoneSourceText", "zoneEditorValues", "defaultZoneItem", "THRESHOLD_ORIGINS", "lt2Origin", "thresholdRows"];
 
 // Garmin's heart-rate zones carry no sport: the server names their key for every sport (#2262).
 const GARMIN_HR = { key: "garmin|heart_rate|||2026-11-09", source: "garmin", label: "Garmin", sport: null, metric: "heart_rate", environment: null, threshold: 163, maximum: 186, limits: [130, 145, 155, 166, 186], percent_limits: null };
@@ -20,6 +20,7 @@ function zones(globals = {}) {
   return extractFunctions("settings.js", NAMES, {
     zoneConfigurations: [GARMIN_HR, LOCAL_POWER],
     zoneEffective: EFFECTIVE,
+    zoneDefaults: {},
     state: { data: {} },
     formatPace: (seconds) => `${Math.floor(seconds / 60)}:${String(Math.round(seconds % 60)).padStart(2, "0")} /km`,
     AppFormat: require("../public/format.js"),
@@ -46,6 +47,20 @@ test("the cycling FTP prefills the power editor of a sport without power zones",
   assert.deepEqual(plain(zoneEditorValues("ride", "power", null, read)), { threshold: 265, maximum: "", limits: "" });
   assert.deepEqual(plain(zoneEditorValues("run", "power", null, read)), { threshold: 300, maximum: "", limits: "" });
   assert.deepEqual(plain(zoneEditorValues("ride", "heart_rate", null, read)), { threshold: 165, maximum: 190, limits: "" });
+});
+
+test("the standard zones show read-only once their threshold is known and prefill the editor (#3936 M-01)", () => {
+  const defaults = { power: [55, 75, 90, 105, 120, 150], heart_rate: [68, 83, 94, 105], pace: [80, 90, 100] };
+  const metrics = { cycling_ftp_watts: { value: 200 }, bike_threshold_hr_bpm: { value: 160 }, run_threshold_pace_seconds_per_km: { value: 240 } };
+  const read = (key) => (key && metrics[key] ? metrics[key].value : null);
+  const { defaultZoneItem, zoneRows, zoneSourceText, zoneEditorValues } = zones();
+  const power = defaultZoneItem("ride", "power", defaults, read);
+  assert.equal(zoneSourceText(power), "Standardzonen");
+  assert.deepEqual(plain(zoneRows(power).map((row) => row.range)).slice(0, 2), ["bis 110 W · 55 %", "111–150 W · 75 %"]);
+  assert.equal(defaultZoneItem("run", "power", defaults, read), null, "no threshold, no read-only zones");
+  assert.deepEqual(plain(zoneEditorValues("ride", "power", null, read, defaults)).limits, "55, 75, 90, 105, 120, 150");
+  assert.deepEqual(plain(zoneEditorValues("ride", "heart_rate", null, read, defaults)).limits, "109, 133, 150, 168");
+  assert.equal(zoneRows(defaultZoneItem("run", "pace", defaults, read), 240)[0].range, "langsamer als 5:00 · 80 %");
 });
 
 test("power zones show names, watts and the percent of the FTP", () => {
