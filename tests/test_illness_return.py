@@ -178,9 +178,10 @@ class SymptomReturnTests(unittest.TestCase):
         history = self._days(
             ("2026-10-27", ["fieber"]), ("2026-11-03", []), ("2026-11-04", [])
         )
+        # Below the M14 margin of the 50-60 range (45, #3920).
         poor_hrv = {
             **GOOD_NIGHT,
-            "hrv": {**GOOD_NIGHT["hrv"], "position": "below"},
+            "hrv": {**GOOD_NIGHT["hrv"], "value": 44, "position": "below"},
         }
 
         poor = illness_return.decide(
