@@ -584,7 +584,8 @@ function lt2AdoptValues(source, estimate) {
 
 function lt2EstimateBasis(source, estimate) {
   if (source === "dfa_alpha1") return `aus ${estimate.sessions} Läufen der letzten ${estimate.window_days} Tage`;
-  return `Bestwerte ${lt2Duration(estimate.durations_s || [])} aus ${estimate.window_days} Tagen`;
+  // CS/CP usually lie a few percent above the sustainable threshold (athlete decision B2, #3919).
+  return `Bestwerte ${lt2Duration(estimate.durations_s || [])} aus ${estimate.window_days} Tagen · meist einige Prozent über der Dauerschwelle`;
 }
 
 // Pure: one row per LT2 source of a sport; `inEffect` marks the source whose value applies.

@@ -55,7 +55,8 @@ test("an adopted estimate is the one in effect and Garmin's value comes from its
     ["DFA-α1", "unbekannt", false],
     ["CP", "271 W", true],
   ]);
-  assert.equal(rows[2].basis, "Bestwerte 3, 7, 12 und 20 min aus 42 Tagen");
+  // B2 (#3919): CS/CP name that they usually lie above the sustainable threshold.
+  assert.equal(rows[2].basis, "Bestwerte 3, 7, 12 und 20 min aus 42 Tagen · meist einige Prozent über der Dauerschwelle");
   assert.equal(rows[2].quality, "low");
 });
 
