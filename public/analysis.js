@@ -859,7 +859,9 @@ async function renderStrengthAnalysis() {
     const report = await requestAnalysisReport(`/api/analysis/strength?weeks=${analysisPeriod(strengthHistoryPeriod).weeks}`);
     if (generation !== strengthAnalysisGeneration) return;
     const controls = analysisPeriodControls("Zeitraum für Kraft", strengthHistoryPeriod, (choice) => { strengthHistoryPeriod = choice; void renderStrengthAnalysis(); });
-    root.replaceChildren(controls, ...strengthAnalysisCards(report));
+    // The selector stays above the empty card, so a short period without sessions can be widened.
+    document.getElementById("strengthPeriod").replaceChildren(controls);
+    root.replaceChildren(...strengthAnalysisCards(report));
     root.dataset.analysisEmpty = String(!(report.weeks || []).some((week) => week.sessions));
   } catch (error) {
     if (generation !== strengthAnalysisGeneration) return;
@@ -2761,7 +2763,7 @@ function analysisEmptyCard(segment) {
     cause = "Keine Daten in den letzten 4 Wochen.";
     action = h("button", { className: "push-button", type: "button" }, "3 Monate anzeigen");
     action.addEventListener("click", () => {
-      const buttons = { load: "#analysisLoadPeriod button", strength: "#strengthAnalysis .analysis-period-controls button" };
+      const buttons = { load: "#analysisLoadPeriod button", strength: "#strengthPeriod button" };
       const controls = document.querySelectorAll(buttons[segment] || "#personalRecovery .analysis-period-controls button");
       [...controls].find((button) => button.textContent === "3 Monate")?.click();
     });
@@ -2809,6 +2811,7 @@ function renderAnalysisSegments(route = state.route) {
   document.getElementById("trainingZoneCharts").hidden = !load;
   document.getElementById("analysisLoadCharts").hidden = !load;
   document.getElementById("personalRecovery").hidden = segment !== "recovery";
+  document.getElementById("strengthPeriod").hidden = segment !== "strength";
   document.getElementById("strengthAnalysis").hidden = segment !== "strength" || empty;
   document.querySelectorAll("[data-analysis-segment]").forEach((link) => {
     const active = link.dataset.analysisSegment === segment;

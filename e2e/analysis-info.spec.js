@@ -767,10 +767,11 @@ test("@responsive Kraft shows how often per week the upper body and the legs wer
   await expect(root).toContainText("1 Einheit ohne erkennbaren Schwerpunkt, nicht zugeordnet.");
   await expect(root).not.toContainText(/1RM|Kraftlast/);
   // The shared period selector reads the chosen number of weeks.
-  await expect(root.getByRole("button", { name: "3 Monate" })).toHaveAttribute("aria-pressed", "true");
-  await root.getByRole("button", { name: "4 Wochen" }).click();
+  const period = page.locator("#strengthPeriod");
+  await expect(period.getByRole("button", { name: "3 Monate" })).toHaveAttribute("aria-pressed", "true");
+  await period.getByRole("button", { name: "4 Wochen" }).click();
   await expect.poll(() => requested.at(-1)).toBe("4");
-  await expect(root.getByRole("button", { name: "4 Wochen" })).toHaveAttribute("aria-pressed", "true");
+  await expect(period.getByRole("button", { name: "4 Wochen" })).toHaveAttribute("aria-pressed", "true");
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
 });
 
@@ -783,12 +784,12 @@ test("@responsive a short Kraft period without sessions offers the longer one", 
   const root = page.locator("#strengthAnalysis");
   // With a connected source the empty card names the period and widens it.
   await page.evaluate(() => { state.data.garmin = { ...state.data.garmin, configured: true }; });
-  await root.getByRole("button", { name: "4 Wochen" }).click();
-  // The controls stay reachable: the empty card widens the period instead of trapping the choice.
+  await page.locator("#strengthPeriod").getByRole("button", { name: "4 Wochen" }).click();
+  // The controls stay reachable above the empty card, which also offers the longer period.
   await expect(page.locator("#analysisEmptyState")).toContainText("Keine Daten in den letzten 4 Wochen");
   await page.locator("#analysisEmptyState").getByRole("button", { name: "3 Monate anzeigen" }).click();
   await expect(root.getByRole("heading", { name: "Oberkörper" })).toBeVisible();
-  await expect(root.getByRole("button", { name: "3 Monate" })).toHaveAttribute("aria-pressed", "true");
+  await expect(page.locator("#strengthPeriod").getByRole("button", { name: "3 Monate" })).toHaveAttribute("aria-pressed", "true");
 });
 
 test("@responsive Kraft without stored sets shows the one empty card", async ({ page }) => {
