@@ -21,7 +21,7 @@ case on both sides, so the guards match.
 tool and route exists, the parity value matches the two columns, each gap names
 its issue and the counts below match the table.
 
-Counts: both 40, UI only 24, Coach only 22, neither 0, UI by rule 8.
+Counts: both 41, UI only 23, Coach only 22, neither 1, UI by rule 8.
 
 ## Matrix
 
@@ -39,12 +39,12 @@ Counts: both 40, UI only 24, Coach only 22, neither 0, UI by rule 8.
 | Competitions | Delete a competition | Kalender › Wettkampf `PUT /api/competitions/remove` | `delete_competition` | delete confirmation | both | |
 | Competitions | Send competitions to Intervals.icu | Kalender › Wettkampf `POST /api/intervals/competitions/send` | `sync_competitions` | named sync | both | |
 | Planning | Read planned units and the planning view | Kalender `GET /api/plan` | `list_planned_workouts`, `read_training_state` | — | both | |
-| Planning | Create a planned unit | — | `apply_training_patch` (`create`) | receipt, undo, plan checks | Coach only | #3950 |
+| Planning | Create a planned unit | — | `apply_training_patch` (`workouts`) | receipt, undo, plan checks | Coach only | #3950 |
 | Planning | Change a planned unit's content | — | `apply_training_patch` (`update`) | receipt, undo, plan checks | Coach only | #3950 |
-| Planning | Move a planned unit to another day | Kalender card `POST /api/planned-units/{id}/date` | `apply_training_patch` (`move`) | receipt, undo | both | |
+| Planning | Move a planned unit to another day | Kalender card `POST /api/planned-units/{id}/date` | `apply_training_patch` (`update` with `date`) | receipt, undo | both | |
 | Planning | Delete a planned unit | Kalender card `POST /api/planned-units/{id}/delete` | `apply_training_patch` (`delete`) | delete confirmation | both | |
 | Planning | Archive or restore a planned unit | — | `apply_training_patch` (`archive`, `restore`) | confirmed request | Coach only | #3950 |
-| Planning | Set a planned unit's focus | Kalender card `POST /api/planned-units/{id}/focus` | — | receipt | UI only | #3957 |
+| Planning | Set a planned unit's focus | Kalender card `POST /api/planned-units/{id}/focus` | `apply_training_patch` (`session_focus`, `strength_intensity`) | receipt | both | |
 | Planning | Choose a strength exercise's Garmin exercise | Kalender card `POST /api/planned-units/{id}/garmin-exercise` | `apply_training_patch` (`garmin_exercise`) | receipt | both | |
 | Planning | Read multi-week training plans | — | `list_training_plans` | — | Coach only | #3950 |
 | Planning | Create a multi-week training plan | — | `stage_training_plan`, `commit_training_plan` | receipt, plan checks | Coach only | #3950 |
@@ -120,7 +120,8 @@ Counts: both 40, UI only 24, Coach only 22, neither 0, UI by rule 8.
 | Privacy | Download the privacy export | Datenschutz `GET /api/privacy/export` | — | — | UI by rule | |
 | Privacy | Delete the local athlete data | Datenschutz `POST /api/privacy/delete` | — | typed confirmation | UI by rule | |
 | Privacy | Delete stored GPS tracks | Datenschutz `POST /api/privacy/gps/delete` | — | typed confirmation | UI by rule | |
-| Notifications | Allow browser notifications | Datenschutz, browser permission | — | device permission | UI by rule | |
+| Notifications | Turn notifications on or off on this device | Datenschutz `POST /api/push/key`, `POST /api/push/subscribe`, `POST /api/push/unsubscribe` | — | device permission | UI by rule | |
+| Notifications | Switch notification types on or off | — | — | — | neither | #3914, #3960 |
 
 ## Outside the matrix
 
@@ -133,6 +134,6 @@ Write routes that are no athlete action on data: `POST /api/login`,
 `POST /api/coach/actions/execute`, `POST /api/diagnostics/delete`,
 `POST /api/logs/delete`, `PUT /api/zones/lt2/notice-baseline`.
 
-Web Push notification types are being added in #3946; their settings join the
-matrix with that change. G-14 in #3936 adds interim "Dem Coach sagen" hints on
-the screens with a Coach-only action.
+`POST /api/push/preferences` switches the notification types; its UI switch
+list follows in #3914 and a Coach path is part of #3960. G-14 in #3936 adds
+interim "Dem Coach sagen" hints on the screens with a Coach-only action.

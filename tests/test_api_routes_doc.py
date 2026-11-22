@@ -26,6 +26,7 @@ END = "<!-- END GENERATED ROUTES -->\n"
 PARITY_DOC = DOC.with_name("ui-coach-parity.md")
 PARITY_VALUES = ("both", "UI only", "Coach only", "neither", "UI by rule")
 GAPS = {"UI only", "Coach only", "neither"}
+COACH_TOOL_SOURCES = ("backend/coach/tool_schemas.py", "backend/coach/tool_specs.py")
 PROSE_ROUTE = re.compile(r"`(GET|POST|PUT) (/api/[^`\s]+)`")
 # Former aliases the document names as no longer registered.
 RETIRED_ALIASES = {"/api/logs/clear", "/api/diagnostics/clear"}
@@ -105,6 +106,8 @@ class ApiRoutesDocTests(unittest.TestCase):
 
     def test_ui_coach_parity_matrix_names_every_tool_and_write_route(self):
         # #3949: every Coach tool and athlete write route has its row, a gap its issue.
+        for source in COACH_TOOL_SOURCES:  # named so the test selector picks this up
+            self.assertTrue((DOC.parents[1] / source).is_file(), source)
         document = PARITY_DOC.read_text(encoding="utf-8")
         tools = {tool["name"] for tool in server.COACH_DIALOGUE_TOOLS}
         routes = {
@@ -135,9 +138,12 @@ class ApiRoutesDocTests(unittest.TestCase):
             expected |= {(False, True): "Coach only", (False, False): "neither"}
             if parity != "UI by rule" or sides != (True, False):
                 self.assertEqual(parity, expected[sides], action)
-            self.assertEqual(bool(re.fullmatch(r"#\d+", gap)), parity in GAPS, action)
+            issues = re.fullmatch(r"#\d+(, #\d+)*", gap)
+            self.assertEqual(bool(issues), parity in GAPS, action)
             counts[parity] += 1
-        mechanics = set(re.findall(r"`([a-z_]+)`", document.split("## Outside")[1]))
+        outside = document.split("## Outside the matrix\n\n")[1].split("\n\n")[0]
+        mechanics = set(re.findall(r"`([a-z_]+)`", outside))
+        self.assertLessEqual(mechanics, tools)
         self.assertEqual(sorted(tools - named_tools - mechanics), [])
         stated = ", ".join(f"{value} {count}" for value, count in counts.items())
         self.assertIn(f"Counts: {stated}.", document)
