@@ -1068,6 +1068,7 @@ def _curve_record(
             None if curve is None else curve.execution_summary, summary
         ),
         "running_dynamics": None if curve is None else curve.running_dynamics,
+        "cs_test_efforts": getattr(curve, "cs_test_efforts", None),
         # The run averages the provider reports, for Garmin's colour bands (#2829).
         "dynamics_averages": {
             key: summary.get(key)

@@ -21,9 +21,10 @@ from statistics import linear_regression
 from typing import Any, Final
 
 from backend.canonical.activity_summary import summary_is_trail_run
+from backend.performance.critical_speed_test import METHOD as TEST_METHOD
 
 METHOD_ID: Final = "critical-power-speed"
-METHOD_VERSION: Final = 2
+METHOD_VERSION: Final = 3
 WINDOW_DAYS: Final = 28
 EFFORT_SECONDS: Final = {"ride": (180, 420, 720, 1200), "run": (180, 420, 720)}
 # The card 3 protocol, kept for cycling as a sensitivity fit.
@@ -33,6 +34,8 @@ INTERCEPT_RELIABILITY: Final = "low"
 # Efforts in one session count separately only with this much recovery between.
 MIN_RECOVERY_SECONDS: Final = 1800
 MAX_RELATIVE_RESIDUAL: Final = 0.03
+# A test effort lap lasts 2 to 20 min (card M4 v6, #3919).
+TEST_DURATION_SECONDS: Final = (120, 1200)
 PLAUSIBLE: Final = {
     "ride": {"intercept": (1000.0, 50000.0), "slope": (50.0, 600.0)},
     "run": {"intercept": (10.0, 500.0), "slope": (1.5, 7.0)},
@@ -107,6 +110,13 @@ def _fit(
 ) -> dict[str, Any]:
     field = _FIELDS[sport][0]
     wanted = EFFORT_SECONDS[sport]
+    test = (
+        _test_fit(records, today)
+        if (sport, environment) == ("run", "outdoor")
+        else None
+    )
+    if test is not None:
+        return test
     efforts = _select_efforts(records, sport, environment, field, wanted)
     result: dict[str, Any] = {
         "sport": sport,
@@ -130,6 +140,69 @@ def _fit(
         today - min(date.fromisoformat(str(effort["date"])) for effort in efforts)
     ).days
     return _fitted(result, sport, efforts)
+
+
+def _test_fit(records: Sequence[dict[str, Any]], today: date) -> dict[str, Any] | None:
+    """The newest outdoor run that is a critical-speed test, fitted on its laps.
+
+    It takes precedence over the window fit of its period, also when its stop
+    rules withhold it: the window's best windows inside those same long runs
+    are not maximal efforts of their duration (card M4 v6).
+    """
+    tests = [
+        row
+        for row in records
+        if row.get("cs_test_efforts") and _fits(row, "run", "outdoor")
+    ]
+    if not tests:
+        return None
+    row = max(tests, key=lambda item: (str(item.get("date")), str(item["activity_id"])))
+    efforts = [
+        {
+            "duration_seconds": effort["duration_seconds"],
+            "distance_m": effort["distance_m"],
+            "speed_mps": effort["distance_m"] / effort["duration_seconds"],
+            "activity_id": row.get("activity_id"),
+            "date": row.get("date"),
+            "source": row.get("source"),
+            "effort_context": "test",
+        }
+        for effort in row["cs_test_efforts"]
+    ]
+    result: dict[str, Any] = {
+        "sport": "run",
+        "environment": "outdoor",
+        "method": TEST_METHOD,
+        "efforts": efforts,
+        "intercept_reliability": INTERCEPT_RELIABILITY,
+        "data_age_days": (today - date.fromisoformat(str(row["date"]))).days,
+    }
+    low, high = TEST_DURATION_SECONDS
+    if len(efforts) < 3 or not all(
+        low <= effort["duration_seconds"] <= high for effort in efforts
+    ):
+        return {
+            **result,
+            "status": "withheld",
+            "reason": "Testläufe außerhalb von 2 bis 20 Minuten.",
+        }
+    fitted = _fitted(result, "run", efforts)
+    if fitted["status"] != "ok":
+        return fitted
+    distances = [effort["distance_m"] for effort in efforts]
+    seconds = [float(effort["duration_seconds"]) for effort in efforts]
+    slope, intercept = fit_line(seconds, distances)
+    errors = [
+        d - (slope * t + intercept) for d, t in zip(distances, seconds, strict=True)
+    ]
+    mean = sum(distances) / len(distances)
+    total = sum((d - mean) ** 2 for d in distances)
+    squares = sum(error**2 for error in errors)
+    return {
+        **fitted,
+        "r_squared": round(1 - squares / total, 4),
+        "see_m": round((squares / (len(efforts) - 2)) ** 0.5, 1),
+    }
 
 
 def _fitted(

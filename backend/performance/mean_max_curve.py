@@ -42,6 +42,7 @@ from backend.performance.canonical_detail import (
     detail_candidates,
     primary_analysis_record,
 )
+from backend.performance.critical_speed_test import session_test_efforts
 from backend.performance.pace_at_hr import METHOD as PACE_METHOD
 from backend.performance.pace_at_hr import (
     POWER_METHOD,
@@ -74,7 +75,7 @@ _RETRY_AFTER_S: Final = 60.0
 # method version of their own (merge_details, analysis_input, grade_adjustment)
 # and the stored payload fields. Bump it whenever any of them changes the curves,
 # so stored curves are computed again; the golden-curve test pins it.
-CURVE_FORMAT_VERSION: Final = 2
+CURVE_FORMAT_VERSION: Final = 3
 
 
 @dataclass(frozen=True, slots=True)
@@ -91,6 +92,8 @@ class SessionCurve:
     execution_summary: dict[str, Any] | None = None
     # A run's running dynamics per pace band (#2829), None without them.
     running_dynamics: dict[str, Any] | None = None
+    # The three effort laps of a critical-speed test session (#3919), else None.
+    cs_test_efforts: list[dict[str, Any]] | None = None
 
 
 # The stored payload holds every curve field but the fingerprint, its row key.
@@ -500,6 +503,7 @@ def _session_curve(
             ),
             adapted.activity,
         ),
+        cs_test_efforts=session_test_efforts(adapted.activity.get("laps") or []),
         running_dynamics=pace_bands(
             adapted.activity,
             source_label=adapted.label_for(
