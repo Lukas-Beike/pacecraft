@@ -480,9 +480,9 @@ test("@responsive the deficit card stays without logged meals", async ({ page })
   await expect(card.locator(".energy-deficit-status")).toHaveText("Ziel: 500 kcal Defizit · ✓ im Ziel");
 });
 
-// #3547: without a goal the diary links to it; the goal row in Körper sets it, and the diary's energy
+// #3547, #3930: without a goal the diary links to it; the dialog opens in place, and the diary's energy
 // card then opens with "Offene Kalorien" from the outlined source's day total.
-test("@responsive the energy goal is set in Körper and priced in the diary", async ({ page }) => {
+test("@responsive the energy goal is set from the diary and priced there", async ({ page }) => {
   await page.goto("/#nutrition/diary");
   const strip = page.locator("#nutritionEnergy [data-energy-goal]");
   await expect(strip).toHaveText("Ziel festlegen");
@@ -532,13 +532,12 @@ test("@responsive the energy goal is set in Körper and priced in the diary", as
   await dialog.getByText("Halten").click();
   await expect(dialog.getByLabel("Defizit pro Tag (kcal)")).toBeHidden();
   await dialog.getByText("Abnehmen").click();
-  await dialog.getByRole("button", { name: "Speichern" }).click();
-  await expect(dialog).toBeHidden();
-  const row = page.locator("#energyGoalRow");
-  await expect(row).toContainText("Abnehmen, 500 kcal/Tag");
   try {
+    // The save prices the diary card again: the read starts with the click, not with a navigation.
     const energy = page.waitForResponse((response) => new URL(response.url()).pathname === "/api/body/energy");
-    await page.goto("/#nutrition/diary");
+    await dialog.getByRole("button", { name: "Speichern" }).click();
+    await expect(dialog).toBeHidden();
+    await expect(page.locator("#energyGoalRow")).toContainText("Abnehmen, 500 kcal/Tag");
     const read = await (await energy).json();
     expect(read.goal).toMatchObject({ goal: "lose", goal_kcal: 500 });
     if (read.goal.remaining_kcal == null) {
