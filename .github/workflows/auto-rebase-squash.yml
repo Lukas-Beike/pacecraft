@@ -10,6 +10,12 @@ on:
   # this job holds the app token.
   schedule:
     - cron: '*/10 * * * *'
+  # A finished CI round lets the next PR rebase without waiting for the
+  # schedule (#3979). It runs develop's copy of this file and reads nothing from
+  # the triggering run, as for the schedule.
+  workflow_run:
+    workflows: ['Test and publish container image']
+    types: [completed]
 
 permissions:
   contents: read
@@ -119,34 +125,57 @@ jobs:
           fi
       - name: Rebase eligible pull requests
         # A failed alignment must not block rebasing the other pull requests.
-        # A develop push makes every armed PR stale; a scheduled run rebases only
-        # those still BEHIND, such as one armed after the last push (#3854).
+        # develop requires up-to-date branches, so every push leaves each armed PR
+        # behind, but only one can merge next. Rebasing all of them restarted every
+        # browser shard on each push (#3979): rebase one PR at a time, in arming
+        # order, once its checks finished green, and none while an armed PR is up
+        # to date and still running its checks. A finished CI round and the
+        # schedule move the queue on, also for a PR armed after the last push
+        # (#3854). A behind PR with failed checks stays for its owner.
         if: ${{ !cancelled() && steps.branch-app-token.outcome == 'success' }}
         env:
           # App-authored updates emit synchronize events and start fresh CI.
           GH_TOKEN: ${{ steps.branch-app-token.outputs.token }}
           REPOSITORY: ${{ github.repository }}
-          ONLY_BEHIND: ${{ github.event_name == 'schedule' }}
+          SCHEDULED: ${{ github.event_name != 'push' }}
         shell: bash
         run: |
           set -euo pipefail
 
           # Capture gh output before parsing: a failed gh call must fail this
           # step, which a process substitution would silently ignore.
+          # Rows in arming order with the head's check state: green, pending
+          # (also none reported yet), stale (pending, none started in 3 h, so a
+          # stuck check cannot hold the queue) or failing.
           pull_request_rows="$(
             gh pr list \
               --repo "$REPOSITORY" \
               --base develop \
               --state open \
               --limit 1000 \
-              --json number,headRefName,isCrossRepository,autoMergeRequest,mergeable,mergeStateStatus \
+              --json number,headRefName,headRefOid,isCrossRepository,autoMergeRequest,mergeable,statusCheckRollup \
               --jq '
-                .[]
+                [.[]
                 | select(.isCrossRepository == false)
                 | select(.autoMergeRequest != null)
                 | select(.autoMergeRequest.mergeMethod == "SQUASH")
                 | select(.mergeable != "CONFLICTING")
-                | [.number, .headRefName, .mergeStateStatus]
+                | .checks = [.statusCheckRollup[]?
+                    | if .__typename == "CheckRun" then
+                        (if .status != "COMPLETED" then "pending"
+                         elif .conclusion == "SUCCESS" or .conclusion == "SKIPPED" or .conclusion == "NEUTRAL" then "passed"
+                         else "failing" end)
+                      elif .state == "PENDING" or .state == "EXPECTED" then "pending"
+                      elif .state == "SUCCESS" then "passed"
+                      else "failing" end]
+                | .started = ([.statusCheckRollup[]?.startedAt // empty | select(startswith("20")) | fromdateiso8601] | max)]
+                | sort_by(.autoMergeRequest.enabledAt)
+                | .[]
+                | [.number, .headRefName, .headRefOid,
+                   (if any(.checks[]; . == "failing") then "failing"
+                    elif (.checks | length) > 0 and all(.checks[]; . == "passed") then "green"
+                    elif .started == null or .started > now - 10800 then "pending"
+                    else "stale" end)]
                 | @tsv
               '
           )"
@@ -160,12 +189,35 @@ jobs:
             exit 0
           fi
 
+          # mergeStateStatus says BLOCKED, not BEHIND, while a check is pending
+          # or failing, so ask how far the head is behind develop instead.
+          ready=()
           failed=0
           for pull_request in "${pull_requests[@]}"; do
-            IFS=$'\t' read -r pull_request_number head_ref merge_state <<< "$pull_request"
-            if [[ "$ONLY_BEHIND" == "true" && "$merge_state" != "BEHIND" ]]; then
+            IFS=$'\t' read -r pull_request_number head_ref head_sha checks <<< "$pull_request"
+            if ! behind_by="$(gh api "repos/$REPOSITORY/compare/develop...$head_sha" --jq .behind_by)"; then
+              echo "::warning::Could not compare PR #$pull_request_number ($head_ref) with develop."
+              failed=$((failed + 1))
               continue
             fi
+            if [[ "$behind_by" == "0" && "$checks" == "pending" ]]; then
+              echo "PR #$pull_request_number ($head_ref) is up to date and running its checks; no PR is rebased before it."
+              exit 0
+            fi
+            if [[ "$behind_by" != "0" && "$checks" == "green" ]]; then
+              ready+=("$pull_request")
+            elif [[ "$behind_by" != "0" ]]; then
+              echo "PR #$pull_request_number ($head_ref) is behind develop with $checks checks; it is rebased once they finished green."
+            fi
+          done
+
+          if ((${#ready[@]} == 0)); then
+            echo "No armed PR is behind develop with finished green checks."
+          fi
+
+          # The first one that rebases is the only one; a conflict passes the turn on.
+          for pull_request in "${ready[@]}"; do
+            IFS=$'\t' read -r pull_request_number head_ref head_sha checks <<< "$pull_request"
             echo "Rebasing PR #$pull_request_number ($head_ref) onto develop."
             rebase_output=""
             if ! rebase_output="$(gh pr update-branch "$pull_request_number" \
@@ -177,14 +229,16 @@ jobs:
                 echo "::warning::Could not rebase PR #$pull_request_number ($head_ref): $rebase_output"
                 failed=$((failed + 1))
               fi
+              continue
             fi
+            break
           done
 
           if ((failed > 0)); then
             echo "Could not rebase $failed pull request(s); see the warnings above."
             # A scheduled run only warns: a lasting failure would fail every run;
             # the next develop push fails the job and reports it.
-            if [[ "$ONLY_BEHIND" != "true" ]]; then
+            if [[ "$SCHEDULED" != "true" ]]; then
               exit 1
             fi
           fi
