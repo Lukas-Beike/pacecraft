@@ -25,6 +25,7 @@ const PUSH_TYPE_LABELS = Object.freeze({
   upcoming: "Wettkampf, Stufentest, Infekt-Hinweis",
   new_activity: "Neue Einheit synchronisiert",
   morning_data: "Morgenwerte verfügbar",
+  checkin: "Check-in erinnern",
   maintenance: "Wartung fällig",
   personal_best: "Neue Bestleistung",
   missing_feedback: "Feedback fehlt am Abend",

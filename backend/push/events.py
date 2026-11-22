@@ -22,6 +22,7 @@ from backend.push.service import Notification
 from backend.weather.recommendations import day_warning, is_outdoor_activity
 
 _OVERVIEW: Final = "#plan/overview"
+_CHECKIN: Final = "#plan/checkin"
 # Local hours from which the evening and next-day events are sent.
 MISSING_FEEDBACK_HOUR: Final = 20
 WEATHER_TOMORROW_HOUR: Final = 18
@@ -33,6 +34,10 @@ _SESSION_ROWS: Final = 50
 BACKUP_STALE_HOURS: Final = 36.0
 # Free space in the data directory below which the server needs attention.
 LOW_DISK_BYTES: Final = 1 << 30
+_SLEEP_METRICS: Final = (
+    MetricKind.SLEEP_DURATION.value,
+    MetricKind.SLEEP_SCORE.value,
+)
 _NIGHT_METRICS: Final = tuple(
     metric.value
     for metric in (
@@ -180,6 +185,23 @@ def morning_data_event(db: Any, today: date) -> Notification | None:
         "Morgenwerte",
         "Die Werte der Nacht sind da.",
         "#analysis/recovery",
+    )
+
+
+def checkin_event(db: Any, today: date) -> Notification | None:
+    """Tonight's sleep is stored and today has no check-in yet: once a day (#3953).
+
+    The tap opens the check-in form of today (``#plan/checkin``).
+    """
+    day = today.isoformat()
+    if not canonical_store.observed_on_day(db, day, _SLEEP_METRICS):
+        return None
+    if db.execute(
+        "SELECT 1 FROM athlete_checkins WHERE checkin_date=?", (day,)
+    ).fetchone():
+        return None
+    return Notification(
+        "checkin", f"checkin:{day}", "Check-in", "Wie fühlst du dich heute?", _CHECKIN
     )
 
 

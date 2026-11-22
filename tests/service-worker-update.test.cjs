@@ -520,8 +520,9 @@ test("the switch list shows one switch per type in the server's state, read once
   assert.equal(list.hidden, false);
   assert.deepEqual(calls.map(([path]) => path), [`/api/push?endpoint=${encodeURIComponent(subscription.endpoint)}`]);
   const rows = list.children.slice(1);
-  assert.equal(rows.length, 11);
+  assert.equal(rows.length, 12);
   const row = (label) => rows.find((item) => item.children[1].children[0] === label);
+  assert.equal(row("Check-in erinnern").children[0].props.checked, true);
   assert.equal(row("Wetter für Outdoor-Einheit").children[0].props.checked, false);
   assert.equal(row("Coach-Antwort fertig").children[0].props.checked, true);
   await context.renderPushTypes(null);

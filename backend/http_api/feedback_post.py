@@ -36,6 +36,7 @@ class FeedbackPostRoutes:
                 Route(
                     "POST", "/api/infection-hint/well", Access.SESSION_CSRF, self._well
                 ),
+                Route("GET", "/api/checkins", Access.SESSION, self._read_checkin),
                 Route("POST", "/api/checkins", Access.SESSION_CSRF, self._checkin),
             ]
         if self._session_corrections is not None:
@@ -90,6 +91,21 @@ class FeedbackPostRoutes:
         handler.send_json(
             200, self._correct_session(request.params["id"], handler.read_json())
         )
+
+    def _read_checkin(self, handler: Any, request: RouteRequest) -> None:
+        """The stored check-in of one day, for the check-in form.
+
+        Request: query `date` (`YYYY-MM-DD`, required).
+
+        Response: 200 `{"checkin"}`; `checkin` is the stored day (scores, texts,
+        `day_status`, `tag_answers`, `complaints`), `null` when the day has none.
+
+        Errors: 400 "Das Datum des lokalen Feedbacks ist ungültig." for a missing
+        or malformed `date`.
+        """
+        assert self._checkin_service is not None
+        given = request.query.get("date") or [None]
+        handler.send_json(200, {"checkin": self._checkin_service().day(given[0])})
 
     def _checkin(self, handler: Any, _request: RouteRequest) -> None:
         """Enter or correct the daily check-in of one day.

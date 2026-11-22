@@ -58,6 +58,7 @@ Former routes that open another view:
 - `#analysis/sessions` opens `#plan/overview`
 - `#analysis/week` opens `#plan/overview`
 - `#more/appearance` opens `#more/app`
+- `#plan/checkin` opens `#plan/overview`
 <!-- END GENERATED VIEWS -->
 
 ## State texts

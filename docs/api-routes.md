@@ -65,6 +65,7 @@ handler's docstring. Regenerate it with
 | POST | `/api/chat/reset` | Session + CSRF | after access | Reset the Coach conversation. |
 | GET | `/api/chat/status` | Session | no | Status of this session's Coach work. |
 | POST | `/api/chat/stream` | Session + CSRF | after access | Stream one Coach turn as server-sent events. |
+| GET | `/api/checkins` | Session | no | The stored check-in of one day, for the check-in form. |
 | POST | `/api/checkins` | Session + CSRF | after access | Enter or correct the daily check-in of one day. |
 | POST | `/api/coach/actions/cancel` | Session + CSRF | after access | Cancel a Coach proposal. |
 | POST | `/api/coach/actions/confirm` | Session + CSRF | after access | Confirm a Coach proposal. |
@@ -801,6 +802,16 @@ when another turn of the session is queued or running;
 Sitzung."; `attachment_storage_quota` "Der lokale Speicher für Chat-Anhänge
 ist ausgeschöpft. Entferne alte Chat-Daten, bevor du weitere Bilder
 sendest."; `internal_error` "Interner Serverfehler.".
+
+### `GET /api/checkins`
+
+Request: query `date` (`YYYY-MM-DD`, required).
+
+Response: 200 `{"checkin"}`; `checkin` is the stored day (scores, texts,
+`day_status`, `tag_answers`, `complaints`), `null` when the day has none.
+
+Errors: 400 "Das Datum des lokalen Feedbacks ist ungültig." for a missing
+or malformed `date`.
 
 ### `POST /api/checkins`
 

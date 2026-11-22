@@ -1440,6 +1440,7 @@ output.planned-move-status { display: block; }
 .planned-day-checkin { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 12px; }
 .planned-day-checkin .planned-move-status { flex-basis: 100%; }
 .checkin-form { max-height: 80dvh; overflow-y: auto; }
+.checkin-fields { display: grid; gap: 15px; }
 .checkin-complaint { display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr) 4rem auto; gap: 8px; align-items: center; }
 .checkin-complaints { display: grid; gap: 8px; }
 .logs-output { max-height: 420px; min-height: 160px; margin: 0; overflow: auto; padding: 12px; border: 1px solid var(--line); border-radius: 12px; color: var(--muted); background: var(--code-bg); white-space: pre-wrap; overflow-wrap: anywhere; font: .72rem/1.45 ui-monospace, SFMono-Regular, Consolas, monospace; }

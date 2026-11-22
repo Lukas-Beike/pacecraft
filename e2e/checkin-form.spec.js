@@ -66,3 +66,26 @@ test("@responsive the form starts from the stored status and tags and keeps them
   expect(today.tag_answers).toEqual({ travel: true, late_meal: false, high_stress: true });
   expect(today.day_status).toBe("rest");
 });
+
+test("@responsive the reminder link opens the form, an earlier day is chosen by its date and a future day cannot be sent", async ({ page }) => {
+  await page.goto("/#plan/checkin");
+  const dialog = page.locator("#checkinDialog");
+  await expect(dialog).toBeVisible();
+  await expect(page).toHaveURL(/#plan\/overview$/);
+  const [yesterday, tomorrow] = await page.evaluate(() => [addDateKey(todayIso(), -1), addDateKey(todayIso(), 1)]);
+  const day = dialog.locator("input[name=checkin_date]");
+  await day.fill(yesterday);
+  await dialog.getByLabel("Stress (0–10)").fill("6");
+  await dialog.getByRole("button", { name: "Speichern" }).click();
+  await expect(page.locator("#toast")).toContainText("gespeichert");
+  await expect(dialog).toHaveCount(0);
+  const stored = await page.evaluate((date) => api(`/api/checkins?date=${date}`), yesterday);
+  expect(stored.checkin.stress).toBe(6);
+  await page.locator(".planned-day.is-today [data-checkin] button").click();
+  await day.fill(tomorrow);
+  await dialog.getByLabel("Stress (0–10)").fill("2");
+  await dialog.getByRole("button", { name: "Speichern" }).click();
+  // The field's own limit stops the form, so nothing is sent for a future day.
+  expect(await day.evaluate((input) => input.validity.rangeOverflow)).toBe(true);
+  await expect(dialog).toBeVisible();
+});

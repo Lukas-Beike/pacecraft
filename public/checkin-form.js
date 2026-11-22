@@ -12,17 +12,17 @@ const checkinComplaintKey = (item) => `${item.area}|${item.side}`;
 const checkinSorted = (items) => [...items].sort((a, b) => checkinComplaintKey(a).localeCompare(checkinComplaintKey(b)));
 const checkinFilled = (value) => value !== null && value !== undefined && value !== "";
 
-// The day's row: what is stored, and the way into the form. Future days and days beyond the 30 newest
-// check-ins have none.
+// Today's row: what is stored and the way into the form. A saved earlier day keeps its receipt row, without
+// the button; the form reaches earlier days by its date.
 function checkinRow(dateKey, todayKey, checkin) {
-  if (dateKey > todayKey || dateKey <= addDateKey(todayKey, -30)) return null;
+  const receipt = checkinReceipts.get(dateKey);
+  if (dateKey !== todayKey && !receipt) return null;
   const stored = checkin && Object.keys(checkin).length ? checkin : null;
   const scores = stored ? CHECKIN_SCORES.filter(([key]) => Number.isFinite(stored[key])).map(([key, label]) => `${label} ${stored[key]}`) : [];
   const status = h("p", { className: "planned-move-status", role: "status" });
-  const receipt = checkinReceipts.get(dateKey);
   if (receipt) status.append(receipt.text, ...(receipt.change?.id ? plannedMoveUndo(dateKey, receipt, status, checkinReceipts) : []));
-  const open = h("button", { type: "button", className: "secondary-button" }, stored ? "Ändern" : "Check-in");
-  open.addEventListener("click", () => void openCheckinForm(dateKey));
+  const open = dateKey === todayKey ? h("button", { type: "button", className: "secondary-button" }, stored ? "Ändern" : "Check-in") : null;
+  open?.addEventListener("click", () => void openCheckinForm(dateKey));
   return h("div", { className: "planned-day-context planned-day-checkin", dataset: { checkin: dateKey } },
     h("span", null, stored ? scores.join(" · ") || "Check-in" : "Noch kein Check-in"), open, status.childNodes.length ? status : null);
 }
@@ -81,7 +81,7 @@ function checkinChanges(values, stored, dateKey) {
   return Object.keys(body).length > 1 ? body : null;
 }
 
-function checkinFormNodes(stored, dateKey) {
+function checkinFormNodes(stored) {
   const complaints = h("div", "checkin-complaints", (stored.complaints || []).map(checkinComplaintRow));
   const add = h("button", { type: "button", className: "secondary-button" }, "+ Beschwerde");
   add.addEventListener("click", () => {
@@ -102,27 +102,44 @@ function checkinFormNodes(stored, dateKey) {
   ];
 }
 
-// The form starts from the whole stored day (tags and status included), read when it opens.
+const checkinDay = async (day) => (await api(`/api/checkins?date=${day}`)).checkin || {};
+
+// The form starts from the whole stored day (tags and status included) of the chosen date: today, or an
+// earlier day by its date. Changing the date reads that day.
 async function openCheckinForm(dateKey) {
+  const today = todayIso();
   let stored;
   try {
-    stored = (await api("/api/feedback")).checkins.find((item) => item.checkin_date === dateKey) || {};
+    stored = await checkinDay(dateKey);
   } catch (error) {
     if (!isSessionEndedError(error)) toast(error.message, true);
     return;
   }
-  const title = h("h2", { id: "checkinDialogTitle" }, `Check-in · ${dateLabel(dateKey)}`);
+  const date = h("input", { name: "checkin_date", type: "date", required: true, max: today, value: dateKey });
   const status = h("output", { className: "tab-sync-detail", "aria-live": "polite" });
+  const fields = h("div", "checkin-fields", ...checkinFormNodes(stored));
   const cancel = h("button", { type: "button", className: "secondary-button" }, "Abbrechen");
   const save = h("button", { type: "submit" }, "Speichern");
-  const form = h("form", { className: "confirmation-dialog checkin-form" }, title, status, ...checkinFormNodes(stored, dateKey), h("div", "dialog-actions", cancel, save));
+  const form = h("form", { className: "confirmation-dialog checkin-form" }, h("h2", { id: "checkinDialogTitle" }, "Check-in"),
+    h("label", null, "Tag", date), status, fields, h("div", "dialog-actions", cancel, save));
   const dialog = h("dialog", { id: "checkinDialog", "aria-labelledby": "checkinDialogTitle" }, form);
   const close = () => dialog.close();
   cancel.addEventListener("click", close);
   dialog.addEventListener("close", () => { restoreDialogFocus(dialog); dialog.remove(); });
+  date.addEventListener("change", async () => {
+    if (!date.value || date.value > today) return;
+    try {
+      stored = await checkinDay(date.value);
+      fields.replaceChildren(...checkinFormNodes(stored));
+      status.textContent = "";
+    } catch (error) {
+      if (!isSessionEndedError(error)) status.textContent = error.message;
+    }
+  });
   form.addEventListener("submit", async (event) => {
     event.preventDefault();
-    const body = checkinChanges(checkinValues(form), stored, dateKey);
+    const day = date.value;
+    const body = checkinChanges(checkinValues(form), stored, day);
     if (!body) return close();
     save.disabled = true;
     let result;
@@ -133,7 +150,8 @@ async function openCheckinForm(dateKey) {
       if (!isSessionEndedError(error)) status.textContent = error.message;
       return;
     }
-    checkinReceipts.set(dateKey, { text: "Check-in gespeichert.", change: result.change });
+    checkinReceipts.set(day, { text: "Check-in gespeichert.", change: result.change });
+    if (day !== today) toast(`Check-in für ${dateLabel(day)} gespeichert`);
     close();
     await globalThis.load?.();
   });
@@ -141,3 +159,13 @@ async function openCheckinForm(dateKey) {
   document.body.append(dialog);
   showAccessibleDialog(dialog);
 }
+
+// A tap on the reminder opens "#plan/checkin" (the router shows the calendar): once the app has rendered,
+// the form opens for today.
+let checkinLinkPending = globalThis.location.hash.toLowerCase() === "#plan/checkin";
+globalThis.addEventListener("hashchange", () => { checkinLinkPending ||= globalThis.location.hash.toLowerCase() === "#plan/checkin"; });
+document.addEventListener("app:route-rendered", () => {
+  if (!checkinLinkPending || !state.data) return;
+  checkinLinkPending = false;
+  void openCheckinForm(todayIso());
+});
