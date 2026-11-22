@@ -161,16 +161,16 @@ test("a series without a drawn line leaves the legend and the axis; the table sh
   assert.match(text, /Daten für 3 von 3 Wochen vorhanden/, "the week count is the chart's own");
 });
 
-test("data that starts late in the period says so, and a pulse chart keeps a ten-beat range (#3928)", () => {
+test("data that starts late in the period names its start, and a pulse chart keeps a ten-beat range (#3928)", () => {
   const context = chartContext(1200);
   extractFunctions("views.js", ["dateFromKey", "localDateKey", "addDateKey"], context);
   loadPublicScript("analysis.js", context);
   const late = { label: "Ruhepuls", color: 0, cadenceDays: 7, points: [{ date: "2026-11-02", value: 50 }, { date: "2026-11-09", value: 51 }, { date: "2026-11-16", value: 49 }] };
   const text = serialize(context.analysisChart("Ruhepuls", [late], "bpm", "2026-08-31", "2026-11-16", "Hinweis.", { calendarWeeks: true, showLegend: false }));
-  assert.match(text, /"Keine Daten vor 02\.11\.2026\."/);
+  assert.match(text, /"Daten ab 02\.11\.2026\."/);
   const ticks = [...text.matchAll(/class="analysis-value-tick"[^>]*>\n\s+"([^"]+)"/g)].map((match) => Number(match[1].replace(",", ".")));
   assert.ok(Math.max(...ticks) - Math.min(...ticks) >= 10, `the axis spans at least ten beats: ${ticks}`);
   // Data over the whole period names no start.
   const whole = { ...late, points: [{ date: "2026-08-31", value: 50 }, ...late.points] };
-  assert.doesNotMatch(serialize(context.analysisChart("Ruhepuls", [whole], "bpm", "2026-08-31", "2026-11-16", "Hinweis.", { calendarWeeks: true, showLegend: false })), /Keine Daten vor/);
+  assert.doesNotMatch(serialize(context.analysisChart("Ruhepuls", [whole], "bpm", "2026-08-31", "2026-11-16", "Hinweis.", { calendarWeeks: true, showLegend: false })), /Daten ab/);
 });

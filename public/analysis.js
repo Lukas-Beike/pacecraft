@@ -168,7 +168,7 @@ function analysisChart(title, series, unit, start, end, note, {
 function appendAnalysisDataStart(section, series, start, end) {
   const first = series.flatMap((item) => item.points.filter(analysisValidPoint).map((point) => point.date)).sort()[0];
   if (!first || (Date.parse(first) - Date.parse(start)) / Math.max(86400000, Date.parse(end) - Date.parse(start)) <= 0.3) return;
-  section.append(h("p", "muted", `Keine Daten vor ${dateLabel(first)}.`));
+  section.append(h("p", "muted", `Daten ab ${dateLabel(first)}.`));
 }
 
 // A single series named like the chart only repeats the heading in its legend; its info button joins the heading instead.
