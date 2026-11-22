@@ -317,7 +317,7 @@ effect `control`; not fully tracked (no turn undo).
 
 effect `read`.
 
-- `provider` (string; one of `"garmin"`, `"wahoo"`, `"intervals"`, `"openai"`, `"anthropic"`, `"weather"`, `"yazio"`)
+- `provider` (string; one of `"intervals"`, `"garmin"`, `"wahoo"`, `"openai"`, `"anthropic"`, `"weather"`, `"yazio"`)
 
 ### `clarify_coach_request`
 

@@ -19,7 +19,7 @@ from backend.athlete.checkins import (
 )
 from backend.athlete.equipment import RULE_KINDS
 from backend.athlete.profile import BODY_FIELDS, COACH_READ_ONLY_FIELDS
-from backend.canonical.vocabulary import Sport
+from backend.canonical.vocabulary import ProviderId, Sport
 from backend.db.repositories import NUTRIENT_COLUMNS
 from backend.nutrition.catalog import (
     GAP_ORIGINS,
@@ -1075,9 +1075,7 @@ def build_structured_tool_schemas(
                 "provider": {
                     "type": "string",
                     "enum": [
-                        "garmin",
-                        "wahoo",
-                        "intervals",
+                        *(provider.value for provider in ProviderId),
                         "openai",
                         "anthropic",
                         "weather",
