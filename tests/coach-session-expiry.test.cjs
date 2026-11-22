@@ -46,7 +46,8 @@ async function sendChatIntoExpiredSession({ inputValue = "", beforeResponse = ()
     fetch: async () => { beforeResponse(state); return respond(); },
     navigator: { onLine },
     toast(message) { toasts.push(message); },
-    rememberUnsentDraft(text) { drafts.push(text); },
+    rememberUnsentDraft(text, turnId) { drafts.push(turnId ? [text, turnId] : text); },
+    reusedTurnId: () => null,
     state,
     $: () => input,
     // Mirrors the generation and draft effects of public/auth.js showLogin().
@@ -117,7 +118,8 @@ test("a chat sent without a connection goes back to the composer at once and is 
   assert.equal(input.value, "Mein Entwurf");
   assert.equal(state.chatDraftDirty, true);
   assert.deepEqual(toasts, ["Keine Verbindung – nicht gesendet."]);
-  assert.deepEqual(drafts, [null, "Mein Entwurf"]);
+  // The turn id stays with the text: the server may already have queued it.
+  assert.deepEqual(drafts, [null, ["Mein Entwurf", "turn-test"]]);
   assert.equal(state.chatRequest, null);
 });
 
@@ -147,4 +149,22 @@ test("an offline draft follows the athlete's edits and ends with an empty compos
   // Without a kept draft, typing stores nothing.
   context.syncUnsentDraft("getippt");
   assert.equal(store.has("coachUnsentDraft"), false);
+});
+
+test("the same text is sent again under the turn id the server may already know", () => {
+  const store = new Map();
+  const sessionStorage = {
+    getItem: (key) => (store.has(key) ? store.get(key) : null),
+    setItem: (key, value) => store.set(key, value),
+    removeItem: (key) => store.delete(key),
+  };
+  const context = extractFunctions("coach.js", ["rememberUnsentDraft", "syncUnsentDraft", "reusedTurnId"], { sessionStorage });
+  context.rememberUnsentDraft("Plane meine Woche", "turn-1");
+  assert.equal(context.reusedTurnId("Plane meine Woche"), "turn-1");
+  // An edited text is another request and gets its own id; the draft still follows the edit.
+  context.syncUnsentDraft("Plane meine Woche neu");
+  assert.equal(context.reusedTurnId("Plane meine Woche neu"), null);
+  assert.equal(context.reusedTurnId("Plane meine Woche"), "turn-1");
+  context.rememberUnsentDraft(null);
+  assert.equal(context.reusedTurnId("Plane meine Woche"), null);
 });

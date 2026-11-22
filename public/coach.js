@@ -497,7 +497,7 @@ async function recoverChatRequestFailure(error, context) {
   if (unsentOffline(context)) {
     stream.rejected = true;
     error = new Error(OFFLINE_NOT_SENT);
-    rememberUnsentDraft(message);
+    rememberUnsentDraft(message, clientTurnId);
   }
   if (stream.rejected) {
     rememberChatTurn(null);
@@ -553,7 +553,7 @@ function finishChatRequest(context) {
 async function requestCoachResponse(message, requestKind = null, attachments = []) {
   const sessionGeneration = state.sessionGeneration;
   const chatGeneration = state.chatGeneration;
-  const clientTurnId = AppState.secureToken("turn");
+  const clientTurnId = reusedTurnId(message) || AppState.secureToken("turn");
   if (chatIsNearBottom()) state.chatFollowLatest = true;
   if (state.data) {
     state.data.messages = mergeChatMessages([{ role: "user", content: message, attachment_names: JSON.stringify(attachments.map(item => item.name)), client_turn_id: clientTurnId, created_at: new Date().toISOString(), optimistic: true }]);
@@ -1444,11 +1444,21 @@ function rememberChatTurn(clientTurnId) {
 }
 
 // A message that never reached the server stays the athlete's draft across a reload.
-function rememberUnsentDraft(text) {
+// The turn's id stays with its text: the server may have queued the turn before the connection
+// dropped, so sending the same text again reuses the id and is not run twice.
+function rememberUnsentDraft(text, turnId = null) {
   try {
     if (text) sessionStorage.setItem("coachUnsentDraft", text);
-    else sessionStorage.removeItem("coachUnsentDraft");
+    else { sessionStorage.removeItem("coachUnsentDraft"); sessionStorage.removeItem("coachUnsentTurn"); }
+    if (text && turnId) sessionStorage.setItem("coachUnsentTurn", JSON.stringify({ id: turnId, text }));
   } catch { }
+}
+
+function reusedTurnId(message) {
+  try {
+    const turn = JSON.parse(sessionStorage.getItem("coachUnsentTurn") || "null");
+    return turn?.text === message && typeof turn.id === "string" ? turn.id : null;
+  } catch { return null; }
 }
 
 // While an offline draft is kept, what the athlete edits is kept with it.

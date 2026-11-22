@@ -497,7 +497,7 @@ The client SHALL show the working state of a turn, offer a retry on a failed ans
 
 #### Scenario: Sent without a connection
 - **WHEN** the athlete sends a message while the browser is offline and the server has not started the turn
-- **THEN** the client enters no recovery state, shows "Keine Verbindung – nicht gesendet.", returns the text to the composer and keeps it in `sessionStorage["coachUnsentDraft"]` until the next send, so a reload restores it into an empty composer
+- **THEN** the client enters no recovery state, shows "Keine Verbindung – nicht gesendet.", returns the text to the composer and keeps it in `sessionStorage["coachUnsentDraft"]` until the next send, so a reload restores it into an empty composer; the turn id is kept with the text (`sessionStorage["coachUnsentTurn"]`) and a send of the same text reuses it, so a turn the server queued before the drop is not run twice
 
 #### Scenario: Chat reset in another tab
 - **WHEN** the history generation changes while an own message is not in the new history
