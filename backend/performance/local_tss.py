@@ -4,8 +4,10 @@
 the thresholds in effect on its local day, with the first complete branch of:
 
 * power (ride, run): ``IF = NP / FTP``, ``TSS = hours × IF² × 100``;
-* pace (run without power): ``IF = v / v_threshold`` with the grade-adjusted
-  speed, else the average speed, ``TSS = hours × IF² × 100``;
+* pace (run without power): ``IF = v / v_threshold`` with the normalized graded
+  speed of the stored streams (McGregor et al. 2009; covers at least 10 minutes
+  and 80 % of the TSS duration, v8), else Garmin's average grade-adjusted speed,
+  else the average speed, ``TSS = hours × IF² × 100``;
 * heart rate (other sports too, walking included; not strength, yoga or
   alpine ski): Banister TRIMP, normalised so 60 minutes at the threshold HR is
   100, with the constants of the athlete's profile sex (male when not set,
@@ -65,11 +67,12 @@ from backend.performance.current_thresholds import (
 from backend.performance.session_rpe_load import session_load
 
 METHOD_ID: Final = "local-tss-load"
-METHOD_VERSION: Final = 7
+METHOD_VERSION: Final = 8
 CARD: Final = "M6"
 
 POWER_BRANCH: Final = "power"
 PACE_BRANCH: Final = "pace"
+PACE_BASIS_NGS: Final = "normalized_graded_speed"
 HEART_RATE_BRANCH: Final = "heart_rate"
 SESSION_RPE_BRANCH: Final = "session_rpe"
 
@@ -81,6 +84,9 @@ TRIMP_CONSTANTS: Final = {MALE: (0.64, 1.92), FEMALE: (0.86, 1.67)}
 MAX_INTENSITY_FACTOR: Final = 2.0
 # The histogram must cover this share of the TSS duration (card M6 v5).
 HR_COVERAGE_MIN: Final = 0.8
+# The NGS needs at least this much covered time and share of the TSS duration.
+NGS_MIN_COVERED_S: Final = 600.0
+NGS_COVERAGE_MIN: Final = 0.8
 HR_BASIS_DISTRIBUTION: Final = "distribution"
 HR_BASIS_AVERAGE: Final = "average"
 # A later threshold stands in only when observed within this many days after
@@ -168,6 +174,29 @@ class HeartRateHistogram:
 
 # The stored histogram of a session id, read only for sessions on the HR branch.
 HistogramLookup = Callable[[str], HeartRateHistogram | None]
+
+
+@dataclass(frozen=True, slots=True)
+class NormalizedGradedSpeed:
+    """A run's normalized graded speed (m/s), the seconds it covers and its stream."""
+
+    mps: float
+    seconds: float
+    source: str
+
+
+# The stored NGS of a session id, read only for runs on the pace branch.
+SpeedLookup = Callable[[str], NormalizedGradedSpeed | None]
+
+
+def parse_normalized_graded_speed(raw: Any) -> NormalizedGradedSpeed | None:
+    """The NGS of a stored ``ngs`` payload, or None if unusable."""
+    if not isinstance(raw, Mapping):
+        return None
+    mps, seconds = _positive(raw.get("ngs_mps")), _positive(raw.get("seconds"))
+    if mps is None or seconds is None:
+        return None
+    return NormalizedGradedSpeed(mps, seconds, str(raw.get("source")))
 
 
 def parse_heart_rate_histogram(raw: Any) -> HeartRateHistogram | None:
@@ -396,24 +425,39 @@ def _power(
     )
 
 
+def _pace_speed(
+    summary: Mapping[str, Any], seconds: float, ngs: NormalizedGradedSpeed | None
+) -> tuple[float, str, dict[str, Any]] | None:
+    """The run's speed, its basis name and extra inputs: NGS, else Garmin's average."""
+    if (
+        ngs is not None
+        and ngs.seconds >= NGS_MIN_COVERED_S
+        and ngs.seconds >= NGS_COVERAGE_MIN * seconds
+    ):
+        return ngs.mps, PACE_BASIS_NGS, {"ngs_seconds": ngs.seconds}
+    graded = _positive(summary.get("grade_adjusted_speed_mps"))
+    if graded is not None:
+        return graded, "grade_adjusted_speed", {}
+    average = _positive(summary.get("avg_speed_mps"))
+    return None if average is None else (average, "average_speed", {})
+
+
 def _pace(
     summary: Mapping[str, Any],
     sport: Sport,
     seconds: float,
     threshold: Threshold | None,
+    ngs: NormalizedGradedSpeed | None = None,
 ) -> LocalLoad | str | None:
-    if sport is not Sport.RUN:
+    chosen = _pace_speed(summary, seconds, ngs) if sport is Sport.RUN else None
+    if chosen is None:
         return None
-    graded = _positive(summary.get("grade_adjusted_speed_mps"))
-    speed = graded or _positive(summary.get("avg_speed_mps"))
-    if speed is None:
-        return None
+    speed, basis, extra = chosen
     if threshold is None or threshold.value <= 0:
         return "no_threshold_pace"
     factor = speed / threshold.value
     if factor > MAX_INTENSITY_FACTOR:
         return "implausible_intensity"
-    basis = "grade_adjusted_speed" if graded is not None else "average_speed"
     return _result(
         PACE_BRANCH,
         _squared_load(seconds / 3600, factor),
@@ -423,6 +467,7 @@ def _pace(
             "duration_s": seconds,
             "speed_mps": speed,
             "pace_basis": basis,
+            **extra,
         },
         {"threshold_pace": threshold},
     )
@@ -604,6 +649,7 @@ def session_local_load(
     calibration: RpeCalibration | None = None,
     sex: str | None = None,
     histograms: HistogramLookup | None = None,
+    speeds: SpeedLookup | None = None,
 ) -> LocalLoad | str:
     """Return the session's local load, or the reason it has none.
 
@@ -614,7 +660,8 @@ def session_local_load(
     ``calibration`` of its day. ``sex`` (profile value, None or empty when not
     set) chooses the heart-rate branch's TRIMP constants; ``histograms`` gives
     the stored heart-rate histogram of a session id and is called only when the
-    session reaches the heart-rate branch.
+    session reaches the heart-rate branch; ``speeds`` gives a run's stored normalized
+    graded speed and is called only when it reaches the pace branch.
     """
     sport = _sport(summary)
     if sport is None or sport in NO_TSS_SPORTS:
@@ -627,7 +674,13 @@ def session_local_load(
     reason = "no_inputs"
     for branch in (
         lambda: _power(summary, sport, seconds, thresholds.ftp),
-        lambda: _pace(summary, sport, seconds, thresholds.threshold_pace),
+        lambda: _pace(
+            summary,
+            sport,
+            seconds,
+            thresholds.threshold_pace,
+            None if speeds is None else speeds(str(summary.get("id"))),
+        ),
         lambda: _heart_rate(summary, sport, seconds, thresholds, sex, histograms),
     ):
         outcome = branch()
@@ -937,6 +990,7 @@ def session_loads(
     *,
     sex: str | None = None,
     histograms: HistogramLookup | None = None,
+    speeds: SpeedLookup | None = None,
 ) -> dict[str, LocalLoad | str]:
     """Each summary's local load or no-load reason, by session id.
 
@@ -969,6 +1023,7 @@ def session_loads(
             thresholds.for_session(sport, day, indoor=summary_is_indoor(summary)),
             sex=sex,
             histograms=histograms,
+            speeds=speeds,
         )
     calibrations = RpeCalibrations(calibration_pairs(summaries, result, ratings))
     for session_id, summary, day in strength:

@@ -24,7 +24,8 @@ with the zones in effect on the session day (``session_zones``). Their
 thresholds and limits are part of the fingerprint.
 
 It also stores ``hr_histogram``: the seconds per integer bpm of the merged heart-rate
-stream, which the local load stage reads for the heart-rate branch of card M6 (v5).
+stream, which the local load stage reads for the heart-rate branch of card M6 (v5),
+and ``ngs``: the run's normalized graded speed for its pace branch (v8, #3920).
 """
 
 from __future__ import annotations
@@ -61,6 +62,7 @@ from backend.performance.canonical_session_analysis import (
     calendar_profile,
     session_analysis,
     session_heart_rate_histogram,
+    session_normalized_graded_speed,
 )
 from backend.performance.local_tss import THRESHOLD_KINDS, DatedThresholds
 from backend.performance.session_zones import (
@@ -473,6 +475,7 @@ class SessionAnalysisStage:
             "calendar_profile": None,
             "zone_times": None,
             "hr_histogram": None,
+            "ngs": None,
             "stale": session.stale,
             "source": " / ".join(
                 dict.fromkeys(
@@ -508,6 +511,7 @@ class SessionAnalysisStage:
         payload["calendar_profile"] = profile
         payload["zone_times"] = _zone_times(session, merged)
         payload["hr_histogram"] = session_heart_rate_histogram(session.records, merged)
+        payload["ngs"] = session_normalized_graded_speed(session.records, merged)
         return payload
 
     def mark_failed(self, db: Any) -> None:

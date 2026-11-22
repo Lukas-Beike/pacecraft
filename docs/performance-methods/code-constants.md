@@ -51,8 +51,8 @@ every named number the code fixes. A test fails when it is out of date.
 | `BODY_FAT_BOUNDS` | `(2.0, 70.0)` | `backend/performance/canonical_body.py` |  |
 | `ACTIVITY_HISTORY_DAYS` | `365` | `backend/performance/canonical_inputs.py` | Activities older than this are not read for the performance inputs. |
 | `DAILY_HEALTH_DAYS` | `7` | `backend/performance/canonical_inputs.py` | Daily totals of the days before as_of that the 7-day averages read. |
-| `ANALYSIS_VERSION` | `3` | `backend/performance/canonical_session_analysis.py` | Stored activity_detail_analysis.analysis_version of canonical analyses. |
-| `METHOD_VERSION` | `9` | `backend/performance/canonical_session_analysis.py` | Bump when the computation below changes, so the stage recomputes every row. v3: grade-adjusted Pa:HR of outdoor runs (#1770). v4: the heart rate and power source, and the optical heart rate warning (#1869). v5: the running form drift of long runs (#1870). v6: the calendar profile uses the thresholds of the zone times (#1892). v7: samples use the adaptive gap rule of the zone times (#1950). v8: the calendar profile uses the session's configured zone limits (#2136). v9: the aerobic decoupling's steady-output rule reads 60 s rolling means (#1832). The stored heart-rate histogram has its own version in the fingerprint. |
+| `ANALYSIS_VERSION` | `4` | `backend/performance/canonical_session_analysis.py` | Stored activity_detail_analysis.analysis_version of canonical analyses. |
+| `METHOD_VERSION` | `9` | `backend/performance/canonical_session_analysis.py` | v4: the stored normalized graded speed of runs (M6 v8, #3920). Bump when the computation below changes, so the stage recomputes every row. v3: grade-adjusted Pa:HR of outdoor runs (#1770). v4: the heart rate and power source, and the optical heart rate warning (#1869). v5: the running form drift of long runs (#1870). v6: the calendar profile uses the thresholds of the zone times (#1892). v7: samples use the adaptive gap rule of the zone times (#1950). v8: the calendar profile uses the session's configured zone limits (#2136). v9: the aerobic decoupling's steady-output rule reads 60 s rolling means (#1832). The stored heart-rate histogram has its own version in the fingerprint. |
 | `ANALYSIS_DAYS` | `91` | `backend/performance/chart_history.py` | The base read: Belastung and Entwicklung serve 4 Wochen and 3 Monate from it. |
 | `METRIC_KEYS` | `('cycling_ftp_watts', 'run_threshold_pace_seconds_per_km', 'cycling_vo2max_ml_kg_min', 'running_v... (sha256 fffe8d45)` | `backend/performance/chart_history.py` |  |
 | `METHOD` | `'comparable-sessions-v1'` | `backend/performance/comparable_sessions.py` |  |
@@ -136,16 +136,19 @@ every named number the code fixes. A test fails when it is out of date.
 | `LIMITS` | `'Abgeleiteter Hinweis, keine Diagnose. Hartes Training, Alkohol, Hitze, Höhe, Reisen und kurzer S... (sha256 7e8e7194)` | `backend/performance/infection_hint.py` |  |
 | `CURRENT_DAYS` | `7` | `backend/performance/load_context.py` | The days the current local values and their averages are read from. |
 | `METHOD_ID` | `'local-tss-load'` | `backend/performance/local_tss.py` |  |
-| `METHOD_VERSION` | `7` | `backend/performance/local_tss.py` |  |
+| `METHOD_VERSION` | `8` | `backend/performance/local_tss.py` |  |
 | `CARD` | `'M6'` | `backend/performance/local_tss.py` |  |
 | `POWER_BRANCH` | `'power'` | `backend/performance/local_tss.py` |  |
 | `PACE_BRANCH` | `'pace'` | `backend/performance/local_tss.py` |  |
+| `PACE_BASIS_NGS` | `'normalized_graded_speed'` | `backend/performance/local_tss.py` |  |
 | `HEART_RATE_BRANCH` | `'heart_rate'` | `backend/performance/local_tss.py` |  |
 | `SESSION_RPE_BRANCH` | `'session_rpe'` | `backend/performance/local_tss.py` |  |
 | `MALE` | `'male'` | `backend/performance/local_tss.py` | Banister TRIMP prefactor and coefficient by profile sex (card M6 v3); an unset sex takes the male constants and marks the value sex_assumed. |
 | `FEMALE` | `'female'` | `backend/performance/local_tss.py` |  |
 | `MAX_INTENSITY_FACTOR` | `2.0` | `backend/performance/local_tss.py` |  |
 | `HR_COVERAGE_MIN` | `0.8` | `backend/performance/local_tss.py` | The histogram must cover this share of the TSS duration (card M6 v5). |
+| `NGS_MIN_COVERED_S` | `600.0` | `backend/performance/local_tss.py` | The NGS needs at least this much covered time and share of the TSS duration. |
+| `NGS_COVERAGE_MIN` | `0.8` | `backend/performance/local_tss.py` |  |
 | `HR_BASIS_DISTRIBUTION` | `'distribution'` | `backend/performance/local_tss.py` |  |
 | `HR_BASIS_AVERAGE` | `'average'` | `backend/performance/local_tss.py` |  |
 | `LATER_STAND_IN_MAX_DAYS` | `90` | `backend/performance/local_tss.py` | A later threshold stands in only when observed within this many days after the session day (card M6 v5). |
@@ -271,6 +274,8 @@ every named number the code fixes. A test fails when it is out of date.
 | `HEART_RATE_HISTOGRAM_VERSION` | `2` | `backend/performance/session_analysis.py` | Bump when heart_rate_histogram counts differently, so stored rows recompute. v2: steps up to the adaptive gap rule of the zone times count (#1950). |
 | `HISTOGRAM_MIN_BPM` | `30` | `backend/performance/session_analysis.py` |  |
 | `HISTOGRAM_MAX_BPM` | `240` | `backend/performance/session_analysis.py` |  |
+| `NGS_VERSION` | `1` | `backend/performance/session_analysis.py` | Normalized graded speed (M6 v8, McGregor et al. 2009): the analogue of normalized power on the grade-adjusted speed. Bump when it computes differently. |
+| `NGS_WINDOW_S` | `30.0` | `backend/performance/session_analysis.py` |  |
 | `STEADY_MIN_SPEED_MPS` | `1.0` | `backend/performance/session_analysis.py` | A run's steadiness reads the moving samples at or above this speed (m/s), with steps up to this long; a longer gap is a pause. |
 | `STEADY_MAX_STEP_S` | `30.0` | `backend/performance/session_analysis.py` |  |
 | `GAP_METHOD` | `'Minetti et al. 2002: Energiekosten des Laufens je Steigung (Schätzung aus den Streams der Einheit)'` | `backend/performance/session_conditions.py` | Grade-adjusted pace: Minetti et al. 2002 (R44), the adjustment of M8 and pace at HR. |

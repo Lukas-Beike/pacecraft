@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import unittest
 from datetime import UTC, date, datetime, timedelta
+from functools import partial
 from typing import Any
 
 from backend.canonical.domain_records import ZoneConfiguration
@@ -35,12 +36,14 @@ from backend.performance.local_tss import (
     DatedThresholds,
     HeartRateHistogram,
     LocalLoad,
+    NormalizedGradedSpeed,
     RpeCalibration,
     RpeCalibrations,
     SessionRating,
     SessionThresholds,
     Threshold,
     parse_heart_rate_histogram,
+    parse_normalized_graded_speed,
     rated_sessions,
     session_loads,
     session_local_load,
@@ -61,6 +64,12 @@ def _summary(**values: Any) -> dict[str, Any]:
         "started_at_local": "2026-06-01T08:00:00",
         **values,
     }
+
+
+def _speed_of(
+    speed: NormalizedGradedSpeed | None, _session_id: str
+) -> NormalizedGradedSpeed | None:
+    return speed
 
 
 def _load(
@@ -135,6 +144,66 @@ class SessionLoadWorkedExampleTests(unittest.TestCase):
         )
         self.assertAlmostEqual(load.load, 57.42, places=2)
         self.assertEqual(load.details["inputs"]["pace_basis"], "average_speed")
+
+    def test_pace_branch_uses_the_normalized_graded_speed(self) -> None:
+        summary = _summary(
+            sport="run",
+            moving_duration_s=3600.0,
+            grade_adjusted_speed_mps=3.0,
+            avg_speed_mps=3.0,
+        )
+        thresholds = SessionThresholds(threshold_pace=_threshold(4.0))
+        result = session_local_load(
+            summary,
+            thresholds,
+            speeds=lambda _id: NormalizedGradedSpeed(
+                3.5, 3000.0, "grade_adjusted_speed"
+            ),
+        )
+        assert isinstance(result, LocalLoad)
+        # one hour at IF 3.5 / 4.0 = 0.875
+        self.assertAlmostEqual(result.load, 76.5625, places=4)
+        self.assertEqual(
+            result.details["inputs"]["pace_basis"], "normalized_graded_speed"
+        )
+        # too little covered time: Garmin's average, its basis named
+        shorts: list[NormalizedGradedSpeed | None] = [
+            NormalizedGradedSpeed(3.5, 500.0, "x"),
+            NormalizedGradedSpeed(3.5, 2000.0, "x"),
+            None,
+        ]
+        for short in shorts:
+            fallback = session_local_load(
+                summary, thresholds, speeds=partial(_speed_of, short)
+            )
+            assert isinstance(fallback, LocalLoad)
+            self.assertAlmostEqual(fallback.load, 56.25, places=4)
+            self.assertEqual(
+                fallback.details["inputs"]["pace_basis"], "grade_adjusted_speed"
+            )
+
+    def test_power_runs_ignore_the_normalized_graded_speed(self) -> None:
+        def unused(_id: str) -> NormalizedGradedSpeed:
+            raise AssertionError("the power branch reads no speed")
+
+        load = session_local_load(
+            _summary(sport="run", normalized_power=230.0, moving_duration_s=4200.0),
+            SessionThresholds(ftp=_threshold(250.0)),
+            speeds=unused,
+        )
+        assert isinstance(load, LocalLoad)
+        self.assertEqual(load.branch, POWER_BRANCH)
+        self.assertAlmostEqual(load.load, 98.75, places=2)
+
+    def test_parse_normalized_graded_speed(self) -> None:
+        parsed = parse_normalized_graded_speed(
+            {"ngs_mps": 3.2, "seconds": 900.0, "source": "grade_adjusted_speed"}
+        )
+        self.assertEqual(
+            parsed, NormalizedGradedSpeed(3.2, 900.0, "grade_adjusted_speed")
+        )
+        self.assertIsNone(parse_normalized_graded_speed({"ngs_mps": 0, "seconds": 9}))
+        self.assertIsNone(parse_normalized_graded_speed(None))
 
     def test_heart_rate_branch_matches_the_hand_example(self) -> None:
         load = _load(

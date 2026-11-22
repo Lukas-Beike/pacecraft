@@ -343,11 +343,11 @@ METHOD_NUMBER_PINS = {
     "backend/canonical/dfa_alpha1.py": (3, "15f9cecd3bd14787"),
     "backend/nutrition/energy_balance.py": (26, "133a07e43fdc5174"),
     "backend/performance/activity_energy.py": (8, "29737ead83232fbf"),
-    "backend/performance/canonical_session_analysis.py": (9, "5d5d195ef4d50e06"),
+    "backend/performance/canonical_session_analysis.py": (9, "208ff670ce0b66c0"),
     "backend/performance/critical_power.py": (3, "7ddfaff976ff585a"),
     "backend/performance/fitness_fatigue.py": (1, "6c4b32888188ff3f"),
     "backend/performance/form_drift.py": (1, "974248a978784012"),
-    "backend/performance/local_tss.py": (7, "40b1030257d71dbc"),
+    "backend/performance/local_tss.py": (8, "63724aebb0764020"),
     "backend/performance/morning_battery_service.py": (1, "b52b0cf1b6965a40"),
     "backend/performance/power_profile.py": (3, "ea4854aa8f5c3b8c"),
     "backend/performance/session_metrics.py": (5, "57491cb2710b5ca7"),
@@ -538,10 +538,10 @@ class PerformanceMethodCardTests(unittest.TestCase):
         card = (CARDS_DIR / "m6-local-tss-load.md").read_text("utf-8")
         self.assertEqual(
             code_method_versions(card_modules(card)),
-            {"backend/performance/local_tss.py": 7},
+            {"backend/performance/local_tss.py": 8},
         )
         self.assertTrue(
-            version_problems(card.replace("local-tss-load v7", "local-tss-load v8"))
+            version_problems(card.replace("local-tss-load v8", "local-tss-load v9"))
         )
 
 

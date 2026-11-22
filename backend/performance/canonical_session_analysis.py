@@ -36,14 +36,17 @@ from backend.performance.form_drift import form_drift
 from backend.performance.power_profile import power_profile, running_profile
 from backend.performance.session_analysis import (
     HEART_RATE_HISTOGRAM_VERSION,
+    NGS_VERSION,
     aerobic_analysis,
     heart_rate_histogram,
     interval_quality,
+    normalized_graded_speed,
 )
 from backend.performance.session_execution import session_execution
 
 # Stored ``activity_detail_analysis.analysis_version`` of canonical analyses.
-ANALYSIS_VERSION: Final = 3
+ANALYSIS_VERSION: Final = 4
+# v4: the stored normalized graded speed of runs (M6 v8, #3920).
 # Bump when the computation below changes, so the stage recomputes every row.
 # v3: grade-adjusted Pa:HR of outdoor runs (#1770).
 # v4: the heart rate and power source, and the optical heart rate warning (#1869).
@@ -187,6 +190,15 @@ def session_heart_rate_histogram(
     return heart_rate_histogram(adapted.activity)
 
 
+def session_normalized_graded_speed(
+    records: Sequence[ActivityRecord], merged: MergedDetail
+) -> dict[str, Any] | None:
+    """The normalized graded speed of the merged full-resolution streams (M6 v8)."""
+    ordered = measured_order(records)
+    adapted = analysis_input(ordered[0], merged.streams, None, members=ordered)
+    return normalized_graded_speed(adapted.activity)
+
+
 def record_part(record: ActivityRecord) -> list[object]:
     """The record fields the analysis reads, for the input fingerprint."""
     provider = record.provenance.provider
@@ -226,6 +238,7 @@ def analysis_fingerprint(
                 form_drift_module.METHOD_VERSION,
                 stream_zones.ZONE_TIMES_VERSION,
                 HEART_RATE_HISTOGRAM_VERSION,
+                NGS_VERSION,
             ],
             "records": [record_part(record) for record in measured_order(records)],
             "sets": sorted(set_hashes),
