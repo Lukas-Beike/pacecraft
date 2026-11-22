@@ -401,7 +401,7 @@
     content.append(card);
   }
 
-  const COVERAGE_LABELS = { power_w: "Leistung", heart_rate_bpm: "Herzfrequenz", speed_mps: "Geschwindigkeit", altitude_m: "Höhe", distance_m: "Distanz", grade_pct: "Steigung", cadence_rpm: "Kadenz", respiration_rate_brpm: "Atemfrequenz", performance_condition: "Leistungszustand", stamina_137_pct: "Ausdauer A", stamina_138_pct: "Ausdauer B" };
+  const COVERAGE_LABELS = { power_w: "Leistung", heart_rate_bpm: "Herzfrequenz", speed_mps: "Geschwindigkeit", altitude_m: "Höhe", distance_m: "Distanz", grade_pct: "Steigung", cadence_rpm: "Kadenz", temperature_c: "Temperatur", moving: "Bewegung", ground_contact_time_ms: "Bodenkontaktzeit", ground_contact_balance_pct: "Bodenkontakt links", vertical_oscillation_cm: "Vertikale Oszillation", vertical_ratio_pct: "Vertikales Verhältnis", step_length_m: "Schrittlänge", respiration_rate_brpm: "Atemfrequenz", performance_condition: "Leistungszustand", stamina_137_pct: "Ausdauer A", stamina_138_pct: "Ausdauer B" };
 
   // Per provider: the load state and the data coverage, with readable channel names.
   function providerFacts(entry) {

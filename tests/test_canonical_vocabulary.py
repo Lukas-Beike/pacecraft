@@ -4,9 +4,11 @@ from __future__ import annotations
 
 import re
 import unittest
+from pathlib import Path
 
 from backend.canonical.labels import SPORT_LABELS_DE, sport_label_de
 from backend.canonical.vocabulary import (
+    POSITION_CHANNELS,
     CategoricalDomain,
     Environment,
     LoadModel,
@@ -18,10 +20,12 @@ from backend.canonical.vocabulary import (
     SleepKind,
     SourceKind,
     Sport,
+    StreamChannel,
     ZoneConfigurationMetric,
     ZonePercentBasis,
 )
 
+ROOT = Path(__file__).resolve().parent.parent
 SNAKE_CASE = re.compile(r"^[a-z][a-z0-9_]*$")
 
 
@@ -184,6 +188,18 @@ class CanonicalVocabularyTests(unittest.TestCase):
         for kind in MetricKind:
             with self.subTest(kind=kind.name):
                 self.assertRegex(kind.value, SNAKE_CASE)
+
+    def test_every_stream_channel_has_a_coverage_label(self) -> None:
+        """The detail view names each channel it counts; the key never shows (#3933)."""
+        source = (ROOT / "public" / "activity-details.js").read_text(encoding="utf-8")
+        start = source.index("const COVERAGE_LABELS = {")
+        body = source[source.index("{", start) + 1 : source.index("};", start)]
+        labelled = {entry.split(":")[0].strip() for entry in body.split(",")}
+        hidden = {StreamChannel.TIME_S, *POSITION_CHANNELS}
+        missing = {
+            channel.value for channel in StreamChannel if channel not in hidden
+        } - labelled
+        self.assertEqual(missing, set())
 
     def test_every_sport_has_a_german_label(self) -> None:
         self.assertEqual(set(Sport), set(SPORT_LABELS_DE))

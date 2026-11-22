@@ -205,7 +205,7 @@ class LibraryPlanServiceTests(unittest.TestCase):
             raised.exception.message,
             "Planung wegen bestehender Kalendereinheiten nicht möglich: "
             + ", ".join(
-                f"2026-09-21: {name}" for name in ["Doppelte Bibliothekseinheit"] * 8
+                f"21.09.: {name}" for name in ["Doppelte Bibliothekseinheit"] * 8
             )
             + ". Weitere Konflikte wurden nicht aufgelistet.",
         )

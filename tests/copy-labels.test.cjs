@@ -37,6 +37,7 @@ function contextValueNodeFor() {
   return extractFunctions("coach.js", ["CONTEXT_PREVIEW_MAX_DEPTH", "CONTEXT_PREVIEW_MAX_ITEMS", "CONTEXT_HIDDEN_KEYS", "CONTEXT_KEY_LABELS", "contextScalarText", "contextPreNode", "contextTextNode", "contextListNode", "contextObjectNode", "contextValueNode"], {
     document: fakeDocument(),
     formatTime: (value) => value,
+    profileSportsLabel: extractFunctions("views.js", ["PROFILE_SPORT_LABELS", "profileSportsLabel"]).profileSportsLabel,
   }).contextValueNode;
 }
 
@@ -51,6 +52,9 @@ test("the context preview shows readable values and keeps deeply nested provider
   assert.deepEqual(text, ["unlabelled key", "ok", "flag", "Ja", "empty", "Keine Angaben", "missing", "–"]);
   const nested = descendants(contextValueNode({ a: { b: { c: { d: 1 } } } }));
   assert.deepEqual(nested.filter((node) => node.tag === "pre").map((node) => node.textContent), ['{\n  "d": 1\n}']);
+  // The profile's own keys and sports read in German (#3933).
+  const profile = contextValueNode({ goals: "Marathon", training_background: "Lauf", availability: "Abends", sports: "Cycling, Running" });
+  assert.deepEqual(profile.children.map((node) => node.textContent), ["Ziele", "Marathon", "Trainingshintergrund", "Lauf", "Verfügbarkeit", "Abends", "Sportarten", "Radfahren, Laufen"]);
   assert.equal(contextValueNode("Langer Text", "content").tag, "pre");
   const longList = contextValueNode(Array.from({ length: 30 }, (_, index) => index));
   assert.equal(longList.children.length, 26);

@@ -127,7 +127,7 @@ server {
 Intervals.icu, OpenAI, Claude (Anthropic), Garmin Personal API key (with its expiry date), Wahoo and Yazio credentials can be entered in each provider's card under **Mehr > Anbindungen** instead of in `.env`:
 
 - **Where values live:** a value saved in the app is stored in the encrypted database and takes precedence. The matching environment variable is a read-only fallback that applies again after the stored value is removed.
-- **Badges:** each field shows "In der App gespeichert", "Aus Umgebung" or "Nicht gesetzt". "Entfernen" deletes only the value stored in the app and asks for confirmation.
+- **Badges:** each field shows "In der App gespeichert", "Server-Einstellung" or "Nicht gesetzt". "Entfernen" deletes only the value stored in the app and asks for confirmation.
 - **Secrets:** API keys, client secrets and passwords are never shown again after saving, and the form is cleared on submit. Non-secret values (OpenAI and Anthropic base URLs, Intervals.icu athlete ID, Wahoo client ID, Garmin key expiry date) are shown as the current value.
 - **Timing:** changes apply without a container restart.
 - **Password re-entry:** setting the OpenAI or Anthropic base URL or the Wahoo client ID or secret asks for the `APP_PASSWORD` again, on top of the session, because these values decide where a model provider key is sent and which Wahoo app is used. A wrong or missing password changes nothing. Removing a stored value needs no password.

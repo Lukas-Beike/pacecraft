@@ -36,14 +36,14 @@ const CREDENTIAL_VISIBLE_FIELDS = new Set(["openai_base_url", "anthropic_base_ur
 
 const CREDENTIAL_SOURCE_LABELS = Object.freeze({
   db: "In der App gespeichert",
-  env: "Aus Umgebung",
+  env: "Server-Einstellung",
   none: "Nicht gesetzt",
 });
 
 const GARMIN_SOURCE_LABELS = Object.freeze({
   db: "In der App gespeichert",
   file: "Aus Token-Datei",
-  env: "Aus Umgebung",
+  env: "Server-Einstellung",
   none: "Nicht gesetzt",
 });
 

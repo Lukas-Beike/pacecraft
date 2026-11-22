@@ -36,6 +36,24 @@ MAX_ZONES: Final = 7
 # Sports whose planned workouts carry zone targets.
 EDITABLE_SPORTS: Final = (Sport.RIDE, Sport.RUN, Sport.SWIM)
 _INVALID = "Die Zonen sind ungültig: {}."
+# The athlete reads the field, never its key (#3933).
+_FIELD_LABELS: Final = {
+    "limits": "Obergrenzen",
+    "percent_limits": "Prozentgrenzen",
+    "threshold": "Schwelle",
+    "maximum": "Maximum",
+    "valid_from": "Gültig ab",
+    "sport": "Sportart",
+    "environment": "Umgebung",
+    "metric": "Messgröße",
+    "limits oder percent_limits": "Obergrenzen oder Prozentgrenzen",
+}
+
+
+def _invalid(reason: Any) -> str:
+    return _INVALID.format(_FIELD_LABELS.get(reason, reason))
+
+
 # Metrics whose zones are placed relative to the threshold, so it must be given.
 _THRESHOLD_REQUIRED: Final = {
     ZoneConfigurationMetric.HEART_RATE: "Schwellenpuls (LSHF) fehlt",
@@ -102,20 +120,20 @@ def _enum(enum: Any, value: Any, field: str) -> Any:
     try:
         return enum(value)
     except ValueError as exc:
-        raise AppError(400, _INVALID.format(field)) from exc
+        raise AppError(400, _invalid(field)) from exc
 
 
 def _optional_number(value: Any, field: str) -> float | None:
     if value is None or value == "":
         return None
     if type(value) not in {int, float}:
-        raise AppError(400, _INVALID.format(field))
+        raise AppError(400, _invalid(field))
     try:
         number = float(value)
     except OverflowError:
-        raise AppError(400, _INVALID.format(field)) from None
+        raise AppError(400, _invalid(field)) from None
     if not math.isfinite(number):
-        raise AppError(400, _INVALID.format(field))
+        raise AppError(400, _invalid(field))
     return number
 
 
@@ -123,10 +141,15 @@ def _zone_list(value: Any, field: str) -> tuple[float, ...] | None:
     if value is None:
         return None
     if not isinstance(value, list) or not MIN_ZONES <= len(value) <= MAX_ZONES:
-        raise AppError(400, _INVALID.format(f"{field} braucht 3 bis 7 Werte"))
+        raise AppError(
+            400,
+            _invalid(
+                f"{MIN_ZONES} bis {MAX_ZONES} {_FIELD_LABELS.get(field, field)} erforderlich"
+            ),
+        )
     numbers = tuple(_optional_number(item, field) for item in value)
     if any(item is None for item in numbers):
-        raise AppError(400, _INVALID.format(field))
+        raise AppError(400, _invalid(field))
     return tuple(item for item in numbers if item is not None)
 
 
@@ -136,7 +159,7 @@ def _optional_day(value: Any) -> date | None:
     try:
         return date.fromisoformat(str(value))
     except ValueError as exc:
-        raise AppError(400, _INVALID.format("valid_from")) from exc
+        raise AppError(400, _invalid("valid_from")) from exc
 
 
 def _check_heart_rate_limits(
@@ -177,20 +200,20 @@ def local_configuration(payload: Mapping[str, Any]) -> ZoneConfiguration:
     """
     sport = _enum(Sport, payload.get("sport"), "sport")
     if sport not in EDITABLE_SPORTS:
-        raise AppError(400, _INVALID.format("sport"))
+        raise AppError(400, _invalid("sport"))
     metric = _enum(ZoneConfigurationMetric, payload.get("metric"), "metric")
     environment = payload.get("environment")
     if environment not in (None, Environment.INDOOR.value):
-        raise AppError(400, _INVALID.format("environment"))
+        raise AppError(400, _invalid("environment"))
     limits = _zone_list(payload.get("limits"), "limits")
     percent_limits = _zone_list(payload.get("percent_limits"), "percent_limits")
     if (limits is None) == (percent_limits is None):
-        raise AppError(400, _INVALID.format("limits oder percent_limits"))
+        raise AppError(400, _invalid("limits oder percent_limits"))
     threshold = _optional_number(payload.get("threshold"), "threshold")
     if threshold is None and metric in _THRESHOLD_REQUIRED:
         # Without it the local zones would win but replace the provider's
         # threshold with none and could not place bpm or watt targets.
-        raise AppError(400, _INVALID.format(_THRESHOLD_REQUIRED[metric]))
+        raise AppError(400, _invalid(_THRESHOLD_REQUIRED[metric]))
     maximum = (
         _optional_number(payload.get("maximum"), "maximum")
         if metric is ZoneConfigurationMetric.HEART_RATE
@@ -217,7 +240,7 @@ def local_configuration(payload: Mapping[str, Any]) -> ZoneConfiguration:
             threshold_origin=payload.get("threshold_origin") or None,
         )
     except (TypeError, ValueError) as exc:
-        raise AppError(400, _INVALID.format(exc)) from exc
+        raise AppError(400, _invalid(exc)) from exc
 
 
 EffectiveZone = Callable[..., ZoneConfiguration | None]

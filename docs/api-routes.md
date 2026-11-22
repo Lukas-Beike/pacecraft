@@ -2322,10 +2322,10 @@ pending one. For `/api/wahoo/disconnect` 200 with `status` (`"ok"`),
 deleted).
 
 Errors: for `/api/wahoo/connect`: 503 `not_configured` "Wahoo ist nicht
-konfiguriert. Bitte WAHOO_CLIENT_ID, WAHOO_CLIENT_SECRET und
-WAHOO_REDIRECT_URI in der Serverkonfiguration hinterlegen."; 400
-`invalid_redirect_uri` "WAHOO_REDIRECT_URI muss eine vollständige
-HTTPS-URL ohne Zugangsdaten sein." when the configured redirect is not an
+konfiguriert. Bitte Client-ID, Client-Secret und Weiterleitungs-URL in
+den Server-Einstellungen hinterlegen."; 400 `invalid_redirect_uri` "Die
+Weiterleitungs-URL muss eine vollständige HTTPS-URL ohne Zugangsdaten
+sein." when the configured redirect is not an
 HTTPS URL with host, without credentials or fragment. Disconnect has no
 route-specific errors.
 
@@ -2376,10 +2376,10 @@ Response: 200 `{"configuration": object, "change": object | null}`;
 `change` is the undo reference (`id`, `entity_type`, `action`,
 `after_hash`).
 
-Errors: 400 "Die Zonen sind ungültig: {reason}." with the invalid field or
-rule (`sport`, `metric`, `environment`, `limits oder percent_limits`,
-`{field} braucht 3 bis 7 Werte`, `threshold`, `maximum`, `Schwellenpuls
-(LSHF) fehlt`, `FTP fehlt`, `valid_from`); 400 "Die maximale Herzfrequenz darf nicht unter dem
+Errors: 400 "Die Zonen sind ungültig: {reason}." with the invalid field
+named in German ("Sportart", "Messgröße", "Umgebung", "Obergrenzen oder
+Prozentgrenzen", "3 bis 7 {field} erforderlich", "Schwelle", "Maximum",
+"Schwellenpuls (LSHF) fehlt", "FTP fehlt", "Gültig ab"); 400 "Die maximale Herzfrequenz darf nicht unter dem
 Schwellenpuls liegen."; 400 "Die Zonenobergrenzen dürfen nicht über der
 maximalen Herzfrequenz liegen."; 400 "Das Datum „Gilt ab“ darf nicht in der
 Zukunft liegen.".
