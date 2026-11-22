@@ -23,6 +23,7 @@ from test_feedback_session_identity import ZONE, ingest_wahoo, wahoo_row
 from backend.activities.hr_cap import effective_caps
 from backend.canonical.vocabulary import DfaQuality
 from backend.coach.receipt_compaction import compact_receipt
+from backend.coach.tool_specs import PROFILE_MUTATING_TOOLS
 from backend.coach.training_patch import CoachTrainingPatchService
 from backend.coach.write_gate import CLASSIFIER_DOMAINS, TOOL_DOMAIN
 from backend.errors import AppError
@@ -2655,6 +2656,25 @@ class CoachToolCoverageTests(DialogueHarness, unittest.TestCase):
                     adopted["configuration"]["threshold_origin"],
                 ),
             )
+            # The same adoption again records nothing and shows no receipt.
+            repeated = self.run_tool(
+                "save_zones",
+                {
+                    "action": "adopt_lt2",
+                    "sport": "run",
+                    "source": "dfa_alpha1",
+                    "value": "heart_rate",
+                    "shown": 172,
+                },
+                ["local_zones"],
+                message="Übernimm die DFA-Schätzung von 172 noch einmal.",
+            )
+            self.assertEqual(
+                ("unchanged", None), (repeated["status"], repeated["change"])
+            )
+            # Its first-threshold adoption saves the profile: the profile lock
+            # is taken before the turn's writer lease.
+            self.assertIn("save_zones", PROFILE_MUTATING_TOOLS)
             first = self.run_tool(
                 "save_zones",
                 {"action": "adopt_first_threshold", "shown": 88.0},

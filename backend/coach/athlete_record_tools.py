@@ -427,6 +427,9 @@ class CoachAthleteRecordToolService:
                 "Unbekannte Zonenaktion.",
                 reason="tool_arguments_invalid",
             )
+        if "change" in result and result["change"] is None:
+            # The same configuration again: nothing recorded, no receipt.
+            result = {**result, "status": "unchanged"}
         return {"ok": True, "stored_locally": True, "action": action, **result}
 
     def _adopt_first_threshold(

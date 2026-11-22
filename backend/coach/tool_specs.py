@@ -331,6 +331,8 @@ TOOL_SPECS: tuple[ToolSpec, ...] = (
         domain=PROFILE,
         done="Zonen gespeichert",
         action="Zonen speichern",
+        # Adopting the first threshold saves the profile: its lock comes first.
+        mutates_profile=True,
         requirements=("athlete-profile-and-checkins/Coach zone changes",),
     ),
     ToolSpec(
