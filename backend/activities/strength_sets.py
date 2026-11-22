@@ -67,6 +67,7 @@ LEG_CATEGORIES: Final = frozenset(
         ExerciseCategory.TOTAL_BODY,
     }
 )
+# The upper body is every other known category; a total body exercise counts for both sides.
 # Categories that say nothing about the body part trained.
 NEUTRAL_CATEGORIES: Final = frozenset(
     {
@@ -138,6 +139,7 @@ def strength_summary(item: StoredDetailSet, *, set_list: bool) -> dict[str, Any]
         "total_reps": sum(reps) if reps else None,
         "volume_kg": round(sum(volume), 1) if volume else None,
         "leg": _leg(group["category"] for group in exercises),
+        "upper": _upper(group["category"] for group in exercises),
         # Reps per recognized category over every active set, for the plan
         # comparison; the exercise list below is bounded for display.
         "by_category": by_category,
@@ -194,6 +196,7 @@ def _exercise_entry(group: Mapping[str, Any], *, set_list: bool) -> dict[str, An
         "category": None if category is None else category.value,
         "name": group["name"],
         "leg": _category_leg(category),
+        "upper": _category_upper(category),
         "sets": len(sets),
         "top_kg": None if top is None else top["weight_kg"],
         "top_reps": None if top is None else top["reps"],
@@ -208,6 +211,26 @@ def _category_leg(category: ExerciseCategory | None) -> bool | None:
     if category is None or category in NEUTRAL_CATEGORIES:
         return None
     return category in LEG_CATEGORIES
+
+
+def _category_upper(category: ExerciseCategory | None) -> bool | None:
+    if category is None or category in NEUTRAL_CATEGORIES:
+        return None
+    return category not in LEG_CATEGORIES or category is ExerciseCategory.TOTAL_BODY
+
+
+def _upper(categories: Iterable[ExerciseCategory | None]) -> bool | None:
+    """True with any upper body exercise, False when every exercise is known leg only."""
+    decided = [
+        _category_upper(category)
+        for category in categories
+        if category not in NEUTRAL_CATEGORIES
+    ]
+    if any(decided):
+        return True
+    if decided and all(value is False for value in decided):
+        return False
+    return None
 
 
 def _leg(categories: Iterable[ExerciseCategory | None]) -> bool | None:

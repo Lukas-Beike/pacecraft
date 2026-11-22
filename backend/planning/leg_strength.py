@@ -61,6 +61,8 @@ NOTE = (
     "Leg = executed leg exercises of a completed session, else a legs, full body "
     "or plyometrics focus."
 )
+# Session foci that train the upper body (full body counts for both sides).
+UPPER_FOCI: Final = frozenset({"upper", "full_body"})
 Predicate = Callable[[Mapping[str, Any]], bool]
 Draft = tuple[str, list[Mapping[str, Any]], str, dict[str, Any]]
 _ENDURANCE = frozenset({Sport.RUN, Sport.RIDE})
@@ -77,6 +79,9 @@ class StrengthClass:
 
     leg: bool | None
     intensity: str | None
+    # The upper body, the same way (a full body session counts for both); not part of the
+    # leg strength notes, read by Analyse › Kraft.
+    upper: bool | None = None
 
 
 def _grade(value: float, heavy: float, moderate: float) -> str:
@@ -111,7 +116,21 @@ def classify(unit: Mapping[str, Any]) -> StrengthClass | None:
         leg: bool | None = executed
     else:
         leg = None if focus.value is None else focus.is_leg_strength
-    return StrengthClass(leg, _intensity(unit, focus))
+    executed_upper = unit.get("executed_upper")
+    if isinstance(executed_upper, bool):
+        upper: bool | None = executed_upper
+    else:
+        upper = None if focus.value is None else focus.value in UPPER_FOCI
+    return StrengthClass(leg, _intensity(unit, focus), upper)
+
+
+def sides(row: Mapping[str, Any]) -> tuple[bool | None, bool | None] | None:
+    """Upper body and leg of a completed strength activity; ``None`` for any other sport.
+
+    Each side is ``None`` when neither the executed sets nor the focus decide it.
+    """
+    found = classify(completed_unit(row))
+    return None if found is None else (found.upper, found.leg)
 
 
 def week_counts(units: Iterable[Mapping[str, Any]]) -> dict[str, Any]:
@@ -144,6 +163,7 @@ def completed_unit(row: Mapping[str, Any]) -> dict[str, Any]:
         "planned_intensity": row.get("intensity"),
         "rpe": row.get("rpe"),
         "executed_leg": (row.get("strength_sets") or {}).get("leg"),
+        "executed_upper": (row.get("strength_sets") or {}).get("upper"),
     }
 
 

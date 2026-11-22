@@ -27,7 +27,6 @@ Default route: `#coach`. Navigation items: `#coach`, `#plan`, `#nutrition`, `#an
 | `#analysis` | `dataPanel` | `analysis` | `/api/performance`, `/api/analysis/power-profiles` | Analyse aktualisieren, Jetzt abgleichen, Anbindung einrichten | loading, empty, error, notConfigured, offline |
 | `#analysis/cycling` | `dataPanel` | `analysis` | `/api/performance`, `/api/analysis/power-profiles` | Analyse aktualisieren, Jetzt abgleichen, Anbindung einrichten | loading, empty, error, notConfigured, offline |
 | `#analysis/load` | `dataPanel` | `analysis` | `/api/performance` | Analyse aktualisieren, Jetzt abgleichen, Anbindung einrichten, 4 Wochen, 3 Monate, 6 Monate, 12 Monate, 3 Monate anzeigen | loading, empty, error, notConfigured, offline |
-| `#analysis/records` | `dataPanel` | `analysis` | `/api/performance`, `/api/analysis/power-profiles` | Analyse aktualisieren, Jetzt abgleichen, Anbindung einrichten | loading, empty, error, notConfigured, offline |
 | `#analysis/recovery` | `dataPanel` | `analysis` | `/api/performance` | Analyse aktualisieren, Jetzt abgleichen, Anbindung einrichten, 4 Wochen, 3 Monate, 6 Monate, 12 Monate, 3 Monate anzeigen | loading, empty, error, notConfigured, offline |
 | `#analysis/running` | `dataPanel` | `analysis` | `/api/performance`, `/api/analysis/power-profiles` | Analyse aktualisieren, Jetzt abgleichen, Anbindung einrichten | loading, empty, error, notConfigured, offline |
 | `#analysis/strength` | `dataPanel` | `analysis` | `/api/performance`, `/api/analysis/strength` | Analyse aktualisieren, Jetzt abgleichen, Anbindung einrichten | loading, empty, error, notConfigured, offline |
@@ -55,6 +54,7 @@ Mehr segments: `profile`, `connections`, `equipment`, `coach`, `app`, `operation
 Former routes that open another view:
 
 - `#analysis/performance` opens `#analysis/running`
+- `#analysis/records` opens `#analysis/running`
 - `#analysis/sessions` opens `#plan/overview`
 - `#analysis/week` opens `#plan/overview`
 - `#more/appearance` opens `#more/app`
@@ -117,6 +117,8 @@ expression. Other inline status lines are not listed.
 | Function | Helper | Text | Detail |
 | --- | --- | --- | --- |
 | `renderCurrentPerformance` | `h(.empty)` | (computed) ` text ` |  |
+| `renderPerformanceLoading` | `createLoadingState` | Werte werden geladen… |  |
+| `renderPerformanceLoading` | `createLoadingState` | Prognosen werden geladen… |  |
 
 ### `public/plan-views.js`
 

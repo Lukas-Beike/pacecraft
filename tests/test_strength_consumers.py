@@ -40,9 +40,10 @@ from backend.coach.activity_read_tools import _strength_plan
 from backend.db import row_factory
 from backend.db.activity_detail_store import StoredDetailSet, replace_detail_set
 from backend.db.schema import initialize_schema
+from backend.errors import AppError
 from backend.performance import report_service
 from backend.performance.report_service import TrainingReportReadService
-from backend.planning.leg_strength import classify, completed_unit
+from backend.planning.leg_strength import classify, completed_unit, sides
 
 STAMP = "2026-11-07T08:00:00+00:00"
 ACTIVE = StrengthSetType.ACTIVE
@@ -516,102 +517,122 @@ class ProgressionTests(unittest.TestCase):
 
 
 class StrengthAnalysisTests(unittest.TestCase):
-    """Analyse › Kraft (#3764): twelve calendar weeks from the stored sets only."""
+    """Analyse › Kraft: sessions per week for the upper body and the legs."""
 
-    def test_weeks_count_sessions_and_exercises_list_their_top_sets(self) -> None:
-        squat = {
-            "exercises": [
-                {
-                    "name": "BARBELL_BACK_SQUAT",
-                    "category": "SQUAT",
-                    "sets": 4,
-                    "top_kg": 80.0,
-                    "top_reps": 5,
-                }
-            ]
-        }
-        pull = {
-            "exercises": [
-                {
-                    "name": "PULL_UP",
-                    "category": "PULL_UP",
-                    "sets": 3,
-                    "top_kg": None,
-                    "top_reps": 8,
-                }
-            ]
-        }
-        summaries = [
-            {
-                "sport": "strength",
-                "started_at_local": "2026-11-19T18:00:00",
-                "strength_sets": squat,
-            },
-            {
-                "sport": "strength",
-                "started_at_local": "2026-11-17T18:00:00",
-                "strength_sets": pull,
-            },
-            # A strength session without stored sets still counts as a session.
-            {"sport": "strength", "started_at_local": "2026-11-10T18:00:00"},
-            {
-                "sport": "strength",
-                "started_at_local": "2026-09-01T18:00:00",
-                "strength_sets": squat,
-            },
-            # Outside the window, and another sport.
-            {
-                "sport": "strength",
-                "started_at_local": "2026-08-30T18:00:00",
-                "strength_sets": squat,
-            },
-            {"sport": "run", "started_at_local": "2026-11-18T07:00:00"},
-        ]
-        service = TrainingReportReadService(
+    def _service(self) -> TrainingReportReadService:
+        return TrainingReportReadService(
             read_plan=dict,
             read_checkins=list,
             read_feedback=lambda _ids: [],
             today=lambda: date(2026, 11, 20),
             canonical=Mock(),
+            strength_sides=sides,
         )
+
+    def _strength(self, summaries: list[Any], weeks: int | None = None):
         with patch.object(
             report_service,
             "activity_summaries_with_sync_time",
             return_value=(summaries, None),
         ):
-            result = service.strength()
-        self.assertEqual((result["start"], result["end"]), ("2026-08-31", "2026-11-20"))
-        self.assertEqual(len(result["weeks"]), 12)
-        counts = {week["week_start"]: week["sessions"] for week in result["weeks"]}
+            return (
+                self._service().strength(weeks)
+                if weeks is not None
+                else self._service().strength()
+            )
+
+    def test_weeks_count_the_upper_body_the_legs_and_the_unknown(self) -> None:
+        summaries = [
+            # Executed sets decide: legs only, upper only.
+            {
+                "sport": "strength",
+                "started_at_local": "2026-11-19T18:00:00",
+                "strength_sets": {"leg": True, "upper": False},
+            },
+            {
+                "sport": "strength",
+                "started_at_local": "2026-11-17T18:00:00",
+                "strength_sets": {"leg": False, "upper": True},
+            },
+            # Without sets the focus decides: a full body session counts for both.
+            {
+                "sport": "strength",
+                "started_at_local": "2026-11-12T18:00:00",
+                "name": "Ganzkörper Kraft",
+            },
+            # Neither sets nor a recognisable focus: its own count, not guessed.
+            {"sport": "strength", "started_at_local": "2026-11-10T18:00:00"},
+            {
+                "sport": "strength",
+                "started_at_local": "2026-09-01T18:00:00",
+                "strength_sets": {"leg": True, "upper": True},
+            },
+            # Before the window, and another sport.
+            {
+                "sport": "strength",
+                "started_at_local": "2026-08-17T18:00:00",
+                "strength_sets": {"leg": True, "upper": True},
+            },
+            {"sport": "run", "started_at_local": "2026-11-18T07:00:00"},
+        ]
+        result = self._strength(summaries)
+        self.assertEqual((result["start"], result["end"]), ("2026-08-24", "2026-11-20"))
+        self.assertEqual(len(result["weeks"]), 13)
+        by_week = {
+            week["week_start"]: (
+                week["sessions"],
+                week["upper"],
+                week["legs"],
+                week["unknown"],
+            )
+            for week in result["weeks"]
+        }
+        self.assertEqual(by_week["2026-11-16"], (2, 1, 1, 0))
+        self.assertEqual(by_week["2026-11-09"], (2, 1, 1, 1))
+        self.assertEqual(by_week["2026-08-31"], (1, 1, 1, 0))
+        self.assertEqual(by_week["2026-10-05"], (0, 0, 0, 0))
+        self.assertEqual(set(result), {"start", "end", "weeks"})
+
+    def test_the_period_is_one_of_the_shared_selector(self) -> None:
+        for weeks in (4, 13, 26, 52):
+            with self.subTest(weeks=weeks):
+                self.assertEqual(len(self._strength([], weeks)["weeks"]), weeks)
+        with self.assertRaises(AppError):
+            self._strength([], 12)
+
+    def test_the_upper_side_is_classified_like_the_legs(self) -> None:
+        def side(row: dict[str, Any]) -> tuple[bool | None, bool | None]:
+            found = classify(completed_unit({"sport": "strength", **row}))
+            assert found is not None
+            return found.upper, found.leg
+
+        self.assertEqual(
+            side({"strength_sets": {"leg": False, "upper": True}}), (True, False)
+        )
+        # By focus: upper and full body train the upper body, legs do not.
+        self.assertEqual(side({"name": "Oberkörper"}), (True, False))
+        self.assertEqual(side({"name": "Beintag"}), (False, True))
+        self.assertEqual(side({"name": "Ganzkörper"}), (True, True))
+        self.assertIsNone(sides({"sport": "run"}))
+
+    def test_a_total_body_exercise_counts_for_both_sides(self) -> None:
+        from backend.activities.strength_sets import _category_leg, _category_upper
+
         self.assertEqual(
             (
-                counts["2026-08-31"],
-                counts["2026-11-09"],
-                counts["2026-11-16"],
-                counts["2026-10-05"],
+                _category_upper(ExerciseCategory.TOTAL_BODY),
+                _category_leg(ExerciseCategory.TOTAL_BODY),
             ),
-            (1, 1, 2, 0),
+            (True, True),
         )
-        by_name = {item["exercise"]: item for item in result["exercises"]}
         self.assertEqual(
-            [
-                (s["date"], s["top_kg"], s["top_reps"])
-                for s in by_name["BARBELL_BACK_SQUAT"]["sessions"]
-            ],
-            [("2026-11-19", 80.0, 5), ("2026-09-01", 80.0, 5)],
+            (
+                _category_upper(SQUAT),
+                _category_upper(BENCH),
+                _category_upper(ExerciseCategory.CARDIO),
+            ),
+            (False, True, None),
         )
-        self.assertEqual(by_name["PULL_UP"]["sessions"][0]["top_kg"], None)
-        # Stored set values only: no strength load and no estimated 1RM.
-        self.assertEqual(
-            {
-                key
-                for item in result["exercises"]
-                for session in item["sessions"]
-                for key in session
-            },
-            {"date", "sets", "top_kg", "top_reps"},
-        )
-        self.assertEqual(set(result), {"start", "end", "source", "weeks", "exercises"})
 
 
 class SessionReadTests(unittest.TestCase):

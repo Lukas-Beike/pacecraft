@@ -77,7 +77,7 @@ test("@responsive Laufen and Radfahren each show only their sport", async ({ pag
   await page.goto("/#analysis/performance");
   await expect(page).toHaveURL(/#analysis\/running$/);
   const segments = page.locator("[data-analysis-segment]");
-  await expect(segments).toHaveText(["Laufen", "Radfahren", "Kraft", "Belastung", "Erholung", "Rekorde"]);
+  await expect(segments).toHaveText(["Laufen", "Radfahren", "Kraft", "Belastung", "Erholung"]);
   await expect(page.locator('[data-analysis-segment="running"]')).toHaveAttribute("aria-current", "page");
   const best = page.locator("#runningBestEfforts");
   // Running bests are the five race distances only; a missing best keeps its row with a dash (#2786).
@@ -97,6 +97,8 @@ test("@responsive Laufen and Radfahren each show only their sport", async ({ pag
   await expect(page.locator("#currentPerformance table[data-analysis-sport='run']")).toBeVisible();
   await expect(page.locator("#currentPerformance table[data-analysis-sport='ride']")).toBeHidden();
   await expect(page.locator("#cyclingPowerProfile")).toBeHidden();
+  await expect(page.locator("#runActivityRecords")).toBeVisible();
+  await expect(page.locator("#rideActivityRecords")).toBeHidden();
   await expect(page.locator("[data-analysis-section='development-Rad']")).toBeHidden();
   await page.locator('[data-analysis-segment="cycling"]').click();
   await expect(page).toHaveURL(/#analysis\/cycling$/);
@@ -104,12 +106,9 @@ test("@responsive Laufen and Radfahren each show only their sport", async ({ pag
   await expect(page.locator("#currentPerformance table[data-analysis-sport='ride']")).toBeVisible();
   for (const hidden of ["#runningBestEfforts", "#performancePredictions", "#currentPerformance table[data-analysis-sport='run']", "[data-analysis-section='development-Lauf']"]) await expect(page.locator(hidden)).toBeHidden();
   await expect(page.locator("#analysisRefreshButton")).toHaveAttribute("aria-label", "Analyse aktualisieren: Radfahren");
-  // The bests of both sports stand in Rekorde, without the sport tabs' values (#3826).
-  await page.locator('[data-analysis-segment="records"]').click();
-  await expect(page).toHaveURL(/#analysis\/records$/);
-  for (const shown of ["#cyclingPowerProfile", "#runningBestEfforts", "#rideActivityRecords", "#runActivityRecords"]) await expect(page.locator(shown)).toBeVisible();
-  for (const hidden of ["#currentPerformance", "#analysisHistoryCharts", "#cyclingCriticalPower", "#runningCriticalSpeed"]) await expect(page.locator(hidden)).toBeHidden();
-  await expect(page.locator("#analysisRefreshButton")).toHaveAttribute("aria-label", "Analyse aktualisieren: Rekorde");
+  // Each sport tab ends with its own records card (athlete decision A1, #3929).
+  await expect(page.locator("#rideActivityRecords")).toBeVisible();
+  await expect(page.locator("#runActivityRecords")).toBeHidden();
   await page.locator('[data-analysis-segment="cycling"]').click();
   // A sport without current values names it in its own segment.
   await page.locator('[data-analysis-segment="running"]').click();

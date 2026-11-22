@@ -129,22 +129,12 @@
           <a href="#analysis/strength" data-analysis-segment="strength">Kraft</a>
           <a href="#analysis/load" data-analysis-segment="load">Belastung</a>
           <a href="#analysis/recovery" data-analysis-segment="recovery">Erholung</a>
-          <a href="#analysis/records" data-analysis-segment="records">Rekorde</a>
         </nav>
         <div id="analysisLoadPeriod" hidden></div>
         <section id="sessionPerformance" class="analysis-chart-card" aria-label="Trainingsfokus"></section>
         <section id="personalRecovery" class="analysis-history-charts" aria-label="Persönliche Erholung" hidden></section>
+        <div id="strengthPeriod" hidden></div>
         <section id="strengthAnalysis" class="analysis-history-charts" aria-label="Kraft" hidden></section>
-        <section id="analysisRecords" class="analysis-history-charts" aria-label="Rekorde" hidden>
-          <section class="analysis-chart-card" aria-labelledby="recordsRideTitle"><h3 id="recordsRideTitle">Radfahren</h3>
-            <section id="rideActivityRecords" class="analysis-subchart" aria-label="Einzelne Fahrt"></section>
-            <section id="cyclingPowerProfile" class="analysis-subchart" aria-label="Leistungsprofil Rad"></section>
-          </section>
-          <section class="analysis-chart-card" aria-labelledby="recordsRunTitle"><h3 id="recordsRunTitle">Laufen</h3>
-            <section id="runActivityRecords" class="analysis-subchart" aria-label="Einzelner Lauf"></section>
-            <section id="runningBestEfforts" class="analysis-subchart" aria-label="Bestwerte Laufen"></section>
-          </section>
-        </section>
         <section id="analysisLoadCharts" class="analysis-history-charts" aria-label="Belastung und Trainingszeit" hidden></section>
         <section id="currentPerformance" class="analysis-chart-card" aria-label="Aktuelle Werte" hidden></section>
         <section id="performanceEnduranceCharts" class="analysis-history-charts" aria-label="Ausdauer-Score" hidden></section>
@@ -155,6 +145,14 @@
         <section id="cyclingCriticalPower" class="analysis-subchart" aria-label="Critical Power Rad" data-analysis-sport="ride"></section>
         <section id="runningRecurringSessions" class="analysis-chart-card" aria-label="Wiederkehrende Einheiten Laufen" data-analysis-sport="run" data-analysis-empty="true"></section>
         <section id="cyclingRecurringSessions" class="analysis-chart-card" aria-label="Wiederkehrende Einheiten Rad" data-analysis-sport="ride" data-analysis-empty="true"></section>
+        <section id="runRecordsCard" class="analysis-chart-card" aria-labelledby="runRecordsTitle" data-analysis-sport="run"><h3 id="runRecordsTitle">Rekorde</h3>
+          <section id="runActivityRecords" class="analysis-subchart"></section>
+          <section id="runningBestEfforts" class="analysis-subchart"></section>
+        </section>
+        <section id="rideRecordsCard" class="analysis-chart-card" aria-labelledby="rideRecordsTitle" data-analysis-sport="ride"><h3 id="rideRecordsTitle">Rekorde</h3>
+          <section id="rideActivityRecords" class="analysis-subchart"></section>
+          <section id="cyclingPowerProfile" class="analysis-subchart"></section>
+        </section>
         <section id="analysisEmptyState" aria-label="Keine Daten" hidden></section>
       </section>
 

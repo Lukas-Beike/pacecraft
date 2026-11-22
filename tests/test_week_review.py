@@ -402,13 +402,23 @@ class WeekReviewHttpTests(ServerTestCase):
             7,
         )
 
-    def test_the_strength_analysis_route_reads_twelve_weeks_locally(self) -> None:
-        # #3764: Analyse › Kraft; an empty store gives twelve weeks of 0 and no exercise.
+    def test_the_strength_analysis_route_reads_the_chosen_weeks_locally(self) -> None:
+        # Analyse › Kraft; an empty store gives the weeks with 0 sessions on each side.
         status, result = self.get("/api/analysis/strength")
         self.assertEqual(status, 200)
-        self.assertEqual(len(result["weeks"]), 12)
+        self.assertEqual(len(result["weeks"]), 13)
         self.assertEqual({week["sessions"] for week in result["weeks"]}, {0})
-        self.assertEqual(result["exercises"], [])
+        self.assertEqual(
+            {
+                week["upper"] + week["legs"] + week["unknown"]
+                for week in result["weeks"]
+            },
+            {0},
+        )
+        status, result = self.get("/api/analysis/strength?weeks=4")
+        self.assertEqual((status, len(result["weeks"])), (200, 4))
+        status, _ = self.get("/api/analysis/strength?weeks=5")
+        self.assertEqual(status, 400)
 
     def test_a_longer_trend_period_reads_its_own_span_on_demand(self) -> None:
         # #3839: 91, 182 or 365 days of history shaped like the performance state's;

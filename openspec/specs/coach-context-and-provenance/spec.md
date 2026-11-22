@@ -187,9 +187,9 @@ The system SHALL provide read-only tools for exact local records and determinist
 - **WHEN** `get_training_report` requests supported report, endurance, power-profile, records, tag-impact, season, comparison, body-history or sleep-timing-variability (`sleep_timing_variability`) sections
 - **THEN** the tool uses the corresponding local analysis owners, bounds the combined result and reports completeness.
 
-#### Scenario: All-time records are the Rekorde cards' window
+#### Scenario: All-time records are the records cards' window
 - **WHEN** `get_training_report` selects `records`
-- **THEN** it returns the same all-time window Analyse › Rekorde reads (best power per duration and environment, running bests, and `activity_records` with date, activity id and source), and a pending or failed background build as `{"status": "pending"}` or `{"status": "failed"}`, never as missing records; `power_profiles` keeps its 90-day windows.
+- **THEN** it returns the same all-time window the records cards of Analyse › Laufen and Radfahren read (best power per duration and environment, running bests, and `activity_records` with date, activity id and source), and a pending or failed background build as `{"status": "pending"}` or `{"status": "failed"}`, never as missing records; `power_profiles` keeps its 90-day windows.
 
 #### Scenario: Sleep timing section is the context summary
 - **WHEN** `get_training_report` selects `sleep_timing_variability`
