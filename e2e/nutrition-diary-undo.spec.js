@@ -40,9 +40,8 @@ test("@responsive diary shows decimal commas and offers undo and delete for back
   await expect(card).toContainText("668 kcal · KH 102,0 g · Protein 27,2 g · Fett 14,8 g");
   await expect(card.locator("h3")).toHaveText("Mittagessen");
 
+  // Löschen acts at once (G-03): no dialog, the receipt line offers the undo.
   await card.getByRole("button", { name: /löschen/i }).click();
-  await expect(page.locator("#confirmationDialog")).toBeVisible();
-  await page.locator("#confirmationDialogAccept").click();
   await expect(card).toHaveCount(0);
   await expect(page.locator("#nutritionStatus")).toContainText("Mahlzeit gelöscht.");
   await page.locator("#nutritionStatus").getByRole("button", { name: "Rückgängig" }).click();

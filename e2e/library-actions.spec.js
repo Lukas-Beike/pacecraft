@@ -31,16 +31,8 @@ test("@responsive Einplanen and Löschen work in the library card and Rückgäng
   await status.getByRole("button", { name: "Rückgängig" }).click();
   await expect(status).toContainText("Zurückgenommen.");
 
-  // Löschen asks once in the card; the server archives the entry and "Rückgängig" brings it back.
+  // Löschen acts at once (G-03); the server archives the entry and "Rückgängig" brings it back.
   await actions.getByRole("button", { name: "Löschen" }).click();
-  const confirm = card.locator(".planned-delete-confirm");
-  await expect(confirm).toHaveAttribute("role", "group");
-  await expect(confirm).toContainText("Einheit löschen?");
-  await confirm.getByRole("button", { name: "Abbrechen" }).click();
-  await expect(confirm).toBeHidden();
-  expect(posts.filter(([path]) => path.endsWith("/archive"))).toHaveLength(0);
-  await actions.getByRole("button", { name: "Löschen" }).click();
-  await confirm.getByRole("button", { name: "Löschen" }).click();
   const receipt = page.locator("#library > .planned-move-status");
   await expect(receipt).toContainText(`Gelöscht: ${name}`);
   await expect(card).toHaveCount(0);

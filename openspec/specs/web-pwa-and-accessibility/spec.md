@@ -371,7 +371,7 @@ The client SHALL present domain-provided planning, performance, activity, and eq
 - **THEN** a strip of the next seven days from today (the unit's own day disabled) and "…" for the system date picker appear, both ending with the last day the calendar shows; one tap moves the local unit, the opened card follows it to its new week with "Verschoben auf <Tag, Datum>" and "Rückgängig", and undo puts it back with "Zurückgenommen."; a unit already sent shows its pending sync and nothing is written remotely.
 #### Scenario: Delete a planned unit
 - **WHEN** the athlete taps the red "Löschen" at the end of an opened planned unit's actions
-- **THEN** the card asks once ("Einheit löschen?" with "Löschen" and "Abbrechen", plus "<provider names>: weg beim nächsten Sync" when an upcoming unit has a copy there); confirming posts `confirmed` with the unit's content hash to `POST /api/planned-units/{id}/delete`, which refuses an unconfirmed delete with 409, deletes the local unit as one Coach change batch and writes nothing remotely; an outdated hash answers 409, the calendar reloads and the card names the reason; the day shows "Gelöscht: <Name>" with "Rückgängig" while its week is shown, and undo restores the unit's content unchanged, waiting for the next sync like any local edit (#3027).
+- **THEN** the unit is deleted at once, no question (the receipt adds "<provider names>: weg beim nächsten Sync" when an upcoming unit has a copy there); the tap posts `confirmed` with the unit's content hash to `POST /api/planned-units/{id}/delete`, which refuses an unconfirmed delete with 409, deletes the local unit as one Coach change batch and writes nothing remotely; an outdated hash answers 409, the calendar reloads and the card names the reason; the day shows "Gelöscht: <Name>" with "Rückgängig" while its week is shown, and undo restores the unit's content unchanged, waiting for the next sync like any local edit (#3027).
 
 #### Scenario: Planned steps as a list
 - **WHEN** the athlete opens a planned unit whose workout has structured steps
@@ -434,7 +434,7 @@ Evidence:
 - `e2e/analysis-info.spec.js::@responsive recovery uses independent scales, honest coverage over exactly four weeks`
 - `e2e/analysis-info.spec.js::@responsive steps and floors show per-day units, whole numbers and the plotted basis`
 - `e2e/calendar-detail-pane.spec.js::@responsive a planned unit lists its steps with zone and target range instead of the workout notation`
-- `e2e/calendar-detail-pane.spec.js::@responsive Löschen asks once in the card, deletes a planned unit and Rückgängig brings it back`
+- `e2e/calendar-detail-pane.spec.js::@responsive Löschen acts at once, deletes a planned unit and Rückgängig brings it back`
 - `e2e/calendar-detail-pane.spec.js::@responsive Mit Coach besprechen puts the planned unit into the Coach field without sending`
 - `e2e/calendar-detail-pane.spec.js::@responsive Verschieben moves a planned unit to a tapped day and Rückgängig puts it back`
 - `e2e/calendar-week-compact.spec.js::@responsive compact calendar week shows one week, groups repeats and keeps one conflict style`
@@ -702,6 +702,10 @@ Evidence: `public/views.js::replaceMarkdownLinks`; `public/views.js::linkHostNot
 ### Requirement: Shared confirmation dialog
 
 Destructive or discarding actions SHALL use one modal confirmation with a title that asks the question, a message that names the consequence, "Abbrechen" and an accept button named by a verb (no default title or label); `docs/view-catalogue.md` lists the texts per action. Closing the dialog in any way SHALL count as declined, and a newer confirmation SHALL decline a pending one.
+
+#### Scenario: Reversible deletes act at once
+- **WHEN** the athlete taps "Löschen" on a planned unit, a library entry, a meal or an own product
+- **THEN** it is removed at once, the undo line "Gelöscht: …" with "Rückgängig" shows at its place, and no question is asked; only a bulk or irreversible action (the removal from the product database, data deletion, logout) keeps its dialog
 
 #### Scenario: Accent and danger buttons
 - **WHEN** a dialog offers a save or a confirmation

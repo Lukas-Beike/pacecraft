@@ -108,7 +108,7 @@ function showNutritionReceipt(status, message, change, afterUndo) {
 }
 
 async function deleteNutritionEntry(item) {
-  if (!await requestConfirmation(`Die Mahlzeit „${item.description}“ wird gelöscht.`, { title: "Mahlzeit löschen?", danger: true, confirmLabel: "Löschen" })) return false;
+  // Acts at once (athlete decision, #3934 G-03): "Rückgängig" in the receipt takes the question's place.
   const status = document.querySelector("#nutritionStatus");
   try {
     const result = await api("/api/nutrition/entry/delete", { method: "POST", body: JSON.stringify({ id: item.id }) });
@@ -979,8 +979,8 @@ async function pollNutritionRefreshAll(announce = false, start = false) {
 
 async function deleteNutritionProduct(product) {
   const database = nutritionIsDatabaseProduct(product);
-  const question = database ? `Der Eintrag „${product.name}“ wird aus der Datenbank entfernt. Eigene Produkte bleiben erhalten.` : `Das Produkt „${product.name}“ wird gelöscht. Mahlzeiten, die es nutzen, behalten ihre Werte.`;
-  if (!await requestConfirmation(question, { title: database ? "Datenbankeintrag entfernen?" : "Produkt löschen?", danger: true, confirmLabel: database ? "Entfernen" : "Löschen" })) return;
+  // Only the irreversible removal from the database asks; an own product acts at once with its undo line.
+  if (database && !await requestConfirmation(`Der Eintrag „${product.name}“ wird aus der Datenbank entfernt. Eigene Produkte bleiben erhalten.`, { title: "Datenbankeintrag entfernen?", danger: true, confirmLabel: "Entfernen" })) return;
   const generation = state.sessionGeneration;
   try {
     const result = await api(database ? "/api/nutrition/products/database/delete" : "/api/nutrition/products/archive", { method: "POST", body: JSON.stringify({ id: product.id, confirmed: true }) });

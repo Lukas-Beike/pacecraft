@@ -1439,42 +1439,33 @@ function plannedDayStrip(todayKey, skip, label, pick) {
   return days;
 }
 
-// "Löschen" asks once inside the card (#3027, #3028); `remove` runs on the confirmation and its error shows here.
-function inCardDelete(idBase, note, remove) {
-  const id = `delete-${String(idBase).replace(/[^\w-]/g, "")}`;
-  const open = h("button", { type: "button", className: "secondary-button danger-button" }, "Löschen");
-  const confirmDelete = h("button", { type: "button", className: "secondary-button danger-button", "aria-describedby": note ? `${id}-note` : null }, "Löschen");
-  const cancel = h("button", { type: "button", className: "secondary-button" }, "Abbrechen");
+// "Löschen" acts at once (athlete decision, #3934 G-03): the card's undo line at its place takes the
+// question's place. `remove` runs on the tap and its error shows beside the button.
+function inCardDelete(remove) {
+  const button = h("button", { type: "button", className: "secondary-button danger-button" }, "Löschen");
   const failure = h("p", { className: "planned-delete-note", role: "status" });
-  const confirm = h("div", { className: "planned-delete-confirm", role: "group", "aria-labelledby": `${id}-question`, hidden: true },
-    h("p", { id: `${id}-question` }, "Einheit löschen?"),
-    h("div", "planned-activity-actions", confirmDelete, cancel),
-    note ? h("p", { className: "planned-delete-note", id: `${id}-note` }, note) : null,
-    failure);
-  open.addEventListener("click", () => { confirm.hidden = false; open.hidden = true; confirmDelete.focus(); });
-  cancel.addEventListener("click", () => { confirm.hidden = true; open.hidden = false; open.focus(); });
-  confirmDelete.addEventListener("click", async () => {
-    confirmDelete.disabled = true;
-    cancel.disabled = true;
+  button.addEventListener("click", async () => {
+    button.disabled = true;
+    failure.textContent = "";
     try {
       await remove();
     } catch (error) {
-      confirmDelete.disabled = false;
-      cancel.disabled = false;
+      button.disabled = false;
       failure.textContent = error.message;
     }
   });
-  return [open, confirm];
+  return [button, failure];
 }
 
 // A planned unit goes through the Coach's delete path; a copy at a provider goes with the next explicit sync.
 function plannedDeleteControls(entry, dateKey, key) {
   const copies = (Array.isArray(entry.remote_copies) ? entry.remote_copies : []).map((provider) => state.data?.provider_labels?.[provider]).filter(Boolean);
   const name = entry.name || "Trainingseinheit";
-  return inCardDelete(entry.local_id, copies.length ? `${copies.join(", ")}: weg beim nächsten Sync` : "", async () => {
+  const copyNote = copies.length ? ` · ${copies.join(", ")}: weg beim nächsten Sync` : "";
+  return inCardDelete(async () => {
     try {
       const result = await api(`/api/planned-units/${encodeURIComponent(entry.local_id)}/delete`, { method: "POST", body: JSON.stringify({ confirmed: true, expected_payload_hash: entry.payload_hash }) });
-      plannedDeleteReceipts.set(String(entry.local_id), { day: dateKey, text: `Gelöscht: ${name}`, change: result.change, from: dateKey });
+      plannedDeleteReceipts.set(String(entry.local_id), { day: dateKey, text: `Gelöscht: ${name}${copyNote}`, change: result.change, from: dateKey });
     } catch (error) {
       // A changed unit reloads, so the card names the reason and the next try sends the current hash.
       if (error.status === 409) {
@@ -2907,7 +2898,7 @@ function libraryActions(workout) {
     days.hidden = !days.hidden;
     toggle.setAttribute("aria-expanded", String(!days.hidden));
   });
-  const [remove, confirm] = inCardDelete(id, "", async () => {
+  const [remove, confirm] = inCardDelete(async () => {
     const result = await api(`/api/library/${encodeURIComponent(id)}/archive`, { method: "POST", body: JSON.stringify({ confirmed: true }) });
     libraryReceipts.clear();
     libraryReceipts.set(id, { text: `Gelöscht: ${name}`, change: result.change });

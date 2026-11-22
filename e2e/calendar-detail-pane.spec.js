@@ -275,7 +275,7 @@ test("@responsive an opened completed session shows the provider's own training 
   await section.screenshot({ path: testInfo.outputPath("provider-training-effect.png"), animations: "disabled" });
 });
 
-test("@responsive Löschen asks once in the card, deletes a planned unit and Rückgängig brings it back", async ({ page, request }) => {
+test("@responsive Löschen acts at once, deletes a planned unit and Rückgängig brings it back", async ({ page, request }) => {
   await openCalendar(page, request);
   const days = await renderSyntheticCalendar(page);
   const posts = [];
@@ -313,17 +313,8 @@ test("@responsive Löschen asks once in the card, deletes a planned unit and Rü
   if (!await card.evaluate((element) => element.open)) await card.locator(":scope > summary").click();
   const pane = card.locator(":scope > .planned-entry-details");
   const remove = pane.locator(".planned-activity-actions").first().getByRole("button", { name: "Löschen" });
+  // Löschen acts at once (G-03): no question in the card, the request goes out with the unit's hash.
   await remove.click();
-  const confirm = pane.locator(".planned-delete-confirm");
-  await expect(confirm).toContainText("Einheit löschen?");
-  await expect(confirm).toContainText("Intervals.icu: weg beim nächsten Sync");
-  await confirm.getByRole("button", { name: "Abbrechen" }).click();
-  await expect(confirm).toBeHidden();
-  expect(posts).toEqual([]);
-  await remove.click();
-  await expect(confirm).toHaveAttribute("role", "group");
-  await expect(confirm.getByRole("button", { name: "Löschen" })).toHaveAccessibleDescription("Intervals.icu: weg beim nächsten Sync");
-  await confirm.getByRole("button", { name: "Löschen" }).click();
   await expect.poll(() => posts.length).toBe(1);
   expect(posts[0]).toEqual({ confirmed: true, expected_payload_hash: "hash-1" });
   await expect(pane.locator(".planned-move-status").last()).toContainText("Eine Planänderung ist inzwischen veraltet.");
