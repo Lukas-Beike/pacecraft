@@ -1857,5 +1857,59 @@ def build_structured_tool_schemas(
     )
     calendar_tool["parameters"]["required"] = ["name", "start_local", "impact"]
     COACH_STRUCTURED_TOOLS.append(calendar_tool)
+    # Körper's 3-site skinfolds, with the dialog's sites and limits (#3959).
+    fold = {"type": "number", "minimum": 2, "maximum": 80}
+    skinfold_tools = (
+        (
+            "save_skinfolds",
+            "Record the athlete's own 3-site skinfold measurement of one day in Körper, as its dialog does; only values the athlete states in this message. folds_mm has exactly chest, abdomen and thigh (men) or triceps, suprailiac and thigh (women), each in mm (2 to 80) or one to three readings. A day that already holds a measurement is refused unless replace is true, and replacing needs the athlete's explicit request. Garmin Connect follows after the save.",
+            {
+                "date": {"type": "string", "format": "date"},
+                "folds_mm": {
+                    "type": "object",
+                    "additionalProperties": False,
+                    "properties": {
+                        site: {
+                            "anyOf": [
+                                fold,
+                                {
+                                    "type": "array",
+                                    "minItems": 1,
+                                    "maxItems": 3,
+                                    "items": fold,
+                                },
+                            ]
+                        }
+                        for site in (
+                            "chest",
+                            "abdomen",
+                            "thigh",
+                            "triceps",
+                            "suprailiac",
+                        )
+                    },
+                },
+                "replace": {"type": "boolean"},
+            },
+            ["date", "folds_mm", "replace"],
+        ),
+        (
+            "delete_skinfolds",
+            "Remove the athlete's skinfold measurement of one day from Körper, only on the athlete's explicit request to remove it.",
+            {"date": {"type": "string", "format": "date"}},
+            ["date"],
+        ),
+    )
+    for (
+        skinfold_name,
+        skinfold_description,
+        skinfold_fields,
+        skinfold_required,
+    ) in skinfold_tools:
+        skinfold_tool = _canonical_coach_tool(
+            skinfold_name, skinfold_description, skinfold_fields
+        )
+        skinfold_tool["parameters"]["required"] = skinfold_required
+        COACH_STRUCTURED_TOOLS.append(skinfold_tool)
 
     return COACH_STRUCTURED_TOOLS

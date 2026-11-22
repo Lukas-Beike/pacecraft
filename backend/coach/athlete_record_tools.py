@@ -40,6 +40,8 @@ _SESSION_TOOLS = frozenset(
 _NUTRITION_UNAVAILABLE = "NutritionService ist nicht verfügbar."
 # Körper's weight and body fat, recorded as the dialogs record them (#3640).
 _BODY_TOOLS = frozenset({"save_body_entry", "delete_body_entry"})
+# Körper's 3-site skinfolds, with the dialog's Garmin write (#3959).
+_SKINFOLD_TOOLS = frozenset({"save_skinfolds", "delete_skinfolds"})
 _BODY_KEYS = {"weight": "kg", "body_fat": "pct"}
 # Zonen & Schwellen, through the use cases of its routes (#3956).
 _ZONE_TOOLS = frozenset({"save_zones", "delete_zones"})
@@ -127,6 +129,7 @@ class CoachAthleteRecordToolService:
                     (_EQUIPMENT_TOOLS, self._execute_equipment),
                     (_SESSION_TOOLS, self._execute_session),
                     (_BODY_TOOLS, self._execute_body),
+                    (_SKINFOLD_TOOLS, self._execute_skinfolds),
                     (_ZONE_TOOLS, self._execute_zones),
                     (_PRODUCT_TOOLS, self._execute_products),
                     (_NUTRITION_TOOLS, self._execute_nutrition),
@@ -418,6 +421,43 @@ class CoachAthleteRecordToolService:
         if self._nutrition_meal_library is None:
             raise AppError(500, _NUTRITION_UNAVAILABLE)
         return self._nutrition_meal_library
+
+    def _execute_skinfolds(
+        self, name: str, arguments: dict[str, Any], intent: dict[str, Any]
+    ) -> dict[str, Any]:
+        """Save or remove one day's 3-site skinfold measurement in Körper (#3959).
+
+        As the dialog does, the day's Garmin body composition follows once the
+        turn commits; an existing day changes only with ``replace``.
+        """
+        self._authorize(
+            intent,
+            name,
+            "Die strukturierte Coach-Autorisierung erlaubt diese Körperwert-Änderung nicht.",
+        )
+        require_coach_scope(intent, "local_body")
+        if self._body_entries is None:
+            raise AppError(500, "Körperwerte sind nicht verfügbar.")
+        service: Any = self._body_entries("skinfolds")
+        day = str(arguments.get("date") or "")
+        if name == "delete_skinfolds":
+            read = service.remove({"date": day, "confirmed": True})
+        else:
+            if arguments.get("replace") is not True and any(
+                item["date"] == day for item in service.read()["measurements"]
+            ):
+                raise AppError(
+                    409,
+                    "Für diesen Tag gibt es schon eine Messung; sie zu ändern braucht "
+                    "die ausdrückliche Bitte des Athleten.",
+                    reason="body_entry_exists",
+                )
+            read = service.save({"date": day, "folds_mm": arguments.get("folds_mm")})
+        measurement = next(
+            (item for item in read["measurements"] if item["date"] == day), None
+        )
+        return {"ok": True, "stored_locally": True, "date": day,
+                "measurement": measurement, "remote": read.get("remote")}  # fmt: skip
 
     def _execute_body(
         self, name: str, arguments: dict[str, Any], intent: dict[str, Any]

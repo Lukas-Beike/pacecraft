@@ -2649,6 +2649,48 @@ class CoachToolCoverageTests(DialogueHarness, unittest.TestCase):
         self.assertEqual(3, sum(1 for name, _ in pushed if name == "garmin"))
         self.assertEqual({"entries": []}, server.ATHLETE_DATA.weight_entries().read())
 
+    @covers("save_skinfolds:success", "delete_skinfolds:success")
+    def test_the_coach_records_skinfolds_with_the_dialogs_garmin_write(self):
+        # #3959: as Körper's dialog, a skinfold day reaches Garmin after the
+        # turn commits; Wahoo stays untouched.
+        pushed = []
+        with (
+            patch.object(
+                GarminBodyPushService,
+                "push",
+                autospec=True,
+                side_effect=lambda _self, day: pushed.append(("garmin", day)) or "sent",
+            ),
+            patch.object(
+                WahooWeightPushService,
+                "start",
+                autospec=True,
+                side_effect=lambda _self: pushed.append(("wahoo", None)),
+            ),
+        ):
+            saved = self.run_tool(
+                "save_skinfolds",
+                {
+                    "date": "2026-09-07",
+                    "folds_mm": {"chest": 8, "abdomen": [14, 15], "thigh": 11},
+                    "replace": False,
+                },
+                ["local_body"],
+                message="Hautfalten heute: Brust 8, Bauch 14 und 15, Oberschenkel 11.",
+            )
+            self.assertEqual(
+                ("scheduled", [8, 14.5, 11]),
+                (saved["remote"], [f["mm"] for f in saved["measurement"]["folds_mm"]]),
+            )
+            removed = self.run_tool(
+                "delete_skinfolds",
+                {"date": "2026-09-07"},
+                ["local_body"],
+                message="Lösch die Hautfaltenmessung von heute.",
+            )
+        self.assertIsNone(removed["measurement"])
+        self.assertEqual(["garmin", "garmin"], [name for name, _ in pushed])
+
     @covers("classify_calendar_event:success")
     def test_the_coach_classifies_a_calendar_event_like_einordnen(self):
         # #3959: the event the Coach names by start and name gets the decision.

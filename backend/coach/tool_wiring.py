@@ -165,6 +165,9 @@ def build_coach_command_tools(
 
         if kind == "weight":
             return ctx.athlete.weight_entries(changed)
+        if kind == "skinfolds":
+            # The skinfold dialog's Garmin write, as for body fat (#3959).
+            return ctx.athlete.skinfolds(changed)
         return ctx.athlete.body_fat_entries(changed)
 
     def athlete_record_tool_service() -> CoachAthleteRecordToolService:

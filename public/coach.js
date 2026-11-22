@@ -917,6 +917,7 @@ const COACH_RECEIPT_LABELS = {
   set_equipment_rule: "Ausrüstungsregel gespeichert",
   manage_nutrition_products: "Produkte geändert", refresh_nutrition_products: "Produkte aktualisiert",
   classify_calendar_event: "Termin eingeordnet",
+  save_skinfolds: "Hautfalten gespeichert", delete_skinfolds: "Hautfalten entfernt",
   update_training_plan: "Trainingsplan geändert", undo_training_change: "Rücknahme zur Prüfung bereit",
   preview_adaptive_replan: "Plananpassung zur Prüfung bereit", apply_adaptive_replan: "Plananpassung gespeichert",
   start_provider_refresh: "Datenabruf beauftragt", refresh_current_performance: "Leistungsdatenabruf beauftragt",

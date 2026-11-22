@@ -26,6 +26,7 @@ _DELETE_TOOLS = (
     "delete_body_entry",
     "delete_zones",
     "delete_activity_session",
+    "delete_skinfolds",
 )
 
 
@@ -392,6 +393,12 @@ class DestructiveTierTests(unittest.TestCase):
         self.assertEqual(gate.call_impact("save_body_entry", new), frozenset())
         self.assertTrue(_check("save_body_entry", "80 kg", arguments=new).allowed)
         self.assertEqual(gate.call_impact("save_body_entry", replace), {"delete"})
+        # #3959: so does replacing a day's skinfold measurement.
+        folds = {"date": "2026-11-19", "folds_mm": {"chest": 8}}
+        self.assertEqual(gate.call_impact("save_skinfolds", folds), frozenset())
+        self.assertEqual(
+            gate.call_impact("save_skinfolds", {**folds, "replace": True}), {"delete"}
+        )
         self.assertEqual(
             "impact_not_confirmed",
             _check("save_body_entry", "80 kg", arguments=replace).reason,

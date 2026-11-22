@@ -345,6 +345,23 @@ TOOL_SPECS: tuple[ToolSpec, ...] = (
         requirements=("athlete-profile-and-checkins/Coach body entries", CA4),
     ),
     ToolSpec(
+        "save_skinfolds",
+        ATHLETE_RECORDS,
+        domain=BODY,
+        done="Hautfalten gespeichert",
+        action="Hautfalten speichern",
+        requirements=("athlete-profile-and-checkins/Coach body entries",),
+    ),
+    ToolSpec(
+        "delete_skinfolds",
+        ATHLETE_RECORDS,
+        domain=BODY,
+        done="Hautfalten entfernt",
+        action="Hautfalten entfernen",
+        deletes=True,
+        requirements=("athlete-profile-and-checkins/Coach body entries", CA4),
+    ),
+    ToolSpec(
         "save_zones",
         ATHLETE_RECORDS,
         domain=PROFILE,
