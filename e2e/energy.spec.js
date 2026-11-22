@@ -571,8 +571,8 @@ test("@responsive Offene Kalorien follow the diary totals after a meal is remove
     const eaten = await page.evaluate((day) => api(`/api/nutrition/day?date=${day}`), today);
     const shown = (kcal) => `gegessen ${new Intl.NumberFormat("de-DE").format(kcal)}`;
     await expect(items).toHaveText(shown(eaten.total_kcal));
+    // A meal is deleted at once (G-03): no confirmation.
     await page.getByRole("button", { name: "Mahlzeit löschen: Nudeln #3852" }).click();
-    await page.locator("#confirmationDialogAccept").click();
     await expect(page.getByRole("button", { name: "Mahlzeit löschen: Nudeln #3852" })).toHaveCount(0);
     await expect(items).toHaveText(shown(eaten.total_kcal - 640));
   } finally {

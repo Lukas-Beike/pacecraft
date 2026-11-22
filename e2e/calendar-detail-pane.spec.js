@@ -319,7 +319,6 @@ test("@responsive Löschen acts at once, deletes a planned unit and Rückgängig
   expect(posts[0]).toEqual({ confirmed: true, expected_payload_hash: "hash-1" });
   await expect(pane.locator(".planned-move-status").last()).toContainText("Eine Planänderung ist inzwischen veraltet.");
   await remove.click();
-  await confirm.getByRole("button", { name: "Löschen" }).click();
   await expect.poll(() => posts.length).toBe(2);
   expect(posts[1]).toEqual({ confirmed: true, expected_payload_hash: "hash-2" });
   const day = page.locator(`.planned-day[data-date="${days.next}"]`);
