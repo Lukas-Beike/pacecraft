@@ -200,11 +200,11 @@ async function expectContrast(page, view, theme, scopes = SCOPES) {
     const data = node.any.find((check) => check.id === "color-contrast")?.data || {};
     return `${view} [${theme}] ${node.target.join(" ")}: ${data.contrastRatio} < ${data.expectedContrastRatio} (${data.fgColor} on ${data.bgColor}, ${data.fontSize}, ${data.fontWeight})`;
   }));
-  expect(failures, `colour contrast violations:\n${failures.join("\n")}`).toEqual([]);
+  expect(failures, `colour contrast violations: ${failures.join(" | ")}`).toEqual([]);
   const undecided = incomplete.flatMap((result) => result.nodes.map((node) => ({ target: node.target.join(" "), message: node.any[0]?.message || result.help })))
     .filter(({ target, message }) => !INCOMPLETE_ALLOWED.some((allowed) => allowed.target.test(target) && allowed.message.test(message)))
     .map(({ target, message }) => `${view} [${theme}] ${target}: ${message}`);
-  expect(undecided, `colour contrast axe could not decide:\n${undecided.join("\n")}`).toEqual([]);
+  expect(undecided, `colour contrast axe could not decide: ${undecided.join(" | ")}`).toEqual([]);
 }
 
 test.describe("colour contrast sweep", () => {
