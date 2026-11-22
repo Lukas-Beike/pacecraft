@@ -243,7 +243,7 @@ function unitExerciseList(editor, redraw) {
     });
     const load = h("select", { "aria-label": "Last" }, UNIT_LOADS.map(([value, label]) => h("option", { value, selected: value === row.load }, label)));
     const amount = h("input", { type: "number", min: 0, step: "any", inputmode: "decimal", value: row.amount, disabled: !row.load, "aria-label": "Wert der Last" });
-    load.addEventListener("change", () => { row.load = load.value; amount.disabled = !row.load; if (!row.load) amount.value = ""; row.amount = amount.value; });
+    load.addEventListener("change", () => { row.load = load.value; amount.disabled = !row.load; if (!row.load) { amount.value = ""; } row.amount = amount.value; });
     amount.addEventListener("input", () => { row.amount = amount.value; });
     const remove = h("button", { type: "button", className: "secondary-button", "aria-label": "Übung entfernen" }, "✕");
     remove.addEventListener("click", () => { editor.exercises.splice(editor.exercises.indexOf(row), 1); redraw(); });
@@ -286,7 +286,10 @@ function renderUnitEditor(form, onSaved) {
     parts.push(unitField("Aus Bibliothek", pick));
   }
   if (editor.kind === "unit") {
-    const date = h("input", { type: "date", required: true, value: editor.date, min: [editor.entry?.date?.slice(0, 10), timezoneDateKey(state.data?.profile?.timezone, new Date())].filter(Boolean).sort()[0] });
+    // A past unit keeps its own day as the earliest choice, so a rename saves.
+    const today = timezoneDateKey(state.data?.profile?.timezone, new Date());
+    const own = String(editor.entry?.date || "").slice(0, 10);
+    const date = h("input", { type: "date", required: true, value: editor.date, min: own && own < today ? own : today });
     date.addEventListener("input", () => { editor.date = date.value; });
     const time = h("input", { type: "time", value: editor.time });
     time.addEventListener("input", () => { editor.time = time.value; });
