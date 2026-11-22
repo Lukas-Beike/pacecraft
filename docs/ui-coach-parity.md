@@ -21,7 +21,7 @@ case on both sides, so the guards match.
 tool and route exists, the parity value matches the two columns, each gap names
 its issue and the counts below match the table.
 
-Counts: both 50, UI only 23, Coach only 13, neither 0, UI by rule 8.
+Counts: both 53, UI only 23, Coach only 10, neither 0, UI by rule 8.
 
 ## Matrix
 
@@ -46,10 +46,10 @@ Counts: both 50, UI only 23, Coach only 13, neither 0, UI by rule 8.
 | Planning | Archive or restore a planned unit | Kalender card "Archivieren" `POST /api/planned-units/{id}/archive`, receipt "Rückgängig" `POST /api/change-history/undo` | `apply_training_patch` (`archive`, `restore`) | confirmed request, undo | both | |
 | Planning | Set a planned unit's focus | Kalender card `POST /api/planned-units/{id}/focus` | `apply_training_patch` (`session_focus`, `strength_intensity`) | receipt | both | |
 | Planning | Choose a strength exercise's Garmin exercise | Kalender card `POST /api/planned-units/{id}/garmin-exercise` | `apply_training_patch` (`garmin_exercise`) | receipt | both | |
-| Planning | Read multi-week training plans | — | `list_training_plans` | — | Coach only | #3950 |
-| Planning | Create a multi-week training plan | — | `stage_training_plan`, `commit_training_plan` | receipt, plan checks | Coach only | #3950 |
+| Planning | Read multi-week training plans | Bibliothek › Pläne `GET /api/plan` | `list_training_plans` | — | both | |
+| Planning | Create a multi-week training plan | Bibliothek › Pläne "+ Plan" `POST /api/training-plans`, its units in the unit editor | `stage_training_plan`, `commit_training_plan` | receipt, plan checks | both | |
 | Planning | Replace a period of the plan | — | `replace_training_plan` | receipt, plan checks | Coach only | #3950 |
-| Planning | Change, archive or delete a training plan | — | `update_training_plan` | confirmed request | Coach only | #3950 |
+| Planning | Change, archive or delete a training plan | Bibliothek › Pläne `POST /api/training-plans/{id}/update`, `POST /api/training-plans/{id}/delete` | `update_training_plan` | confirmed request, undo | both | |
 | Planning | Preview and apply an adaptive replan | — | `preview_adaptive_replan`, `apply_adaptive_replan` | approved preview | Coach only | #3950 |
 | Planning | Read the week review and training report | Analyse `GET /api/analysis/week-review` | `get_training_report` | — | both | |
 | History | Undo a change | receipt "Rückgängig" `POST /api/change-history/undo`, `POST /api/change-history/undo-turn` | `undo_training_change` | bound preview, confirmation | both | |

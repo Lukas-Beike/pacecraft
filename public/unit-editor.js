@@ -106,7 +106,7 @@ function unitEditorFrom({ kind, entry, dateKey }) {
     target: entry?.target || "POWER", text: entry?.description || "", rows: parsed || [], textMode: parsed === null,
     exercises: (entry?.strength_structure || []).map(unitExerciseRow),
     duration: entry ? String(Math.round(Number(entry.duration_minutes) || (entry.planned_duration_s || 0) / 60) || "") : "45",
-    accept: false, templateId: "",
+    accept: false, templateId: "", planId: "",
   };
 }
 
@@ -134,6 +134,7 @@ function unitEditorBody(editor) {
     // Midnight is the stored form of a unit without a time.
     if (editor.time || editor.originalTime) body.starts_at_local = `${editor.date}T${editor.time || "00:00"}:00`;
     if (editor.templateId) body.template_id = editor.templateId;
+    if (editor.planId && !editor.entry) body.plan_id = editor.planId;
   }
   return body;
 }
@@ -279,11 +280,17 @@ function renderUnitEditor(form, onSaved) {
     const pick = h("select", null, h("option", { value: "" }, "Neu"), templates.map((item) => h("option", { value: item.id, selected: item.id === editor.templateId }, item.name || "Bibliothekseinheit")));
     pick.addEventListener("change", () => {
       const template = templates.find((item) => item.id === pick.value);
-      const { date, time } = editor;
-      Object.assign(editor, unitEditorFrom({ kind: "unit", entry: template || null, dateKey: date }), { entry: null, date, time, templateId: template?.id || "" });
+      const { date, time, planId } = editor;
+      Object.assign(editor, unitEditorFrom({ kind: "unit", entry: template || null, dateKey: date }), { entry: null, date, time, planId, templateId: template?.id || "" });
       redraw();
     });
     parts.push(unitField("Aus Bibliothek", pick));
+  }
+  const plans = (state.data?.plans || []).filter((item) => item.id && !["archived", "completed", "cancelled"].includes(item.status));
+  if (editor.kind === "unit" && !editor.entry && plans.length) {
+    const plan = h("select", null, h("option", { value: "" }, "Ohne Plan"), plans.map((item) => h("option", { value: item.id, selected: item.id === editor.planId }, item.name)));
+    plan.addEventListener("change", () => { editor.planId = plan.value; });
+    parts.push(unitField("Plan", plan));
   }
   if (editor.kind === "unit") {
     // A past unit keeps its own day as the earliest choice, so a rename saves.
@@ -340,5 +347,48 @@ function openUnitEditor({ kind, entry = null, dateKey = "", onSaved }) {
   unitEditor = unitEditorFrom({ kind, entry, dateKey });
   renderUnitEditor(form, onSaved);
   dialog.addEventListener("close", () => { unitEditor = null; restoreDialogFocus(dialog); }, { once: true });
+  showAccessibleDialog(dialog);
+}
+
+// The form of a training plan (#3950): name, goal, period and status. Its units are planned one by one with the
+// unit editor, which offers the plan; the server keeps the plan's period at the days of its units.
+const PLAN_STATUSES = [["planned", "Geplant"], ["active", "Aktiv"], ["paused", "Pausiert"], ["completed", "Abgeschlossen"], ["cancelled", "Abgebrochen"]];
+
+function openPlanEditor({ plan = null, onSaved }) {
+  const dialog = document.querySelector("#unitEditDialog");
+  const form = dialog?.querySelector("form");
+  if (!form) return;
+  const today = timezoneDateKey(state.data?.profile?.timezone, new Date());
+  const values = { name: plan?.name || "", goal: plan?.goal || "", start: plan?.start_date || today, end: plan?.end_date || addDateKey(today, 27), status: plan?.status === "archived" ? "planned" : plan?.status || "planned" };
+  const field = (label, control, key, event = "input") => {
+    control.addEventListener(event, () => { values[key] = control.value; });
+    return unitField(label, control);
+  };
+  const status = h("output", { className: "tab-sync-detail", "aria-live": "polite" });
+  const save = h("button", { type: "submit", className: "push-button" }, "Speichern");
+  const cancel = h("button", { type: "button", className: "secondary-button" }, "Abbrechen");
+  cancel.addEventListener("click", () => dialog.close());
+  form.replaceChildren(
+    h("h2", { id: "unitEditTitle" }, plan ? "Plan bearbeiten" : "Plan hinzufügen"),
+    field("Name", h("input", { type: "text", maxLength: 200, required: true, value: values.name }), "name"),
+    field("Ziel", h("textarea", { rows: 2, maxLength: 2000, value: values.goal }), "goal"),
+    h("div", "edit-meal", field("Von", h("input", { type: "date", required: true, value: values.start }), "start"), field("Bis", h("input", { type: "date", required: true, value: values.end }), "end")),
+    unitChipField("Status", unitChips("Status", PLAN_STATUSES, values.status, (value) => { values.status = value; })),
+    status, h("div", "dialog-actions", cancel, save));
+  form.onsubmit = async (event) => {
+    event.preventDefault();
+    status.textContent = "";
+    save.disabled = true;
+    try {
+      const body = { name: values.name.trim(), goal: values.goal.trim(), start_date: values.start, end_date: values.end, status: values.status };
+      const result = await api(plan ? `/api/training-plans/${encodeURIComponent(plan.id)}/update` : "/api/training-plans", { method: "POST", body: JSON.stringify(body) });
+      dialog.close();
+      await onSaved(result, body);
+    } catch (error) {
+      status.textContent = error.message;
+      save.disabled = false;
+    }
+  };
+  dialog.addEventListener("close", () => restoreDialogFocus(dialog), { once: true });
   showAccessibleDialog(dialog);
 }
