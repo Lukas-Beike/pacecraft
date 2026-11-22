@@ -22,7 +22,7 @@ import { baseUrl, FRESH_OUT_DIR, login, logout, refusedLabel, rendered, scratchP
 // Login and logout are the only writes the explorer lets through.
 const SESSION_PATHS = new Set(["/api/login", "/api/logout"]);
 // Reads that hand over the whole database, the logs or an OAuth grant are aborted like writes.
-const WHOLE_DATA_PATHS = new Set(["/api/privacy/backup", "/api/privacy/export", "/api/logs/download", "/api/wahoo/callback"]);
+const WHOLE_DATA_PATHS = new Set(["/api/privacy/backup", "/api/privacy/export", "/api/logs/download", "/api/diagnostics", "/api/wahoo/callback"]);
 const own = (object, key) => Object.hasOwn(object ?? {}, key);
 // Beyond ui_walk.mjs's refused labels: sync, confirm, sign-out, transfer, archive and remove.
 const DENIED = /bestätig|confirm|sync|abgleich|abmeld|logout|übertrag|archiv|entfern|remove/i;

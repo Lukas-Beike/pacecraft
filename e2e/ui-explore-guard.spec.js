@@ -11,7 +11,7 @@ const load = () => import(pathToFileURL(path.join(__dirname, "..", "scripts", "u
 const PAGE = `<main>
   <button id="open" type="button" onclick="fetch('/api/plan/x', { method: 'POST', body: '{}' }).catch(() => null)">Öffnen</button>
   <button id="peek" type="button" onclick="fetch('/api/bootstrap', { method: 'HEAD' }).catch(() => null)">Ansehen</button>
-  <button id="whole" type="button" onclick="fetch('/api/privacy/backup').catch(() => null)">Ansehen</button>
+  <button id="whole" type="button" onclick="fetch('/api/privacy/backup').catch(() => null); fetch('/api/diagnostics').catch(() => null)">Ansehen</button>
   <form onsubmit="return false"><button id="submit"><span>Weiter</span></button></form>
   <button id="save" type="button">Speichern</button>
   <button id="confirm" type="button" aria-label="Bestätigen">✓</button>
@@ -34,8 +34,8 @@ test("a write from a plan step is aborted and fails the run; denied controls are
   const plan = explorer.parsePlan({ steps: [{ click: "#peek" }, { click: "#open" }, { click: "#whole" }, { click: "#submit span" }, { click: "#save" }, { click: "#confirm" }, { click: "summary" }, { text: "#body" }] });
   const steps = await explorer.runPlan(page, plan.steps);
   expect(steps.map((item) => `${item.status} ${item.why || ""}`.trim())).toEqual(["ok", "ok", "ok", "fail refused: a form's submit control", "fail refused: denied label", "fail refused: denied label", "ok", "ok"]);
-  // The write and the whole-database read are aborted, the HEAD passes.
-  await expect.poll(() => [...aborted].sort()).toEqual(["GET /api/privacy/backup", "POST /api/plan/x"]);
+  // The write and the whole-data reads (backup, diagnostics report) are aborted, the HEAD passes.
+  await expect.poll(() => [...aborted].sort()).toEqual(["GET /api/diagnostics", "GET /api/privacy/backup", "POST /api/plan/x"]);
   expect(explorer.exitCode([{ aborted, steps: [], logout: 200 }])).toBe(1);
   expect(explorer.exitCode([{ aborted: [], steps: steps.slice(0, 3), logout: 200 }])).toBe(0);
   expect(explorer.exitCode([{ aborted: [], steps: [], logout: 403 }])).toBe(1);
@@ -47,7 +47,7 @@ test("a write from a plan step is aborted and fails the run; denied controls are
   // Login and logout are the only writes that pass.
   const passed = await page.evaluate(() => fetch("/api/logout", { method: "POST", body: "{}" }).then((response) => response.status, () => "aborted"));
   expect(passed).not.toBe("aborted");
-  expect(aborted).toHaveLength(2);
+  expect(aborted).toHaveLength(3);
   await context.close();
 });
 
