@@ -307,6 +307,41 @@ class NutritionProductHttpContractTests(unittest.TestCase):
             200, {"ok": True, "entry": {"id": "entry-1"}}
         )
 
+    def test_component_edit_targets_an_entry_and_sends_no_nutrients(self):
+        self.handler.path = "/api/nutrition/entry/components?id=entry-1"
+        self.diary.meal_components.return_value = [{"name": "Tofu", "amount": 150}]
+        self.assertTrue(
+            dispatch_route(
+                self.get_routes, self.handler, "/api/nutrition/entry/components"
+            )
+        )
+        self.diary.meal_components.assert_called_once_with("entry-1")
+        self.handler.send_json.assert_called_once_with(
+            200,
+            {
+                "ok": True,
+                "id": "entry-1",
+                "components": [{"index": 0, "name": "Tofu", "amount": 150}],
+            },
+        )
+
+        self.handler.reset_mock()
+        edits = [{"index": 0, "amount": 200}, {"index": 1, "remove": True}]
+        self.handler.read_json.return_value = {"id": "entry-1", "edits": edits}
+        self.diary.edit_components.return_value = {"id": "entry-1"}
+        self.assertTrue(
+            dispatch_route(
+                self.post_routes,
+                self.handler,
+                "/api/nutrition/entry/components",
+                method="POST",
+            )
+        )
+        self.diary.edit_components.assert_called_once_with("entry-1", edits)
+        self.handler.send_json.assert_called_once_with(
+            200, {"ok": True, "entry": {"id": "entry-1"}}
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

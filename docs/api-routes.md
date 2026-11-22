@@ -105,6 +105,8 @@ handler's docstring. Regenerate it with
 | GET | `/api/nutrition/day` | Session | no | Nutrition day summary with macro ranges. |
 | POST | `/api/nutrition/entry` | Session + CSRF | after access | Log a meal; returns a `change` undo reference. |
 | POST | `/api/nutrition/entry/add-product` | Session + CSRF | after access | Add a saved product to a logged meal as one more component. |
+| GET | `/api/nutrition/entry/components` | Session | no | The components of a logged meal, as the edit addresses them (#3948). |
+| POST | `/api/nutrition/entry/components` | Session + CSRF | after access | Remove, resize or swap components of a logged meal (#3948). |
 | POST | `/api/nutrition/entry/delete` | Session + CSRF | after access | Delete a logged meal. |
 | POST | `/api/nutrition/entry/estimate` | Session + CSRF | after access | Mark a meal's amounts as estimated (restaurant, friends), or clear the mark. |
 | POST | `/api/nutrition/entry/session` | Session + CSRF | after access | Attach a "Vor/Während der Einheit" entry to the session the athlete chose. |
@@ -1417,6 +1419,43 @@ größer als 0 sein."; 400 "Einheit muss g, ml oder portion sein."; 400
 `food_unit_mismatch` "Komponenteneinheit stimmt nicht mit dem Produkt überein.";
 400 `food_energy_missing` "Für dieses Produkt fehlt der Kalorienwert."; 400
 "Eine Mahlzeit kann höchstens 20 Komponenten enthalten."
+
+### `GET /api/nutrition/entry/components`
+
+Request: query `id`, the entry id.
+
+Response: 200 `{"ok": true, "id", "components"}`; each component has `index`
+(its position), `kind`, `name`, `amount`, `unit`, the nutrients (`kcal`,
+`carbs_g`, `protein_g`, `fat_g`, `sugar_g`, `fiber_g`, `salt_g`, unknown as
+null) and `nutrition_basis` (its origin). A meal without components is one
+component that keeps its values; a single product or a database meal is
+split into its product or foods.
+
+Errors: 400 "Ungültige Eintrags-ID."; 404 "Ernährungseintrag nicht gefunden."
+
+### `POST /api/nutrition/entry/components`
+
+Request: JSON body `{"id": string, "edits": [...]}`; `id` is the entry id and
+each edit names a component by its `index` (see
+`GET /api/nutrition/entry/components`) and is one of `{"index", "remove": true}`,
+`{"index", "amount"}` (above 0 up to 10000, the same unit) or a swap
+`{"index", "food_id"}` / `{"index", "product_id"}` with optional `amount` and
+`unit` (default: the component's own, so the amount stays). Every index at
+most once, other components stay as stored. The server scales the nutrients from
+the stored snapshot or calculates them from the food or product and the amount;
+the client sends none. The meal becomes a composite and keeps its description;
+its day is marked for the next Intervals.icu synchronization; templates and
+saved meals are not changed.
+
+Response: 200 `{"ok": true, "entry", "change"}` with the updated entry and the
+undo reference.
+
+Errors: 400 "Ungültige Eintrags-ID."; 404 "Ernährungseintrag nicht gefunden.";
+400 "Ungültige Änderung der Mahlzeitenkomponenten." for a malformed edit; 400
+`last_component` when nothing would remain; 400 "Ungültige Komponentenmenge." or
+"Komponentenmenge muss größer als 0 sein."; 404 `food_not_found`, 404
+`nutrition_product_not_found`, 409 `nutrition_product_archived`, 400
+`food_unit_mismatch` and 400 `food_energy_missing` for a swap target.
 
 ### `POST /api/nutrition/entry/delete`
 
