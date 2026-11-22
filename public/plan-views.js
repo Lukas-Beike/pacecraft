@@ -3068,13 +3068,16 @@ function racePlanPacing(pacing) {
   if (pacing.status !== "ready") return RACE_PLAN_UNAVAILABLE[pacing.reason] ? [racePlanHeading("Tempo"), h("p", "race-plan-gap", RACE_PLAN_UNAVAILABLE[pacing.reason])] : [];
   const ride = pacing.method === "power_variation";
   const badge = [ride ? "± 5 % Leistung" : "gleiche Anstrengung", pacing.profile_rejected ? "Streckenprofil nicht erkannt" : null].filter(Boolean).join(" · ");
+  const columns = ride ? ["Abschnitt", "Steigung", "Leistung"] : ["Abschnitt", "Steigung", "Tempo", "Zeit"];
   const rows = pacing.sections.map((section) => {
     const grade = racePlanSigned(section.grade_pct);
     const span = `km ${RACE_PLAN_KM.format(section.from_km)}–${RACE_PLAN_KM.format(section.to_km)}`;
-    if (ride) return [span, grade, section.power_w == null ? racePlanSigned(section.power_pct, "±") : `${section.power_w} W`];
-    return [span, grade, `${AppFormat.clock(section.pace_s_per_km)}/km`, AppFormat.clock(section.time_s)];
+    const cells = ride
+      ? [span, grade, section.power_w == null ? racePlanSigned(section.power_pct, "±") : `${section.power_w} W`]
+      : [span, grade, `${AppFormat.clock(section.pace_s_per_km)}/km`, AppFormat.clock(section.time_s)];
+    // The column name rides on each cell: a narrow row shows it above the value.
+    return cells.map((value, index) => h("td", { dataset: { label: columns[index] } }, value));
   });
-  const columns = ride ? ["Abschnitt", "Steigung", "Leistung"] : ["Abschnitt", "Steigung", "Tempo", "Zeit"];
   return [racePlanHeading("Tempo", badge), table(columns, rows, { className: "race-plan-table" })];
 }
 
