@@ -20,7 +20,7 @@ test("@responsive sports are toggle chips of at least 44 px and need no hint", a
   // Every profile section starts closed (#2262).
   await page.locator("#profileForm > details.profile-section").first().locator(":scope > summary").click();
   const chips = page.locator("#profileForm .chip-field .chip");
-  await expect(chips).toHaveCount(6);
+  await expect(chips).toHaveCount(4);
   for (const chip of await chips.all()) expect((await chip.locator("span").boundingBox()).height).toBeGreaterThanOrEqual(44);
   await expect(page.locator("#profileForm")).not.toContainText("Strg");
   const running = chips.filter({ hasText: "Laufen" });
@@ -40,7 +40,7 @@ test("@responsive sports are toggle chips of at least 44 px and need no hint", a
   await page.getByRole("button", { name: "Profil speichern" }).click();
   const request = (await saved).request().postDataJSON();
   expect(request.sports.includes("Running")).toBe(!before);
-  await expect(page.locator(".save-clean")).toBeVisible();
+  await expect(page.locator(".save-bar")).toBeHidden();
   await expect(page.locator("#profileDirtyIndicator")).toBeHidden();
 });
 
@@ -70,8 +70,12 @@ test("@responsive a closed profile section opens when it holds the invalid value
   await openMore(page, "profile");
   const sources = page.locator("#profileForm > details.profile-section").nth(4);
   await expect(sources).not.toHaveAttribute("open", "");
-  await sources.evaluate((node) => { node.querySelector('[name="sleep_target_hours"]').value = "99"; });
-  await page.locator("#profileForm").evaluate((form) => form.dispatchEvent(new Event("input", { bubbles: true })));
+  // The save bar appears with a change the field itself reports.
+  await sources.evaluate((node) => {
+    const field = node.querySelector('[name="sleep_target_hours"]');
+    field.value = "99";
+    field.dispatchEvent(new Event("input", { bubbles: true }));
+  });
   await page.getByRole("button", { name: "Profil speichern" }).click();
   await expect(sources).toHaveAttribute("open", "");
 });

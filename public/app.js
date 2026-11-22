@@ -132,6 +132,7 @@ $("#notificationEnableButton").addEventListener("click", enableNotifications);
 $("#notificationTypes").addEventListener("change", savePushType);
 $("#backupDownloadButton").addEventListener("click", () => { downloadDatabaseBackup().catch((error) => toast(error.message, true)); });
 $("#backupRestoreButton").addEventListener("click", restoreDatabaseBackup);
+$("#backupFileInput").addEventListener("change", restoreDatabaseBackup);
 $("#logoutButton").addEventListener("click", logout);
 document.addEventListener("visibilitychange", () => {
   if (document.visibilityState === "hidden") {

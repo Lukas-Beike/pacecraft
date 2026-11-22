@@ -222,7 +222,7 @@
           <details class="profile-section collapsible-section">
             <summary class="collapsible-summary"><span class="collapsible-summary-title">Person</span><span id="profileSummary" class="collapsible-summary-meta">Noch nicht ausgefüllt</span></summary>
             <div class="form-grid"><label>Name<input name="name" autocomplete="name"></label></div>
-            <fieldset class="chip-field"><legend>Sportarten</legend><div class="chip-group"><label class="chip"><input type="checkbox" name="sports" value="Cycling"><span>Radfahren</span></label><label class="chip"><input type="checkbox" name="sports" value="Running"><span>Laufen</span></label><label class="chip"><input type="checkbox" name="sports" value="Swimming"><span>Schwimmen</span></label><label class="chip"><input type="checkbox" name="sports" value="Strength"><span>Kraft</span></label><label class="chip"><input type="checkbox" name="sports" value="Triathlon"><span>Triathlon</span></label><label class="chip"><input type="checkbox" name="sports" value="Other"><span>Andere</span></label></div></fieldset>
+            <fieldset class="chip-field"><legend>Sportarten</legend><div class="chip-group"><label class="chip"><input type="checkbox" name="sports" value="Cycling"><span>Radfahren</span></label><label class="chip"><input type="checkbox" name="sports" value="Running"><span>Laufen</span></label><label class="chip"><input type="checkbox" name="sports" value="Strength"><span>Kraft</span></label><label class="chip"><input type="checkbox" name="sports" value="Other"><span>Andere</span></label></div></fieldset>
             <label>Trainingserfahrung<textarea name="training_background" rows="3" placeholder="Erfahrung, Trainingshistorie, Stärken und Schwächen…"></textarea></label>
             <div class="form-grid">
             <label>Größe (cm)<input name="height_cm" type="number" min="50" max="250" step="0.1"></label>
@@ -240,7 +240,7 @@
           <details id="zoneSettings" class="profile-section collapsible-section">
             <summary class="collapsible-summary"><span class="collapsible-summary-title">Zonen &amp; Schwellen</span><span id="zoneSummary" class="collapsible-summary-meta"></span></summary>
             <output id="zoneWarnings" class="provider-key-hint error" hidden></output>
-            <fieldset id="zoneSportTabs" class="segmented-control zone-sport-tabs"><legend class="sr-only">Sportart</legend><button type="button" data-zone-sport="ride" aria-pressed="true">Radfahren</button><button type="button" data-zone-sport="run" aria-pressed="false">Laufen</button><button type="button" data-zone-sport="swim" aria-pressed="false">Schwimmen</button></fieldset>
+            <fieldset id="zoneSportTabs" class="segmented-control zone-sport-tabs"><legend class="sr-only">Sportart</legend><button type="button" data-zone-sport="ride" aria-pressed="true">Radfahren</button><button type="button" data-zone-sport="run" aria-pressed="false">Laufen</button></fieldset>
             <div id="zoneOverview" class="zone-overview"></div>
             <p id="zoneReceipt" class="fine-print settings-message" aria-live="polite" hidden></p>
             <fieldset id="firstThresholdEditor" class="profile-subsection zone-editor" hidden><legend>Erste Schwelle (LT1)</legend>
@@ -250,7 +250,7 @@
             </fieldset>
             <div id="zoneEditor" class="zone-editor" hidden>
               <div class="form-grid" hidden>
-                <label>Sportart<select id="zoneSport" form="zoneForm"><option value="ride">Radfahren</option><option value="run">Laufen</option><option value="swim">Schwimmen</option></select></label>
+                <label>Sportart<select id="zoneSport" form="zoneForm"><option value="ride">Radfahren</option><option value="run">Laufen</option></select></label>
                 <label>Messgröße<select id="zoneMetric" form="zoneForm"><option value="power">Leistung</option><option value="heart_rate">Herzfrequenz</option><option value="pace">Pace</option></select></label>
               </div>
               <ul id="zoneSources" class="fine-print"></ul>
@@ -287,7 +287,7 @@
             </div>
             <label>Wetter-/Urlaubsstandort<input name="weather_location" placeholder="Stadt oder PLZ, z. B. Münster"></label>
           </details>
-          <div class="save-bar"><span id="profileDirtyIndicator" class="dirty-indicator" hidden>Ungespeichert</span><span class="save-clean">Gespeichert</span><button type="submit">Profil speichern</button></div>
+          <div class="save-bar"><span id="profileDirtyIndicator" class="dirty-indicator" hidden>Ungespeichert</span><button type="submit">Profil speichern</button></div>
         </form>
         <form id="zoneForm" hidden></form>
       </section>
@@ -648,7 +648,7 @@
             <button id="backupDownloadButton" type="button" class="secondary-button">Backup herunterladen</button>
           </div>
           <div class="settings-inline-action backup-actions">
-            <label>Backup wiederherstellen<input id="backupFileInput" type="file" accept=".backup,.db,application/octet-stream"></label>
+            <label>Backup-Datei<input id="backupFileInput" type="file" accept=".backup,.db,application/octet-stream"></label>
             <button id="backupRestoreButton" type="button" class="secondary-button danger-button">Backup wiederherstellen</button>
           </div>
         </details>

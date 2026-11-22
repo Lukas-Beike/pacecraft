@@ -44,8 +44,11 @@ test("a remote deletion that could not be confirmed is named next to the local r
 });
 
 // Runs the backup restore for a chosen file against a scripted confirmation and server answer.
-async function restoreWith({ file = { name: "x.backup" }, confirmed = true, answer = async () => ({}) } = {}) {
-  const nodes = { "#backupFileInput": { files: file ? [file] : [] }, "#backupRestoreButton": new FakeElement("button") };
+async function restoreWith({ file = { name: "x.backup" }, confirmed = true, busy = false, answer = async () => ({}) } = {}) {
+  let picked = 0;
+  const input = { files: file ? [file] : [], click: () => { picked += 1; } };
+  const nodes = { "#backupFileInput": input, "#backupRestoreButton": new FakeElement("button") };
+  nodes["#backupRestoreButton"].disabled = busy;
   const log = [];
   const context = extractFunctions("settings.js", ["restoreDatabaseBackup"], {
     $: (selector) => nodes[selector],
@@ -60,7 +63,7 @@ async function restoreWith({ file = { name: "x.backup" }, confirmed = true, answ
     AppApi: { request: async (path, options, onUnauthorized) => { log.push(["request", path, options]); return answer(onUnauthorized); } },
   });
   await context.restoreDatabaseBackup();
-  return { log, button: nodes["#backupRestoreButton"], steps: log.map(([step]) => step) };
+  return { log, button: nodes["#backupRestoreButton"], steps: log.map(([step]) => step), picked, input };
 }
 
 test("a restore asks for confirmation first and sends the chosen file only after it", async () => {
@@ -77,12 +80,21 @@ test("a restore asks for confirmation first and sends the chosen file only after
   assert.equal(button.disabled, false);
 });
 
-test("a restore without a chosen file or without confirmation sends nothing", async () => {
+test("a restore without a chosen file opens the picker, without confirmation it sends nothing", async () => {
   const noFile = await restoreWith({ file: null });
   assert.deepEqual(noFile.steps, []);
+  assert.equal(noFile.picked, 1);
   const declined = await restoreWith({ confirmed: false });
   assert.deepEqual(declined.steps, ["confirm"]);
   assert.equal(declined.button.disabled, false);
+});
+
+test("a restore in flight ignores a second pick, and the file field is free again after one", async () => {
+  const busy = await restoreWith({ busy: true });
+  assert.deepEqual(busy.steps, []);
+  assert.equal(busy.picked, 0);
+  const done = await restoreWith();
+  assert.equal(done.input.disabled, false);
 });
 
 test("a failed restore reports the error, keeps the session and the data, and allows a retry", async () => {

@@ -50,7 +50,9 @@ test("the calendar sport filter shows a unit by the sport it was done in, else i
   const matched = { type: "Run", compliance: { actual_activity: { sport: "ride", environment: "virtual" } } };
   const units = [{ type: "Run" }, { sport: "ride", environment: "virtual", is_completed_activity: true }, { sport: "strength", is_completed_activity: true }, { type: "Swim" }, matched];
   const shown = (sport) => units.filter((unit) => calendarSportShown(unit, sport)).length;
-  assert.deepEqual(["all", "run", "ride", "strength"].map(shown), [5, 1, 2, 1]);
+  assert.deepEqual(["all", "run", "ride", "strength", "other"].map(shown), [5, 1, 2, 1, 1]);
+  // "Andere" is every unit without a filter of its own, one without a type included.
+  assert.equal(calendarSportShown({}, "other"), true);
   // Without browser storage the calendar shows every sport (#2810).
   assert.equal(readCalendarSport(), "all");
 });

@@ -480,11 +480,11 @@ Profil SHALL order its closed sections Person, Ziele & Woche, Zonen & Schwellen,
 
 #### Scenario: Zone kinds
 - **WHEN** a sport has power, pace or heart-rate zones in effect, including Garmin's zones for all sports
-- **THEN** each kind lists its zones with name, range and percent basis and its source ("Lokal gespeichert", "Garmin, gilt für alle Sportarten"); a kind without zones shows "Noch keine Werte – Anlegen".
+- **THEN** each kind lists its zones with name, range and percent basis and its source ("Lokal gespeichert", "Garmin, gilt für alle Sportarten"); a kind without zones shows the standard zones read-only as "Standardzonen" with "Anpassen" when its threshold is known, else "Noch keine Werte – Anlegen".
 
 #### Scenario: Prefilled editor
 - **WHEN** the athlete taps "Bearbeiten" or "Anlegen" on a zone kind
-- **THEN** the existing editor opens under it with the threshold, maximum and limits in effect today (Garmin's zones for all sports included), or with the current FTP or threshold pace from the performance values when the kind has no zones; environment, valid-from date, "Gilt von Anfang an" and the removal of local zones stay available.
+- **THEN** the existing editor opens under it with the threshold, maximum and limits in effect today (Garmin's zones for all sports included), or with the current FTP or threshold pace from the performance values and the standard limits when the kind has no zones; environment, valid-from date, "Gilt von Anfang an" and the removal of local zones stay available.
 
 #### Scenario: First threshold entry
 - **WHEN** the athlete taps "Bearbeiten" on LT1

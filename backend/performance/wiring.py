@@ -9,7 +9,12 @@ from typing import Any
 from backend.activities.activity_reference import ActivityReferences
 from backend.activities.feedback import ActivityFeedbackService
 from backend.activities.session_corrections import SessionCorrectionService
-from backend.activities.zone_settings import effective_zone_configuration
+from backend.activities.zone_settings import (
+    HR_ZONE_LIMITS,
+    PACE_ZONE_LIMITS,
+    POWER_ZONE_LIMITS,
+    effective_zone_configuration,
+)
 from backend.app.context import AppContext
 from backend.athlete.body_entry import (
     BODY_FAT_ENTRY,
@@ -284,6 +289,11 @@ def build_athlete_data(
             effective_zone=effective_zone_configuration,
             on_change=zones_changed,
             threshold_warnings=threshold_warnings,
+            default_limits={
+                "power": POWER_ZONE_LIMITS,
+                "heart_rate": HR_ZONE_LIMITS,
+                "pace": PACE_ZONE_LIMITS,
+            },
         )
 
     return AthleteDataServices(

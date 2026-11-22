@@ -257,7 +257,7 @@ test("@responsive the sport filter hides other sports and their figures, keeps a
   await openCalendar(page, request);
   const days = await renderSyntheticCalendar(page);
   const filter = page.locator(".planned-week .planned-sport-filter");
-  await expect(filter.getByRole("radio")).toHaveCount(4);
+  await expect(filter.getByRole("radio")).toHaveCount(5);
   // The check mark of a chosen chip is not part of its name (#2859).
   await expect(filter.getByRole("radio", { name: "Alle", exact: true })).toBeChecked();
   // The week sync is built from every unit of the week, whatever the filter shows (#2810).

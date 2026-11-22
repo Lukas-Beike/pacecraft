@@ -122,10 +122,15 @@ async function downloadDatabaseBackup() {
 
 async function restoreDatabaseBackup() {
   const input = $("#backupFileInput");
-  const file = input?.files?.[0];
-  if (!file || !await requestConfirmation("Das aktuelle Datenbank-Backup wird vorher gesichert und durch die ausgewählte Datei ersetzt.", { title: "Datenbank-Backup wiederherstellen?", danger: true, confirmLabel: "Wiederherstellen" })) return;
   const button = $("#backupRestoreButton");
+  // A restore in flight holds the button and the file field; a second pick must not start another.
+  if (button.disabled) return;
+  const file = input?.files?.[0];
+  // Without a file the button opens the file picker; choosing one continues here (#3936 M-05).
+  if (!file) { input?.click?.(); return; }
+  if (!await requestConfirmation("Das aktuelle Datenbank-Backup wird vorher gesichert und durch die ausgewählte Datei ersetzt.", { title: "Datenbank-Backup wiederherstellen?", danger: true, confirmLabel: "Wiederherstellen" })) return;
   button.disabled = true;
+  if (input) input.disabled = true;
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 130_000);
   try {
@@ -144,6 +149,7 @@ async function restoreDatabaseBackup() {
   } finally {
     clearTimeout(timeout);
     button.disabled = false;
+    if (input) input.disabled = false;
   }
 }
 
@@ -330,15 +336,19 @@ const ZONE_SPORTS = {
   swim: { kinds: ["pace", "heart_rate"], lt2: [null, null], maximum: null, power: null },
 };
 const ZONE_KIND_TITLES = { power: "Leistungszonen", heart_rate: "Herzfrequenzzonen", pace: "Pacezonen" };
+// The upper limit of the open top zone, as stored configurations end their lists.
+const OPEN_ZONE_LIMIT = 999;
 const POWER_ZONE_NAMES = ["Regeneration", "Grundlage", "Tempo", "Schwelle", "VO2max", "Anaerob", "Neuromuskulär"];
 let zoneConfigurations = [];
 let zoneEffective = [];
+let zoneDefaults = {};
 let zoneToday = "";
 let zoneSport = "ride";
 
 function applyZoneData(result) {
   zoneConfigurations = result.configurations || [];
   zoneEffective = result.effective || [];
+  zoneDefaults = result.defaults || {};
   zoneToday = result.today || "";
 }
 
@@ -419,6 +429,18 @@ function zoneConfigurationFor(sport, metric, environment = null, configurations 
   return chosen ? configurations.find((item) => item.key === chosen.key) || null : null;
 }
 
+// Pure: the standard zones that apply without a configuration, as a read-only item once the
+// threshold they are a share of is known (#3936 M-01); null otherwise. The standard limits leave the
+// open top zone out, so it is added as stored configurations carry it.
+function defaultZoneItem(sport, metric, defaults = zoneDefaults, metricValue = zoneMetricValue) {
+  const limits = defaults[metric];
+  const spec = ZONE_SPORTS[sport];
+  if (!limits?.length || !spec) return null;
+  const threshold = { power: metricValue(spec.power), heart_rate: metricValue(spec.lt2[1]), pace: metricValue(spec.lt2[0]) }[metric];
+  if (!threshold) return null;
+  return { sport, metric, source: "default", label: "Standardzonen", threshold: metric === "pace" ? null : threshold, percent_limits: [...limits, OPEN_ZONE_LIMIT], percent_basis: "threshold" };
+}
+
 function zoneLimitsOf(item) {
   return item[ZONE_METRIC_LABELS[item.metric].key] || item.limits || item.percent_limits || [];
 }
@@ -484,6 +506,7 @@ function zoneRange(item, index, last, text) {
 }
 
 function zoneSourceText(item) {
+  if (item.source === "default") return item.label;
   if (item.source === "local") return "Lokal gespeichert";
   // The configuration names its provider; the source key stands in without a label.
   const provider = item.label || item.source;
@@ -795,7 +818,7 @@ function refreshLt2Notice() {
 }
 
 function zoneKindBox(sport, metric, environment = null) {
-  const item = zoneConfigurationFor(sport, metric, environment);
+  const item = zoneConfigurationFor(sport, metric, environment) || (environment ? null : defaultZoneItem(sport, metric));
   const basis = { power: sport === "run" ? "% der Schwellenleistung" : "% der FTP", heart_rate: "bpm", pace: "% der Schwellenpace" }[metric];
   const heading = h("h3", null, environment ? `${ZONE_KIND_TITLES[metric]} · Indoor` : ZONE_KIND_TITLES[metric], h("small", null, basis));
   const box = h("section", { className: "zone-box", dataset: { zoneBox: environment ? `${metric}-${environment}` : metric } }, heading);
@@ -806,7 +829,7 @@ function zoneKindBox(sport, metric, environment = null) {
   }
   const rows = zoneRows(item, metric === "pace" ? zoneMetricValue(ZONE_SPORTS[sport].lt2[0]) : null);
   box.append(h("ul", "zone-list", ...rows.map((row) => h("li", { dataset: { zone: row.zone } }, h("i"), h("span", null, row.name), h("em", null, row.range)))),
-    h("p", "zone-source", zoneSourceText(item), zoneEditButton("Bearbeiten", attributes)));
+    h("p", "zone-source", zoneSourceText(item), zoneEditButton(item.source === "default" ? "Anpassen" : "Bearbeiten", attributes)));
   return box;
 }
 
@@ -871,11 +894,16 @@ function selectedZoneConfigurations() {
 
 // Pure: the editor values in effect today, or the current threshold from the performance
 // values when the kind has no zones yet (#2262).
-function zoneEditorValues(sport, metric, shown, metricValue = zoneMetricValue) {
+function zoneEditorValues(sport, metric, shown, metricValue = zoneMetricValue, defaults = zoneDefaults) {
   if (shown) return { threshold: shown.threshold ?? "", maximum: shown.maximum ?? "", limits: zoneLimitsText(shown) };
   const spec = ZONE_SPORTS[sport] || {};
   const threshold = { power: metricValue(spec.power), heart_rate: metricValue(spec.lt2?.[1]) }[metric] ?? "";
-  return { threshold, maximum: metric === "heart_rate" ? metricValue(spec.maximum) ?? "" : "", limits: "" };
+  // The standard zones prefill the limits; heart rate is in bpm of the threshold pulse and ends at the maximum.
+  const standard = defaultZoneItem(sport, metric, defaults, metricValue);
+  const maximum = metric === "heart_rate" ? metricValue(spec.maximum) ?? "" : "";
+  let limits = standard ? zoneLimitsOf(standard) : [];
+  if (standard && metric === "heart_rate") limits = [...limits.slice(0, -1).map((limit) => Math.round(standard.threshold * limit / 100)), maximum || Math.round(standard.threshold * 1.1)];
+  return { threshold, maximum, limits: limits.join(", ") };
 }
 
 function renderZoneEditor() {

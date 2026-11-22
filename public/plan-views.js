@@ -2256,7 +2256,7 @@ function plannedViewSwitch() {
 // appointments; the choice is a per-device convenience and never reaches the server.
 const CALENDAR_SPORT_KEY = "pacecraft-calendar-sport";
 // Chip label, then the sport labels (activitySportLabel) the chip shows.
-const CALENDAR_SPORTS = { all: ["Alle", []], run: ["Lauf", ["Laufen"]], ride: ["Rad", ["Radfahren", "Rad indoor"]], strength: ["Kraft", ["Kraft"]] };
+const CALENDAR_SPORTS = { all: ["Alle", []], run: ["Lauf", ["Laufen"]], ride: ["Rad", ["Radfahren", "Rad indoor"]], strength: ["Kraft", ["Kraft"]], other: ["Andere", null] };
 
 function readCalendarSport() {
   try {
@@ -2266,7 +2266,11 @@ function readCalendarSport() {
 }
 
 function calendarSportShown(entry, sport = calendarSport) {
-  return sport === "all" || CALENDAR_SPORTS[sport][1].includes(activitySportLabel(calendarSportType(calendarActualActivity(entry) || entry)));
+  if (sport === "all") return true;
+  const label = activitySportLabel(calendarSportType(calendarActualActivity(entry) || entry));
+  // "Andere" holds every sport without a filter of its own: swims, walks and sessions without a type (#3936 G-10).
+  if (sport === "other") return !Object.values(CALENDAR_SPORTS).some(([, labels]) => labels?.includes(label));
+  return CALENDAR_SPORTS[sport][1].includes(label);
 }
 
 function plannedSportFilter() {
