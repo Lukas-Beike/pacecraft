@@ -1,8 +1,8 @@
 # M10 — First threshold heart rate from chest-strap RR intervals (DFA-α1)
 
 - **Card:** M10
-- **Card version:** 4
-- **Method ID:** dfa-alpha1-first-threshold v3 (`backend/canonical/dfa_alpha1.py:METHOD_VERSION`), athlete-level value in `backend/performance/first_threshold_estimate.py` (#2131, C-008), running step test in `backend/performance/step_test.py` (#3833)
+- **Card version:** 5
+- **Method ID:** dfa-alpha1-first-threshold v3 (`backend/canonical/dfa_alpha1.py:METHOD_VERSION`), athlete-level value in `backend/performance/first_threshold_estimate.py` (#2131, C-008), running step test run-step-test-v2 in `backend/performance/step_test.py` (#3833, #3916)
 - **Status:** implemented (`backend/providers/fit_rr_mapping.py` reads the RR intervals); per-session result stored with the stream set, athlete-level estimate shown in the profile and the Coach context, adopted only by the athlete
 - **Classification:** model estimate
 - **Literature checked:** 2026-11-21
@@ -148,15 +148,23 @@ step-test template:
    cool-down and recovery laps left out. A stage is analysable when an analysed
    window's midpoint (start + 60 s on the beat clock, dropouts left out) lies
    in it; the beat clock and the lap clock are taken as equal.
-3. LT1: the run's stored 0.75 crossing and quality. "Nicht erreicht" when no
-   window's alpha1 lies below 0.75; "nicht bestimmbar" when a window does but
-   the stop rules give no crossing.
-4. LT2: the 0.5 crossing of the second threshold per run, without its
+3. LT1: the 0.75 crossing and quality of the crossing rules above, fitted
+   only over the windows whose midpoint lies in a stage lap and whose alpha1
+   lies from 0.5 to 1.0 (#3916): warm-up windows on the flat upper plateau and
+   cool-down windows with a low alpha1 at a low heart rate after the hardest
+   stages would move the line in a direction that varies per run. "Nicht
+   erreicht" when no window's alpha1 lies below 0.75; "nicht bestimmbar" when a
+   window does but the stop rules give no crossing.
+4. LT2: the 0.5 crossing of the second threshold per run over the stage
+   windows with alpha1 from 0.3 to 0.75, above this LT1 and without the
    late-drift rule (a step test is hard at its end by design). "Nicht erreicht"
    when no window reaches alpha1 0.5; "nicht bestimmbar" otherwise without a
    crossing.
 5. Pace: the speed at the value's heart rate, linear between the two stage laps
-   around it (none outside them), as s/km.
+   around it (none outside them), as s/km. A stage's heart rate is the mean of
+   its last 60 s from the heart-rate stream, else the lap mean: the lap mean
+   holds the rise at the start of the stage and maps a threshold to too fast a
+   pace (#3916).
 6. Quality: `good` when the crossing is `good` by the rules above and at least
    6 stages are analysable, else `low`. Only a `good` value is offered for
    adoption: LT1 as percent of today's run threshold HR with the origin
@@ -316,6 +324,8 @@ comparable.
 | Step test stage laps | 150 to 210 s | product assumption | A 3-minute step lap; a shorter last stage was not held. `STAGE_LAP_S`. |
 | Step test `good` | at least 6 analysable stages | product assumption | Athlete decision (#3833), on top of the recording rules. `MIN_GOOD_STAGES`. |
 | Step test plausible paces | 2:30 to 9:00 /km | product assumption | Another LT1 or LT2 pace counts as unknown. `PACE_BOUNDS_S`. |
+| Step test fit windows | stage-lap midpoints; alpha1 0.5 to 1.0 (LT1), 0.3 to 0.75 (LT2) | product assumption | Keeps warm-up and cool-down out of both lines (#3916). `LT1_ALPHA1_RANGE`, `LT2_ALPHA1_RANGE`. |
+| Step test stage heart rate | last 60 s of each stage | product assumption | Leaves the rise at the stage start out of the pace mapping (#3916). `STAGE_HR_TAIL_S`. |
 
 ## Allowed statements
 
@@ -389,6 +399,7 @@ comparable.
 | `GOOD_MIN_SESSIONS` | `5` | `backend/performance/first_threshold_estimate.py` | The estimate is good with this many sessions that agree within this spread (percentage points of the threshold HR); otherwise it is low. |
 | `GOOD_MAX_SPREAD_PCT` | `5.0` | `backend/performance/first_threshold_estimate.py` |  |
 | `SOURCE_LABEL` | `'Schätzung aus Brustgurt-RR-Intervallen (DFA-α1, Forschungsstand), kein Laborwert'` | `backend/performance/first_threshold_estimate.py` |  |
+| `METHOD` | `'run-step-test-v2'` | `backend/performance/step_test.py` | v1 fitted the crossings over the whole run (#3833), v2 over the stage windows (#3916). |
 | `PROTOCOL` | `'run_step_test'` | `backend/performance/step_test.py` |  |
 | `NAME` | `'Stufentest Laufen (LT1 und LT2)'` | `backend/performance/step_test.py` |  |
 | `WARMUP_MIN` | `10` | `backend/performance/step_test.py` |  |
@@ -404,6 +415,8 @@ comparable.
 | `STAGE_PACE_BAND` | `0.03` | `backend/performance/step_test.py` | Each stage's pace band, ±3 % around its pace (athlete decision, #3833). |
 | `PACE_BOUNDS_S` | `(150.0, 540.0)` | `backend/performance/step_test.py` | Plausible run paces (s/km); another value counts as unknown. |
 | `STAGE_LAP_S` | `(150.0, 210.0)` | `backend/performance/step_test.py` | A recorded lap of this length (s) is one stage; a shorter last one was not held. |
+| `LT1_ALPHA1_RANGE` | `(0.5, 1.0)` | `backend/performance/step_test.py` | The alpha1 range of the stage windows that place LT1 and LT2 (#3916). |
+| `STAGE_HR_TAIL_S` | `60.0` | `backend/performance/step_test.py` | A stage's heart rate is the mean over its last part (s), after the rise. |
 | `END_NOTE` | `'Ende: wenn die Stufe nicht mehr zu halten ist, spätestens nach Stufe {last}.'` | `backend/performance/step_test.py` |  |
 | `SOURCE` | `'abgeleitet'` | `backend/performance/step_test.py` |  |
 | `LT1_NOT_REACHED` | `'α1 blieb über 0,75. Die Stufen waren nicht schnell genug.'` | `backend/performance/step_test.py` |  |

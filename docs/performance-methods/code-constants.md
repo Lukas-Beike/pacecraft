@@ -396,6 +396,7 @@ every named number the code fixes. A test fails when it is out of date.
 | `WAHOO_CURRENT_MAX_AGE_DAYS` | `90` | `backend/performance/source_policy.py` | A Wahoo FTP or weight observed longer ago than this is history, not the current value. |
 | `GARMIN_THRESHOLD_MAX_AGE_DAYS` | `180` | `backend/performance/source_policy.py` | A Garmin threshold observed longer ago than this is history, not current. |
 | `FAMILY_LOOKBACK_DAYS` | `84` | `backend/performance/source_policy.py` | Days, ending on the latest day read, of recovery history every reader uses. |
+| `METHOD` | `'run-step-test-v2'` | `backend/performance/step_test.py` | v1 fitted the crossings over the whole run (#3833), v2 over the stage windows (#3916). |
 | `PROTOCOL` | `'run_step_test'` | `backend/performance/step_test.py` |  |
 | `NAME` | `'Stufentest Laufen (LT1 und LT2)'` | `backend/performance/step_test.py` |  |
 | `WARMUP_MIN` | `10` | `backend/performance/step_test.py` |  |
@@ -411,6 +412,8 @@ every named number the code fixes. A test fails when it is out of date.
 | `STAGE_PACE_BAND` | `0.03` | `backend/performance/step_test.py` | Each stage's pace band, ±3 % around its pace (athlete decision, #3833). |
 | `PACE_BOUNDS_S` | `(150.0, 540.0)` | `backend/performance/step_test.py` | Plausible run paces (s/km); another value counts as unknown. |
 | `STAGE_LAP_S` | `(150.0, 210.0)` | `backend/performance/step_test.py` | A recorded lap of this length (s) is one stage; a shorter last one was not held. |
+| `LT1_ALPHA1_RANGE` | `(0.5, 1.0)` | `backend/performance/step_test.py` | The alpha1 range of the stage windows that place LT1 and LT2 (#3916). |
+| `STAGE_HR_TAIL_S` | `60.0` | `backend/performance/step_test.py` | A stage's heart rate is the mean over its last part (s), after the rise. |
 | `END_NOTE` | `'Ende: wenn die Stufe nicht mehr zu halten ist, spätestens nach Stufe {last}.'` | `backend/performance/step_test.py` |  |
 | `SOURCE` | `'abgeleitet'` | `backend/performance/step_test.py` |  |
 | `LT1_NOT_REACHED` | `'α1 blieb über 0,75. Die Stufen waren nicht schnell genug.'` | `backend/performance/step_test.py` |  |

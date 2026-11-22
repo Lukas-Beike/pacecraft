@@ -186,7 +186,7 @@ class ActivityAnalysisReadService(ActivityReadService):
         laps = document.get("laps")
         lap_rows = laps.get("laps") if isinstance(laps, Mapping) else None
         return {
-            **step_test.evaluate(result, lap_rows or [], day),
+            **step_test.evaluate(result, lap_rows or [], day, document.get("streams")),
             "activity_id": session_id,
         }
 

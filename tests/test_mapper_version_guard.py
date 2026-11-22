@@ -89,7 +89,7 @@ PINNED: Final[dict[str, tuple[tuple[int, ...], str]]] = {
     ),
     "canonical.dfa_alpha1": (
         (12, 13),
-        "022a2528063b9d007d02b7ba7f7218af3ed3d6b173308720af055a70158543fa",
+        "cf8025eeceef8f4f5cf0704217b0a066de8c5ef70f064131e3083d259613f562",
     ),
     "canonical.domain_records": (
         (28,),
