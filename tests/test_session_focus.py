@@ -296,6 +296,11 @@ HARD_TABLE = (
         False,
     ),
     (
+        "tempo name with a hard step block",
+        unit("Run", name="Tempo", description="6x\n- 3m Z5\n- 2m Z1"),
+        True,
+    ),
+    (
         "strides",
         unit("Run", description="- 40m Z2 Pace\n\n6x\n- 20s 120% Pace\n- 1m Z1 Pace"),
         False,

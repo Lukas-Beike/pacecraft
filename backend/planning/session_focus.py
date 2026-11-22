@@ -454,8 +454,8 @@ def is_hard(unit: Mapping[str, Any], computed: bool | None = None) -> bool:
     """The one hard-session rule (athlete decision 2026-11-11, #2083).
 
     The first stage with an answer decides: a tempo focus (set or derived) is
-    hard with 30 minutes in the moderate band or a hard step block (#3918); a
-    set focus; the workout steps
+    hard with 30 minutes in the moderate band or a hard step block, read like
+    any unit's steps (#3918); a set focus; the workout steps
     (``computed`` from the caller's thresholds, else the zone and percent steps
     read without thresholds); a planned intensity factor of at least 0.85; and,
     only without readable steps, a non-negated Z4-Z7 target or a hard word.
@@ -465,18 +465,23 @@ def is_hard(unit: Mapping[str, Any], computed: bool | None = None) -> bool:
     if sport is Sport.STRENGTH:
         return False
     focus = session_focus(unit)
-    if focus.value == "tempo":
-        # A tempo is hard with 30 minutes in the moderate band (B7, #3918).
-        return tempo_hard(estimate_planned_unit(unit, ZoneSettings())) or bool(computed)
-    if focus.origin == "set":
+    tempo = focus.value == "tempo"
+    if focus.origin == "set" and not tempo:
         return bool(focus.is_hard)
     # Separate step fields are exported as the workout, so they count too.
     if _hard_text(" ".join(str(unit.get(key) or "") for key in _STEP_FIELDS)):
         return True
+    estimate = estimate_planned_unit(unit, ZoneSettings())
     if computed is None:
-        computed = computed_hard(estimate_planned_unit(unit, ZoneSettings()))
+        computed = computed_hard(estimate)
+    if tempo and tempo_hard(estimate):
+        # A tempo is hard with 30 minutes in the moderate band or a hard step
+        # block (B7, #3918).
+        return True
     if computed is not None:
         return computed
+    if focus.origin == "set":
+        return False
     factor = planned_intensity_factor(unit)
     if factor is not None and factor >= HARD_INTENSITY:
         return True
