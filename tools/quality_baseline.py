@@ -973,8 +973,8 @@ def check(
         if sizes is None
         else size_findings(baseline.get("instruction_lines", {}), sizes)
     )
-    print(*(f"NEW {line}" for line in grown), sep="\n", end="\n" if grown else "")
-    print(*(f"OBSOLETE {line}" for line in shrunk), sep="\n", end="\n" if shrunk else "")
+    for line in [*(f"NEW {g}" for g in grown), *(f"OBSOLETE {s}" for s in shrunk)]:
+        print(line)
     if grown:
         print(
             "An instruction file may not grow: remove as many lines as you add "
