@@ -776,9 +776,19 @@ class CodexReviewWorkflowTests(unittest.TestCase):
         self.assertIn("schedule:\n    - cron: '*/10 * * * *'", workflow)
         self.assertNotIn("workflow_dispatch", workflow)
         self.assertNotIn("pull_request", workflow.split("jobs:", 1)[0])
-        # The checkout is the pushed develop commit; PR files are only data.
+        # The checkout is the default, the pushed or latest develop commit; PR
+        # files are only data. A finished CI run checks out nothing (#3979).
         self.assertIn(
-            "persist-credentials: false\n          ref: ${{ github.sha }}", workflow
+            "- name: Check out trusted develop\n"
+            "        if: ${{ github.event_name != 'workflow_run' }}\n"
+            "        uses: actions/checkout@",
+            workflow,
+        )
+        self.assertIn(
+            "persist-credentials: false\n      - name: Set up Python", workflow
+        )
+        self.assertEqual(
+            3, workflow.count("if: ${{ github.event_name != 'workflow_run' }}")
         )
         self.assertIn("--author app/dependabot", align)
         self.assertIn('startswith("dependabot/")', align)
