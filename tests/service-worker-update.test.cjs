@@ -483,3 +483,53 @@ test("disabling push removes the subscription on the server and in the browser",
     ["toast", "Benachrichtigungen ausgeschaltet"],
   ]);
 });
+
+// Runs the per-type switches of public/notifications.js (#3914, variant B) against a stubbed API.
+function pushTypesPage({ failSave = false } = {}) {
+  const calls = [];
+  const toasts = [];
+  const list = { hidden: true, children: [], querySelector: () => "legend", replaceChildren(...items) { this.children = items; } };
+  const context = extractFunctions("notifications.js", ["PUSH_TYPE_LABELS", "pushTypesEndpoint", "renderPushTypes", "savePushType"], {
+    $: (selector) => (selector === "#notificationTypes" ? list : null),
+    h: (tag, props, ...children) => ({ tag, props, children }),
+    toast: (text, error) => toasts.push([text, Boolean(error)]),
+    api: async (path, options) => {
+      calls.push([path, options?.body ? JSON.parse(options.body) : null]);
+      if (path.startsWith("/api/push?")) return { subscribed: true, types: { weather: false } };
+      if (failSave) throw new Error("Speichern fehlgeschlagen");
+      return {};
+    },
+  });
+  return { context, calls, toasts, list };
+}
+
+test("the switch list shows one switch per type in the server's state, read once per device", async () => {
+  const { context, calls, list } = pushTypesPage();
+  const subscription = { endpoint: "https://fcm.googleapis.com/fcm/send/fake" };
+  await context.renderPushTypes(subscription);
+  await context.renderPushTypes(subscription);
+  assert.equal(list.hidden, false);
+  assert.deepEqual(calls.map(([path]) => path), [`/api/push?endpoint=${encodeURIComponent(subscription.endpoint)}`]);
+  const rows = list.children.slice(1);
+  assert.equal(rows.length, 11);
+  const row = (label) => rows.find((item) => item.children[1].children[0] === label);
+  assert.equal(row("Wetter für Outdoor-Einheit").children[0].props.checked, false);
+  assert.equal(row("Coach-Antwort fertig").children[0].props.checked, true);
+  await context.renderPushTypes(null);
+  assert.equal(list.hidden, true);
+});
+
+test("switching a type saves it, and a failed save turns the switch back", async () => {
+  const input = { checked: false, disabled: false, dataset: { pushType: "weather" } };
+  const event = { target: { closest: () => input } };
+  const saved = pushTypesPage();
+  await saved.context.savePushType(event);
+  assert.deepEqual(JSON.parse(JSON.stringify(saved.calls)), [["/api/push/preferences", { types: { weather: false } }]]);
+  assert.equal(input.checked, false);
+  const failed = pushTypesPage({ failSave: true });
+  input.checked = true;
+  await failed.context.savePushType(event);
+  assert.equal(input.checked, false);
+  assert.equal(input.disabled, false);
+  assert.deepEqual(failed.toasts, [["Speichern fehlgeschlagen", true]]);
+});
