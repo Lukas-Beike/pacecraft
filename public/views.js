@@ -820,7 +820,7 @@ function renderSettings(data) {
   renderSettingsSyncControls(data, configured);
   renderSettingsUsage(data);
   renderUsageMonth(data);
-  renderNotificationStatus();
+  void renderNotificationStatus();
   renderProviderAttention(data);
   renderConnectionsSyncProgress(data);
   renderProviderFreshness(data);
