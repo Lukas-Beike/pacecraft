@@ -31,7 +31,7 @@ const PUSH_TYPE_LABELS = Object.freeze({
   server_backup: "Server oder Backup",
   weather: "Wetter für Outdoor-Einheit",
 });
-// The endpoint whose switches are shown, so a repeated render reads them once.
+// The endpoint whose switches are shown or being read, so a repeated render reads them once.
 let pushTypesEndpoint = null;
 
 async function renderPushTypes(subscription) {
@@ -40,8 +40,16 @@ async function renderPushTypes(subscription) {
   list.hidden = !subscription;
   if (!subscription) { pushTypesEndpoint = null; return; }
   if (pushTypesEndpoint === subscription.endpoint) return;
-  const { types } = await api(`/api/push?endpoint=${encodeURIComponent(subscription.endpoint)}`);
   pushTypesEndpoint = subscription.endpoint;
+  let types;
+  try {
+    ({ types } = await api(`/api/push?endpoint=${encodeURIComponent(subscription.endpoint)}`));
+  } catch (error) {
+    pushTypesEndpoint = null;
+    throw error;
+  }
+  // A save in flight keeps its switch; the next render reads the list again.
+  if (list.querySelector?.("input[data-push-type]:disabled")) { pushTypesEndpoint = null; return; }
   list.replaceChildren(list.querySelector("legend"), ...Object.entries(PUSH_TYPE_LABELS).map(([type, label]) => h("label", "chip",
     h("input", { type: "checkbox", checked: types?.[type] !== false, dataset: { pushType: type } }),
     h("span", null, label))));
@@ -124,6 +132,8 @@ async function enablePush() {
 // A subscription made with another server key (a restored or new database) is renewed,
 // because the push service refuses messages signed with a key it was not made for.
 async function syncPushSubscription() {
+  // Each start reads the switches again: another device may have changed them.
+  pushTypesEndpoint = null;
   if (!pushSupported() || Notification.permission !== "granted") return;
   try {
     const registration = await pushRegistration();
@@ -208,6 +218,7 @@ function pageInputPending() {
   const active = document.activeElement;
   return Boolean(active?.matches?.("input, textarea, select") && !active.closest?.("#chatForm"))
     || [...document.querySelectorAll(UPDATE_RELOAD_INPUT_FIELDS)].some((field) => field.value.trim())
+    || Boolean($("#notificationTypes input[data-push-type]:disabled"))
     || (typeof providerCredentialBusy !== "undefined" && providerCredentialBusy.size > 0)
     || editedFormPending()
     || Boolean($("#nutritionExtraction") && !$("#nutritionExtraction").hidden && $("#nutritionExtraction").childElementCount);

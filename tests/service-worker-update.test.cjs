@@ -46,7 +46,7 @@ test("an activated service worker removes old caches and controls open pages", a
 function page({ controlled = true } = {}) {
   const workerListeners = {};
   const documentListeners = {};
-  const nodes = { "#messageInput": { value: "" }, "#backupRestoreButton": { disabled: false }, "dialog[open]": null };
+  const nodes = { "#messageInput": { value: "" }, "#backupRestoreButton": { disabled: false }, "#notificationTypes input[data-push-type]:disabled": null, "dialog[open]": null };
   const credentialFields = [{ value: "" }, { value: "" }];
   const dirtyForms = [];
   const globalListeners = {};
@@ -159,6 +159,8 @@ const blockers = {
   "a state load": ({ state }) => { state.loadPromise = Promise.resolve(); return () => { state.loadPromise = null; }; },
   "a backup restore": ({ nodes }) => { nodes["#backupRestoreButton"].disabled = true; return () => { nodes["#backupRestoreButton"].disabled = false; }; },
   "an open dialog": ({ nodes }) => { nodes["dialog[open]"] = {}; return () => { nodes["dialog[open]"] = null; }; },
+  // #3914: a notification switch is disabled while its save runs.
+  "a notification switch save": ({ nodes }) => { nodes["#notificationTypes input[data-push-type]:disabled"] = {}; return () => { nodes["#notificationTypes input[data-push-type]:disabled"] = null; }; },
   "a typed credential": ({ credentialFields }) => { credentialFields[1].value = "123456"; return () => { credentialFields[1].value = ""; }; },
   "a credential save": ({ providerCredentialBusy }) => { providerCredentialBusy.add("garmin-login"); return () => { providerCredentialBusy.clear(); }; },
   "an edited form": ({ dirtyForms }) => { dirtyForms.push({ dataset: { dirty: "1" }, closest: () => null }); return () => { dirtyForms.length = 0; }; },
@@ -488,7 +490,7 @@ test("disabling push removes the subscription on the server and in the browser",
 function pushTypesPage({ failSave = false } = {}) {
   const calls = [];
   const toasts = [];
-  const list = { hidden: true, children: [], querySelector: () => "legend", replaceChildren(...items) { this.children = items; } };
+  const list = { hidden: true, children: [], querySelector: (selector) => (selector === "legend" ? "legend" : null), replaceChildren(...items) { this.children = items; } };
   const context = extractFunctions("notifications.js", ["PUSH_TYPE_LABELS", "pushTypesEndpoint", "renderPushTypes", "savePushType"], {
     $: (selector) => (selector === "#notificationTypes" ? list : null),
     h: (tag, props, ...children) => ({ tag, props, children }),
@@ -502,6 +504,13 @@ function pushTypesPage({ failSave = false } = {}) {
   });
   return { context, calls, toasts, list };
 }
+
+test("a switch save in flight is never redrawn from an older read", async () => {
+  const { context, list } = pushTypesPage();
+  list.querySelector = (selector) => (selector === "legend" ? "legend" : {});
+  await context.renderPushTypes({ endpoint: "https://fcm.googleapis.com/fcm/send/fake" });
+  assert.deepEqual(list.children, []);
+});
 
 test("the switch list shows one switch per type in the server's state, read once per device", async () => {
   const { context, calls, list } = pushTypesPage();

@@ -110,7 +110,7 @@ Counts: both 42, UI only 23, Coach only 21, neither 1, UI by rule 8.
 | Syncs | Check a provider connection | Anbindungen `POST /api/providers/{provider}/check`, `POST /api/nutrition/yazio/check` | — | read-only | UI only | #3960 |
 | Syncs | Switch the automatic metric export | Anbindungen `POST /api/metric-export/automatic` | — | consent per field | UI only | #3960 |
 | Settings | Select model, thinking level and service tier | Coach & Modell `PUT /api/settings/model`, `PUT /api/settings/thinking-level`, `PUT /api/settings/service-tier` | — | — | UI only | #3960 |
-| Settings | Change the calendar display | Darstellung `PUT /api/settings/calendar-display` | — | — | UI only | #3960 |
+| Settings | Switch a notification type on or off | App `POST /api/push/preferences` | — | — | UI only | #3960 |
 | Settings | Turn GPS-track storage on or off | Datenschutz `POST /api/privacy/gps` | — | — | UI only | #3960 |
 | Settings | Reset the Coach conversation | Coach & Modell `POST /api/chat/reset` | — | confirmation | UI only | #3960 |
 | Settings | Save or clear provider credentials | Anbindungen `PUT /api/settings/credentials` | — | secrets stay server-side | UI by rule | |
@@ -120,7 +120,7 @@ Counts: both 42, UI only 23, Coach only 21, neither 1, UI by rule 8.
 | Privacy | Download the privacy export | Datenschutz `GET /api/privacy/export` | — | — | UI by rule | |
 | Privacy | Delete the local athlete data | Datenschutz `POST /api/privacy/delete` | — | typed confirmation | UI by rule | |
 | Privacy | Delete stored GPS tracks | Datenschutz `POST /api/privacy/gps/delete` | — | typed confirmation | UI by rule | |
-| Notifications | Turn notifications on or off on this device | Datenschutz `POST /api/push/key`, `POST /api/push/subscribe`, `POST /api/push/unsubscribe` | — | device permission | UI by rule | |
+| Notifications | Turn notifications on or off on this device | App `POST /api/push/key`, `POST /api/push/subscribe`, `POST /api/push/unsubscribe` | — | device permission | UI by rule | |
 | Notifications | Switch notification types on or off | — | — | — | neither | #3914, #3960 |
 
 ## Outside the matrix
@@ -134,6 +134,5 @@ Write routes that are no athlete action on data: `POST /api/login`,
 `POST /api/coach/actions/execute`, `POST /api/diagnostics/delete`,
 `POST /api/logs/delete`, `PUT /api/zones/lt2/notice-baseline`.
 
-`POST /api/push/preferences` switches the notification types; its UI switch
-list follows in #3914 and a Coach path is part of #3960. G-14 in #3936 adds
+A Coach path for the notification switches is part of #3960. G-14 in #3936 adds
 interim "Dem Coach sagen" hints on the screens with a Coach-only action.

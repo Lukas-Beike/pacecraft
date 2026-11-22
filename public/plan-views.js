@@ -2721,7 +2721,7 @@ function withOlderSessions(calendar) {
   return calendar.concat(olderSessions.items.filter((item) => !known.has(String(item.activity_id || item.id))));
 }
 
-// Only a week before the configured ones asks for more: the startup data covers those.
+// Only a week before the shown range asks for more: the startup data covers that range.
 function loadOlderSessions(calendar, shownStartKey, configuredStartKey) {
   if (olderSessions.loading || olderSessions.cursor === null || shownStartKey >= configuredStartKey) return;
   const loadedStart = calendar.filter((item) => calendarActualActivity(item)).map(plannedEventDate).filter(Boolean).sort()[0];

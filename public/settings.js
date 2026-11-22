@@ -1,4 +1,3 @@
-
 // Profile values as the form presents them; sports is the comma-joined multi-select.
 let profileSaveInFlight = false;
 function profileFormValues(form) {
