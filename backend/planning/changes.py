@@ -671,6 +671,7 @@ class StructuredTrainingChangeService:
         *,
         require_revision: bool = False,
         authorized_plan_id: str | None = None,
+        source: str = "coach",
     ) -> dict[str, Any]:
         """Apply and commit one batch, then publish its state change once."""
         with self._database_manager.unit_of_work() as db:
@@ -679,6 +680,7 @@ class StructuredTrainingChangeService:
                 arguments,
                 require_revision=require_revision,
                 authorized_plan_id=authorized_plan_id,
+                source=source,
             )
             self._database_manager.after_commit(self._publish_change)
         return result
@@ -690,8 +692,13 @@ class StructuredTrainingChangeService:
         *,
         require_revision: bool = False,
         authorized_plan_id: str | None = None,
+        source: str = "coach",
     ) -> dict[str, Any]:
-        """Apply one batch using only the transaction owned by the caller."""
+        """Apply one batch using only the transaction owned by the caller.
+
+        ``source`` is the author of the units a batch creates: the Coach, or
+        the athlete's own edit ("manual").
+        """
         changes = prepare_structured_training_changes(
             arguments, today=self._today(), max_changes=self._max_changes
         )
@@ -705,7 +712,7 @@ class StructuredTrainingChangeService:
         applied = []
         for change in changes:
             if str(change.get("action") or "update").strip().casefold() == "create":
-                entry_payload = {**change, "source": "coach"}
+                entry_payload = {**change, "source": source}
                 if "plan_id" not in change:
                     entry_payload.update(derived_plan)
                 elif not str(change.get("plan_id") or "").strip():

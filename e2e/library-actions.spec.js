@@ -15,7 +15,7 @@ test("@responsive Einplanen and Löschen work in the library card and Rückgäng
   const name = (await first.locator("h4").textContent()).trim();
   const card = page.locator("#library .library-card", { has: page.locator("h4", { hasText: name }) }).first();
   const actions = card.locator(":scope > .planned-activity-actions");
-  await expect(actions.getByRole("button")).toHaveText(["Einplanen", "Löschen"]);
+  await expect(actions.getByRole("button")).toHaveText(["Bearbeiten", "Einplanen", "Löschen"]);
 
   // Einplanen opens the calendar's day strip; one tap plans the entry locally.
   await actions.getByRole("button", { name: "Einplanen" }).click();

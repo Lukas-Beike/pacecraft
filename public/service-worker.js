@@ -9,6 +9,7 @@ const ASSETS = [
   "/state.js",
   "/views.js",
   "/plan-views.js",
+  "/unit-editor.js",
   "/components.js",
   "/connection-status.js",
   "/status-strip.js",

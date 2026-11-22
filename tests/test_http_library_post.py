@@ -1,4 +1,4 @@
-"""The library routes schedule and archive through the Coach tools' use cases (#3028)."""
+"""The library routes create, edit, schedule, archive, restore and delete through the Coach tools' use cases (#3028, #3951)."""
 
 from __future__ import annotations
 
@@ -86,17 +86,11 @@ class LibraryPostRoutesTests(unittest.TestCase):
     def handler(payload):
         return SimpleNamespace(read_json=Mock(return_value=payload), send_json=Mock())
 
-    def post(self, action, payload):
+    def post(self, action, payload, limit=1024):
         handler = self.handler(payload)
-        self.assertTrue(
-            dispatch_route(
-                self.routes,
-                handler,
-                f"/api/library/{self.template_id}/{action}",
-                method="POST",
-            )
-        )
-        handler.read_json.assert_called_once_with(1024)
+        path = f"/api/library/{self.template_id}/{action}" if action else "/api/library"
+        self.assertTrue(dispatch_route(self.routes, handler, path, method="POST"))
+        handler.read_json.assert_called_once_with(limit)
         return handler.send_json.call_args.args
 
     def rows(self, table):
@@ -174,6 +168,111 @@ class LibraryPostRoutesTests(unittest.TestCase):
         restored = self.rows("workout_library")[0]
         self.assertFalse(restored.get("archived"))
         self.assertEqual(TEMPLATE["description"], restored["description"])
+
+    def test_create_stores_a_local_entry_and_undo_deletes_it(self) -> None:
+        status, body = self.post(
+            "",
+            {
+                "name": "Schwelle 2x10",
+                "description": "- 10m 95%\n- 5m 50%\n- 10m 95%",
+                "sport": "Ride",
+                "duration_minutes": 25,
+                "target": "POWER",
+            },
+            limit=64 * 1024,
+        )
+
+        self.assertEqual(200, status)
+        self.assertEqual(
+            ("local", "workout_library"),
+            (body["status"], body["change"]["entity_type"]),
+        )
+        created = next(
+            item
+            for item in self.rows("workout_library")
+            if item["id"] == body["local_id"]
+        )
+        self.assertEqual(
+            ("Schwelle 2x10", 25 * 60, "POWER", False, "manual"),
+            (
+                created["name"],
+                created["planned_duration_s"],
+                created["target"],
+                bool(created.get("date")),
+                created["source"],
+            ),
+        )
+        self.undo_change(body["change"])
+        self.assertEqual(
+            [self.template_id], [item["id"] for item in self.rows("workout_library")]
+        )
+
+    def test_create_and_update_refuse_unknown_fields_and_bad_content(self) -> None:
+        for action, payload, message in (
+            ("", {"name": "x", "date": "2026-09-22"}, "Unbekannte Felder: date."),
+            ("update", {"local_id": "x"}, "Unbekannte Felder: local_id."),
+            (
+                "",
+                {"name": "x", "duration_minutes": 4},
+                "Die Vorlagendauer muss zwischen 5 und 1440 Minuten liegen.",
+            ),
+        ):
+            with self.assertRaises(AppError) as raised:
+                self.post(action, payload, limit=64 * 1024)
+            self.assertEqual(
+                (400, message), (raised.exception.status, raised.exception.message)
+            )
+        self.assertEqual(1, len(self.rows("workout_library")))
+
+    def test_update_changes_the_content_and_keeps_the_rest(self) -> None:
+        status, body = self.post(
+            "update",
+            {"name": "Locker 40", "description": "- 40m 60%", "duration_minutes": 40},
+            limit=64 * 1024,
+        )
+
+        self.assertEqual((200, "local"), (status, body["status"]))
+        stored = self.rows("workout_library")[0]
+        self.assertEqual(
+            ("Locker 40", "- 40m 60%", 40 * 60, "ride"),
+            (
+                stored["name"],
+                stored["description"],
+                stored["planned_duration_s"],
+                stored["sport"],
+            ),
+        )
+        self.undo_change(body["change"])
+        self.assertEqual(TEMPLATE["name"], self.rows("workout_library")[0]["name"])
+
+    def test_update_refuses_steps_that_miss_the_duration(self) -> None:
+        with self.assertRaises(AppError) as raised:
+            self.post(
+                "update",
+                {"description": "- 10m 60%", "duration_minutes": 40},
+                limit=64 * 1024,
+            )
+        self.assertEqual("workout_duration_mismatch", raised.exception.reason)
+        self.assertEqual(
+            TEMPLATE["description"], self.rows("workout_library")[0]["description"]
+        )
+
+    def test_restore_brings_an_archived_entry_back_and_delete_removes_it(self) -> None:
+        self.post("archive", {"confirmed": True})
+        status, body = self.post("restore", {})
+        self.assertEqual((200, "local"), (status, body["status"]))
+        self.assertFalse(self.rows("workout_library")[0].get("archived"))
+
+        for payload in ({}, {"confirmed": "true"}):
+            with self.assertRaises(AppError) as raised:
+                self.post("delete", payload)
+            self.assertEqual("confirmation_required", raised.exception.reason)
+        status, body = self.post("delete", {"confirmed": True})
+
+        self.assertEqual((200, "deleted"), (status, body["status"]))
+        self.assertEqual([], self.rows("workout_library"))
+        self.undo_change(body["change"])
+        self.assertEqual(TEMPLATE["name"], self.rows("workout_library")[0]["name"])
 
 
 if __name__ == "__main__":

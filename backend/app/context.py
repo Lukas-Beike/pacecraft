@@ -99,6 +99,7 @@ class AppContext:
     canonical_read: Any = None
     planning: Any = None
     planning_workflows: Any = None
+    plan_guard: Any = None
     performance: Any = None
     nutrition: Any = None
     provider_sync: Any = None
