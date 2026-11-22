@@ -986,7 +986,7 @@ function openWeatherLocationField(event) {
 
 function plannedWeatherHint() {
   if (state.data?.weather?.configured) return h("p", "planned-weather-hint", "Für die kommenden Tage liegt noch keine Wettervorhersage vor.");
-  const link = h("a", { href: "#more/profile" }, "Wetterort angeben");
+  const link = h("a", { className: "secondary-button", href: "#more/profile" }, "Wetterort angeben");
   link.addEventListener("click", openWeatherLocationField);
   return h("p", "planned-weather-hint", "Wetter fehlt: Im Profil ist kein Wetterort hinterlegt. ", link);
 }
