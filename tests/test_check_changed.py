@@ -77,6 +77,11 @@ class CheckChangedTests(unittest.TestCase):
         first = runner.calls[0]
         self.assertEqual(first[0], sys.executable)
         self.assertEqual(first[-3:], ["--changed", "--base", "origin/main"])
+        # A full-suite fallback is left to CI unless --full asks for it (#3924).
+        self.assertIn("--skip-full-fallback", first)
+        full = FakeRun()
+        run_main(check_changed, ["--full"], full)
+        self.assertNotIn("--skip-full-fallback", full.calls[0])
         self.assertEqual(runner.calls[1][1:3], ["-m", "compileall"])
         # #2832: only the ratchet reads this checkout's node_modules, as the
         # pre-push hook does, so a missing ESLint fails here, not at the push.
@@ -93,6 +98,22 @@ class CheckChangedTests(unittest.TestCase):
             self.assertEqual(
                 check_changed.quality_env()["PACECRAFT_NODE_MODULES"], "shared"
             )
+
+    def test_the_test_selection_and_a_skipped_fallback_are_shown(self):
+        # #3924: the reason of a full-suite fallback was hidden behind "ok tests".
+        lines = (
+            "Changed-test selection against origin/develop: x.py matches full-suite "
+            "path x.py\nFull-suite fallback skipped: CI runs the full suite on the PR"
+        )
+
+        def run(argv, **_kwargs):
+            output = lines if "--changed" in argv else "fine"
+            return subprocess.CompletedProcess(argv, 0, output, None)
+
+        code, out, _ = run_main(check_changed, [], run)
+        self.assertEqual(code, 0)
+        self.assertIn("  Changed-test selection against origin/develop: x.py", out)
+        self.assertIn("  Full-suite fallback skipped: CI runs", out)
 
     def test_a_failure_does_not_stop_later_steps_and_shows_a_tail(self):
         runner = FakeRun(failing=("compileall",))

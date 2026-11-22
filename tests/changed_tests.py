@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import ast
 import subprocess
+from collections import Counter
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -405,5 +406,16 @@ def select_modules(
         if module == source.module and Path(source.path).name.startswith("test_")
     )
     if total and len(selected) >= FULL_SUITE_SHARE * total:
-        return None, f"{len(selected)} of {total} test modules affected; full suite"
+        # Name the changed path behind most of them (#3924).
+        paths_hit = Counter(
+            why.rsplit(" ", 1)[-1]
+            for why in selected.values()
+            if why != "checks every tracked file"
+        )
+        top = paths_hit.most_common(1)
+        lead = f", most through {top[0][0]}" if top else ""
+        return (
+            None,
+            f"{len(selected)} of {total} test modules affected{lead}; full suite",
+        )
     return selected, f"{len(selected)} modules affected by {len(paths)} paths"

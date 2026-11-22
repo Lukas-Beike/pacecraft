@@ -187,12 +187,16 @@ def main() -> int:
             file=sys.stderr,
         )
         return 2
-    if any(pattern.search(command) for pattern in PRIVATE):
+    match = next((m for p in PRIVATE if (m := p.search(command))), None)
+    if match:
+        # The matched path word, never more of the command (#3924).
+        word = match.group().strip(" \t\r\n\"'=:")
         print(
-            "Blocked: the command touches .env, the data directory, or Garmin tokens. "
-            "These hold live secrets and athlete data; use temporary test data instead. "
-            "If you only mention such a path (for example in a commit message), "
-            "pass the text through a file.",
+            "Blocked: the command touches .env, the data directory, or Garmin tokens "
+            f"(matched `{word}`). These hold live secrets and athlete data; use "
+            "temporary test data instead. To search source for such a name, use the "
+            "Grep tool. If you only mention such a path (for example in a commit "
+            "message), pass the text through a file.",
             file=sys.stderr,
         )
         return 2
