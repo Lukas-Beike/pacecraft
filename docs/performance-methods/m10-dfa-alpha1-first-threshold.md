@@ -233,6 +233,16 @@ step test show no range: no limit of agreement is cited for them.
   evaluated" until the next bump of the Garmin and FIT detail mappers replays
   them. The LT1 estimate reads methods 2 and 3 alike; within a session the
   better quality wins, and among equals a record with the series.
+- Method 4 (#3919) comes with that bump. As the RR series and the FIT bytes
+  are not stored, a replay is a new provider download: Garmin activities of
+  the last 90 days, paced by the daily replay budget, and Wahoo workouts of the
+  last 365 days. Older sessions and Garmin sets from the stream backfill keep
+  method 3, so the history mixes methods 3 and 4. The readers take that mix:
+  the athlete-level value is a median of per-session estimates, the second
+  threshold reads per-session series, and the step test reads one session;
+  none pools windows of different sessions in one fit, and the series test
+  asks only for method 3 or later. On test recordings method 4 moved a
+  session's crossing by about half a beat per minute.
 - Athlete level: run sessions of the last 60 days up to today. Rides keep a
   stored result but do not enter the athlete-level estimate.
 - The protocol of R56 is a ramp to exhaustion; sessions here are whatever the

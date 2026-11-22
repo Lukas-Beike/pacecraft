@@ -300,6 +300,38 @@ class ResampledDetrendTests(unittest.TestCase):
         self.assertLess(max(low, high), 0.2)
         self.assertLess(abs(low - high), 0.05)
 
+    @staticmethod
+    def analytic_gain(frequency_hz: float) -> float:
+        """The smoothness-priors residual gain at 4 Hz (Tarvainen et al. 2002).
+
+        Away from the ends the trend solves (I + l^2 D'D) x = z, whose transfer
+        function at w = 2 pi f / fs is 1 / (1 + l^2 (2 - 2 cos w)^2); the
+        residual keeps the rest.
+        """
+        penalty = 500.0**2 * (2 - 2 * math.cos(2 * math.pi * frequency_hz / 4.0)) ** 2
+        return penalty / (1 + penalty)
+
+    def test_the_residual_gain_matches_the_smoothness_priors_response(self) -> None:
+        for rate_bpm in (60.0, 150.0):
+            for frequency in (0.01, 0.035, 0.08):
+                with self.subTest(rate=rate_bpm, frequency=frequency):
+                    interval = 60_000 / rate_bpm
+                    times, values, clock = [], [], 0.0
+                    while clock < 1800:
+                        clock += interval / 1000
+                        times.append(clock)
+                        values.append(
+                            interval + 2 * math.sin(2 * math.pi * frequency * clock)
+                        )
+                    residual = dfa.detrend_beats(times, values)
+                    middle = residual[len(residual) // 4 : -len(residual) // 4]
+                    amplitude = math.sqrt(2) * math.sqrt(
+                        sum(value * value for value in middle) / len(middle)
+                    )
+                    self.assertAlmostEqual(
+                        self.analytic_gain(frequency), amplitude / 2, delta=0.03
+                    )
+
 
 if __name__ == "__main__":
     unittest.main()
