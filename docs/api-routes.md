@@ -56,6 +56,7 @@ handler's docstring. Regenerate it with
 | PUT | `/api/body/weight` | Session + CSRF | before access | Save one weight the athlete entered; one of the same day is replaced. |
 | PUT | `/api/body/weight/remove` | Session + CSRF | before access | Remove the entered weight of one day. |
 | GET | `/api/bootstrap` | Session | no | Initial authenticated client state. |
+| GET | `/api/change-history` | Session | no | One newest-first page of the local change history. |
 | POST | `/api/change-history/undo` | Session + CSRF | after access | Apply an undo from the change history. |
 | POST | `/api/change-history/undo-batch` | Session + CSRF | after access | Undo the changes of one write together, as a period replacement returns them. |
 | POST | `/api/change-history/undo-turn` | Session + CSRF | after access | Undo every tracked write of one Coach turn. |
@@ -639,6 +640,25 @@ keys include `state_versions`, `app`, `messages`, `planned`, `calendar`,
 `thinking_level`, `configured`, `credentials`, `usage` and
 `provider_status`. Lists that have their own route (`library`,
 `activities`, `checkins`) are empty.
+
+Errors: none beyond the common ones.
+
+### `GET /api/change-history`
+
+Request: optional query `limit` (1 to 100, default 30) and `cursor` (the
+`next_cursor` of the previous page; an unreadable one starts at the
+newest entry). Only the last 180 days are kept, at most 1,000 entries.
+
+Response: 200 `{"changes", "next_cursor", "limit"}`. Each change holds
+`id`, `entity_type`, `entity_id`, `action` (`create`, `update`, `delete`
+or `undo`), `source` (`coach` for a change a Coach tool round
+records, `local` for the app's own, `undo` for an undo, other values name
+their producer; entries from before this field was set read `local`), `created_at`, the hashes, `diff.fields` (changed field names
+only), `remote_sync`, `line` (the readable change), `can_undo` (a
+create, update or delete that is still its record's newest entry) and
+`undoable: false` for an entry that is never undone. `next_cursor` is
+`null` on the last page. The entry's `id` and `after_hash` are the
+`change_id` and `expected_current_hash` of `POST /api/change-history/undo`.
 
 Errors: none beyond the common ones.
 

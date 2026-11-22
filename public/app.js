@@ -127,6 +127,8 @@ $("#zoneForm").addEventListener("submit", saveZones);
 $("#zoneRemoveButton").addEventListener("click", removeZones);
 $("#diagnosticsButton").addEventListener("click", downloadDiagnostics);
 $("#diagnosticsDeleteButton")?.addEventListener("click", deleteDiagnostics);
+$("#changeHistorySection").addEventListener("toggle", (event) => { if (event.currentTarget.open) void loadChangeHistory(); });
+$("#changeHistoryMore").addEventListener("click", () => void loadChangeHistory(true));
 $("#logsRefreshButton").addEventListener("click", loadLogs);
 $("#logsDownloadButton").addEventListener("click", downloadServerLogs);
 $("#logsDeleteButton")?.addEventListener("click", deleteServerLogs);

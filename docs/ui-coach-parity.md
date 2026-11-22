@@ -53,7 +53,7 @@ added a row conflicted on it (#4092).
 | Planning | Preview and apply an adaptive replan | Kalender card "Plananpassung" shows the stored preview, "Übernehmen" `POST /api/planning/replan/apply` | `preview_adaptive_replan`, `apply_adaptive_replan` | approved preview, undo | both | |
 | Planning | Read the week review and training report | Analyse `GET /api/analysis/week-review` | `get_training_report` | — | both | |
 | History | Undo a change | receipt "Rückgängig" `POST /api/change-history/undo`, `POST /api/change-history/undo-turn`, `POST /api/change-history/undo-batch` | `undo_training_change` | bound preview, confirmation | both | |
-| History | Read the change history | — | `list_change_history` | — | Coach only | #3954 |
+| History | Read the change history | Mehr › Betrieb "Verlauf der Änderungen" `GET /api/change-history` | `list_change_history` | — | both | |
 | Library | List library workouts | Bibliothek `GET /api/library` | `list_workout_library` | — | both | |
 | Library | Create a library workout | Bibliothek "+ Einheit" `POST /api/library` | `manage_training_templates` (`create`) | receipt, undo | both | |
 | Library | Edit a library workout | Bibliothek "Bearbeiten" `POST /api/library/{id}/update` | `manage_training_templates` (`update`) | receipt, undo | both | |

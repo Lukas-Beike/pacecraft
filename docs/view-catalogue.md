@@ -179,6 +179,7 @@ texts.
 | `public/auth.js` `logout` | Abmelden? | (computed) `` `Du wirst auf diesem Gerät abgemeldet. Deine Daten bleiben verschlüsselt gespeichert.${outboxLossNote()}` `` | Abmelden |
 | `public/coach.js` `resetCoachChat` | Coach-Chat zurücksetzen? | Der Verlauf dieses Chats wird gelöscht, eine neue Unterhaltung beginnt. Profil, Pläne und Einträge bleiben. | Zurücksetzen |
 | `public/coach.js` `undoCoachTurn` | Änderungen zurücknehmen? | Alle lokalen Änderungen dieser Coach-Antwort werden zurückgenommen. Intervals.icu bleibt unverändert. | Zurücknehmen |
+| `public/diagnostics.js` `undoChangeHistoryEntry` | Änderung zurücknehmen? | (computed) `` `Die Änderung „${change.line}“ wird zurückgenommen. Anbieter bleiben unverändert.` `` | Zurücknehmen |
 | `public/diagnostics.js` `deleteServerLogs` | Server-Logs löschen? | Alle gespeicherten Server-Logs werden gelöscht. | Löschen |
 | `public/diagnostics.js` `deleteDiagnostics` | Diagnose löschen? | Alle gespeicherten Diagnosedaten werden gelöscht. | Löschen |
 | `public/nutrition-meal-edit.js` `saveNutritionMealEdit` | Mahlzeit löschen? | (computed) `` `Die Mahlzeit „${item.description}“ wird gelöscht, weil keine Zutat übrig ist.` `` | Löschen |

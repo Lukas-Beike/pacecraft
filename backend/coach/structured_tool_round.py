@@ -310,7 +310,9 @@ class CoachStructuredToolRoundService:
             self._turn_write_gate(state).confirms_illness_override()
         # A refresh or read tool records no athlete change to undo.
         recorder: AbstractContextManager[list[dict[str, str]]] = (
-            change_history.collect_changes() if name in TOOL_DOMAIN else nullcontext([])
+            change_history.collect_changes("coach")
+            if name in TOOL_DOMAIN
+            else nullcontext([])
         )
         local_transaction = name not in {
             "start_provider_refresh",
