@@ -168,12 +168,13 @@ TEXT_TOOLS = frozenset(
         "sls",
     ]
 )
-# A redirection (`2>`, `>`, `<`) is no path; a bare one takes the next word.
-REDIRECT = re.compile(r"\d*[<>]")
 
 
 def _option(word: str) -> bool:
-    return (word.startswith("-") and word != "-") or bool(REDIRECT.match(word))
+    """An option, or a redirection (`2>`, `>`, `<`), which is no path either;
+    a bare redirection takes the next word."""
+    redirect = word.lstrip("0123456789")[:1] in {"<", ">"}
+    return (word.startswith("-") and word != "-") or redirect
 
 
 def _flag(word: str, long: str, letter: str = "") -> bool:
@@ -217,10 +218,68 @@ def _next_positional(words: list[str], with_value: frozenset[str]) -> list[int]:
     return nxt
 
 
+def _gh_breaks(words: list[str], names: list[str]) -> bool:
+    """`gh pr merge --auto` without `--squash`."""
+    nxt = _next_positional(words, GH_WITH_VALUE)
+    auto = _suffix(words, lambda w: _flag(w, "--auto"))
+    squash = _suffix(words, lambda w: _flag(w, "--squash", "s"))
+    word_at = [*words, "", "", ""]
+    for index in (i for i, name in enumerate(names) if name == "gh"):
+        first = nxt[index + 1]
+        second = nxt[first + 1]
+        pr_merge = (word_at[first], word_at[second]) == ("pr", "merge")
+        if pr_merge and auto[index + 1] and not squash[index + 1]:
+            return True
+    return False
+
+
+def _docker_breaks(words: list[str], names: list[str]) -> bool:
+    """`docker rm -v`, also `docker container rm` and compose `rm`/`down`."""
+    nxt = _next_positional(words, DOCKER_WITH_VALUE)
+    volumes = _suffix(words, lambda w: _flag(w, "--volumes", "v"))
+    word_at = [*words, "", "", ""]
+    for index in (i for i, name in enumerate(names) if name in DOCKER_NAMES):
+        first = nxt[index + 1]
+        if word_at[first] in {"container", "compose"}:
+            first = nxt[first + 1]
+        if volumes[index + 1] and word_at[first] in {"rm", "remove", "down"}:
+            return True
+    return False
+
+
+def _ruff_breaks(words: list[str], names: list[str]) -> bool:
+    """`ruff format` of no path or of a path that is no Python file."""
+    count = len(words)
+    nxt = _next_positional(words, RUFF_WITH_VALUE)
+    read_only = _suffix(words, lambda w: any(_flag(w, f) for f in RUFF_READ_ONLY))
+    # Per positional word: is it, or a later positional of its chain, a folder.
+    folder = [False] * (count + 3)
+    for index in range(count - 1, -1, -1):
+        word = words[index].lower()
+        own = word != "-" and not word.endswith(RUFF_FILES)
+        folder[index] = own or folder[nxt[index + 1]]
+    word_at = [*words, "", "", ""]
+    for index in (i for i, name in enumerate(names) if name == "ruff"):
+        first = nxt[index + 1]
+        if word_at[first] == "format" and not read_only[index + 1]:
+            path = nxt[first + 1]
+            if path >= count or folder[path]:
+                return True
+    return False
+
+
+DOCKER_NAMES = frozenset(["docker", "docker-compose"])
+TOOL_CHECKS = (
+    ({"gh"}, _gh_breaks),
+    (DOCKER_NAMES, _docker_breaks),
+    ({"ruff"}, _ruff_breaks),
+)
+
+
 def _breaks_tool_rule(words: list[str]) -> bool:
     """A gh, docker or ruff call that breaks a rule without exceptions (#3923).
 
-    One pass back to front per tool, like `_discards` (#3124)."""
+    Each check is one pass back to front, like `_discards` (#3124)."""
     comment = next((i for i, w in enumerate(words) if w.startswith("#")), len(words))
     words = words[:comment]
     names = [
@@ -229,51 +288,8 @@ def _breaks_tool_rule(words: list[str]) -> bool:
     ]
     if names[:1] and names[0] in TEXT_TOOLS:
         return False
-    count = len(words)
-    word_at = [*words, "", "", ""]
-    if "gh" in names:
-        nxt = _next_positional(words, GH_WITH_VALUE)
-        auto = _suffix(words, lambda w: _flag(w, "--auto"))
-        squash = _suffix(words, lambda w: _flag(w, "--squash", "s"))
-        for index in (i for i, name in enumerate(names) if name == "gh"):
-            first = nxt[index + 1]
-            second = nxt[first + 1] if first < count else count
-            if (
-                (word_at[first], word_at[second]) == ("pr", "merge")
-                and auto[index + 1]
-                and not squash[index + 1]
-            ):
-                return True
-    if {"docker", "docker-compose"} & set(names):
-        nxt = _next_positional(words, DOCKER_WITH_VALUE)
-        volumes = _suffix(words, lambda w: _flag(w, "--volumes", "v"))
-        for index, name in enumerate(names):
-            if name not in {"docker", "docker-compose"} or not volumes[index + 1]:
-                continue
-            first = nxt[index + 1]
-            if word_at[first] in {"container", "compose"}:
-                first = nxt[first + 1]
-            if word_at[first] in {"rm", "remove", "down"}:
-                return True
-    if "ruff" in names:
-        nxt = _next_positional(words, RUFF_WITH_VALUE)
-        read_only = _suffix(words, lambda w: any(_flag(w, f) for f in RUFF_READ_ONLY))
-        # Per positional word: is it or a later positional of its chain a folder.
-        folder = [False] * (count + 3)
-        for index in range(count - 1, -1, -1):
-            word = words[index].lower()
-            later = nxt[index + 1]
-            folder[index] = (word != "-" and not word.endswith(RUFF_FILES)) or (
-                later < count and folder[later]
-            )
-        for index in (i for i, name in enumerate(names) if name == "ruff"):
-            first = nxt[index + 1]
-            if word_at[first] != "format" or read_only[index + 1]:
-                continue
-            path = nxt[first + 1]
-            if path >= count or folder[path]:
-                return True
-    return False
+    present = set(names)
+    return any(tools & present and check(words, names) for tools, check in TOOL_CHECKS)
 
 
 def blocked(command: str) -> bool:
