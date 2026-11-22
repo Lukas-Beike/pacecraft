@@ -2320,6 +2320,7 @@ function setupCoachEvents() {
     // A typed edit makes the draft the athlete's own request, not a quick action.
     if (event.isTrusted) delete event.target.dataset.requestKind;
     state.chatDraftDirty = Boolean(event.target.value.trim());
+    if (!state.chatDraftDirty) rememberUnsentDraft(null);
     updateChatControls();
     if (keepLatestVisible) scrollChatToLatest();
   });

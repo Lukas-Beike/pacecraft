@@ -39,7 +39,7 @@ test("the offline banner says that entries wait and are sent later @responsive",
   const notice = page.locator("#statusStrip .status-strip-main .status-strip-text");
   await context.setOffline(true);
   await expect(notice).toBeVisible();
-  await expect(notice).toContainText("Offline Einträge warten und werden später gesendet.");
+  await expect(notice).toContainText("Offline Eigene Einträge warten und werden später gesendet.");
   await expect(notice).toContainText(/Stand (gerade eben|vor \d+ min)/);
   await context.setOffline(false);
   await expect(page.locator("#statusStrip")).not.toContainText("Offline");

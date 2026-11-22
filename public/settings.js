@@ -359,6 +359,7 @@ async function deletePrivacyData() {
     // Deleted records must neither stay on screen nor reach the session snapshot.
     clearStateSnapshot();
     void clearOutbox();
+    rememberUnsentDraft(null);
     invalidateProviderChecks();
     void loadProviderChecks();
     // Loads that started before the deletion are dropped instead of rendered.

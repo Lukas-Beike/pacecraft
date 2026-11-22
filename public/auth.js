@@ -28,6 +28,7 @@ function showLogin() {
   state.rejectedMessages = [];
   state.coachActionProposals = [];
   rememberChatTurn(null);
+  rememberUnsentDraft(null);
   if (state.chatStatusTimer) clearTimeout(state.chatStatusTimer);
   state.chatStatusTimer = null;
   disconnectStateEvents();
