@@ -439,7 +439,8 @@ function nutritionChartBalance(balance, goal) {
 // "Woche ab 16.11." for a week row, "Diese Woche" for the one that holds today, else the day.
 function nutritionRowLabel(day) {
   if (!day.end_date) return nutritionDayLabel(day.date);
-  if (day.week_start <= todayIso() && todayIso() <= day.end_date) return "Diese Woche";
+  // The Verlauf ends yesterday, so the week of today is told by its Monday, not by the last day it holds.
+  if (day.week_start === nutritionWeekStart(todayIso())) return "Diese Woche";
   const start = nutritionDayLabel(day.week_start);
   return "Woche ab " + (start.length === 5 ? start + "." : start);
 }

@@ -184,9 +184,10 @@ test("the confidence line is hidden for a manual product and shown, with its war
 
 // #3930 N-02: a week row names its Monday, the week that holds today says so, and an empty run is one label.
 test("a Verlauf week row reads Woche ab with its Monday, the current one Diese Woche, a run of empty days one range", () => {
-  const ctx = extractFunctions("nutrition.js", ["nutritionExpenditureDate", "nutritionDayLabel", "nutritionWeekShown", "nutritionRowLabel", "nutritionRunLabel"], { todayIso: () => "2026-03-31" });
+  const ctx = extractFunctions("nutrition.js", ["nutritionExpenditureDate", "nutritionDayLabel", "nutritionWeekShown", "nutritionWeekStart", "nutritionRowLabel", "nutritionRunLabel"], { todayIso: () => "2026-03-31" });
   assert.equal(ctx.nutritionRowLabel({ date: "2026-01-01", end_date: "2026-01-04", week_start: "2025-12-29" }), "Woche ab 29.12.");
-  assert.equal(ctx.nutritionRowLabel({ date: "2026-03-30", end_date: "2026-04-01", week_start: "2026-03-30" }), "Diese Woche");
+  // The Verlauf ends yesterday: the week of today holds days up to the 30th only.
+  assert.equal(ctx.nutritionRowLabel({ date: "2026-03-30", end_date: "2026-03-30", week_start: "2026-03-30" }), "Diese Woche");
   assert.equal(ctx.nutritionRowLabel({ date: "2026-03-30" }), "30.03");
   assert.equal(ctx.nutritionRunLabel({ start: "2026-02-01", end: "2026-02-09" }), "01.02–09.02");
   assert.equal(ctx.nutritionRunLabel({ start: "2026-02-01", end: "2026-02-01" }), "01.02");
