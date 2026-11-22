@@ -5,7 +5,6 @@ const { extractFunctions } = require("./frontend-harness.cjs");
 const PROFILE_SAVE = ["profileSaveInFlight", "profileFormValues", "PROFILE_ENTRY_FIELDS", "profileSaveConfirmed", "clearProfileEntryFields", "resetProfileEntryFields", "profileFieldText", "applyAdoptedFirstThreshold", "adoptFirstThreshold", "determineChangedProfileFields", "saveProfile"];
 const COACH_PROPOSALS = ["isHttpClientRejection", "reconcileCoachActionProposal", "executeCoachActionProposal", "showCoachReceiptArea", "lockUnknownCoachActionOutcome", "rejectCoachActionProposal"];
 const SYNC_POLL = ["changedSyncAreas", "renderSyncStatus", "renderMaintenanceStatus", "handleSyncStatus", "scheduleSyncPoll", "pollSyncStatus"];
-const NOTIFICATIONS = ["NOTIFICATION_MAX_ATTEMPTS", "NOTIFICATION_RETRY_DELAY_MS", "reserveNotificationAttempt", "showPwaNotification", "competitionCountdownText", "notifyState"];
 
 // Objects created inside a vm context have their own prototypes; compare plain copies.
 function plain(value) {
@@ -257,29 +256,6 @@ test("an in-flight sync poll starts no second request", async () => {
   });
   await context.pollSyncStatus();
   assert.equal(requests, 0);
-});
-
-test("notification bodies omit competition names and provider error text", async () => {
-  const shown = [];
-  const context = extractFunctions("notifications.js", NOTIFICATIONS, {
-    state: { notificationKeys: new Set() },
-    notificationPermission: () => "granted",
-    navigator: {
-      serviceWorker: {
-        ready: Promise.resolve({ showNotification: async (title, options) => { shown.push({ title, options }); } }),
-      },
-    },
-  });
-  context.notifyState({
-    planning: { season: { next_event: { id: 7, name: "Geheimer Stadtlauf", days_until: 0, event_date: "2026-10-14" } } },
-    sync: { last_error: "Token tok_123 abgelehnt" },
-  });
-  await new Promise((resolve) => setTimeout(resolve, 0));
-  assert.equal(shown.length, 2);
-  assert.equal(shown[0].options.body, "Der Wettkampf ist heute.");
-  const bodies = shown.map((item) => item.options.body).join(" | ");
-  assert.doesNotMatch(bodies, /Geheimer|Stadtlauf|tok_123|Token/);
-  assert.equal(context.competitionCountdownText(3), "Der Wettkampf ist in 3 Tagen.");
 });
 
 test("first-threshold entry fields are not required in the profile confirmation", async () => {

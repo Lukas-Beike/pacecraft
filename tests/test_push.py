@@ -1,0 +1,425 @@
+"""Web Push: RFC 8291/8292 transport, subscriptions, once-only delivery and checks (#3914)."""
+
+from __future__ import annotations
+
+import json
+import sqlite3
+import unittest
+from datetime import UTC, datetime, timedelta
+from typing import Any
+
+from support import FakeManager, dispatch_route
+
+from backend.db.repositories import KeyValueRepository
+from backend.errors import AppError
+from backend.http_api.push import PushRoutes
+from backend.provider_credentials import (
+    CREDENTIAL_KV_KEYS,
+    PUSH_SECRET_KEYS,
+    PUSH_SUBSCRIPTIONS_KEY,
+)
+from backend.push import web_push
+from backend.push.checks import PushChecks
+from backend.push.service import (
+    TYPES,
+    Notification,
+    PushService,
+    diagnostics,
+)
+
+# RFC 8291 Appendix A: the worked example of one encrypted push message.
+RFC_PLAINTEXT = b"When I grow up, I want to be a watermelon"
+RFC_SENDER_PRIVATE = "yfWPiYE-n46HLnH0KqZOF1fJJU3MYrct3AELtAQ-oRw"
+RFC_RECEIVER_PUBLIC = "BCVxsr7N_eNgVRqvHtD0zTZsEc6-VV-JvLexhqUzORcxaOzi6-AYWXvTBHm4bjyPjs7Vd8pZGH6SRpkNtoIAiw4"
+RFC_AUTH = "BTBZMqHH6r4Tts7J_aSIgg"
+RFC_SALT = "DGv6ra1nlYgDCS1FRnbzlw"
+RFC_BODY = (
+    "DGv6ra1nlYgDCS1FRnbzlwAAEABBBP4z9KsN6nGRTbVYI_c7VJSPQTBtkgcy27ml"
+    "mlMoZIIgDll6e3vCYLocInmYWAmS6TlzAC8wEqKK6PBru3jl7A_yl95bQpu6cVPT"
+    "pK4Mqgkf1CXztLVBSt2Ks3oZwbuwXPXLWyouBWLVWGNWQexSgSxsj_Qulcy4a-fN"
+)
+ENDPOINT = "https://fcm.googleapis.com/fcm/send/fake-device"
+SUBSCRIPTION = {
+    "endpoint": ENDPOINT,
+    "keys": {"p256dh": RFC_RECEIVER_PUBLIC, "auth": RFC_AUTH},
+}
+NOW = datetime(2026, 11, 22, 10, 0, tzinfo=UTC)
+
+
+def _database() -> sqlite3.Connection:
+    connection = sqlite3.connect(":memory:")
+    connection.row_factory = sqlite3.Row
+    connection.executescript(
+        "CREATE TABLE kv (key TEXT PRIMARY KEY, value TEXT NOT NULL, updated_at TEXT NOT NULL);"
+        "CREATE TABLE provider_refresh_history (id TEXT PRIMARY KEY, provider TEXT NOT NULL, "
+        "area TEXT NOT NULL, started_at TEXT NOT NULL, finished_at TEXT, status TEXT NOT NULL, "
+        "error_code TEXT);"
+        "CREATE TABLE competitions (id TEXT PRIMARY KEY, event_date TEXT NOT NULL);"
+    )
+    return connection
+
+
+class Sender:
+    """A mocked push service: records each delivery and answers ``status``."""
+
+    def __init__(self, status: int = 201) -> None:
+        self.status = status
+        self.sent: list[tuple[str, dict[str, Any]]] = []
+
+    def __call__(self, subscription, message, private, *, ttl) -> int:
+        self.sent.append((subscription["endpoint"], message))
+        return self.status
+
+
+def _service(case: Any, sender: Sender | None = None) -> PushService:
+    case.connection = _database()
+    case.key_values = KeyValueRepository(lambda: NOW.isoformat())
+    case.sender = sender or Sender()
+    case.clock = {"now": NOW}
+    return PushService(
+        lambda: FakeManager(case.connection),
+        case.key_values,
+        lambda: case.clock["now"],
+        sender=case.sender,
+    )
+
+
+class WebPushTransportTests(unittest.TestCase):
+    def test_payload_encryption_matches_the_rfc_8291_example(self):
+        body = web_push.encrypt(
+            RFC_PLAINTEXT,
+            RFC_RECEIVER_PUBLIC,
+            RFC_AUTH,
+            sender_key=RFC_SENDER_PRIVATE,
+            salt=web_push.unb64url(RFC_SALT),
+        )
+        self.assertEqual(web_push.b64url(body), RFC_BODY)
+
+    def test_vapid_token_is_an_es256_jwt_for_the_endpoint_origin(self):
+        from cryptography.hazmat.primitives import hashes
+        from cryptography.hazmat.primitives.asymmetric import ec
+        from cryptography.hazmat.primitives.asymmetric.utils import (
+            encode_dss_signature,
+        )
+
+        private = web_push.generate_private_key()
+        header = web_push.vapid_authorization(ENDPOINT, private, NOW.timestamp())
+        token, key = header.removeprefix("vapid t=").split(", k=")
+        self.assertEqual(key, web_push.public_key(private))
+        head, claims, signature = token.split(".")
+        self.assertEqual(
+            json.loads(web_push.unb64url(head)), {"typ": "JWT", "alg": "ES256"}
+        )
+        self.assertEqual(
+            json.loads(web_push.unb64url(claims)),
+            {
+                "aud": "https://fcm.googleapis.com",
+                "exp": int(NOW.timestamp()) + 43200,
+                "sub": "mailto:push@pacecraft.invalid",
+            },
+        )
+        raw = web_push.unb64url(signature)
+        public = ec.EllipticCurvePublicKey.from_encoded_point(
+            ec.SECP256R1(), web_push.unb64url(key)
+        )
+        public.verify(
+            encode_dss_signature(int.from_bytes(raw[:32]), int.from_bytes(raw[32:])),
+            f"{head}.{claims}".encode(),
+            ec.ECDSA(hashes.SHA256()),
+        )
+
+    def test_only_chrome_and_firefox_push_services_are_accepted(self):
+        cases = {
+            ENDPOINT: True,
+            "https://updates.push.services.mozilla.com/wpush/v2/fake": True,
+            "http://fcm.googleapis.com/fcm/send/x": False,
+            "https://fcm.googleapis.com:8443/fcm/send/x": False,
+            "https://web.push.apple.com/fake": False,
+            "https://wns2-par02p.notify.windows.com/w/?token=x": False,
+            "https://fcm.googleapis.com.evil.example/x": False,
+            None: False,
+        }
+        for endpoint, accepted in cases.items():
+            with self.subTest(endpoint=endpoint):
+                self.assertIs(web_push.supported_endpoint(endpoint), accepted)
+
+    def test_send_posts_the_encrypted_body_with_vapid_and_reports_the_status(self):
+        requests = []
+
+        class Response:
+            status = 201
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *_exc):
+                return False
+
+        def opener(request, timeout):
+            requests.append(request)
+            return Response()
+
+        status = web_push.send(
+            {"endpoint": ENDPOINT, "p256dh": RFC_RECEIVER_PUBLIC, "auth": RFC_AUTH},
+            {"title": "t"},
+            web_push.generate_private_key(),
+            ttl=60,
+            opener=opener,
+        )
+        self.assertEqual(status, 201)
+        (request,) = requests
+        self.assertEqual(request.full_url, ENDPOINT)
+        self.assertEqual(request.get_header("Content-encoding"), "aes128gcm")
+        self.assertEqual(request.get_header("Ttl"), "60")
+        self.assertTrue(request.get_header("Authorization").startswith("vapid t="))
+        self.assertNotIn(b'"title"', request.data)
+
+
+class PushServiceTests(unittest.TestCase):
+    def setUp(self):
+        self.service = _service(self)
+
+    def test_subscribe_stores_one_device_and_refuses_other_services(self):
+        self.assertTrue(self.service.subscribe(SUBSCRIPTION)["subscribed"])
+        self.service.subscribe(SUBSCRIPTION)
+        stored = json.loads(
+            self.key_values.get(self.connection, PUSH_SUBSCRIPTIONS_KEY)
+        )
+        self.assertEqual([item["endpoint"] for item in stored], [ENDPOINT])
+        for payload, reason in (
+            (
+                {**SUBSCRIPTION, "endpoint": "https://web.push.apple.com/x"},
+                "unsupported_push_endpoint",
+            ),
+            (
+                {**SUBSCRIPTION, "keys": {"p256dh": "AAAA", "auth": RFC_AUTH}},
+                "invalid_push_keys",
+            ),
+            ([], "unsupported_push_endpoint"),
+        ):
+            with self.subTest(reason=reason), self.assertRaises(AppError) as raised:
+                self.service.subscribe(payload)
+            self.assertEqual(raised.exception.reason, reason)
+
+    def test_unsubscribe_removes_the_device(self):
+        self.service.subscribe(SUBSCRIPTION)
+        self.assertFalse(self.service.unsubscribe({"endpoint": ENDPOINT})["subscribed"])
+        self.assertFalse(self.service.state()["subscribed"])
+
+    def test_key_is_generated_once_and_kept_secret(self):
+        first = self.service.prepare()["public_key"]
+        self.assertEqual(self.service.prepare()["public_key"], first)
+        self.assertEqual(len(web_push.unb64url(first)), 65)
+        self.assertLessEqual(PUSH_SECRET_KEYS, CREDENTIAL_KV_KEYS)
+
+    def test_each_event_is_sent_once_and_a_switched_off_type_never(self):
+        event = Notification(
+            "upcoming", "competition:c1:2026-11-25", "T", "B", "#plan/season"
+        )
+        self.assertFalse(self.service.notify(event))  # no device yet: not recorded
+        self.service.subscribe(SUBSCRIPTION)
+        self.assertTrue(self.service.notify(event))
+        self.assertFalse(self.service.notify(event))
+        self.assertEqual(
+            self.sender.sent,
+            [
+                (
+                    ENDPOINT,
+                    {
+                        "title": "T",
+                        "body": "B",
+                        "url": "#plan/season",
+                        "tag": "upcoming",
+                    },
+                )
+            ],
+        )
+        self.service.set_preferences({"types": {"upcoming": False}})
+        off = Notification(
+            "upcoming", "competition:c2:2026-11-25", "T", "B", "#plan/season"
+        )
+        self.assertFalse(self.service.notify(off))
+        self.service.set_preferences({"types": {"upcoming": True}})
+        self.assertFalse(self.service.notify(off))  # handled while off: no replay
+        self.assertEqual(len(self.sender.sent), 1)
+        self.assertEqual(
+            diagnostics(self.key_values, self.connection),
+            {"subscriptions": 1, "per_type": {"upcoming": {"sent": 1, "failed": 0}}},
+        )
+
+    def test_preferences_default_on_and_refuse_unknown_types(self):
+        self.assertEqual(self.service.state()["types"], dict.fromkeys(TYPES, True))
+        for payload in (
+            {"types": {"unknown": True}},
+            {"types": {"upcoming": 1}},
+            {"types": {}},
+        ):
+            with self.subTest(payload=payload), self.assertRaises(AppError):
+                self.service.set_preferences(payload)
+
+    def test_a_gone_subscription_is_removed_and_the_log_names_no_endpoint(self):
+        self.sender.status = 410
+        self.service.subscribe(SUBSCRIPTION)
+        with self.assertLogs("intervals_coach", "WARNING") as logs:
+            delivered = self.service.notify(
+                Notification("upcoming", "k", "T", "B", "#plan")
+            )
+        self.assertFalse(delivered)
+        self.assertFalse(self.service.state()["subscribed"])
+        self.assertNotIn(
+            "fcm.googleapis", "".join(logs.output) + repr(logs.records[0].__dict__)
+        )
+        self.assertEqual(
+            diagnostics(self.key_values, self.connection)["per_type"],
+            {"upcoming": {"sent": 0, "failed": 1}},
+        )
+
+
+class PushChecksTests(unittest.TestCase):
+    def setUp(self):
+        self.service = _service(self)
+        self.service.subscribe(SUBSCRIPTION)
+        self.local = {"now": datetime(2026, 11, 22, 9, 0, tzinfo=UTC)}
+        self.hint = {"value": None}
+        self.warnings = {"value": None}
+        self.checks = PushChecks(
+            self.service,
+            lambda: FakeManager(self.connection),
+            lambda: self.local["now"],
+            infection_hint=lambda: self.hint["value"],
+            threshold_warnings=lambda: self.warnings["value"],
+        )
+
+    def _refresh(
+        self, ident, status, minutes, code=None, provider="garmin", area="data"
+    ):
+        at = (NOW + timedelta(minutes=minutes)).isoformat()
+        self.connection.execute(
+            "INSERT INTO provider_refresh_history VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (ident, provider, area, at, at, status, code),
+        )
+
+    def _bodies(self):
+        return [message["body"] for _endpoint, message in self.sender.sent]
+
+    def test_a_repeated_failure_is_announced_once_per_streak(self):
+        self._refresh("r1", "success", 1)
+        self._refresh("r2", "error", 2, "timeout")
+        self._refresh("r3", "skipped", 3)
+        self._refresh("r4", "error", 4, "timeout")
+        self.checks.check()
+        self.assertEqual(self.sender.sent, [])  # two failures are no streak yet
+        self._refresh("r5", "error", 5, "timeout")
+        self._refresh("r6", "error", 6, "timeout")
+        self.checks.check()
+        self.checks.check()
+        self.assertEqual(
+            self._bodies(), ["Eine Synchronisierung schlägt wiederholt fehl."]
+        )
+        self.assertEqual(self.sender.sent[0][1]["url"], "#more/connections")
+
+    def test_an_expired_sign_in_is_announced_at_once(self):
+        self._refresh(
+            "w1", "error", 2, "auth_required", provider="wahoo", area="activities"
+        )
+        self.checks.check()
+        self.assertEqual(self._bodies(), ["Eine Anmeldung ist abgelaufen."])
+
+    def test_a_failure_before_the_subscription_is_not_announced(self):
+        self._refresh("old", "error", -60, "auth_required")
+        self.checks.check()
+        self.assertEqual(self.sender.sent, [])
+
+    def test_a_competition_within_three_days_is_announced_once(self):
+        self.connection.executemany(
+            "INSERT INTO competitions VALUES (?, ?)",
+            [("c1", "2026-11-25"), ("c2", "2026-11-26"), ("c0", "2026-11-21")],
+        )
+        self.checks.check()
+        self.checks.check()
+        self.assertEqual(self._bodies(), ["In 3 Tagen ist ein Wettkampf."])
+        self.assertEqual(self.sender.sent[0][1]["url"], "#plan/season")
+
+    def test_the_infection_hint_is_announced_once_a_day(self):
+        self.hint["value"] = {"status": "hint"}
+        self.checks.check()
+        self.checks.check()
+        self.assertEqual(self._bodies(), ["Bitte bestätige kurz, wie es dir geht."])
+
+    def test_a_step_test_is_announced_once_when_a_threshold_newly_turns_stale(self):
+        # The subscription is on 2026-11-22; a value is stale from day 57 on (8 weeks).
+        def item(metric, dated_on, reason="stale"):
+            return {
+                "metric": metric,
+                "sport": "Ride",
+                "dated_on": dated_on,
+                "reason": reason,
+            }
+
+        self.warnings["value"] = {
+            "items": [
+                item("ftp", "2026-09-26"),  # stale since 2026-11-22: not new
+                item("threshold_hr", "2026-09-27", "sdk_failed"),  # no staleness
+            ]
+        }
+        self.checks.check()
+        self.assertEqual(self.sender.sent, [])
+        self.warnings["value"]["items"].append(item("threshold_hr", "2026-09-27"))
+        self.checks.check()  # stale from 2026-11-23 on: newly stale
+        self.checks.check()
+        self.assertEqual(
+            self._bodies(), ["Ein Schwellenwert ist älter als acht Wochen."]
+        )
+        self.assertEqual(self.sender.sent[0][1]["url"], "#more/profile")
+
+    def test_nothing_is_sent_at_night_and_it_waits_for_the_morning(self):
+        self.connection.execute("INSERT INTO competitions VALUES ('c1', '2026-11-23')")
+        for hour, expected in ((23, 0), (6, 0), (7, 1)):
+            with self.subTest(hour=hour):
+                self.local["now"] = datetime(2026, 11, 22, hour, 0, tzinfo=UTC)
+                self.checks.check()
+                self.assertEqual(len(self.sender.sent), expected)
+
+    def test_without_a_device_nothing_is_checked(self):
+        self.service.unsubscribe({})
+        self.connection.execute("INSERT INTO competitions VALUES ('c1', '2026-11-23')")
+        self.assertEqual(self.checks.check(), 0)
+
+
+class PushRouteTests(unittest.TestCase):
+    def test_routes_reach_the_service(self):
+        service = _service(self)
+
+        class Handler:
+            def __init__(self, body=None):
+                self.body = body
+                self.sent = None
+
+            def read_json(self, _limit):
+                return self.body
+
+            def send_json(self, status, payload):
+                self.sent = (status, payload)
+
+        routes = PushRoutes(lambda: service)
+        key = Handler()
+        dispatch_route(routes, key, "/api/push/key", method="POST")
+        self.assertEqual(len(web_push.unb64url(key.sent[1]["public_key"])), 65)
+        subscribe = Handler(SUBSCRIPTION)
+        dispatch_route(routes, subscribe, "/api/push/subscribe", method="POST")
+        self.assertTrue(subscribe.sent[1]["subscribed"])
+        state = Handler()
+        dispatch_route(routes, state, f"/api/push?endpoint={ENDPOINT}")
+        self.assertEqual(
+            state.sent, (200, {"subscribed": True, "types": dict.fromkeys(TYPES, True)})
+        )
+        preferences = Handler({"types": {"weather": False}})
+        dispatch_route(routes, preferences, "/api/push/preferences", method="POST")
+        self.assertFalse(preferences.sent[1]["types"]["weather"])
+        gone = Handler({"endpoint": ENDPOINT})
+        dispatch_route(routes, gone, "/api/push/unsubscribe", method="POST")
+        self.assertFalse(gone.sent[1]["subscribed"])
+
+
+if __name__ == "__main__":
+    unittest.main()

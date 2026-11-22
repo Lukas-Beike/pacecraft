@@ -83,6 +83,7 @@ from backend.http_api.wiring import (
     build_public_state,
 )
 from backend.nutrition.wiring import NutritionServices, build_nutrition
+from backend.performance.infection_hint import infection_hint_reader
 from backend.performance.morning_battery_service import (
     MORNING_BODY_BATTERY_SERVICE_CACHE,
     MorningBatteryClock,
@@ -138,6 +139,8 @@ from backend.providers.transport_wiring import (
     ProviderTransportServices,
     build_provider_transport,
 )
+from backend.push.checks import PushChecks
+from backend.push.service import PushService
 from backend.runtime import clock as runtime_clock
 from backend.runtime import events as runtime_events
 from backend.runtime import maintenance as runtime_maintenance
@@ -962,6 +965,19 @@ APP.provider_connection_checks = PROVIDER_CONNECTION_CHECKS
 APP.wahoo_connection = WAHOO_CONNECTION
 APP.metric_export = METRIC_EXPORT
 APP.garmin_login = GARMIN_LOGIN
+APP.push = PushService(APP.database, APP.key_values, lambda: datetime.now(UTC))
+APP.push_checks = PushChecks(
+    APP.push,
+    APP.database,
+    APP.clock.now,
+    infection_hint=lambda: infection_hint_reader(
+        APP.database(),
+        APP.key_values,
+        lambda: APP.canonical_read,
+        lambda: APP.clock.now().date(),
+    )(),
+    threshold_warnings=lambda: APP.athlete.zones().threshold_warnings(),
+)
 HTTP_API = build_http_api(
     APP,
     session_auth_service=session_auth_service,

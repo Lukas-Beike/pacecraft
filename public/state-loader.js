@@ -7,8 +7,6 @@ function render(data, { reloadRoute = true } = {}) {
   renderAppVersion(data.app);
   renderCoachOverview(data);
   renderQuickMessageTemplates();
-  // Device snapshot data may be outdated, so only loaded state notifies.
-  if (!state.replaceDataOnLoad) notifyState(data);
   renderStatus(data);
   renderMessages(data.messages, firstRender);
   renderPlanned(data.training_calendar || data.planned || []);

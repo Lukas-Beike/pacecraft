@@ -2,61 +2,70 @@
 
 ## Purpose
 
-Describe browser-local PWA notifications as currently implemented. This baseline inspects notification state and the service-worker click handler. It does not promise a server push service, subscription endpoint or closed-app scheduled delivery. Coach turn sending and safe shell interaction are in `web-pwa-and-accessibility`; session/cache invalidation is in `view-refresh-and-client-state`. Named browser tests are inspected evidence, not an executed permission/device matrix.
+Describe the Web Push notifications to the athlete's phone (#3914): subscription, server-side once-only delivery of lock-screen safe messages, and the service worker that shows them while the app is closed. Coach turn sending and safe shell interaction are in `web-pwa-and-accessibility`; session/cache invalidation is in `view-refresh-and-client-state`. Real-device delivery is verified on the athlete's phone after release, not in tests.
 
 ## Requirements
 
-### Requirement: Notification permission is opt-in and capability-aware
-The client SHALL show whether browser notifications are granted, denied, unsupported, or not enabled, and SHALL request permission only after the athlete explicitly activates the enable control.
+### Requirement: Push is opt-in and limited to supported browsers
+The client SHALL subscribe to Web Push only after the athlete activates the enable control and grants permission, and SHALL show whether push is active, blocked, unsupported or not enabled. The server SHALL accept only Chrome (FCM) and Firefox (Mozilla autopush) push endpoints over https.
 
 #### Scenario: Athlete enables notifications
-- **WHEN** the athlete selects the enable action in a supporting browser
-- **THEN** the browser permission prompt is requested and the UI updates to the returned permission state.
+- **WHEN** the athlete selects "Benachrichtigungen aktivieren" and grants permission
+- **THEN** the browser subscribes with the server's public VAPID key, the server stores the subscription, and the status reads "Aktiv" with the button "Benachrichtigungen ausschalten"
 
-#### Scenario: Unsupported or denied notifications
-- **WHEN** notifications are unsupported or blocked by the browser
-- **THEN** the UI shows that status and no delivery attempt is made without granted permission; the rest of the app remains usable.
+#### Scenario: Athlete turns notifications off
+- **WHEN** the athlete selects "Benachrichtigungen ausschalten"
+- **THEN** the server removes that device's subscription and the browser unsubscribes
+
+#### Scenario: Unsupported or refused push service
+- **WHEN** the browser has no Push API, or the server refuses its push service
+- **THEN** the status reads "Von diesem Browser nicht unterstützt" or the refusal is shown, the browser keeps no subscription, and the rest of the app remains usable
 
 #### Scenario: Ordinary state render
 - **WHEN** state is rendered without an enable action
-- **THEN** no permission prompt is raised automatically.
+- **THEN** no permission prompt is raised automatically
 
-#### Scenario: Status line
-- **WHEN** the notification status is shown
-- **THEN** it reads "Aktiv", "Im Browser blockiert", "Von diesem Browser nicht unterstützt" or "Noch nicht aktiviert"; the button "Benachrichtigungen aktivieren" is hidden when permission is granted and disabled when unsupported
+Evidence: `public/notifications.js::enablePush`, `public/notifications.js::disablePush`, `public/notifications.js::renderNotificationStatus`, `backend/push/web_push.py::supported_endpoint`, `backend/http_api/push.py:PushRoutes`; `tests/service-worker-update.test.cjs::enabling push subscribes with the server key and stores the subscription`, `tests/service-worker-update.test.cjs::a subscription the server refuses is removed from the browser`, `tests/test_push.py::test_only_chrome_and_firefox_push_services_are_accepted`.
 
-Evidence: `public/notifications.js::notificationPermission`, `public/notifications.js::renderNotificationStatus`, `public/notifications.js::enableNotifications`, `public/notifications.js::showPwaNotification`; `tests/notifications-retry.test.cjs::a successful notification is marked delivered and is not sent again` covers granted delivery. Permission prompting/status projection has source evidence only; a dedicated denied/unsupported permission test is an explicit evidence gap.
+### Requirement: Keys and subscriptions stay server-side
+The server SHALL generate the VAPID key pair once, keep the private key and the subscriptions in the encrypted database, exclude both from export and diagnostics, encrypt every payload for the subscribing browser (RFC 8291) and sign each request with VAPID (RFC 8292). Logs and diagnostics SHALL hold counts and statuses only, never keys or endpoints.
 
-### Requirement: State notifications contain minimal private information
-The client SHALL derive notifications only from freshly loaded eligible application state with granted permission, use generic competition countdown/sync-attention bodies, and avoid competition names and provider error text in lock-screen notification content.
+#### Scenario: Diagnostics
+- **WHEN** diagnostics are read
+- **THEN** `push_notifications` holds the number of subscribed devices and sent/failed counts per type
+
+#### Scenario: Expired subscription
+- **WHEN** the push service answers 404 or 410
+- **THEN** the subscription is removed and the failure is counted without logging the endpoint
+
+Evidence: `backend/push/service.py:PushService`, `backend/push/service.py::diagnostics`, `backend/provider_credentials.py:CREDENTIAL_KV_KEYS`; `tests/test_push.py::test_payload_encryption_matches_the_rfc_8291_example`, `tests/test_push.py::test_vapid_token_is_an_es256_jwt_for_the_endpoint_origin`, `tests/test_push.py::test_a_gone_subscription_is_removed_and_the_log_names_no_endpoint`.
+
+### Requirement: Each event is sent once, lock-screen safe, per-type switchable
+The server SHALL send each event key at most once, only to subscribed devices, only for types switched on (all on by default), and only between 07:00 and 22:00 athlete-local time; an event found at night waits for the morning. An event of a switched-off type SHALL be recorded as handled, so switching it on does not replay it. Bodies SHALL carry no names, values, places, provider error text or Coach content.
+
+#### Scenario: Provider problem
+- **WHEN** a Garmin, Wahoo or Intervals.icu sign-in expires, or an area fails three refreshes in a row, after the subscription
+- **THEN** one "Anbindung braucht Aufmerksamkeit" notification per provider and streak opens `#more/connections`
 
 #### Scenario: Upcoming competition
-- **WHEN** fresh state contains a competition zero through three days away
-- **THEN** a generic countdown notification identifies today, tomorrow, or days remaining without exposing the competition name: the title is "Wettkampf steht bevor", the body "Der Wettkampf ist heute.", "Der Wettkampf ist morgen." or "Der Wettkampf ist in N Tagen." and the tag `competition:<id>`
+- **WHEN** a competition is zero to three days away
+- **THEN** one "Wettkampf steht bevor" notification per competition and date opens `#plan/season`
 
-#### Scenario: Sync failure
-- **WHEN** eligible state indicates a sync error
-- **THEN** a generic attention notification points to details in the app without copying raw provider error text: the title is "Pacecraft benötigt Aufmerksamkeit", the body "Eine Synchronisierung ist fehlgeschlagen. Details stehen in der App." and the tag `sync-error`
+#### Scenario: Step test due
+- **WHEN** a threshold turns stale (older than eight weeks, the existing staleness hint) after the subscription
+- **THEN** one "Stufentest fällig" notification per set of newly stale values opens `#more/profile`; a value already stale at subscription is not announced
 
-#### Scenario: Cached device snapshot
-- **WHEN** previously cached state is shown during startup
-- **THEN** snapshot display alone does not produce new notifications; fresh loaded state controls notification eligibility.
+#### Scenario: Infection hint
+- **WHEN** today's infection hint shows and is unanswered
+- **THEN** one notification asks the athlete to confirm how they feel and opens `#plan/overview`
 
-Evidence: `public/notifications.js::notifyState`, `public/notifications.js::competitionCountdownText`, `public/state-loader.js::render`; `tests/frontend-write-safety.test.cjs::notification bodies omit competition names and provider error text`, `tests/state-loader-startup.test.cjs::loaded state renders as real data, so it may notify`. There is no server push scheduling or guaranteed closed-app delivery in this inspected flow.
+Evidence: `backend/push/service.py:PushService.notify`, `backend/push/checks.py:PushChecks`; `tests/test_push.py::test_each_event_is_sent_once_and_a_switched_off_type_never`, `tests/test_push.py::test_a_repeated_failure_is_announced_once_per_streak`, `tests/test_push.py::test_a_competition_within_three_days_is_announced_once`, `tests/test_push.py::test_a_step_test_is_announced_once_when_a_threshold_newly_turns_stale`, `tests/test_push.py::test_nothing_is_sent_at_night_and_it_waits_for_the_morning`.
 
-### Requirement: Notification delivery retries are bounded per client lifetime
-The client SHALL suppress duplicate successfully delivered notification keys, allow retry after a failed attempt only after thirty seconds, and stop after three attempts for a persistently failing key. Clicking a notification SHALL focus an existing app window or open the app root.
-
-#### Scenario: Successful delivery
-- **WHEN** the service-worker registration displays a notification successfully
-- **THEN** repeated renders with the same key do not display it again in the current client state lifetime.
-
-#### Scenario: Transient or persistent platform failure
-- **WHEN** notification display fails
-- **THEN** the key can retry after the delay, a later success ends retries, and persistent failure receives at most three attempts without an unhandled application failure.
+### Requirement: The service worker shows push messages and opens their screen
+The service worker SHALL show each push message with its title, body and tag, accept only an in-app `#route` as its target, and on a tap focus an open app window on that route or open the app there.
 
 #### Scenario: Notification clicked
-- **WHEN** the athlete clicks a displayed notification
-- **THEN** it closes and the worker focuses an existing window when available, otherwise opens `/`.
+- **WHEN** the athlete taps a displayed notification
+- **THEN** it closes and the app opens on the notification's screen
 
-Evidence: `public/notifications.js::reserveNotificationAttempt`, `public/notifications.js::showPwaNotification`, `public/service-worker.js` (notificationclick listener); `tests/notifications-retry.test.cjs::a persistently rejecting notification is retried at most three times`, `tests/notifications-retry.test.cjs::renders inside the retry delay do not resend a rejected notification`, `tests/notifications-retry.test.cjs::a transient failure followed by success is delivered once`. Click handling is inspected source only; duplicate suppression is in-memory and does not promise cross-tab/restart delivery deduplication.
+Evidence: `public/service-worker.js` (push and notificationclick listeners); `tests/service-worker-update.test.cjs::a push message shows its lock-screen text and keeps only an app route`, `tests/service-worker-update.test.cjs::tapping a notification opens its screen in the open app or a new window`.

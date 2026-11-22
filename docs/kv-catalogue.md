@@ -16,7 +16,7 @@ read. A new key needs no entry: it appears here when its write is added.
   `profile` is only set when absent.
 
 <!-- BEGIN GENERATED KEYS -->
-101 keys and 25 key patterns; `<value>` stands for a value the code computes.
+106 keys and 25 key patterns; `<value>` stands for a value the code computes.
 
 | Key | Written by | Deleted by | Export | Reset at start | Purge |
 | --- | --- | --- | --- | --- | --- |
@@ -112,6 +112,11 @@ read. A new key needs no entry: it appears here when its write is added.
 | `profile` | backend/db/bootstrap.py:apply_startup_invariants<br>backend/db/repositories.py:ProfileRepository.set<br>backend/privacy.py:PrivacyDeleteService.delete | - | no | yes | rewritten |
 | `profile_weekly_plan_removal_state` | backend/sync/profile_weekly_plan_removal.py:ProfileWeeklyPlanRemoval._save | - | yes | - | - |
 | `provider_credentials` | backend/provider_credentials.py:ProviderCredentialService.update | backend/provider_credentials.py:ProviderCredentialService.update | no | - | - |
+| `push_counts` | backend/push/service.py:PushService._record | - | yes | - | - |
+| `push_preferences` | backend/push/service.py:PushService.set_preferences | - | yes | - | - |
+| `push_sent` | backend/push/service.py:PushService.notify | - | yes | - | - |
+| `push_subscriptions` | backend/push/service.py:PushService._record<br>backend/push/service.py:PushService.subscribe<br>backend/push/service.py:PushService.unsubscribe | - | no | - | - |
+| `push_vapid_private_key` | backend/push/service.py:PushService._private_key | - | no | - | - |
 | `rating_backfill_removal_state` | backend/sync/rating_backfill_removal.py:RatingBackfillRemoval._save | - | yes | - | - |
 | `selected_model_nutrition` | backend/settings.py:SettingsService.save_model | - | yes | - | - |
 | `selected_model_openai` | backend/settings.py:SettingsService.save_model | - | yes | - | - |

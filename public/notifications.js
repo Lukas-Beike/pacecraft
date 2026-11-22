@@ -1,67 +1,70 @@
-function notificationPermission() {
-  return "Notification" in globalThis ? Notification.permission : "unsupported";
+// Web Push (#3914): the server sends each notification once; the page only subscribes.
+function pushSupported() {
+  return "Notification" in globalThis && "PushManager" in globalThis && "serviceWorker" in navigator;
 }
 
-function renderNotificationStatus() {
+async function currentPushSubscription() {
+  if (!pushSupported()) return null;
+  const registration = await navigator.serviceWorker.ready;
+  return registration.pushManager.getSubscription();
+}
+
+async function renderNotificationStatus() {
   const node = $("#notificationStatus");
   const button = $("#notificationEnableButton");
-  const permission = notificationPermission();
   if (!node || !button) return;
-  if (permission === "granted") node.textContent = "Aktiv";
-  else if (permission === "denied") node.textContent = "Im Browser blockiert";
-  else if (permission === "unsupported") node.textContent = "Von diesem Browser nicht unterstützt";
-  else node.textContent = "Noch nicht aktiviert";
-  button.hidden = permission === "granted";
-  button.disabled = permission === "unsupported";
-  button.textContent = "Benachrichtigungen aktivieren";
+  const subscription = pushSupported() && Notification.permission === "granted" ? await currentPushSubscription().catch(() => null) : null;
+  const active = Boolean(subscription);
+  if (!pushSupported()) node.textContent = "Von diesem Browser nicht unterstützt";
+  else if (Notification.permission === "denied") node.textContent = "Im Browser blockiert";
+  else node.textContent = active ? "Aktiv" : "Noch nicht aktiviert";
+  button.hidden = !pushSupported() || Notification.permission === "denied";
+  button.textContent = active ? "Benachrichtigungen ausschalten" : "Benachrichtigungen aktivieren";
+  button.dataset.active = active ? "1" : "";
+}
+
+function pushKeyBytes(text) {
+  const base64 = text.replaceAll("-", "+").replaceAll("_", "/") + "=".repeat((4 - text.length % 4) % 4);
+  return Uint8Array.from(atob(base64), (char) => char.codePointAt(0));
 }
 
 async function enableNotifications() {
-  if (!("Notification" in globalThis)) { toast("Dieser Browser unterstützt keine PWA-Benachrichtigungen", true); return; }
-  const permission = await Notification.requestPermission();
-  renderNotificationStatus();
-  if (permission === "granted") toast("PWA-Benachrichtigungen aktiviert");
-}
-
-const NOTIFICATION_MAX_ATTEMPTS = 3;
-const NOTIFICATION_RETRY_DELAY_MS = 30000;
-
-function reserveNotificationAttempt(key) {
-  state.notificationAttempts ??= new Map();
-  const previous = state.notificationAttempts.get(key) ?? { count: 0, at: 0 };
-  if (previous.count >= NOTIFICATION_MAX_ATTEMPTS) {
-    state.notificationKeys.add(key);
-    return false;
-  }
-  if (previous.count > 0 && Date.now() - previous.at < NOTIFICATION_RETRY_DELAY_MS) return false;
-  state.notificationAttempts.set(key, { count: previous.count + 1, at: Date.now() });
-  return true;
-}
-
-async function showPwaNotification(title, options, key) {
-  if (notificationPermission() !== "granted" || state.notificationKeys.has(key)) return;
-  if (!reserveNotificationAttempt(key)) return;
-  state.notificationKeys.add(key);
+  if (!pushSupported()) { toast("Dieser Browser unterstützt keine Push-Benachrichtigungen", true); return; }
+  const button = $("#notificationEnableButton");
+  button.disabled = true;
   try {
-    const registration = await navigator.serviceWorker.ready;
-    await registration.showNotification(title, { icon: "/icon.svg", badge: "/icon.svg", ...options });
-  } catch {
-    state.notificationKeys.delete(key);
+    if (button.dataset.active) await disablePush();
+    else await enablePush();
+  } catch (error) {
+    toast(error.message || "Benachrichtigungen konnten nicht geändert werden", true);
+  } finally {
+    button.disabled = false;
+    await renderNotificationStatus();
   }
 }
 
-// Notification bodies can be shown on a locked screen, so they carry no competition names or provider error text.
-function competitionCountdownText(days) {
-  if (days === 0) return "Der Wettkampf ist heute.";
-  if (days === 1) return "Der Wettkampf ist morgen.";
-  return `Der Wettkampf ist in ${days} Tagen.`;
+async function enablePush() {
+  if (await Notification.requestPermission() !== "granted") return;
+  const { public_key: key } = await api("/api/push/key", { method: "POST", body: "{}" });
+  const registration = await navigator.serviceWorker.ready;
+  const subscription = await registration.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: pushKeyBytes(key) });
+  try {
+    await api("/api/push/subscribe", { method: "POST", body: JSON.stringify(subscription.toJSON()) });
+  } catch (error) {
+    // A push service the server refuses must not stay subscribed in the browser.
+    await subscription.unsubscribe().catch(() => {});
+    throw error;
+  }
+  toast("Benachrichtigungen aktiviert");
 }
 
-function notifyState(data) {
-  const next = data.planning?.season?.next_event;
-  if (next && next.days_until >= 0 && next.days_until <= 3) void showPwaNotification("Wettkampf steht bevor", { body: competitionCountdownText(next.days_until), tag: `competition:${next.id}` }, `competition:${next.id}:${next.event_date}`);
-  const error = data.sync?.last_error || data.garmin_sync?.status?.includes("Fehler") && data.garmin_sync.status;
-  if (error) void showPwaNotification("Pacecraft benötigt Aufmerksamkeit", { body: "Eine Synchronisierung ist fehlgeschlagen. Details stehen in der App.", tag: "sync-error" }, `error:${error}`);
+async function disablePush() {
+  const subscription = await currentPushSubscription();
+  if (subscription) {
+    await api("/api/push/unsubscribe", { method: "POST", body: JSON.stringify({ endpoint: subscription.endpoint }) });
+    await subscription.unsubscribe();
+  }
+  toast("Benachrichtigungen ausgeschaltet");
 }
 
 function registerServiceWorker() {

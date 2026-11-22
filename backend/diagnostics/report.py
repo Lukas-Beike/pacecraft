@@ -56,6 +56,7 @@ from backend.planning.library_service import archive_purge_counts
 from backend.provider_credentials import garmin_tokens_connected
 from backend.providers.garmin import GarminClientFactory
 from backend.providers.state import ProviderStateService
+from backend.push.service import diagnostics as push_diagnostics
 from backend.runtime.memory import process_memory, process_settings
 from backend.runtime.ports import ProviderCoverageReader
 from backend.settings import SettingsService
@@ -430,6 +431,11 @@ class DiagnosticReportService:
                         deps.redactor.redact_text,
                         datetime.fromisoformat(deps.utc_now()),
                     ),
+                ),
+                # Web Push, counts only: never keys or endpoints (#3914).
+                "push_notifications": section(
+                    "push_notifications",
+                    lambda: push_diagnostics(key_values, db),
                 ),
                 "plan_sync": section(
                     "plan_sync",

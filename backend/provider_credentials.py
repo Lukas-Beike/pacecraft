@@ -42,9 +42,17 @@ WAHOO_TOKENS_KEY = f"{ProviderId.WAHOO.value}_oauth_tokens"
 WAHOO_STATE_KEY = f"{ProviderId.WAHOO.value}_oauth_state"
 # Keys that must never leave the database through export, diagnostics or context.
 WAHOO_SECRET_KEYS = frozenset({WAHOO_TOKENS_KEY, WAHOO_STATE_KEY})
-CREDENTIAL_KV_KEYS = frozenset(
-    {PROVIDER_CREDENTIALS_KEY, GARMIN_TOKENS_KEY, GARMIN_TOKENSTORE_STATE_KEY}
-) | (WAHOO_SECRET_KEYS)
+# The Web Push VAPID private key and the browser subscriptions (backend/push, #3914).
+PUSH_PRIVATE_KEY = "push_vapid_private_key"
+PUSH_SUBSCRIPTIONS_KEY = "push_subscriptions"
+PUSH_SECRET_KEYS = frozenset({PUSH_PRIVATE_KEY, PUSH_SUBSCRIPTIONS_KEY})
+CREDENTIAL_KV_KEYS = (
+    frozenset(
+        {PROVIDER_CREDENTIALS_KEY, GARMIN_TOKENS_KEY, GARMIN_TOKENSTORE_STATE_KEY}
+    )
+    | WAHOO_SECRET_KEYS
+    | PUSH_SECRET_KEYS
+)
 
 PERSONAL_KEY_FIELD = "garmin_personal_api_key"
 # Saving one of these replaces how the app reaches Garmin.

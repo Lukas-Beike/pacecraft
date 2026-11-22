@@ -346,6 +346,7 @@ class SyncSchedulerBuilderTests(unittest.TestCase):
             calls.append("purge")
         )
         ctx.backup.run_nightly.side_effect = lambda: calls.append("nightly backup")
+        ctx.push_checks.check.side_effect = lambda: calls.append("push")
         with (
             patch.object(scheduler_wiring.scheduler, "DailySyncLoop") as loop,
             patch.object(scheduler_wiring.scheduler, "DailySyncScheduler"),
@@ -356,10 +357,11 @@ class SyncSchedulerBuilderTests(unittest.TestCase):
 
         # #3141: the archive purge is background work behind the maintenance gate;
         # the nightly backup (#3760) runs first and reads behind the gate,
-        # without the writer.
-        self.assertEqual(["nightly backup", "prune", "purge"], calls)
-        self.assertEqual(ctx.maintenance.operation.call_count, 2)
-        writer.assert_called_once_with()
+        # without the writer. The push checks (#3914) come last, gated, as
+        # background writes.
+        self.assertEqual(["nightly backup", "prune", "purge", "push"], calls)
+        self.assertEqual(ctx.maintenance.operation.call_count, 3)
+        self.assertEqual(writer.call_count, 2)
 
 
 if __name__ == "__main__":

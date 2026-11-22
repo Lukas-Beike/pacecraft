@@ -145,6 +145,11 @@ handler's docstring. Regenerate it with
 | POST | `/api/profile/first-threshold/adopt` | Session + CSRF | after access | Adopt the shown first threshold estimate into the profile. |
 | GET | `/api/providers/connections` | Session | no | Last local connection check per provider, without contacting any provider. |
 | POST | `/api/providers/{provider}/check` | Session + CSRF | after access | Explicitly run one bounded read-only connection check for an OpenAI, Claude, Intervals.icu, Garmin, Wahoo or Open-Meteo provider and record an in-memory result. |
+| GET | `/api/push` | Session | no | Read the push switches and whether this device is subscribed. |
+| POST | `/api/push/key` | Session + CSRF | after access | Return the public VAPID key a browser subscribes with. |
+| POST | `/api/push/preferences` | Session + CSRF | after access | Switch notification types on or off. |
+| POST | `/api/push/subscribe` | Session + CSRF | after access | Store this device's push subscription. |
+| POST | `/api/push/unsubscribe` | Session + CSRF | after access | Remove this device's push subscription. |
 | GET | `/api/readiness` | Public | no | Readiness status; 503 while not ready. |
 | POST | `/api/routes/rename` | Session + CSRF | after access | Rename one recognised activity route; nothing is written remotely. |
 | PUT | `/api/settings/calendar-display` | Session + CSRF | before access | Update the calendar display settings. |
@@ -2058,6 +2063,57 @@ request.
 
 Errors: 404 `unknown_provider` "Unbekannter Anbieter." for any other
 provider id.
+
+### `GET /api/push`
+
+Request: optional query `endpoint`, the device's push endpoint.
+
+Response: 200 `{"subscribed": bool, "types": {type: bool}}`; `subscribed`
+is for `endpoint`, else whether any device is subscribed; `types` holds
+every notification type, true unless switched off.
+
+Errors: none beyond the common ones.
+
+### `POST /api/push/key`
+
+Request: no body. The key pair is generated once and kept in the
+encrypted database; the private key never leaves it.
+
+Response: 200 `{"public_key": string}`, the base64url public point.
+
+Errors: none beyond the common ones.
+
+### `POST /api/push/preferences`
+
+Request: JSON body `{"types": {type: bool}, "endpoint"?: string}` with at
+least one known type; unnamed types keep their switch.
+
+Response: 200 as `GET /api/push` for `endpoint`.
+
+Errors: 400 "Die Benachrichtigungsarten sind ungültig." for an unknown
+type, a non-boolean value or no type.
+
+### `POST /api/push/subscribe`
+
+Request: JSON body of at most 8 KiB, `PushSubscription.toJSON()`:
+`{"endpoint": string, "keys": {"p256dh": string, "auth": string}}`. Only
+the push services of Chrome and Firefox are accepted; a repeated endpoint
+replaces its earlier keys; at most 10 devices are kept.
+
+Response: 200 as `GET /api/push` for this endpoint.
+
+Errors: 400 "Dieser Browser wird für Push-Benachrichtigungen nicht
+unterstützt." for another push service or a missing endpoint; 400 "Das
+Push-Abonnement ist ungültig." for malformed keys.
+
+### `POST /api/push/unsubscribe`
+
+Request: JSON body `{"endpoint": string}`; without `endpoint` every
+device is removed.
+
+Response: 200 as `GET /api/push` for this endpoint.
+
+Errors: none beyond the common ones.
 
 ### `GET /api/readiness`
 
