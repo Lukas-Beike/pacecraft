@@ -975,6 +975,8 @@ function plannedWeatherDetails(weather) {
 
 // Without a location the hint's link opens the profile at that field (#3932 K-03).
 function openWeatherLocationField(event) {
+  // A modified click keeps the browser's own behaviour (new tab, new window).
+  if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button > 0) return;
   event.preventDefault();
   void AppRouter.navigate("more/profile", { historyMode: "push" }).then((shown) => {
     const field = shown && document.querySelector('#profileForm [name="weather_location"]');
