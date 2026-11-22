@@ -12,6 +12,7 @@ from typing import Any
 from unittest.mock import Mock
 
 from backend.coach import playbooks
+from backend.coach.context import coach_performance_projection
 from backend.coach.context_selection import (
     REQUEST_KIND_SELECTIONS,
     free_text_review_kind,
@@ -805,6 +806,37 @@ class RequestKindSelectionTests(unittest.TestCase):
                 expected,
             )
         self.assertEqual("", playbook_for("morning_checkin"))
+
+
+class HrvGuidanceTests(unittest.TestCase):
+    """HRV is the Coach's to interpret, never an automatic load rule (A7, #3918)."""
+
+    def test_the_playbook_interprets_the_seven_day_mean_and_prescribes_nothing(
+        self,
+    ) -> None:
+        text = playbook_for("plan_week")
+        self.assertNotIn("Adjust load to HRV", text)
+        self.assertIn("7-day mean", text)
+
+    def test_the_coach_gets_last_night_the_range_and_the_rolling_mean(self) -> None:
+        baseline = {
+            "source": "Garmin Connect",
+            "metric": "hrv",
+            "value": 48.0,
+            "observed_at": "2026-11-21",
+            "lower": 45.0,
+            "upper": 58.0,
+            "position": "within",
+            "rolling": {"method": "rolling-lnrmssd-v1", "value": 51.0, "lower": 47.0},
+            "history": [{"date": "2026-11-21", "value": 48.0}],
+        }
+        projected = coach_performance_projection(
+            {"personal_recovery": {"baselines": [baseline]}}
+        )
+        (row,) = projected["personal_recovery"]["baselines"]
+        self.assertEqual(
+            {key: value for key, value in baseline.items() if key != "history"}, row
+        )
 
 
 if __name__ == "__main__":
