@@ -342,21 +342,21 @@ def first_threshold(
     """The DFA-a1 result of one recording, or None with too few windows.
 
     The result keeps the window series; its 0.75 estimate and quality are None
-    when the recording does not cross 0.75 (``_crossing``).
+    when the recording does not cross 0.75 (``crossing``).
     """
     windows, share = rolling_windows(segments)
     if len(windows) < MIN_WINDOWS:
         return None
-    crossing = _crossing(windows, share)
+    found = crossing(windows, share)
     series = _series(windows)
-    if crossing is None and not series:
+    if found is None and not series:
         return None
     try:
         return ActivityDfaAlpha1(
-            estimate_bpm=None if crossing is None else crossing[0],
+            estimate_bpm=None if found is None else found[0],
             windows=len(windows),
             artifact_share=round(share, 4),
-            quality=None if crossing is None else crossing[1],
+            quality=None if found is None else found[1],
             method=METHOD_VERSION,
             series=series,
         )
@@ -380,13 +380,17 @@ def _series(windows: Sequence[Window]) -> tuple[DfaWindow, ...]:
         return ()
 
 
-def _crossing(
-    windows: Sequence[Window], share: float
+def crossing(
+    windows: Sequence[Window] | Sequence[DfaWindow], share: float
 ) -> tuple[float, DfaQuality] | None:
-    """The heart rate where the windows' line reaches 0.75 and its quality, or None."""
+    """The heart rate where the windows' line reaches 0.75 and its quality, or None.
+
+    ``share`` is the recording's artifact share; the step test passes its stage
+    windows only (``step_test``).
+    """
     rates = [window.heart_rate_bpm for window in windows]
     exponents = [window.alpha1 for window in windows]
-    if max(rates) - min(rates) < MIN_HR_SPREAD_BPM:
+    if not windows or max(rates) - min(rates) < MIN_HR_SPREAD_BPM:
         return None
     if (
         min(exponents) > THRESHOLD_ALPHA1 - CROSSING_MARGIN
