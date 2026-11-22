@@ -597,7 +597,7 @@ The Analyse tab SHALL show the segments Laufen, Radfahren, Kraft, Belastung and 
 
 #### Scenario: Kraft
 - **WHEN** the athlete opens Kraft and completed strength sessions exist in the chosen period
-- **THEN** the shared period selector (4 Wochen, 3 Monate, 6 Monate, 12 Monate; 3 Monate at first) sits above two charts, "Oberkörper" and "Beine", each bar the number of sessions of that calendar week that trained the side (its executed sets, else the session focus; a full body session counts for both), with the average in the heading and no label for a zero; sessions that decide neither are named below as "<n> Einheiten ohne erkennbaren Schwerpunkt, nicht zugeordnet." and never guessed; no strength load, no volume; without a session in the period the one empty card shows
+- **THEN** the shared period selector (4 Wochen, 3 Monate, 6 Monate, 12 Monate; 3 Monate at first) sits above two charts, "Oberkörper" and "Beine", each bar the number of sessions of that calendar week that trained the side (its executed sets, else the session focus; a full body session counts for both), with the average in the heading and no label for a zero; sessions that decide neither are named below as "<n> Einheiten ohne Oberkörper- oder Beinschwerpunkt, nicht zugeordnet." and never guessed; no strength load, no volume; without a session in the period the one empty card shows
 
 #### Scenario: Cross-sport values
 - **WHEN** the athlete opens Analyse › Belastung or Erholung

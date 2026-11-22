@@ -843,7 +843,7 @@ function strengthAnalysisCards(report) {
   return [
     strengthSideChart("Oberkörper", "upper", 2, report),
     strengthSideChart("Beine", "legs", 3, report),
-    unknown ? h("p", "analysis-reference-note", `${AppFormat.plural(unknown, "Einheit", "Einheiten")} ohne erkennbaren Schwerpunkt, nicht zugeordnet.`) : null,
+    unknown ? h("p", "analysis-reference-note", `${AppFormat.plural(unknown, "Einheit", "Einheiten")} ohne Oberkörper- oder Beinschwerpunkt, nicht zugeordnet.`) : null,
   ].filter(Boolean);
 }
 

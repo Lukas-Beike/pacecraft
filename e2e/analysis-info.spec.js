@@ -764,7 +764,7 @@ test("@responsive Kraft shows how often per week the upper body and the legs wer
   await expect(root.getByRole("heading", { name: "Oberkörper" })).toBeVisible();
   await expect(root.getByRole("heading", { name: "Beine" })).toBeVisible();
   await expect(root.getByRole("heading", { name: "Top-Sätze" })).toHaveCount(0);
-  await expect(root).toContainText("1 Einheit ohne erkennbaren Schwerpunkt, nicht zugeordnet.");
+  await expect(root).toContainText("1 Einheit ohne Oberkörper- oder Beinschwerpunkt, nicht zugeordnet.");
   await expect(root).not.toContainText(/1RM|Kraftlast/);
   // The shared period selector reads the chosen number of weeks.
   const period = page.locator("#strengthPeriod");
