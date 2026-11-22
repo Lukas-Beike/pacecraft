@@ -1,5 +1,3 @@
-// The calendar shows a fixed range: one week back, four ahead (#3914).
-const CALENDAR_WEEKS = Object.freeze({ past: 1, future: 4 });
 
 // Profile values as the form presents them; sports is the comma-joined multi-select.
 let profileSaveInFlight = false;

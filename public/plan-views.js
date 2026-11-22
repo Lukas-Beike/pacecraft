@@ -308,6 +308,9 @@ function plannedAppointmentLabel(event) {
 // name such as "Sweet Spot - 3 x 12 min" stays whole; the stored name never changes.
 const CALENDAR_NAME_PREFIX = /^(.+?) [-–—] (\S.*)$/u;
 
+// The calendar shows a fixed range: one week back, four ahead (#3914).
+const CALENDAR_WEEKS = Object.freeze({ past: 1, future: 4 });
+
 function calendarDisplayName(name, place = "") {
   const text = String(name || "").trim();
   const match = CALENDAR_NAME_PREFIX.exec(text);
@@ -2766,7 +2769,7 @@ function renderPlanned(trainingCalendar) {
   plannedLastDateKey = lastDateKey;
   keepPlannedSelection(todayKey, lastDateKey);
   dropDeleteReceiptsOutsideWeek();
-  const snapshot = JSON.stringify([calendar, todayKey, selectedWeekKey, calendarView, calendarSport, selectedDayKey, display, state.data?.daily_planning_context, state.data?.planning_compliance, state.data?.competitions, state.data?.weather, (state.data?.external_calendar?.events || []).map((event) => [event?.uid, event?.start_local, event?.impact, event?.name]), state.data?.external_calendar?.undecided_upcoming]);
+  const snapshot = JSON.stringify([calendar, todayKey, selectedWeekKey, calendarView, calendarSport, selectedDayKey, state.data?.daily_planning_context, state.data?.planning_compliance, state.data?.competitions, state.data?.weather, (state.data?.external_calendar?.events || []).map((event) => [event?.uid, event?.start_local, event?.impact, event?.name]), state.data?.external_calendar?.undecided_upcoming]);
   if (snapshot === plannedRenderSnapshot && root.childElementCount) {
     if (state.plannedTodayFocusPending) requestAnimationFrame(() => focusPlannedToday());
     refreshWeekReview(root);
