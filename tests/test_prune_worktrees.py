@@ -284,11 +284,11 @@ class PruneWorktreesTests(unittest.TestCase):
         self.assertEqual(args[:9], ["schtasks", "/Create", "/F", "/SC", "DAILY", "/ST", "04:00", "/TN", prune.TASK])  # fmt: skip
         self.assertEqual(
             args[10],
-            'cmd /c cd /d "C:/repo" && py -3 scripts/prune_worktrees.py --apply --idle-days 3',
+            'cmd /c cd /d "C:/repo" && py -3 scripts/prune_worktrees.py --apply',
         )
         out = io.StringIO()
         with redirect_stdout(out):
-            self.assertEqual(prune.schedule("/srv/repo", 5.5, windows=False), 0)
+            self.assertEqual(prune.schedule("/srv/repo", 3.0, windows=False), 0)
         self.assertIn('0 4 * * * cd "/srv/repo" && python3 scripts/', out.getvalue())
         repo = self.make()
         with mock.patch.object(prune, "schedule", return_value=0) as scheduled:
@@ -296,8 +296,9 @@ class PruneWorktreesTests(unittest.TestCase):
         scheduled.assert_called_once_with(
             str(repo.tmp / "primary"), 3.0, "origin/develop"
         )
-        # The task keeps the chosen idle days; another base is refused.
-        self.assertIn("--apply --idle-days 5.5", out.getvalue())
+        # The task command is fixed: other idle days or another base are refused.
+        with redirect_stdout(io.StringIO()):
+            self.assertEqual(prune.schedule("/srv/repo", 5.5), 2)
         with redirect_stdout(io.StringIO()):
             self.assertEqual(prune.schedule("/srv/repo", 3.0, "origin/main"), 2)
 

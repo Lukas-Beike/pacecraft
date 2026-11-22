@@ -19,6 +19,7 @@ DAY = 86400
 TASK = "Pacecraft worktree prune"
 DAILY_AT = "04:00"
 BASE = "origin/develop"
+IDLE_DAYS = 3.0
 
 
 def run(args: list[str], cwd: str | None = None) -> subprocess.CompletedProcess:
@@ -193,18 +194,19 @@ def remove(entry: dict, merged_by_pr: bool) -> str | None:
 
 def schedule(
     primary: str,
-    idle_days: float = 3.0,
+    idle_days: float = IDLE_DAYS,
     base: str = BASE,
     *,
     windows: bool = os.name == "nt",
 ) -> int:
-    """Run the prune with --apply daily from the primary checkout."""
-    if base != BASE:
-        print("prune_worktrees: --schedule prunes against origin/develop only")
+    """Run the prune with --apply daily from the primary checkout. The task
+    command is fixed: no command-line value reaches it."""
+    if base != BASE or idle_days != IDLE_DAYS:
+        print("prune_worktrees: --schedule uses the defaults of --base and --idle-days")
         return 2
     # A stable interpreter, not this one: a worktree venv may be pruned itself.
     python = "py -3" if windows else "python3"
-    command = f"{python} scripts/prune_worktrees.py --apply --idle-days {idle_days:g}"
+    command = f"{python} scripts/prune_worktrees.py --apply"
     if not windows:
         hour, minute = DAILY_AT.split(":")
         print(
@@ -230,7 +232,7 @@ def main(argv: list[str] | None = None, now: float | None = None) -> int:
     parser.add_argument(
         "--apply", action="store_true", help="remove (default: dry run)"
     )
-    parser.add_argument("--idle-days", type=float, default=3.0)
+    parser.add_argument("--idle-days", type=float, default=IDLE_DAYS)
     # Warns below this free space on the primary checkout's drive.
     parser.add_argument("--min-free-gb", type=float, default=10.0)
     parser.add_argument("--base", default=BASE)
