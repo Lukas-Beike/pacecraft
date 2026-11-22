@@ -43,6 +43,7 @@ DOMAIN_ROOTS = frozenset(
         "nutrition",
         "performance",
         "planning",
+        "push",
         "sync",
         "weather",
     )

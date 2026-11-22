@@ -355,7 +355,7 @@ test("a later load without a failed area still stores that area from the shown s
   assert.deepEqual(plain([stored.performance, stored.library, stored.checkins]), [{ ctl: 41 }, [{ id: "w1" }], [{ id: "c1" }]]);
 });
 
-test("loaded state renders as real data, so it may notify", async () => {
+test("loaded state renders as real data, not as a placeholder", async () => {
   const { context, state, respond } = loader();
   const flags = [];
   context.render = (data) => { state.data = data; flags.push(state.replaceDataOnLoad); };

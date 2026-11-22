@@ -214,6 +214,7 @@ class DiagnosticReportServiceTests(unittest.TestCase):
                 "database",
                 "energy_balance",
                 "wahoo",
+                "push_notifications",
                 "plan_sync",
                 "garmin_past_workout_removal",
                 "garmin_daily_calories",
@@ -447,7 +448,8 @@ class DiagnosticReportServiceTests(unittest.TestCase):
         # The newest app backup is one more (#2996), the Garmin detail fallback
         # counts one more (#3122), the mapper replay size the backfill state and the
         # mapping issue kinds (#2220); the retired FIT value probe no more (#3396).
-        self.assertEqual(self.key_values.get.call_count, 22)
+        # Web Push reads its counts and subscriptions, two more (#3914).
+        self.assertEqual(self.key_values.get.call_count, 24)
 
     def test_storage_and_recovery_copies_are_sizes_and_ages_only(self):
         # Stat only: sizes, free space and the newest copy's age; no name or path.

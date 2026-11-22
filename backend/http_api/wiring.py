@@ -73,6 +73,7 @@ from backend.http_api.public_performance import (
 )
 from backend.http_api.public_plan import PublicPlanDependencies, PublicPlanStateService
 from backend.http_api.public_weather import PublicWeatherStateService
+from backend.http_api.push import PushRoutes
 from backend.http_api.readiness import ReadinessService
 from backend.http_api.response_transport import HttpResponseTransport
 from backend.http_api.route_table import RouteTable
@@ -640,6 +641,7 @@ def _domain_routes(
         ProviderConnectionPostRoutes(lambda: ctx.provider_connection_checks),
         MetricExportPostRoutes(lambda: ctx.metric_export),
         GarminPostRoutes(lambda: ctx.garmin_login),
+        PushRoutes(lambda: ctx.push),
     )
 
 
@@ -727,6 +729,7 @@ def build_http_api(
         provider_connection_post,
         metric_export_post,
         garmin_post,
+        push_routes,
     ) = _domain_routes(
         ctx, session_auth_service, export_stream_transport, sync_command_endpoint
     )
@@ -768,6 +771,7 @@ def build_http_api(
             equipment_post,
             metric_export_post,
             garmin_post,
+            push_routes,
             first_threshold_post,
             second_threshold_post,
             activity_route_post,

@@ -138,3 +138,6 @@ class AppContext:
     wahoo_connection: Any = None
     metric_export: Any = None
     garmin_login: Any = None
+    # Web Push (#3914): the service the routes use and the daily loop's checks.
+    push: Any = None
+    push_checks: Any = None

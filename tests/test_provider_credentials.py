@@ -394,6 +394,9 @@ class ProviderCredentialTests(unittest.TestCase):
                     GARMIN_TOKENSTORE_STATE_KEY,
                     WAHOO_TOKENS_KEY,
                     WAHOO_STATE_KEY,
+                    # The Web Push private key and subscriptions (#3914).
+                    "push_vapid_private_key",
+                    "push_subscriptions",
                 }
             ),
         )

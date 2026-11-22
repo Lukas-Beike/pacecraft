@@ -225,6 +225,7 @@ async function loadInitialState() {
   if (!state.data && showStateSnapshot(readStateSnapshot(), { syncing: false })) { retryBootstrapAuth(); return; }
   state.initialStateLoaded = true;
   scheduleStateSnapshotSave();
+  void syncPushSubscription();
   if (state.chatInitialScrollPending && AppRouter.baseRoute() === "coach") scrollChatToLatest();
   // Refresh stale weather in the background; the local bootstrap is already current.
   if (state.data?.profile?.weather_location) {

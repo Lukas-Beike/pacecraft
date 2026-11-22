@@ -155,6 +155,14 @@ Open Food Facts and Yazio use their own bounded transport (`request_json`, timeo
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | C1 | `GET <CALENDAR_ICAL_URL>`, HTTPS port 443 only, no credentials in the URL, resolved to global addresses only, no redirects, body cap 5,000,000 bytes | read | Public iCalendar feed (no connection check: it would equal the fetch) | `providers/calendar.py:external_calendar_url`, `fetch_calendar_feed` <- `sync/external_calendar.py:ExternalCalendarSyncService._sync_locked` | 30 s for the whole fetch (resolution included), 10 s per connect or socket wait | none; next scheduled run | 400 `Die Kalenderadresse muss eine HTTPS-URL ohne Zugangsdaten sein.`, `Lokale Kalenderadressen werden aus Sicherheitsgründen nicht abgerufen.`, `Private oder lokale Kalenderadressen werden nicht abgerufen.`; 502 `Die Kalenderadresse konnte nicht aufgelöst werden.`; 400 `Der Kalender-Feed darf nicht auf eine andere Adresse weiterleiten.`; 502 `Der Kalender-Feed antwortete mit HTTP {status}.`; 413 `Der Kalender-Feed ist zu groß.`; 504 `Der Kalender-Feed hat nicht rechtzeitig geantwortet.`, `Die Kalenderadresse konnte nicht rechtzeitig aufgelöst werden.`; 502 `Der Kalender-Feed konnte nicht geladen werden.` |
 
+## Web Push
+
+Notifications to the athlete's phone (#3914). Only Chrome (FCM) and Firefox (Mozilla autopush) endpoints are stored and called (`push/web_push.py:PUSH_HOSTS`); the endpoint comes from the browser's subscription. The payload is encrypted for the browser (RFC 8291, aes128gcm) and signed with the app's VAPID key (RFC 8292); the push service sees no text. Endpoints and keys are never logged.
+
+| # | Method and path | Kind | Purpose | Caller | Timeout | Retry | Error mapping |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| P1 | `POST <subscription endpoint>` on `fcm.googleapis.com` or `updates.push.services.mozilla.com`, https, no redirects, `TTL: 43200` | write | Deliver one notification to one device | `push/web_push.py:send` <- `push/service.py:PushService.notify` <- `push/checks.py:PushChecks.check` (daily loop) | 10 s | none; the event is recorded as sent before delivery | 404/410 removes the subscription; any other non-2xx or no answer counts as failed for that type; nothing is shown to the athlete |
+
 ## Model providers
 
 Exactly one is selected; there is no fallback between them. Base URLs come from `OPENAI_BASE_URL` and `ANTHROPIC_BASE_URL` (defaults `https://api.openai.com/v1`, `https://api.anthropic.com`). The classification of provider failures into reasons is in the `model-selection-and-usage` spec; the table lists the transport facts.
