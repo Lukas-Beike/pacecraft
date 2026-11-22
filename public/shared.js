@@ -250,6 +250,7 @@ function toast(message, error = false) {
     close.addEventListener("click", hideToast);
     node.append(close);
   }
+  toast.shownAt = Date.now();
   node.setAttribute("role", error ? "alert" : "status");
   node.setAttribute("aria-live", error ? "assertive" : "polite");
   node.className = `toast show${error ? " error" : ""}`;
@@ -288,7 +289,7 @@ function setDirtyIndicator(id, dirty) {
 
 
 async function confirmDiscardDraft(isDirty) {
-  return !isDirty || Boolean(await requestConfirmation("Ungespeicherte Änderungen verwerfen?", { title: "Änderungen verwerfen?" }));
+  return !isDirty || Boolean(await requestConfirmation("Deine Eingaben auf dieser Seite gehen verloren.", { title: "Änderungen verwerfen?", danger: true, confirmLabel: "Verwerfen" }));
 }
 
 

@@ -12,6 +12,7 @@ from contextvars import ContextVar
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
+from backend.canonical.change_detail import change_detail
 from backend.canonical.planning_fields import SESSION_FOCUS_KEYS as FOCUS_KEYS
 from backend.canonical.planning_fields import TEMPLATE_ID
 from backend.errors import AppError
@@ -56,18 +57,18 @@ ACTIONS = {"create", "update", "delete", "undo"}
 # Fields a caller needs to undo a recorded change later.
 UNDO_REFERENCE_FIELDS = ("id", "entity_type", "action", "after_hash")
 
-_collected_changes: ContextVar[list[dict[str, str]] | None] = ContextVar(
+_collected_changes: ContextVar[list[dict[str, Any]] | None] = ContextVar(
     "collected_changes", default=None
 )
 
 
 @contextmanager
-def collect_changes() -> Iterator[list[dict[str, str]]]:
+def collect_changes() -> Iterator[list[dict[str, Any]]]:
     """Collect undo references for the changes recorded inside the block.
 
     Undo rows are not collected because they cannot be undone again.
     """
-    collected: list[dict[str, str]] = []
+    collected: list[dict[str, Any]] = []
     token = _collected_changes.set(collected)
     try:
         yield collected
@@ -106,6 +107,7 @@ PROFILE_FIELDS = {
     "energy_goal_kcal",
     "learned_everyday_checked",
     "first_threshold_pct",
+    "first_threshold_hr",
     "first_threshold_origin",
     "preferred_source_thresholds",
     "preferred_source_body",
@@ -473,6 +475,8 @@ _FIELDS_ADDED_TO_AUDIT: dict[str, tuple[tuple[str, ...], ...]] = {
         ("energy_goal", "energy_goal_kcal"),
         # #3577: the date the athlete took the learned everyday term over.
         ("learned_everyday_checked",),
+        # #3915: the first threshold in bpm.
+        ("first_threshold_hr",),
     ),
     "planned_unit": (("starts_at_local",), FOCUS_KEYS, (TEMPLATE_ID,)),
     "workout_library": (FOCUS_KEYS,),
@@ -622,7 +626,11 @@ def record_change(
     )
     collected = _collected_changes.get()
     if collected is not None and action != "undo":
-        collected.append({key: record[key] for key in UNDO_REFERENCE_FIELDS})
+        reference: dict[str, Any] = {key: record[key] for key in UNDO_REFERENCE_FIELDS}
+        # What the change was, for the receipt line; undo reads only the reference.
+        if detail := change_detail(entity_type, before_projection, after_projection):
+            reference["detail"] = detail
+        collected.append(reference)
     return record
 
 

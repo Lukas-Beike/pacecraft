@@ -68,7 +68,7 @@ class AthleteProfileTests(unittest.TestCase):
                 "energy_goal": "",
                 "energy_goal_kcal": "",
                 "learned_everyday_checked": "",
-                "first_threshold_pct": "",
+                "first_threshold_hr": "",
                 "first_threshold_origin": "",
                 "preferred_source_thresholds": "",
                 "preferred_source_body": "",

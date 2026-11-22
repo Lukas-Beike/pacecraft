@@ -6,29 +6,8 @@ function profileFormValues(form) {
   return values;
 }
 
-// Entry-only fields: the server turns them into first_threshold_pct and never echoes them.
-const PROFILE_ENTRY_FIELDS = ["first_threshold_hr", "first_threshold_on"];
-
 function profileSaveConfirmed(changed, saved) {
-  // An entered bpm value must come back as the stored percent.
-  if (profileFieldText(changed.first_threshold_hr) && typeof saved.first_threshold_pct !== "string") return false;
-  return Object.keys(changed)
-    .filter((key) => !PROFILE_ENTRY_FIELDS.includes(key))
-    .every((key) => Object.hasOwn(saved, key) && typeof saved[key] === "string");
-}
-
-function clearProfileEntryFields(form) {
-  for (const key of PROFILE_ENTRY_FIELDS) {
-    const field = form.elements?.[key];
-    if (field) field.value = "";
-  }
-}
-
-// After a confirmed save: clear the entry and show the stored percent.
-function resetProfileEntryFields(form, savedPercent) {
-  clearProfileEntryFields(form);
-  const field = form.elements?.first_threshold_pct;
-  if (savedPercent !== undefined && field) field.value = savedPercent;
+  return Object.keys(changed).every((key) => Object.hasOwn(saved, key) && typeof saved[key] === "string");
 }
 
 function profileFieldText(value) {
@@ -36,12 +15,12 @@ function profileFieldText(value) {
 }
 
 // The adopted value reaches the open form even while it holds unsaved edits: only the
-// stored-percent input and the estimate block change, every other edit stays.
+// stored bpm input and the estimate block change, every other edit stays.
 function applyAdoptedFirstThreshold(result) {
   const form = $("#profileForm");
-  const stored = profileFieldText(result.profile?.first_threshold_pct);
-  if (form?.elements.first_threshold_pct) form.elements.first_threshold_pct.value = stored;
-  if (state.profileBaseline) state.profileBaseline = { ...state.profileBaseline, first_threshold_pct: stored };
+  const stored = profileFieldText(result.profile?.first_threshold_hr);
+  if (form?.elements.first_threshold_hr) form.elements.first_threshold_hr.value = stored;
+  if (state.profileBaseline) state.profileBaseline = { ...state.profileBaseline, first_threshold_hr: stored };
   if (state.data) state.data = { ...state.data, profile: { ...state.data.profile, ...result.profile }, first_threshold_estimate: result.first_threshold_estimate };
   renderFirstThresholdEstimate(result.first_threshold_estimate, result.profile);
   if (state.profileDirty && form && state.profileBaseline) {
@@ -55,7 +34,7 @@ async function adoptFirstThreshold(event) {
   const percent = Number($("#firstThresholdEstimate").dataset.percent);
   if (!Number.isFinite(percent) || button.disabled) return;
   const profile = state.data?.profile || {};
-  const replacesMeasured = Boolean(profile.first_threshold_pct) && profile.first_threshold_origin === "measured";
+  const replacesMeasured = Boolean(profile.first_threshold_hr) && profile.first_threshold_origin === "measured";
   if (replacesMeasured && !(await requestConfirmation("Der gemessene Wert wird durch den Wert aus DFA-α1 ersetzt.", { title: "Gemessenen Wert ersetzen?", confirmLabel: "Ersetzen" }))) return;
   button.disabled = true;
   try {
@@ -98,12 +77,9 @@ async function saveProfile(event) {
     if (!profileSaveConfirmed(changed, saved)) {
       throw new Error("Die Profilbestätigung ist unvollständig. Der Entwurf bleibt erhalten.");
     }
-    const entryReset = Object.fromEntries(PROFILE_ENTRY_FIELDS.map((key) => [key, ""]));
-    const savedPercent = typeof saved.first_threshold_pct === "string" ? { first_threshold_pct: saved.first_threshold_pct } : {};
-    state.profileBaseline = { ...state.profileBaseline, ...changed, ...entryReset, ...savedPercent };
+    state.profileBaseline = { ...state.profileBaseline, ...changed };
     if (generation !== state.sessionGeneration) return;
     state.profileDirty = JSON.stringify([...new FormData(form)]) !== submittedForm;
-    if (!state.profileDirty) resetProfileEntryFields(form, savedPercent.first_threshold_pct);
     setDirtyIndicator("profileDirtyIndicator", state.profileDirty);
     invalidateContextPreview();
     // The birth year and the sex decide the skinfold body fat and sites (#3099).
@@ -146,10 +122,15 @@ async function downloadDatabaseBackup() {
 
 async function restoreDatabaseBackup() {
   const input = $("#backupFileInput");
-  const file = input?.files?.[0];
-  if (!file || !await requestConfirmation("Das aktuelle Datenbank-Backup wird vorher gesichert und durch die ausgewählte Datei ersetzt. Fortfahren?", { title: "Datenbank-Backup wiederherstellen?" })) return;
   const button = $("#backupRestoreButton");
+  // A restore in flight holds the button and the file field; a second pick must not start another.
+  if (button.disabled) return;
+  const file = input?.files?.[0];
+  // Without a file the button opens the file picker; choosing one continues here (#3936 M-05).
+  if (!file) { input?.click?.(); return; }
+  if (!await requestConfirmation("Das aktuelle Datenbank-Backup wird vorher gesichert und durch die ausgewählte Datei ersetzt.", { title: "Datenbank-Backup wiederherstellen?", danger: true, confirmLabel: "Wiederherstellen" })) return;
   button.disabled = true;
+  if (input) input.disabled = true;
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 130_000);
   try {
@@ -168,6 +149,7 @@ async function restoreDatabaseBackup() {
   } finally {
     clearTimeout(timeout);
     button.disabled = false;
+    if (input) input.disabled = false;
   }
 }
 
@@ -263,7 +245,7 @@ async function deleteGpsTracks() {
     if (!expectedText) throw new Error("Die Löschbestätigung ist derzeit nicht verfügbar.");
     const confirmation = await requestConfirmation(
       `Alle gespeicherten GPS-Spuren (${gpsTracksState.stored_tracks}) werden unwiderruflich lokal gelöscht. Streckenerkennung und Wetter am Ort nutzen sie nicht mehr. Die übrigen Aufzeichnungen bleiben.`,
-      { title: "GPS-Spuren löschen?", inputLabel: "Bestätigungstext", expectedText, confirmLabel: "Löschen" },
+      { title: "GPS-Spuren löschen?", inputLabel: "Bestätigungstext", expectedText, danger: true, confirmLabel: "Löschen" },
     );
     if (!confirmation) return;
     const result = await api("/api/privacy/gps/delete", { method: "POST", body: JSON.stringify({ confirm: confirmation }) });
@@ -304,7 +286,7 @@ async function deletePrivacyData() {
       title: "Lokale Daten endgültig löschen?",
       inputLabel: "Bestätigungstext",
       expectedText: preview.confirmation_text,
-      confirmLabel: "Endgültig löschen",
+      danger: true, confirmLabel: "Endgültig löschen",
       secondaryAction: { label: "Erst Backup erstellen", onClick: downloadDatabaseBackup },
     });
     if (!confirmation) return;
@@ -354,15 +336,19 @@ const ZONE_SPORTS = {
   swim: { kinds: ["pace", "heart_rate"], lt2: [null, null], maximum: null, power: null },
 };
 const ZONE_KIND_TITLES = { power: "Leistungszonen", heart_rate: "Herzfrequenzzonen", pace: "Pacezonen" };
+// The upper limit of the open top zone, as stored configurations end their lists.
+const OPEN_ZONE_LIMIT = 999;
 const POWER_ZONE_NAMES = ["Regeneration", "Grundlage", "Tempo", "Schwelle", "VO2max", "Anaerob", "Neuromuskulär"];
 let zoneConfigurations = [];
 let zoneEffective = [];
+let zoneDefaults = {};
 let zoneToday = "";
 let zoneSport = "ride";
 
 function applyZoneData(result) {
   zoneConfigurations = result.configurations || [];
   zoneEffective = result.effective || [];
+  zoneDefaults = result.defaults || {};
   zoneToday = result.today || "";
 }
 
@@ -443,6 +429,18 @@ function zoneConfigurationFor(sport, metric, environment = null, configurations 
   return chosen ? configurations.find((item) => item.key === chosen.key) || null : null;
 }
 
+// Pure: the standard zones that apply without a configuration, as a read-only item once the
+// threshold they are a share of is known (#3936 M-01); null otherwise. The standard limits leave the
+// open top zone out, so it is added as stored configurations carry it.
+function defaultZoneItem(sport, metric, defaults = zoneDefaults, metricValue = zoneMetricValue) {
+  const limits = defaults[metric];
+  const spec = ZONE_SPORTS[sport];
+  if (!limits?.length || !spec) return null;
+  const threshold = { power: metricValue(spec.power), heart_rate: metricValue(spec.lt2[1]), pace: metricValue(spec.lt2[0]) }[metric];
+  if (!threshold) return null;
+  return { sport, metric, source: "default", label: "Standardzonen", threshold: metric === "pace" ? null : threshold, percent_limits: [...limits, OPEN_ZONE_LIMIT], percent_basis: "threshold" };
+}
+
 function zoneLimitsOf(item) {
   return item[ZONE_METRIC_LABELS[item.metric].key] || item.limits || item.percent_limits || [];
 }
@@ -508,6 +506,7 @@ function zoneRange(item, index, last, text) {
 }
 
 function zoneSourceText(item) {
+  if (item.source === "default") return item.label;
   if (item.source === "local") return "Lokal gespeichert";
   // The configuration names its provider; the source key stands in without a label.
   const provider = item.label || item.source;
@@ -608,7 +607,8 @@ function lt2AdoptValues(source, estimate) {
 
 function lt2EstimateBasis(source, estimate) {
   if (source === "dfa_alpha1") return `aus ${estimate.sessions} Läufen der letzten ${estimate.window_days} Tage`;
-  return `Bestwerte ${lt2Duration(estimate.durations_s || [])} aus ${estimate.window_days} Tagen`;
+  // CS/CP usually lie a few percent above the sustainable threshold (athlete decision B2, #3919).
+  return `Bestwerte ${lt2Duration(estimate.durations_s || [])} aus ${estimate.window_days} Tagen · meist einige Prozent über der Dauerschwelle`;
 }
 
 // Pure: one row per LT2 source of a sport; `inEffect` marks the source whose value applies.
@@ -818,7 +818,7 @@ function refreshLt2Notice() {
 }
 
 function zoneKindBox(sport, metric, environment = null) {
-  const item = zoneConfigurationFor(sport, metric, environment);
+  const item = zoneConfigurationFor(sport, metric, environment) || (environment ? null : defaultZoneItem(sport, metric));
   const basis = { power: sport === "run" ? "% der Schwellenleistung" : "% der FTP", heart_rate: "bpm", pace: "% der Schwellenpace" }[metric];
   const heading = h("h3", null, environment ? `${ZONE_KIND_TITLES[metric]} · Indoor` : ZONE_KIND_TITLES[metric], h("small", null, basis));
   const box = h("section", { className: "zone-box", dataset: { zoneBox: environment ? `${metric}-${environment}` : metric } }, heading);
@@ -829,7 +829,7 @@ function zoneKindBox(sport, metric, environment = null) {
   }
   const rows = zoneRows(item, metric === "pace" ? zoneMetricValue(ZONE_SPORTS[sport].lt2[0]) : null);
   box.append(h("ul", "zone-list", ...rows.map((row) => h("li", { dataset: { zone: row.zone } }, h("i"), h("span", null, row.name), h("em", null, row.range)))),
-    h("p", "zone-source", zoneSourceText(item), zoneEditButton("Bearbeiten", attributes)));
+    h("p", "zone-source", zoneSourceText(item), zoneEditButton(item.source === "default" ? "Anpassen" : "Bearbeiten", attributes)));
   return box;
 }
 
@@ -894,11 +894,16 @@ function selectedZoneConfigurations() {
 
 // Pure: the editor values in effect today, or the current threshold from the performance
 // values when the kind has no zones yet (#2262).
-function zoneEditorValues(sport, metric, shown, metricValue = zoneMetricValue) {
+function zoneEditorValues(sport, metric, shown, metricValue = zoneMetricValue, defaults = zoneDefaults) {
   if (shown) return { threshold: shown.threshold ?? "", maximum: shown.maximum ?? "", limits: zoneLimitsText(shown) };
   const spec = ZONE_SPORTS[sport] || {};
   const threshold = { power: metricValue(spec.power), heart_rate: metricValue(spec.lt2?.[1]) }[metric] ?? "";
-  return { threshold, maximum: metric === "heart_rate" ? metricValue(spec.maximum) ?? "" : "", limits: "" };
+  // The standard zones prefill the limits; heart rate is in bpm of the threshold pulse and ends at the maximum.
+  const standard = defaultZoneItem(sport, metric, defaults, metricValue);
+  const maximum = metric === "heart_rate" ? metricValue(spec.maximum) ?? "" : "";
+  let limits = standard ? zoneLimitsOf(standard) : [];
+  if (standard && metric === "heart_rate") limits = [...limits.slice(0, -1).map((limit) => Math.round(standard.threshold * limit / 100)), maximum || Math.round(standard.threshold * 1.1)];
+  return { threshold, maximum, limits: limits.join(", ") };
 }
 
 function renderZoneEditor() {
@@ -967,7 +972,7 @@ async function saveZones(event) {
 
 async function removeZones() {
   const button = $("#zoneRemoveButton");
-  const confirmed = await requestConfirmation("Lokale Zonen entfernen? Danach gelten wieder die Zonen des Anbieters.", { title: "Lokale Zonen entfernen?", confirmLabel: "Entfernen" });
+  const confirmed = await requestConfirmation("Danach gelten wieder die Zonen des Anbieters.", { title: "Lokale Zonen entfernen?", danger: true, confirmLabel: "Entfernen" });
   if (!confirmed) return;
   button.disabled = true;
   try {

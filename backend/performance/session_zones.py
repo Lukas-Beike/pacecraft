@@ -11,14 +11,15 @@ thresholds and configurations are never read. No I/O.
 from __future__ import annotations
 
 from collections.abc import Iterable, Mapping
+from dataclasses import replace
 from datetime import date
 from typing import Any
 
-from backend.activities.zone_settings import ZoneSettings
+from backend.activities.zone_settings import ZoneSettings, own_lt1_share
 from backend.canonical.activity_summary import summary_local_date
 from backend.canonical.domain_records import ZoneConfiguration
 from backend.canonical.records import Observation
-from backend.canonical.vocabulary import Environment, ProviderId, Sport
+from backend.canonical.vocabulary import Environment, MetricKind, ProviderId, Sport
 from backend.performance.local_tss import THRESHOLD_KINDS, DatedThresholds, Threshold
 
 
@@ -71,6 +72,24 @@ def session_zone_settings(
     return zone_settings_for(sport, environment, day, thresholds, configurations)
 
 
+def with_own_lt1(
+    settings: ZoneSettings | None,
+    thresholds: DatedThresholds,
+    day: date,
+    first_threshold_bpm: float | None,
+) -> ZoneSettings | None:
+    """``settings`` with the stored first threshold as its LT1 share (#3915).
+
+    The share is the bpm over the run threshold HR of ``day``, so a ride's band
+    split follows the same LT1 as a run's; without either it stays the stand-in.
+    """
+    if settings is None or not first_threshold_bpm:
+        return settings
+    run = thresholds.threshold(MetricKind.THRESHOLD_HR, Sport.RUN, day)
+    share = own_lt1_share(first_threshold_bpm, None if run is None else run.value)
+    return settings if share is None else replace(settings, lt1_share=share)
+
+
 def zone_settings_for(
     sport: Sport,
     environment: Environment,
@@ -107,5 +126,6 @@ def zone_settings_part(settings: ZoneSettings | None) -> dict[str, Any] | None:
         "power_limits": list(settings.power_limits),
         "hr_limits": list(settings.hr_limits),
         "pace_limits": list(settings.pace_limits),
+        "lt1_share": settings.lt1_share,
         "sources": [settings.power_source, settings.hr_source, settings.pace_source],
     }

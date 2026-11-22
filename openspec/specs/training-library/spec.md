@@ -39,7 +39,7 @@ The system SHALL support authorized template update, archive, restore and deleti
 - **THEN** deletion fails with HTTP 409 and directs the athlete to archive it instead; supported archival retains its identity/link, marks it archived and locally pending, and performs no immediate provider write or scheduled-copy mutation.
 
 #### Scenario: Athlete deletes from the library card
-- **WHEN** the athlete taps the red "Löschen" in an opened library card and confirms "Einheit löschen?" in the card
+- **WHEN** the athlete taps the red "Löschen" in an opened library card and no question follows
 - **THEN** `POST /api/library/{id}/archive` with `{"confirmed": true}` archives the entry through the template `archive` (409 `confirmation_required` without the flag), so the entry leaves the library while units planned from it stay; the library leads with "Gelöscht: <Name>" and "Rückgängig" restores the entry (#3028).
 
 #### Scenario: Archived templates no provider holds are deleted after 30 days
@@ -648,7 +648,7 @@ The system SHALL estimate a planned run or ride at read time from its workout st
 
 #### Scenario: Unit values
 - **WHEN** every step has a duration and an intensity
-- **THEN** the intensity factor is the time-weighted 4th-power mean when every step is a power step, else the quadratic mean, and the load is `hours × IF² × 100`; the band seconds are low, moderate and high by each step's intensity: low up to LT1 (85 % of the threshold HR, 75 % of the FTP, 88 % of the threshold speed), moderate up to the threshold, high above it, for every sensor (#3915); `load_basis` is `normalized_power_over_ftp`, `relative_pace_speed`, `relative_lthr` or `mixed_step_intensity`.
+- **THEN** the intensity factor is the time-weighted 4th-power mean when every step is a power step, else the quadratic mean, and the load is `hours × IF² × 100`, except that a unit of only heart-rate steps is scored with the M6 heart-rate (TRIMP) branch in the plan checks and the Coach's session report, unknown (`missing_heart_rate_reference`) without a resting, threshold and maximum heart rate (#3918); the band seconds are low, moderate and high by each step's intensity: low up to LT1 (the stored first threshold as share of the threshold HR, else 85 %; 75 % of the FTP; 88 % of the threshold speed), moderate up to the threshold, high above it, for every sensor (#3915); `load_basis` is `normalized_power_over_ftp`, `relative_pace_speed`, `relative_lthr` or `mixed_step_intensity`.
 
 #### Scenario: Unknown values
 - **WHEN** a value cannot be resolved
@@ -728,11 +728,19 @@ A run unit whose focus has a cap in `HR_CAP_PERCENT` (`backend/activities/hr_cap
 
 #### Scenario: Measured first threshold
 - **WHEN** the athlete enters a measured first-threshold heart rate in bpm (profile form or API, never by the Coach)
-- **THEN** it is stored as percent of the run threshold HR in effect on the measurement date (`first_threshold_pct`), the easy and long cap becomes that percent minus a fixed margin and the recovery cap the lower of its default and the easy cap minus a fixed gap (constants in `backend/activities/hr_cap.py`), the cap source is `measured`, and a cap with another source than the current one is rejected like a wrong value.
+- **THEN** it is stored in bpm (`first_threshold_hr`, #3915), so a later change of the threshold HR never moves it; the easy and long cap becomes its percent of today's run threshold HR minus a fixed margin and the recovery cap the lower of its default and the easy cap minus a fixed gap (constants in `backend/activities/hr_cap.py`), the cap source is `measured`, and a cap with another source than the current one is rejected like a wrong value.
+
+#### Scenario: First threshold stored before the bpm field
+- **WHEN** a stored profile still holds only the percent of LTHR (`first_threshold_pct`, before #3915)
+- **THEN** the profile read gives it in bpm with the run threshold HR in effect on the day that percent was last changed (change history), else today, writes nothing, and the next profile save or adoption stores the bpm and drops the percent
 
 #### Scenario: Adopted first threshold estimate
 - **WHEN** the athlete adopts the first threshold estimate from chest-strap RR intervals (`POST /api/profile/first-threshold/adopt`, never by the Coach)
-- **THEN** it is stored as `first_threshold_pct` with the origin `estimated` (`first_threshold_origin`) through the profile save path with change receipt and undo, the caps follow it like a measured value, the cap source is `estimated` (label `geschätzt`), a stored measured value is replaced only when the request says so, and a later manual entry sets the origin back to `measured`.
+- **THEN** it is stored in bpm of today's run threshold HR as `first_threshold_hr` with the origin `estimated` (`first_threshold_origin`) through the profile save path with change receipt and undo, the caps follow it like a measured value, the cap source is `estimated` (label `geschätzt`), a stored measured value is replaced only when the request says so, and a later manual entry sets the origin back to `measured`.
+
+#### Scenario: Units with an older default cap
+- **WHEN** future planned run units store a default cap above today's default (planned before the default was lowered, #3915)
+- **THEN** the planning brief lists them as `outdated_hr_caps` with a note that the Coach offers the update in a turn the athlete starts; nothing is rewritten and an untouched unit never blocks a write
 
 #### Scenario: Cap values
 - **WHEN** a cap is derived

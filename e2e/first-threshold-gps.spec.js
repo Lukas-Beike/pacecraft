@@ -9,37 +9,35 @@ async function openMore(page, segment) {
   await page.waitForFunction(() => state.initialStateLoaded);
 }
 
-test("saving a measured first threshold confirms, clears the entry and leaves nothing to save", async ({ page }) => {
+test("saving a measured first threshold stores the bpm, shows its percent and leaves nothing to save", async ({ page }) => {
   const puts = [];
   await page.route("**/api/profile", async (route) => {
     if (route.request().method() !== "PUT") return route.continue();
     const body = JSON.parse(route.request().postData() || "{}");
     puts.push(body);
     const profile = await page.evaluate(() => ({ ...state.profileBaseline }));
-    delete profile.first_threshold_hr;
-    delete profile.first_threshold_on;
-    await route.fulfill({ json: { ...profile, first_threshold_pct: "82" } });
+    await route.fulfill({ json: { ...profile, ...body, first_threshold_origin: "measured" } });
   });
   await openMore(page, "profile");
   const form = page.locator("#profileForm");
   // #2262: the entry sits behind "Bearbeiten" on LT1 in Zonen & Schwellen.
   await page.locator("#zoneSettings > summary").click();
   await page.locator('#zoneOverview [data-zone-box="thresholds"]').getByRole("button", { name: "Bearbeiten" }).click();
+  // #3915: one bpm field, stored as entered; no date and no percent input.
+  await expect(form.locator('[name="first_threshold_on"]')).toHaveCount(0);
+  await expect(form.locator('[name="first_threshold_pct"]')).toHaveCount(0);
 
   await form.locator('[name="first_threshold_hr"]').fill("150");
-  await form.locator('[name="first_threshold_on"]').fill("2026-11-01");
   await form.getByRole("button", { name: "Profil speichern" }).click();
 
   await expect(page.locator("#toast")).toContainText("Profil gespeichert");
   await expect(page.locator("#toast")).not.toContainText("unvollständig");
-  expect(puts[0]).toMatchObject({ first_threshold_hr: "150", first_threshold_on: "2026-11-01" });
-  await expect(form.locator('[name="first_threshold_hr"]')).toHaveValue("");
-  await expect(form.locator('[name="first_threshold_on"]')).toHaveValue("");
+  expect(puts[0]).toMatchObject({ first_threshold_hr: "150" });
   const baseline = await page.evaluate(() => state.profileBaseline);
-  expect(baseline.first_threshold_hr || "").toBe("");
-  expect(baseline.first_threshold_on || "").toBe("");
+  expect(baseline.first_threshold_hr).toBe("150");
 
-  await form.getByRole("button", { name: "Profil speichern" }).click();
+  // Nothing left to save: the bar is gone.
+  await expect(form.locator(".save-bar")).toBeHidden();
   await expect(page.locator("#profileDirtyIndicator")).toBeHidden();
   await page.waitForTimeout(500);
   expect(puts.filter((body) => "first_threshold_hr" in body)).toHaveLength(1);

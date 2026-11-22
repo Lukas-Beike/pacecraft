@@ -17,7 +17,7 @@ test("plan notes remain readable in the Coach receipt @responsive", async ({ pag
   });
   const notes = page.locator(".message-plan-note");
   await expect(notes).toHaveCount(3);
-  await expect(notes.first()).toContainText("Warnung: Laufsprung · 02.11.2026 · Beobachtungsstudie");
+  await expect(notes.first()).toContainText("Warnung: Laufsprung am 02.11.2026 (Beobachtungsstudie");
   await expect(notes.first()).toHaveClass(/is-warning/);
   await expect(notes.nth(1)).toContainText("Hinweis: Harte Tage in Folge");
   await expect(notes.nth(2)).toContainText("Hinweis: Kalender und Einheit");

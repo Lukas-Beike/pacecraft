@@ -130,13 +130,16 @@ class TargetPhaseTests(unittest.TestCase):
     def test_far_race_is_base(self):
         self.assertEqual("base", target_phase([self.race(20)], self.today)["phase"])
 
-    def test_b_race_only_counts_and_c_is_ignored(self):
-        result = target_phase([self.race(2, "C"), self.race(5, "B")], self.today)
-        self.assertEqual(("peak", 5), (result["phase"], result["weeks_to_race"]))
+    def test_only_an_a_race_drives_the_phase(self):
+        # B1 (#3919): B and C races never set the season phase.
+        alone = target_phase([self.race(2, "C"), self.race(5, "B")], self.today)
+        self.assertEqual("unknown", alone["phase"])
+        result = target_phase([self.race(5, "B"), self.race(10, "A")], self.today)
+        self.assertEqual(("build", 10), (result["phase"], result["weeks_to_race"]))
 
     def test_sparse_rows_and_timestamps_are_normalized(self):
         rows = [
-            {"event_date": "2026-10-20T09:00:00", "priority": None},
+            {"event_date": "2026-10-20T09:00:00", "priority": "A"},
             {"event_date": "2026-10-20", "priority": "A"},
         ]
         result = target_phase(rows, self.today)

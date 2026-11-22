@@ -473,10 +473,13 @@ test("@responsive performance keeps dated FTP values and weekly medians independ
   await expect(ftp.locator("tbody tr")).toHaveCount(5);
   await expect(ftp.locator("tbody")).toContainText("03.09.2026");
   await expect(ftp.locator("tbody")).toContainText("09.09.2026");
-  await expect(ftp.locator("tbody td:nth-child(2)")).toHaveText([/200 W/, /220 W/, /210 W/, /220 W/, /210 W/]);
+  // Newest first (#3928).
+  await expect(ftp.locator("tbody td:nth-child(2)")).toHaveText([/210 W/, /220 W/, /210 W/, /220 W/, /200 W/]);
   const vo2max = root.locator("[data-analysis-section='development-Rad'] .analysis-subchart").filter({ has: page.getByRole("heading", { name: "VO₂max", exact: true }) });
   await vo2max.getByText("Werte ansehen", { exact: true }).click();
-  await expect(vo2max.locator("tbody td:nth-child(2)")).toHaveText([/50 ml\/kg\/min.*3 Messungen/, /55 ml\/kg\/min.*2 Messungen/]);
+  await expect(vo2max.locator("tbody td:nth-child(2)")).toHaveText([/55 ml\/kg\/min/, /50 ml\/kg\/min/]);
+  await expect(vo2max.locator("tbody td:nth-child(3)")).toHaveText(["2", "3"]);
+  await expect(vo2max.getByRole("columnheader")).toHaveText(["Woche ab", "Wert", "Messungen", "Quelle"]);
   await page.evaluate(async () => { await AppRouter.navigate("analysis/running", { historyMode: "replace" }); });
   const pace = root.locator(".analysis-subchart").filter({ has: page.getByRole("heading", { name: "Schwellenpace", exact: true }) });
   await pace.getByText("Werte ansehen", { exact: true }).click();
@@ -743,44 +746,59 @@ test("@responsive load tab draws the local fitness, fatigue and form chart", asy
   await expect(chart).not.toContainText("Intervals");
 });
 
-test("@responsive Kraft shows sessions per week and a top-set chart with the last sessions per exercise", async ({ page }) => {
-  // #3764 (athlete: layout A): everything visible; stored sets only, gaps stay gaps.
-  const weeks = Array.from({ length: 12 }, (_, index) => {
-    const date = new Date(Date.UTC(2026, 7, 31 + index * 7));
-    return { week_start: date.toISOString().slice(0, 10), sessions: index % 3 === 0 ? 0 : 2 };
+const strengthWeeks = (count, make) => Array.from({ length: count }, (_, index) => ({
+  week_start: new Date(Date.UTC(2026, 7, 31 + index * 7)).toISOString().slice(0, 10), ...make(index),
+}));
+
+test("@responsive Kraft shows how often per week the upper body and the legs were trained", async ({ page }) => {
+  // Athlete decision B2: one chart per side with its average, unknown sessions counted apart.
+  const requested = [];
+  await page.route("**/api/analysis/strength*", (route) => {
+    requested.push(new URL(route.request().url()).searchParams.get("weeks"));
+    const weeks = Number(new URL(route.request().url()).searchParams.get("weeks"));
+    return route.fulfill({ json: {
+      start: "2026-08-31", end: "2026-11-20",
+      weeks: strengthWeeks(weeks, (index) => ({ sessions: 2, upper: index % 3 === 0 ? 0 : 2, legs: 1, unknown: index === 1 ? 1 : 0 })),
+    } });
   });
-  const session = (date, kg, reps) => ({ date, sets: 4, top_kg: kg, top_reps: reps });
-  await page.route("**/api/analysis/strength", (route) => route.fulfill({ json: {
-    start: "2026-08-31", end: "2026-11-20", source: "stored sets", weeks,
-    exercises: [
-      { exercise: "BARBELL_BACK_SQUAT", category: "squat", leg: true, sessions: [session("2026-11-17", 82.5, 5), session("2026-11-10", null, 5), session("2026-11-03", 80, 4), session("2026-10-27", 77.5, 5)] },
-      { exercise: "PULL_UP", category: "pull_up", leg: false, sessions: [session("2026-11-12", null, 8), session("2026-10-29", null, 7)] },
-    ],
-  } }));
   await performanceFixture(page, {}, "strength");
   const root = page.locator("#strengthAnalysis");
   await expect(page.locator('[data-analysis-segment="strength"]')).toHaveAttribute("aria-current", "page");
-  await expect(root.getByRole("heading", { name: "Einheiten pro Woche" })).toBeVisible();
-  await expect(root.getByRole("heading", { name: "Top-Sätze" })).toBeVisible();
-  await expect(root.getByRole("heading", { name: "Kniebeuge – Barbell Back Squat" })).toBeVisible();
-  await expect(root.getByRole("heading", { name: "Klimmzug – Pull Up" })).toBeVisible();
-  const squat = root.locator("section").filter({ has: page.getByRole("heading", { name: "Kniebeuge – Barbell Back Squat" }) }).last();
-  const rows = squat.locator("table tbody tr");
-  await expect(rows).toHaveCount(3);
-  await expect(rows.nth(0)).toContainText("82,5 kg × 5");
-  // A session without a weight keeps its reps; the chart leaves the gap.
-  await expect(rows.nth(1)).toContainText("5 Wdh.");
-  await expect(root.locator("section").filter({ has: page.getByRole("heading", { name: "Klimmzug – Pull Up" }) }).last().locator("tbody tr").first()).toContainText("8 Wdh.");
+  await expect(root.getByRole("heading", { name: "Oberkörper" })).toBeVisible();
+  await expect(root.getByRole("heading", { name: "Beine" })).toBeVisible();
+  await expect(root.getByRole("heading", { name: "Top-Sätze" })).toHaveCount(0);
+  await expect(root).toContainText("1 Einheit ohne Oberkörper- oder Beinschwerpunkt, nicht zugeordnet.");
   await expect(root).not.toContainText(/1RM|Kraftlast/);
-  await expect(root.getByText("Werte ansehen")).toHaveCount(1);
+  // The shared period selector reads the chosen number of weeks.
+  const period = page.locator("#strengthPeriod");
+  await expect(period.getByRole("button", { name: "3 Monate" })).toHaveAttribute("aria-pressed", "true");
+  await period.getByRole("button", { name: "4 Wochen" }).click();
+  await expect.poll(() => requested.at(-1)).toBe("4");
+  await expect(period.getByRole("button", { name: "4 Wochen" })).toHaveAttribute("aria-pressed", "true");
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
 });
 
+test("@responsive a short Kraft period without sessions offers the longer one", async ({ page }) => {
+  await page.route("**/api/analysis/strength*", (route) => {
+    const weeks = Number(new URL(route.request().url()).searchParams.get("weeks"));
+    return route.fulfill({ json: { start: "2026-08-31", end: "2026-11-20", weeks: strengthWeeks(weeks, (index) => ({ sessions: weeks >= 13 && index === 0 ? 1 : 0, upper: weeks >= 13 && index === 0 ? 1 : 0, legs: 0, unknown: 0 })) } });
+  });
+  await performanceFixture(page, {}, "strength");
+  const root = page.locator("#strengthAnalysis");
+  // With a connected source the empty card names the period and widens it.
+  await page.evaluate(() => { state.data.garmin = { ...state.data.garmin, configured: true }; });
+  await page.locator("#strengthPeriod").getByRole("button", { name: "4 Wochen" }).click();
+  // The controls stay reachable above the empty card, which also offers the longer period.
+  await expect(page.locator("#analysisEmptyState")).toContainText("Keine Daten in den letzten 4 Wochen");
+  await page.locator("#analysisEmptyState").getByRole("button", { name: "3 Monate anzeigen" }).click();
+  await expect(root.getByRole("heading", { name: "Oberkörper" })).toBeVisible();
+  await expect(page.locator("#strengthPeriod").getByRole("button", { name: "3 Monate" })).toHaveAttribute("aria-pressed", "true");
+});
+
 test("@responsive Kraft without stored sets shows the one empty card", async ({ page }) => {
-  await page.route("**/api/analysis/strength", (route) => route.fulfill({ json: {
-    start: "2026-08-31", end: "2026-11-20", source: "stored sets",
-    weeks: Array.from({ length: 12 }, (_, index) => ({ week_start: new Date(Date.UTC(2026, 7, 31 + index * 7)).toISOString().slice(0, 10), sessions: 0 })),
-    exercises: [],
+  await page.route("**/api/analysis/strength*", (route) => route.fulfill({ json: {
+    start: "2026-08-31", end: "2026-11-20",
+    weeks: strengthWeeks(13, () => ({ sessions: 0, upper: 0, legs: 0, unknown: 0 })),
   } }));
   await performanceFixture(page, {}, "strength");
   await expect(page.locator("#analysisEmptyState")).toContainText("Noch keine Kraftdaten");
@@ -934,5 +952,22 @@ test("a bare history redraw keeps each sport tab to its own sport", async ({ pag
       return { own: visible(mine), other: visible(theirs) };
     }, [own, other]);
     expect(shown, route).toEqual({ own: true, other: false });
+  }
+});
+
+// #3928 A-01: at 12 months the date labels of a daily chart stay apart; the weekly caption sits clear of the first label.
+test("@responsive date labels do not overprint at 12 months", async ({ page, request }) => {
+  test.setTimeout(120_000);
+  expect((await request.get("/api/fixture/demo")).ok()).toBeTruthy();
+  for (const segment of ["recovery", "cycling", "running"]) {
+    await page.goto(`/#analysis/${segment}`);
+    await expect(page.locator("#dataPanel.active")).toBeVisible();
+    await page.locator("#dataPanel .analysis-period-controls:visible").getByRole("button", { name: "12 Monate", exact: true }).first().click();
+    await expect(page.locator("#dataPanel .loading-state")).toHaveCount(0);
+    const overlaps = await page.locator("#dataPanel svg").evaluateAll((charts) => charts.flatMap((chart) => {
+      const boxes = [...chart.querySelectorAll(".analysis-date-tick, .analysis-week-caption")].map((node) => node.getBoundingClientRect()).filter((box) => box.width).sort((a, b) => a.left - b.left);
+      return boxes.slice(1).map((box, index) => (box.left < boxes[index].right - 0.5 && box.top < boxes[index].bottom && box.bottom > boxes[index].top ? `${Math.round(boxes[index].left)}-${Math.round(boxes[index].right)} meets ${Math.round(box.left)}` : "")).filter(Boolean);
+    }));
+    expect(overlaps, segment).toEqual([]);
   }
 });

@@ -87,6 +87,7 @@ counting it twice. 1 kcal = 4184 J.
   to correct METs to the measured resting rate.
 - R65 (Joosen & Westerterp 2006): thermic effect per macronutrient.
 - R66 (LaForgia et al. 2006): EPOC 6-15 % of the net exercise oxygen cost.
+- R78 (Loucks, Kiens & Wright 2011): energy availability as intake less exercise energy; its exercise energy is this card's net session cost (#3917).
 
 ## Population and reference measurement
 
@@ -175,10 +176,13 @@ formula rows' everyday energy runs low. M12's own row names that remainder
 | Step length from height | 0.415 × height | product assumption | common heuristic, weak evidence |
 | TEF protein / carbohydrate / fat | 0.25 / 0.10 / 0.015 | source | R65 midpoints |
 | EPOC share | 0.06 | source | R66 low end |
+| Exercise energy of the energy availability | the day's session net cost, already net of the resting energy over each session's duration | source | R78 (exercise energy expenditure); a day with an unpriced session has none (#3917) |
+| Planned unit cost | strength: (MET − 1) × RMR × planned duration at the general MET; any other sport: planned duration × the athlete's own mean net kcal per hour of that sport over the last 28 days, priced by its M11 method | product assumption | the expected day total of the diary (#3917); a sport without own priced sessions has no cost and leaves the total unknown |
 
 ## Allowed statements
 
 - "Eigener Aktivitätsverbrauch (Netto, über dem Ruheumsatz): X kcal, Methode M11", with its band.
+- "Tag erwartet ≈ X", today only, with the planned units costed from their planned duration as in the rule above; it informs and never replaces the total so far.
 - Which method a session used (Minetti, Leistung, eigene Herzfrequenz-Kalibrierung, Keytel, MET).
 
 ## Forbidden statements
@@ -190,6 +194,10 @@ formula rows' everyday energy runs low. M12's own row names that remainder
 
 ## Open points
 
+- Validation check (#3920): after 12 weeks with logged intake, the
+  existing fit of the formula rows (resting plus this card's sport
+  energy) against the own total from intake and the weight trend (M12
+  `fit_scale`). The mean error with its band is recorded here.
 - Daily wiring, the adaptive TDEE and the calibration factor (#3100).
 - Imbach 2020 and Cerezuela-Espejo 2021 are not cited until identified.
 - Keytel's coefficients are checked against secondary sources only.

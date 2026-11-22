@@ -221,6 +221,19 @@ function renderCurrentPerformance(metrics, history, status = [], thresholds = nu
   makeAnalysisSectionCollapsible(root, "current-performance");
 }
 
+// A cold start has no performance read yet; the two cards say so instead of claiming there is no data (A-13).
+function renderPerformanceLoading() {
+  const current = $("#currentPerformance");
+  current.dataset.analysisEmpty = "loading";
+  current.dataset.analysisEmptyRunning = "loading";
+  current.dataset.analysisEmptyCycling = "loading";
+  current.replaceChildren(h("h3", null, "Aktuelle Werte"), createLoadingState("Werte werden geladen…"));
+  const predictions = $("#performancePredictions");
+  predictions.dataset.analysisEmpty = "loading";
+  predictions.hidden = false;
+  predictions.replaceChildren(h("h4", null, "Laufprognosen"), createLoadingState("Prognosen werden geladen…"));
+}
+
 function renderPerformance(performance, { refreshCharts = true } = {}) {
   if (refreshCharts) {
     void renderTrainingRecords({ background: true });
@@ -228,6 +241,12 @@ function renderPerformance(performance, { refreshCharts = true } = {}) {
     renderAnalysisHistory(performance?.history);
     void renderCyclingPowerProfile();
     renderTrainingFocus(analysisTrainingFocus(performance));
+  }
+  // Stored values of an earlier start (the device snapshot) show at once; without any, the read is awaited.
+  if (!state.loadedAreas?.has("performance") && !Object.keys(performance?.metrics || {}).length) {
+    renderPerformanceLoading();
+    renderAnalysisSegments(state.route);
+    return;
   }
   const root = $("#performancePredictions");
   root.replaceChildren();

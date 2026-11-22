@@ -46,16 +46,14 @@ from backend.activities.zone_settings import ZoneSettings
 from backend.athlete.profile import (
     COACH_READ_ONLY_FIELDS,
     FIRST_THRESHOLD_FIELD,
-    ProfileService,
     normalize_profile,
 )
 from backend.canonical.first_threshold import (
     FIRST_THRESHOLD_BOUNDS,
-    FIRST_THRESHOLD_DATE_FIELD,
-    FIRST_THRESHOLD_ENTRY_FIELD,
     first_threshold_bpm,
     first_threshold_percent,
     percent_of_lthr,
+    stored_percent,
 )
 from backend.canonical.vocabulary import Environment, Sport
 from backend.coach.profile_update import CoachProfileUpdateService
@@ -236,9 +234,14 @@ class CapTableTests(unittest.TestCase):
         for focus, cap in effective_caps(None).items():
             low, high = resolved_range(cap, LTHR) or (0, 0)
             self.assertEqual({**cap, "low_bpm": low, "bpm": high}, caps[focus])
-        measured = coach_thresholds(metrics, FIRST_PCT)["run_hr_caps"]
+        # The stored first threshold is bpm (#3915): FIRST_PCT of the LTHR.
+        measured = coach_thresholds(metrics, FIRST_PCT * LTHR / 100)["run_hr_caps"]
         self.assertEqual(
             {SOURCE_MEASURED}, {item[SOURCE_KEY] for item in measured.values()}
+        )
+        self.assertEqual(
+            effective_caps(FIRST_PCT)[FOCI[1]][PERCENT_KEY],
+            measured[FOCI[1]][PERCENT_KEY],
         )
         metrics["run_threshold_hr_bpm"]["value"] = None
         unknown = coach_thresholds(metrics)["run_hr_caps"]
@@ -338,64 +341,31 @@ class MeasuredFirstThresholdTests(unittest.TestCase):
         self.assertEqual(run_hr_cap.SOURCE_MISMATCH, problem["reason"])
 
 
-class FirstThresholdConversionTests(unittest.TestCase):
-    """The athlete enters bpm; the profile stores percent of the LTHR on that date."""
+class FirstThresholdStorageTests(unittest.TestCase):
+    """The profile stores the first threshold in bpm; the percent is derived (#3915)."""
 
-    def service(self, lthr_by_day: dict[date | None, float | None]) -> ProfileService:
-        return ProfileService(
-            MagicMock(),
-            MagicMock(),
-            MagicMock(),
-            on_location_changed=MagicMock(),
-            mutation_coordinator=MagicMock(),
-            run_lthr_on=lambda day: lthr_by_day.get(day),
+    def test_the_profile_keeps_a_plausible_bpm_and_rejects_others(self) -> None:
+        kept = normalize_profile({FIRST_THRESHOLD_FIELD: "144"})
+        self.assertEqual("144", kept[FIRST_THRESHOLD_FIELD])
+        self.assertEqual(
+            "146",
+            normalize_profile({FIRST_THRESHOLD_FIELD: "145,5"})[FIRST_THRESHOLD_FIELD],
         )
-
-    def test_bpm_becomes_percent_of_the_lthr_on_the_measurement_date(self) -> None:
-        service = self.service({None: 160.0, date(2026, 10, 1): 150.0})
-        entered = service._with_first_threshold({FIRST_THRESHOLD_ENTRY_FIELD: "144"})
-        self.assertEqual("90", entered[FIRST_THRESHOLD_FIELD])  # 144 / 160
-        dated = service._with_first_threshold(
-            {
-                FIRST_THRESHOLD_ENTRY_FIELD: "144",
-                FIRST_THRESHOLD_DATE_FIELD: "2026-10-01",
-            }
-        )
-        self.assertEqual("96", dated[FIRST_THRESHOLD_FIELD])  # 144 / 150
-        stored = normalize_profile(dated)
-        # The entry fields are consumed; a stored profile never has them.
-        self.assertNotIn(FIRST_THRESHOLD_ENTRY_FIELD, stored)
-        self.assertNotIn(FIRST_THRESHOLD_DATE_FIELD, stored)
-        self.assertEqual("96", stored[FIRST_THRESHOLD_FIELD])
-        self.assertEqual(90.0, percent_of_lthr(144.0, 160.0))
-
-    def test_no_entry_leaves_the_stored_percent_alone(self) -> None:
-        profile = {FIRST_THRESHOLD_FIELD: "88"}
-        self.assertEqual(profile, self.service({})._with_first_threshold(profile))
-
-    def test_without_a_known_threshold_the_entry_is_refused(self) -> None:
-        with self.assertRaises(AppError):
-            self.service({})._with_first_threshold({FIRST_THRESHOLD_ENTRY_FIELD: "145"})
-
-    def test_implausible_entries_are_refused(self) -> None:
-        service = self.service({None: LTHR})
-        low, high = FIRST_THRESHOLD_BOUNDS
-        for text in ("x", str(low - 1), str(high + 1)):
-            with self.subTest(text=text), self.assertRaises(AppError):
-                service._with_first_threshold({FIRST_THRESHOLD_ENTRY_FIELD: text})
-        with self.assertRaises(AppError):
-            service._with_first_threshold(
-                {FIRST_THRESHOLD_ENTRY_FIELD: "145", FIRST_THRESHOLD_DATE_FIELD: "x"}
-            )
-
-    def test_the_profile_keeps_a_plausible_percent_and_rejects_others(self) -> None:
-        kept = normalize_profile({FIRST_THRESHOLD_FIELD: "88"})
-        self.assertEqual("88", kept[FIRST_THRESHOLD_FIELD])
         self.assertEqual("", normalize_profile({})[FIRST_THRESHOLD_FIELD])
         cleared = normalize_profile({FIRST_THRESHOLD_FIELD: "9"})
         self.assertEqual("", cleared[FIRST_THRESHOLD_FIELD])
-        with self.assertRaises(AppError):
-            normalize_profile({FIRST_THRESHOLD_FIELD: "9"}, validate_timezone=True)
+        low, high = FIRST_THRESHOLD_BOUNDS
+        for text in ("x", "9", str(low - 1), str(high + 1)):
+            with self.subTest(text=text), self.assertRaises(AppError):
+                normalize_profile({FIRST_THRESHOLD_FIELD: text}, validate_timezone=True)
+
+    def test_the_percent_follows_todays_threshold_hr_and_the_bpm_stays(self) -> None:
+        profile = {FIRST_THRESHOLD_FIELD: "144"}
+        self.assertEqual(90.0, stored_percent(profile, 160.0))
+        self.assertEqual(96.0, stored_percent(profile, 150.0))
+        self.assertIsNone(stored_percent(profile, None))
+        self.assertIsNone(stored_percent({}, 160.0))
+        self.assertEqual(90.0, percent_of_lthr(144.0, 160.0))
 
     def test_parsers_read_profile_text(self) -> None:
         self.assertEqual(145.0, first_threshold_bpm(" 145 "))
@@ -407,12 +377,8 @@ class FirstThresholdConversionTests(unittest.TestCase):
 
     def test_the_coach_can_read_but_never_write_it(self) -> None:
         self.assertIn(FIRST_THRESHOLD_FIELD, COACH_READ_ONLY_FIELDS)
-        # The entry fields are no profile fields at all.
-        for field in (
-            FIRST_THRESHOLD_FIELD,
-            FIRST_THRESHOLD_ENTRY_FIELD,
-            FIRST_THRESHOLD_DATE_FIELD,
-        ):
+        # The stored bpm and the percent of a profile before #3915 alike.
+        for field in (FIRST_THRESHOLD_FIELD, "first_threshold_pct"):
             service = CoachProfileUpdateService(
                 MagicMock(),
                 MagicMock(),
@@ -509,6 +475,7 @@ class GuardTests(unittest.TestCase):
     def guard(
         self, units: list[dict[str, Any]], first: float | None = None
     ) -> PlanGuardService:
+        # The stored bpm reaches the guard as percent of today's threshold HR (#3915).
         return PlanGuardService(
             planned_units=lambda: list(units),
             completed_activities=list,
@@ -519,9 +486,9 @@ class GuardTests(unittest.TestCase):
             today=lambda: TODAY,
             estimate_unit=lambda item: estimate_planned_unit(item, ZoneSettings()),
             profile=lambda: (
-                {} if first is None else {FIRST_THRESHOLD_FIELD: str(first)}
+                {} if first is None else {FIRST_THRESHOLD_FIELD: str(first * 1.6)}
             ),
-        )
+        ).with_first_threshold_percent(lambda: first)
 
     def test_a_coach_write_without_a_cap_is_rejected_with_the_percentages(self) -> None:
         before = self.guard([]).findings()
@@ -541,6 +508,52 @@ class GuardTests(unittest.TestCase):
         with self.assertRaises(PlanCheckError):
             self.guard([with_cap(FOCI[1])], FIRST_PCT).verify([], accepted=[])
         self.guard([with_cap(FOCI[1], FIRST_PCT)], FIRST_PCT).verify([], accepted=[])
+
+
+class OutdatedCapTests(unittest.TestCase):
+    """Units with an older, higher default cap get a brief note only (#3915)."""
+
+    def test_only_default_caps_above_todays_default_are_listed(self) -> None:
+        old = unit(FOCI[1], hr_cap=hr_cap(87.0))
+        current = with_cap(FOCI[1])
+        measured = unit(FOCI[1], hr_cap=hr_cap(90.0, "measured"))
+        found = run_hr_cap.outdated_default_caps(
+            [old, current, measured, unit("tempo")]
+        )
+        self.assertEqual(
+            [
+                {
+                    "id": "u-" + FOCI[1],
+                    "date": "2026-11-10",
+                    "name": "Dauerlauf",
+                    "focus": FOCI[1],
+                    "stored_percent_lthr": 87.0,
+                    "default_percent_lthr": HR_CAP_PERCENT[FOCI[1]],
+                }
+            ],
+            found,
+        )
+
+    def test_the_brief_names_them_and_no_finding_blocks(self) -> None:
+        old = unit(FOCI[1], hr_cap=hr_cap(87.0))
+        guard = PlanGuardService(
+            planned_units=lambda: [old],
+            completed_activities=list,
+            competitions=list,
+            illness=lambda: "",
+            progress=lambda: {"week_list": []},
+            training_model=lambda: "pyramidal",
+            today=lambda: TODAY,
+            estimate_unit=lambda item: estimate_planned_unit(item, ZoneSettings()),
+        )
+        brief = guard.brief()
+        self.assertEqual(
+            [87.0],
+            [u["stored_percent_lthr"] for u in brief["outdated_hr_caps"]["units"]],
+        )
+        self.assertIn("never change them unasked", brief["outdated_hr_caps"]["note"])
+        # The untouched unit never blocks an unrelated write.
+        guard.verify(guard.findings(), accepted=[])
 
 
 class NormalizeTests(unittest.TestCase):

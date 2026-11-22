@@ -439,7 +439,17 @@ function renderFirstThresholdEstimate(estimate, profile = {}) {
     box.dataset.percent = String(estimate.percent_lthr);
   }
   const stored = document.getElementById("firstThresholdStoredLabel");
-  if (stored) stored.textContent = profile?.first_threshold_pct && profile.first_threshold_origin === "estimated" ? "Gespeichert (% LSHF, DFA-α1)" : "Gespeichert (% LSHF)";
+  if (stored) stored.textContent = profile?.first_threshold_hr && profile.first_threshold_origin === "estimated" ? "Herzfrequenz (bpm, DFA-α1)" : "Herzfrequenz (bpm)";
+  const percent = document.getElementById("firstThresholdPercent");
+  if (percent) percent.textContent = firstThresholdPercentText(profile?.first_threshold_hr, state.data?.performance?.metrics?.run_threshold_hr_bpm?.value);
+}
+
+// Pure: the stored bpm as percent of today's run threshold HR, display only (#3915).
+function firstThresholdPercentText(bpm, lthr) {
+  const value = Number(bpm);
+  const reference = Number(lthr);
+  if (!bpm || !Number.isFinite(value) || !Number.isFinite(reference) || reference <= 0) return "";
+  return `${String(Math.round((value / reference) * 1000) / 10).replace(".", ",")} % LSHF`;
 }
 
 const MODEL_PROVIDER_GROUPS = Object.freeze({ openai: "OpenAI", anthropic: "Claude" });

@@ -352,6 +352,10 @@ comparable.
 
 ## Open points
 
+- Validation check (#3920): one laboratory or lactate step test of the
+  athlete. Its LT1 is compared with this card's estimate from the same
+  weeks, and the difference is recorded here; the review stays blocked
+  until then.
 - No comparison with a laboratory VT1, a lactate step test or a field test of
   this athlete; until then the athlete's review of this card stays open.
 - R56 tested men on a treadmill ramp only; female participants, outdoor running

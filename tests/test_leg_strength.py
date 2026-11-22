@@ -45,6 +45,35 @@ def codes(findings):
     return [item["code"] for item in findings]
 
 
+class KeyGapTests(unittest.TestCase):
+    """One gap (#3920): heavy leg work 48 h before a key session, moderate 24 h."""
+
+    def test_heavy_counts_two_days_and_moderate_one(self) -> None:
+        key = intervals("k", "2026-11-05", starts_at_local="2026-11-05T08:00:00")
+        for intensity, start, expected in (
+            ("heavy", "2026-11-03T20:00:00", [leg_strength.BEFORE_KEY]),
+            ("moderate", "2026-11-03T20:00:00", []),
+            ("moderate", "2026-11-04T18:00:00", [leg_strength.BEFORE_KEY]),
+        ):
+            with self.subTest(intensity=intensity, start=start):
+                strength = legs(
+                    "s", start[:10], strength_intensity=intensity, starts_at_local=start
+                )
+                found = [
+                    code
+                    for code in codes(check([strength, key]))
+                    if code == leg_strength.BEFORE_KEY
+                ]
+                self.assertEqual(expected, found)
+
+    def test_dates_alone_count_whole_days(self) -> None:
+        key = intervals("k", "2026-11-05")
+        heavy = legs("s", "2026-11-03", strength_intensity="heavy")
+        moderate = legs("s", "2026-11-03", strength_intensity="moderate")
+        self.assertIn(leg_strength.BEFORE_KEY, codes(check([heavy, key])))
+        self.assertNotIn(leg_strength.BEFORE_KEY, codes(check([moderate, key])))
+
+
 class ClassificationTests(unittest.TestCase):
     def test_leg_vs_upper_body_vs_unknown(self) -> None:
         def classify(item):
@@ -397,7 +426,14 @@ class StrengthBeforeTests(unittest.TestCase):
         result = leg_strength.strength_before(self.START, [done], list)
         self.assertEqual("completed", result["origin"])
         self.assertEqual(
-            [{"hours_before": 20.0, "legs": True, "intensity": "heavy"}],
+            [
+                {
+                    "hours_before": 20.0,
+                    "legs": True,
+                    "intensity": "heavy",
+                    "within_key_gap": True,
+                }
+            ],
             result["sessions"],
         )
 
@@ -451,7 +487,21 @@ class StrengthBeforeTests(unittest.TestCase):
         self.assertEqual("not_covered", result["status"])
         done = self.done("2026-11-03T08:00:00", rpe=9, training_load=80)
         row = leg_strength.strength_before(self.START, [done], list)["sessions"][0]
-        self.assertEqual({"hours_before", "legs", "intensity"}, set(row))
+        self.assertEqual(
+            {"hours_before", "legs", "intensity", "within_key_gap"}, set(row)
+        )
+
+    def test_moderate_legs_30_hours_before_stay_listed_outside_the_gap(self):
+        # #3920 (Gitar): the 48 h list never hides a completed session; the
+        # flag names the plan check's 24 h gap for moderate leg work.
+        done = self.done("2026-11-02T12:00:00", description="legs moderate")
+        result = leg_strength.strength_before(self.START, [done], list)
+        self.assertEqual("completed", result["origin"])
+        (row,) = result["sessions"]
+        self.assertEqual(
+            (30.0, "moderate", False),
+            (row["hours_before"], row["intensity"], row["within_key_gap"]),
+        )
 
 
 if __name__ == "__main__":

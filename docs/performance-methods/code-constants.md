@@ -71,16 +71,21 @@ every named number the code fixes. A test fails when it is out of date.
 | `STORED_PROVIDERS_SOURCE` | `'Gespeicherte Provider-Daten'` | `backend/performance/context.py` | The source of a context built from the stored provider values. |
 | `LT1_HISTORY_WEEKS` | `12` | `backend/performance/context.py` | The threshold charts' twelve calendar weeks (#2693). |
 | `METHOD_ID` | `'critical-power-speed'` | `backend/performance/critical_power.py` |  |
-| `METHOD_VERSION` | `2` | `backend/performance/critical_power.py` |  |
+| `METHOD_VERSION` | `3` | `backend/performance/critical_power.py` |  |
 | `WINDOW_DAYS` | `28` | `backend/performance/critical_power.py` |  |
 | `EFFORT_SECONDS` | `{'ride': (180, 420, 720, 1200), 'run': (180, 420, 720)}` | `backend/performance/critical_power.py` |  |
 | `THREE_POINT_SECONDS` | `(180, 420, 720)` | `backend/performance/critical_power.py` | The card 3 protocol, kept for cycling as a sensitivity fit. |
 | `INTERCEPT_RELIABILITY` | `'low'` | `backend/performance/critical_power.py` | Hunter 2023: W′/D′ from everyday training agree only weakly with tests. |
 | `MIN_RECOVERY_SECONDS` | `1800` | `backend/performance/critical_power.py` | Efforts in one session count separately only with this much recovery between. |
 | `MAX_RELATIVE_RESIDUAL` | `0.03` | `backend/performance/critical_power.py` |  |
+| `TEST_DURATION_SECONDS` | `(120, 1200)` | `backend/performance/critical_power.py` | A test effort lap lasts 2 to 20 min (card M4 v6, #3919). |
 | `PLAUSIBLE` | `{'ride': {'intercept': (1000.0, 50000.0), 'slope': (50.0, 600.0)}, 'run': {'intercept': (10.0, 50... (sha256 5065712a)` | `backend/performance/critical_power.py` |  |
 | `SCOPE` | `'Experimentelle Modellschätzung aus den besten Belastungen der letzten 28 Tage (Rad 3, 7, 12 und ... (sha256 3da99455)` | `backend/performance/critical_power.py` |  |
 | `POWER_SOURCE_UNCHECKED` | `'unchecked'` | `backend/performance/critical_power.py` | Garmin and Wahoo deliver no measured-versus-estimated power signal. |
+| `METHOD` | `'critical-speed-test-laps'` | `backend/performance/critical_speed_test.py` |  |
+| `TEST_METERS` | `(1200, 2400, 3600)` | `backend/performance/critical_speed_test.py` |  |
+| `DISTANCE_TOLERANCE` | `0.03` | `backend/performance/critical_speed_test.py` |  |
+| `MIN_RECOVERY_SECONDS` | `1200` | `backend/performance/critical_speed_test.py` | Galbraith rested 30 or 60 min between the runs; a ladder workout with short jogs between 3.6, 2.4 and 1.2 km is no test (Gitar, #3919). |
 | `VO2MAX_UNIT` | `'ml/kg/min'` | `backend/performance/current_metrics.py` |  |
 | `LOCAL_SOURCE_LABEL` | `'Lokal'` | `backend/performance/current_metrics.py` | The label of a locally confirmed zone configuration's value. |
 | `PROFILE_SOURCE_LABEL` | `'Manuell'` | `backend/performance/current_metrics.py` | The label of a profile value. |
@@ -131,16 +136,19 @@ every named number the code fixes. A test fails when it is out of date.
 | `LIMITS` | `'Abgeleiteter Hinweis, keine Diagnose. Hartes Training, Alkohol, Hitze, Höhe, Reisen und kurzer S... (sha256 7e8e7194)` | `backend/performance/infection_hint.py` |  |
 | `CURRENT_DAYS` | `7` | `backend/performance/load_context.py` | The days the current local values and their averages are read from. |
 | `METHOD_ID` | `'local-tss-load'` | `backend/performance/local_tss.py` |  |
-| `METHOD_VERSION` | `7` | `backend/performance/local_tss.py` |  |
+| `METHOD_VERSION` | `8` | `backend/performance/local_tss.py` |  |
 | `CARD` | `'M6'` | `backend/performance/local_tss.py` |  |
 | `POWER_BRANCH` | `'power'` | `backend/performance/local_tss.py` |  |
 | `PACE_BRANCH` | `'pace'` | `backend/performance/local_tss.py` |  |
+| `PACE_BASIS_NGS` | `'normalized_graded_speed'` | `backend/performance/local_tss.py` |  |
 | `HEART_RATE_BRANCH` | `'heart_rate'` | `backend/performance/local_tss.py` |  |
 | `SESSION_RPE_BRANCH` | `'session_rpe'` | `backend/performance/local_tss.py` |  |
 | `MALE` | `'male'` | `backend/performance/local_tss.py` | Banister TRIMP prefactor and coefficient by profile sex (card M6 v3); an unset sex takes the male constants and marks the value sex_assumed. |
 | `FEMALE` | `'female'` | `backend/performance/local_tss.py` |  |
 | `MAX_INTENSITY_FACTOR` | `2.0` | `backend/performance/local_tss.py` |  |
 | `HR_COVERAGE_MIN` | `0.8` | `backend/performance/local_tss.py` | The histogram must cover this share of the TSS duration (card M6 v5). |
+| `NGS_MIN_COVERED_S` | `600.0` | `backend/performance/local_tss.py` | The NGS needs at least this much covered time and share of the TSS duration. |
+| `NGS_COVERAGE_MIN` | `0.8` | `backend/performance/local_tss.py` |  |
 | `HR_BASIS_DISTRIBUTION` | `'distribution'` | `backend/performance/local_tss.py` |  |
 | `HR_BASIS_AVERAGE` | `'average'` | `backend/performance/local_tss.py` |  |
 | `LATER_STAND_IN_MAX_DAYS` | `90` | `backend/performance/local_tss.py` | A later threshold stands in only when observed within this many days after the session day (card M6 v5). |
@@ -151,7 +159,7 @@ every named number the code fixes. A test fails when it is out of date.
 | `CALIBRATION_TABLE_RPES` | `tuple(range(1, 11))` | `backend/performance/local_tss.py` | The RPE values of the detail table (factor per RPE of its +-1 band). |
 | `LOCAL_SOURCE` | `'local'` | `backend/performance/local_tss.py` |  |
 | `LOCAL_INDOOR_SOURCE` | `'local_indoor'` | `backend/performance/local_tss.py` |  |
-| `CURVE_FORMAT_VERSION` | `2` | `backend/performance/mean_max_curve.py` | The curve computation's own version (#2821): it covers the inputs without a method version of their own (merge_details, analysis_input, grade_adjustment) and the stored payload fields. Bump it whenever any of them changes the curves, so stored curves are computed again; the golden-curve test pins it. |
+| `CURVE_FORMAT_VERSION` | `3` | `backend/performance/mean_max_curve.py` | The curve computation's own version (#2821): it covers the inputs without a method version of their own (merge_details, analysis_input, grade_adjustment) and the stored payload fields. Bump it whenever any of them changes the curves, so stored curves are computed again; the golden-curve test pins it. |
 | `SLEEP_SECTION` | `'sleep'` | `backend/performance/morning_battery.py` |  |
 | `MORNING_RETRY_SECONDS` | `15 * 60` | `backend/performance/morning_battery_service.py` |  |
 | `MORNING_MAX_ATTEMPTS` | `3` | `backend/performance/morning_battery_service.py` |  |
@@ -217,7 +225,8 @@ every named number the code fixes. A test fails when it is out of date.
 | `PROFILE_WINDOW_DAYS` | `(28, 90)` | `backend/performance/report_service.py` | Analysis windows of the power and running profiles, shortest first. |
 | `ANALYSIS_TREND_DAYS` | `84` | `backend/performance/report_service.py` | Analyse shows the trends of the 12-week progress review (#2802). |
 | `PROGRESS_DAYS` | `frozenset({7, 28, 42, 56, 84})` | `backend/performance/report_service.py` |  |
-| `STRENGTH_WEEKS` | `12` | `backend/performance/report_service.py` | Analyse › Kraft shows twelve calendar weeks like the endurance development (#3764). |
+| `STRENGTH_WEEKS` | `(4, 13, 26, 52)` | `backend/performance/report_service.py` | Analyse › Kraft shows twelve calendar weeks like the endurance development (#3764). |
+| `STRENGTH_DEFAULT_WEEKS` | `13` | `backend/performance/report_service.py` |  |
 | `METHOD` | `'rolling-lnrmssd-v1'` | `backend/performance/rolling_hrv.py` |  |
 | `WINDOW_DAYS` | `7` | `backend/performance/rolling_hrv.py` |  |
 | `BASELINE_DAYS` | `42` | `backend/performance/rolling_hrv.py` |  |
@@ -265,6 +274,8 @@ every named number the code fixes. A test fails when it is out of date.
 | `HEART_RATE_HISTOGRAM_VERSION` | `2` | `backend/performance/session_analysis.py` | Bump when heart_rate_histogram counts differently, so stored rows recompute. v2: steps up to the adaptive gap rule of the zone times count (#1950). |
 | `HISTOGRAM_MIN_BPM` | `30` | `backend/performance/session_analysis.py` |  |
 | `HISTOGRAM_MAX_BPM` | `240` | `backend/performance/session_analysis.py` |  |
+| `NGS_VERSION` | `1` | `backend/performance/session_analysis.py` | Normalized graded speed (M6 v8, McGregor et al. 2009): the analogue of normalized power on the grade-adjusted speed. Bump when it computes differently. |
+| `NGS_WINDOW_S` | `30.0` | `backend/performance/session_analysis.py` |  |
 | `STEADY_MIN_SPEED_MPS` | `1.0` | `backend/performance/session_analysis.py` | A run's steadiness reads the moving samples at or above this speed (m/s), with steps up to this long; a longer gap is a pause. |
 | `STEADY_MAX_STEP_S` | `30.0` | `backend/performance/session_analysis.py` |  |
 | `GAP_METHOD` | `'Minetti et al. 2002: Energiekosten des Laufens je Steigung (Schätzung aus den Streams der Einheit)'` | `backend/performance/session_conditions.py` | Grade-adjusted pace: Minetti et al. 2002 (R44), the adjustment of M8 and pace at HR. |
@@ -481,6 +492,7 @@ every named number the code fixes. A test fails when it is out of date.
 | `ZONE_TIMES_VERSION` | `3` | `backend/activities/stream_zones.py` | Bump when zone_times counts or names its zones differently, so stored report zones recompute (2: the zone source of each sensor, the Garmin watch zones; 3: the 3-zone bands, #3915). |
 | `LABEL` | `'Zoneneinstellungen'` | `backend/activities/stream_zones.py` |  |
 | `BAND_SOURCE` | `'LT1-Standardwert und Schwelle'` | `backend/activities/stream_zones.py` |  |
+| `OWN_BAND_SOURCE` | `'eigene erste Schwelle und Schwelle'` | `backend/activities/stream_zones.py` |  |
 | `MIN_GAP_S` | `30.0` | `backend/activities/stream_zones.py` |  |
 | `GAP_FACTOR` | `3.0` | `backend/activities/stream_zones.py` |  |
 | `MAX_SESSIONS` | `6` | `backend/activities/strength_progress.py` |  |

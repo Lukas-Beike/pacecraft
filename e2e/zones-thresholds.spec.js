@@ -26,7 +26,7 @@ async function openProfile(page) {
       thresholds: { first_thresholds: {
         ride: { hr_bpm: 142, hr_origin: "estimated", watts: 214, power_origin: "fixed_share" },
         run: { hr_bpm: 146, hr_origin: "estimated", pace_seconds_per_km: 305, pace_origin: "fixed_share" } } } };
-    state.data.profile = { ...state.data.profile, first_threshold_pct: "87", first_threshold_origin: "estimated" };
+    state.data.profile = { ...state.data.profile, first_threshold_hr: "146", first_threshold_origin: "estimated" };
   });
 }
 

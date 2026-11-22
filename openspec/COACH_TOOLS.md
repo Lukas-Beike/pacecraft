@@ -336,9 +336,8 @@ effect `local_write`; gate domain `checkin`; needs a confirmed delete request; r
 
 effect `local_write`; gate domain `body`; needs a confirmed delete request; receipt „Körperwert entfernt“; proposal card „Körperwert entfernen“; fully tracked by change history.
 
-- `payload` (object)
-- `payload.kind`* (string; one of `"weight"`, `"body_fat"`)
-- `payload.date`* (string; date)
+- `kind`* (string; one of `"weight"`, `"body_fat"`)
+- `date`* (string; date)
 - `_request`* (the envelope above)
 
 ### `delete_competition`
@@ -661,11 +660,10 @@ effect `local_write`; gate domain `checkin`; receipt „Aktivitätsfeedback gesp
 
 effect `local_write`; gate domain `body`; receipt „Körperwert gespeichert“; proposal card „Körperwert speichern“; fully tracked by change history.
 
-- `payload` (object)
-- `payload.kind`* (string; one of `"weight"`, `"body_fat"`)
-- `payload.date`* (string; date)
-- `payload.value`* (number; ≥2; ≤300)
-- `payload.replace`* (boolean)
+- `kind`* (string; one of `"weight"`, `"body_fat"`)
+- `date`* (string; date)
+- `value`* (number; ≥2; ≤300)
+- `replace`* (boolean)
 - `_request`* (the envelope above)
 
 ### `save_checkin`

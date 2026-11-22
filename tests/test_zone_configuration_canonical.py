@@ -431,6 +431,20 @@ class LocalZoneEditTests(unittest.TestCase):
                 self.service.save(payload)
             self.assertEqual(refused.exception.message, message)
 
+    def test_read_names_the_standard_zones_that_apply_without_a_configuration(
+        self,
+    ) -> None:
+        self.assertEqual(self.service.read()["defaults"], {})
+        service = ZoneConfigurationService(
+            self.manager,
+            CanonicalTableReader(),
+            lambda: NOW,
+            today=lambda: SAVE_DAY,
+            effective_zone=effective_zone_configuration,
+            default_limits={"power": (55, 75, 90)},
+        )
+        self.assertEqual(service.read()["defaults"], {"power": [55, 75, 90]})
+
     def test_read_carries_the_threshold_warning_only_when_present(self) -> None:
         self.assertNotIn("threshold_warnings", self.service.read())
         warning: dict[str, Any] = {

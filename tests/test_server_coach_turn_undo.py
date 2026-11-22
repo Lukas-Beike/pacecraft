@@ -98,6 +98,7 @@ class CoachTurnUndoTests(ServerTestCase):
                 "labels": ["Profil aktualisiert", "Trainingsvorlagen bearbeitet"],
                 "undoable": True,
                 "undone_at": None,
+                "details": ["Profil: Name Ada → Bea", "Easy: neu"],
             },
         )
 
@@ -174,7 +175,9 @@ class CoachTurnUndoTests(ServerTestCase):
         server.ATHLETE_DATA.profile().save({"name": "Cleo", "weight_kg": "72"})
 
         self.assertEqual(len(changes), 1)
-        self.assertEqual(set(changes[0]), {"id", "entity_type", "action", "after_hash"})
+        self.assertEqual(
+            set(changes[0]), {"id", "entity_type", "action", "after_hash", "detail"}
+        )
         self.assertEqual(changes[0]["entity_type"], "profile")
 
 

@@ -615,6 +615,7 @@ def _domain_routes(
                 partial(body_weight, public.performance_state_service),
                 lambda: _local_today(ctx),
             ),
+            lambda: ctx.athlete_profile.get().get("energy_goal", ""),
         ),
         NutritionPutRoutes(nutrition.meal_library_service),
         PrivacyRestorePostRoutes(

@@ -104,13 +104,16 @@ function syncConfirmationAcceptState() {
   acceptButton.disabled = confirmationSecondaryPending || (Boolean(expectedText) && input.value !== expectedText);
 }
 
+// A confirmation names its question in the title, the consequence in the text and the action as a verb.
 function requestConfirmation(message, {
-  title = "Aktion bestätigen",
+  title,
   inputLabel = "",
   expectedText = "",
-  confirmLabel = "Bestätigen",
+  confirmLabel,
+  danger = false,
   secondaryAction = null,
 } = {}) {
+  if (!title || !confirmLabel) throw new TypeError("requestConfirmation needs a title and a confirmLabel");
   const dialog = $("#confirmationDialog");
   const form = $("#confirmationDialogForm");
   const messageNode = $("#confirmationDialogMessage");
@@ -141,6 +144,8 @@ function requestConfirmation(message, {
   input.setCustomValidity("");
   input.oninput = syncConfirmationAcceptState;
   acceptButton.textContent = confirmLabel;
+  // Red fills only a confirmed destructive action; every other accept is the default accent button.
+  acceptButton.classList.toggle("adaptive-planning-button", danger);
   // The secondary action never settles the confirmation; the dialog stays open.
   secondaryButton.hidden = !secondaryAction;
   secondaryButton.textContent = secondaryAction?.label || "";
@@ -367,7 +372,7 @@ async function login(event) {
 
 async function logout() {
   if (!await confirmDiscardChanges()) return;
-  const confirmed = await requestConfirmation(`Du wirst auf diesem Gerät abgemeldet. Deine Daten bleiben verschlüsselt gespeichert.${outboxLossNote()}`, { title: "Abmelden?" });
+  const confirmed = await requestConfirmation(`Du wirst auf diesem Gerät abgemeldet. Deine Daten bleiben verschlüsselt gespeichert.${outboxLossNote()}`, { title: "Abmelden?", confirmLabel: "Abmelden" });
   if (!confirmed) return;
   try {
     await api("/api/logout", { method: "POST", body: "{}" });

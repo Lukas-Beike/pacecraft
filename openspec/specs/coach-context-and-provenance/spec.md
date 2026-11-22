@@ -187,9 +187,9 @@ The system SHALL provide read-only tools for exact local records and determinist
 - **WHEN** `get_training_report` requests supported report, endurance, power-profile, records, tag-impact, season, comparison, body-history or sleep-timing-variability (`sleep_timing_variability`) sections
 - **THEN** the tool uses the corresponding local analysis owners, bounds the combined result and reports completeness.
 
-#### Scenario: All-time records are the Rekorde cards' window
+#### Scenario: All-time records are the records cards' window
 - **WHEN** `get_training_report` selects `records`
-- **THEN** it returns the same all-time window Analyse › Rekorde reads (best power per duration and environment, running bests, and `activity_records` with date, activity id and source), and a pending or failed background build as `{"status": "pending"}` or `{"status": "failed"}`, never as missing records; `power_profiles` keeps its 90-day windows.
+- **THEN** it returns the same all-time window the records cards of Analyse › Laufen and Radfahren read (best power per duration and environment, running bests, and `activity_records` with date, activity id and source), and a pending or failed background build as `{"status": "pending"}` or `{"status": "failed"}`, never as missing records; `power_profiles` keeps its 90-day windows.
 
 #### Scenario: Sleep timing section is the context summary
 - **WHEN** `get_training_report` selects `sleep_timing_variability`
@@ -201,7 +201,7 @@ The system SHALL provide read-only tools for exact local records and determinist
 
 #### Scenario: Week status and zone bands
 - **WHEN** a progress week is listed
-- **THEN** its status is `future`, `recorded`, `incomplete_current_week`, `incomplete_current_week_no_records` or `no_records_unknown`; a week with sessions lists the buckets `all`, `run`, `ride` and `strength` (or only the filtered sport) and names commutes as `commute_sessions` and `commute_duration_s`; a session's 3-zone bands use its power, else its heart rate, only from the local band times counted from its streams: low up to LT1 (85 % of the threshold HR, 75 % of the FTP, 88 % of the threshold speed), moderate up to the threshold, high above it, for every sensor (#3915).
+- **THEN** its status is `future`, `recorded`, `incomplete_current_week`, `incomplete_current_week_no_records` or `no_records_unknown`; a week with sessions lists the buckets `all`, `run`, `ride` and `strength` (or only the filtered sport) and names commutes as `commute_sessions` and `commute_duration_s`; a session's 3-zone bands use its power, else its heart rate, only from the local band times counted from its streams: low up to LT1 (the stored first threshold as share of the threshold HR, else 85 %; 75 % of the FTP; 88 % of the threshold speed), moderate up to the threshold, high above it, for every sensor (#3915).
 
 #### Scenario: Mean-maximal change in progress
 - **WHEN** the mean-max change of a progress window is built

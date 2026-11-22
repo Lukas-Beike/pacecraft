@@ -14,6 +14,7 @@ from unittest.mock import MagicMock, Mock
 
 from support import dispatch_route
 
+from backend import change_history
 from backend.activities.hr_cap import (
     SOURCE_ESTIMATED,
     SOURCE_MEASURED,
@@ -24,10 +25,13 @@ from backend.activities.hr_cap import (
     hr_cap,
     normalize_hr_cap,
 )
+from backend.activities.zone_settings import own_lt1_share
 from backend.athlete.profile import (
     COACH_READ_ONLY_FIELDS,
     DEFAULT_PROFILE,
     ProfileService,
+    audit_view,
+    normalize_profile,
 )
 from backend.canonical.activity_detail import (
     ActivityDfaAlpha1,
@@ -656,11 +660,12 @@ class AdoptFlowTests(unittest.TestCase):
         self.assertEqual(raised.exception.status, 409)
         self.assertEqual(self.profile.get()[FIRST_THRESHOLD_FIELD], "")
 
-    def test_adopting_stores_percent_and_origin_with_a_change_receipt(self) -> None:
+    def test_adopting_stores_bpm_and_origin_with_a_change_receipt(self) -> None:
+        # 90 % of today's threshold HR of 170 bpm is stored as 153 bpm (#3915).
         seed(self)
         outcome = self.service.adopt({"percent_lthr": 90.0})
         stored = self.profile.get()
-        self.assertEqual(stored[FIRST_THRESHOLD_FIELD], "90")
+        self.assertEqual(stored[FIRST_THRESHOLD_FIELD], "153")
         self.assertEqual(stored[FIRST_THRESHOLD_ORIGIN_FIELD], ORIGIN_ESTIMATED)
         self.assertEqual(outcome["profile"][FIRST_THRESHOLD_ORIGIN_FIELD], "estimated")
         (entry,) = history(self)
@@ -681,7 +686,7 @@ class AdoptFlowTests(unittest.TestCase):
         entries = len(history(self))
         again = self.service.adopt({"percent_lthr": 90.0})
         self.assertFalse(again["adopted"])
-        self.assertEqual(again["profile"][FIRST_THRESHOLD_FIELD], "90")
+        self.assertEqual(again["profile"][FIRST_THRESHOLD_FIELD], "153")
         self.assertEqual(again["profile"][FIRST_THRESHOLD_ORIGIN_FIELD], "estimated")
         self.assertEqual(again["first_threshold_estimate"]["percent_lthr"], 90.0)
         self.assertEqual(len(history(self)), entries)
@@ -698,16 +703,16 @@ class AdoptFlowTests(unittest.TestCase):
 
     def test_a_measured_value_is_replaced_only_when_the_request_says_so(self) -> None:
         seed(self)
-        self.profile.patch({FIRST_THRESHOLD_FIELD: "85"})
+        self.profile.patch({FIRST_THRESHOLD_FIELD: "145"})
         self.assertEqual(
             self.profile.get()[FIRST_THRESHOLD_ORIGIN_FIELD], ORIGIN_MEASURED
         )
         with self.assertRaises(AppError) as raised:
             self.service.adopt({"percent_lthr": 90.0})
         self.assertEqual(raised.exception.status, 409)
-        self.assertEqual(self.profile.get()[FIRST_THRESHOLD_FIELD], "85")
+        self.assertEqual(self.profile.get()[FIRST_THRESHOLD_FIELD], "145")
         self.service.adopt({"percent_lthr": 90.0, "replace_measured": True})
-        self.assertEqual(self.profile.get()[FIRST_THRESHOLD_FIELD], "90")
+        self.assertEqual(self.profile.get()[FIRST_THRESHOLD_FIELD], "153")
         # An adopted estimate needs no confirmation to be adopted again.
         add_run(self, 1, result(160.0))
         view = self.service.estimate()
@@ -715,10 +720,12 @@ class AdoptFlowTests(unittest.TestCase):
         self.service.adopt({"percent_lthr": view["percent_lthr"]})
         stored = self.profile.get()
         self.assertEqual(stored[FIRST_THRESHOLD_ORIGIN_FIELD], ORIGIN_ESTIMATED)
-        self.assertEqual(stored[FIRST_THRESHOLD_FIELD], f"{view['percent_lthr']:g}")
+        self.assertEqual(
+            stored[FIRST_THRESHOLD_FIELD], f"{round(view['percent_lthr'] * 1.7)}"
+        )
 
     def test_a_good_step_test_lt1_is_adopted_only_on_request(self) -> None:
-        # #3833: 153 bpm of a 170 bpm threshold HR is 90 %, stored as estimated.
+        # #3833: the step test's 153 bpm is stored as bpm (#3915), as estimated.
         tests: dict[str, dict[str, Any]] = {
             "good": {"lt1": {"status": "ok", "heart_rate_bpm": 153, "quality": "good"}},
             "low": {"lt1": {"status": "ok", "heart_rate_bpm": 153, "quality": "low"}},
@@ -740,19 +747,19 @@ class AdoptFlowTests(unittest.TestCase):
         )
         self.assertTrue(outcome["adopted"])
         stored = self.profile.get()
-        self.assertEqual(stored[FIRST_THRESHOLD_FIELD], "90")
+        self.assertEqual(stored[FIRST_THRESHOLD_FIELD], "153")
         self.assertEqual(stored[FIRST_THRESHOLD_ORIGIN_FIELD], ORIGIN_ESTIMATED)
         self.assertEqual(len(history(self)), 1)
 
     def test_a_manual_entry_or_edit_resets_the_origin_to_measured(self) -> None:
         seed(self)
         self.service.adopt({"percent_lthr": 90.0})
-        self.profile.patch({"first_threshold_hr": "144"})  # 144 / 170 = 84.7 percent
+        self.profile.patch({FIRST_THRESHOLD_FIELD: "144"})  # stored as entered
         stored = self.profile.get()
-        self.assertEqual(stored[FIRST_THRESHOLD_FIELD], "84.7")
+        self.assertEqual(stored[FIRST_THRESHOLD_FIELD], "144")
         self.assertEqual(stored[FIRST_THRESHOLD_ORIGIN_FIELD], ORIGIN_MEASURED)
         self.service.adopt({"percent_lthr": 90.0, "replace_measured": True})
-        self.profile.patch({FIRST_THRESHOLD_FIELD: "88"})
+        self.profile.patch({FIRST_THRESHOLD_FIELD: "150"})
         self.assertEqual(
             self.profile.get()[FIRST_THRESHOLD_ORIGIN_FIELD], ORIGIN_MEASURED
         )
@@ -779,10 +786,215 @@ class AdoptFlowTests(unittest.TestCase):
 
     def test_a_profile_stored_before_the_origin_existed_reads_as_measured(self) -> None:
         with self.manager.unit_of_work() as db:
-            self.kv.set(db, "profile", json.dumps({FIRST_THRESHOLD_FIELD: "88"}))
+            self.kv.set(db, "profile", json.dumps({FIRST_THRESHOLD_FIELD: "150"}))
         stored = self.profile.get()
         self.assertEqual(stored[FIRST_THRESHOLD_ORIGIN_FIELD], ORIGIN_MEASURED)
         self.assertFalse(first_threshold_estimated(stored))
+
+    def test_a_percent_stored_before_the_bpm_field_reads_in_bpm_until_a_save(
+        self,
+    ) -> None:
+        # #3915: 90 % with the threshold HR of the day the percent was last
+        # changed (160 bpm on 2026-10-01) is 144 bpm; the read writes nothing.
+        profile = ProfileService(
+            self.manager,
+            ProfileRepository(self.kv),
+            self.kv,
+            on_location_changed=lambda *args, **kwargs: None,
+            mutation_coordinator=threading.RLock(),
+            run_lthr_on=lambda day: 160.0 if day == date(2026, 10, 1) else 170.0,
+        )
+        legacy = {
+            "first_threshold_pct": "90",
+            FIRST_THRESHOLD_ORIGIN_FIELD: "estimated",
+        }
+        with self.manager.unit_of_work() as db:
+            self.kv.set(db, "profile", json.dumps(legacy))
+        stored = profile.get()
+        # Without a change-history entry the threshold HR of today applies.
+        self.assertEqual(stored[FIRST_THRESHOLD_FIELD], "153")
+        with self.manager.unit_of_work() as db:
+            db.execute(
+                "INSERT INTO change_history(id, entity_type, entity_id, action, "
+                "source, created_at, before_hash, after_hash, diff) "
+                "VALUES ('h1', 'profile', 'profile', 'update', 'local', "
+                "'2026-10-01T08:00:00+00:00', 'a', 'b', ?)",
+                (
+                    json.dumps(
+                        {
+                            "fields": {
+                                "first_threshold_pct": {"before": "", "after": "90"}
+                            }
+                        }
+                    ),
+                ),
+            )
+        stored = profile.get()
+        self.assertEqual(stored[FIRST_THRESHOLD_FIELD], "144")
+        self.assertEqual(stored[FIRST_THRESHOLD_ORIGIN_FIELD], ORIGIN_ESTIMATED)
+        self.assertNotIn("first_threshold_pct", stored)
+        with self.manager.reader() as db:
+            raw = json.loads(self.kv.get(db, "profile") or "{}")
+        self.assertEqual(raw, legacy)
+        # The next save stores the bpm and drops the percent.
+        profile.patch({"name": "Ada"})
+        with self.manager.reader() as db:
+            raw = json.loads(self.kv.get(db, "profile") or "{}")
+        self.assertEqual(raw[FIRST_THRESHOLD_FIELD], "144")
+        self.assertNotIn("first_threshold_pct", raw)
+        self.assertEqual(raw[FIRST_THRESHOLD_ORIGIN_FIELD], ORIGIN_ESTIMATED)
+        # Without any threshold HR the percent gives no value.
+        blind = ProfileService(
+            self.manager,
+            ProfileRepository(self.kv),
+            self.kv,
+            on_location_changed=lambda *args, **kwargs: None,
+            mutation_coordinator=threading.RLock(),
+        )
+        with self.manager.unit_of_work() as db:
+            self.kv.set(db, "profile", json.dumps(legacy))
+        self.assertEqual(blind.get()[FIRST_THRESHOLD_FIELD], "")
+
+
+class LegacyPercentTests(unittest.TestCase):
+    """A profile stored before #3915 keeps working until a bpm is written."""
+
+    manager: DatabaseManager
+    counter: int
+    kv: KeyValueRepository
+    lthr: float
+    profile: ProfileService
+    service: FirstThresholdService
+
+    def setUp(self) -> None:
+        open_database(self)
+        open_service(self)
+
+    def profile_service(self, run_lthr_on: Any) -> ProfileService:
+        return ProfileService(
+            self.manager,
+            ProfileRepository(self.kv),
+            self.kv,
+            on_location_changed=lambda *args, **kwargs: None,
+            mutation_coordinator=threading.RLock(),
+            run_lthr_on=run_lthr_on,
+        )
+
+    def store(self, profile: dict[str, Any]) -> None:
+        with self.manager.unit_of_work() as db:
+            self.kv.set(db, "profile", json.dumps(profile))
+
+    def raw(self) -> dict[str, Any]:
+        with self.manager.reader() as db:
+            return json.loads(self.kv.get(db, "profile") or "{}")
+
+    def test_the_threshold_lookup_reading_the_profile_never_recurses(self) -> None:
+        # The run threshold lookup reads the athlete's local date, which reads
+        # the profile again (the real wiring); the inner read sees no LT1.
+        inner: list[str] = []
+
+        def run_lthr_on(_day: Any) -> float:
+            inner.append(service.get()[FIRST_THRESHOLD_FIELD])
+            return 170.0
+
+        service = self.profile_service(run_lthr_on)
+        self.store(
+            {"first_threshold_pct": "90", FIRST_THRESHOLD_ORIGIN_FIELD: "measured"}
+        )
+        self.assertEqual("153", service.get()[FIRST_THRESHOLD_FIELD])
+        self.assertEqual([""], inner)
+
+    def test_without_a_threshold_hr_the_percent_survives_an_unrelated_save(
+        self,
+    ) -> None:
+        service = self.profile_service(lambda _day: None)
+        self.store(
+            {"first_threshold_pct": "88", FIRST_THRESHOLD_ORIGIN_FIELD: "measured"}
+        )
+        self.assertEqual("", service.get()[FIRST_THRESHOLD_FIELD])
+        service.patch({"name": "Ada"})
+        raw = self.raw()
+        self.assertEqual(
+            ("Ada", "88", "measured"),
+            (
+                raw["name"],
+                raw["first_threshold_pct"],
+                raw[FIRST_THRESHOLD_ORIGIN_FIELD],
+            ),
+        )
+        # Once a threshold HR is known the read gives the bpm and a save stores it.
+        known = self.profile_service(lambda _day: 170.0)
+        self.assertEqual("150", known.get()[FIRST_THRESHOLD_FIELD])
+        known.patch({"name": "Ada B."})
+        raw = self.raw()
+        self.assertEqual("150", raw[FIRST_THRESHOLD_FIELD])
+        self.assertNotIn("first_threshold_pct", raw)
+
+    def test_a_save_that_keeps_the_percent_stays_undoable(self) -> None:
+        service = self.profile_service(lambda _day: None)
+        self.store(
+            {"first_threshold_pct": "88", FIRST_THRESHOLD_ORIGIN_FIELD: "measured"}
+        )
+        service.patch({"name": "Ada"})
+        with self.manager.unit_of_work() as db:
+            row = db.execute(
+                "SELECT after_hash FROM change_history WHERE entity_type='profile' "
+                "ORDER BY rowid DESC LIMIT 1"
+            ).fetchone()
+        current = change_history.audit_projection("profile", audit_view(self.raw()))
+        self.assertIn(
+            row["after_hash"], change_history.accepted_audit_hashes("profile", current)
+        )
+
+    def test_clearing_a_legacy_derived_bpm_drops_the_percent(self) -> None:
+        service = self.profile_service(lambda _day: 170.0)
+        self.store(
+            {"first_threshold_pct": "88", FIRST_THRESHOLD_ORIGIN_FIELD: "measured"}
+        )
+        self.assertEqual("150", service.get()[FIRST_THRESHOLD_FIELD])
+        service.patch({FIRST_THRESHOLD_FIELD: ""})
+        self.assertNotIn("first_threshold_pct", self.raw())
+        self.assertEqual("", service.get()[FIRST_THRESHOLD_FIELD])
+
+    def test_rows_recorded_before_the_bpm_field_still_match_for_undo(self) -> None:
+        stored = {
+            "first_threshold_pct": "88",
+            FIRST_THRESHOLD_ORIGIN_FIELD: "measured",
+            "name": "Ada",
+        }
+        # How a pre-#3915 save projected this profile (no bpm field yet).
+        old = normalize_profile({**stored, FIRST_THRESHOLD_FIELD: ""})
+        old.pop(FIRST_THRESHOLD_FIELD)
+        old["first_threshold_pct"] = "88"
+        old[FIRST_THRESHOLD_ORIGIN_FIELD] = "measured"
+        recorded = change_history.audit_hash(
+            change_history.audit_projection("profile", old)
+        )
+        current = change_history.audit_projection("profile", audit_view(stored))
+        self.assertIn(
+            recorded, change_history.accepted_audit_hashes("profile", current)
+        )
+
+    def test_undoing_to_a_state_without_a_percent_clears_the_bpm(self) -> None:
+        service = self.profile_service(lambda _day: 170.0)
+        service.patch({FIRST_THRESHOLD_FIELD: "150"})
+        with self.manager.unit_of_work() as db:
+            restored = service.restore_in_transaction(
+                db, service.get_from_db(db), {"first_threshold_pct": "", "name": "Ada"}
+            )
+        self.assertEqual("", restored[FIRST_THRESHOLD_FIELD])
+
+    def test_an_implausible_share_keeps_the_stand_in(self) -> None:
+        self.assertEqual(0.9, own_lt1_share(153.0, 170.0))
+        for bpm, lthr in (
+            (150.0, 148.0),
+            (150.0, 150.0),
+            (60.0, 170.0),
+            (None, 170.0),
+            (150.0, None),
+        ):
+            with self.subTest(bpm=bpm, lthr=lthr):
+                self.assertIsNone(own_lt1_share(bpm, lthr))
 
 
 class ProfileReadTests(unittest.TestCase):

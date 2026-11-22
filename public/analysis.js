@@ -103,15 +103,20 @@ function bindAnalysisPopover(button, info) {
 }
 
 function analysisChart(title, series, unit, start, end, note, {
-  sparse = false, zeroCentered = false, showLegend = true, calendarWeeks = false, caption = analysisAxisCaption(unit),
+  sparse = false, zeroCentered = false, showLegend = true, calendarWeeks = false, caption = analysisAxisCaption(unit), domain = null,
 } = {}) {
   if (!analysisHasData(series)) return null;
   const heading = h("h3", null, title);
   const section = h("section", "analysis-chart-card", heading);
   const valid = analysisValidPoint;
 
+  // A series without a drawn line (a single reading, or none) names no legend entry and sets no axis; the table still lists it.
+  const shown = series.some(analysisPlottable) ? series.filter(analysisPlottable) : series;
+  // One denominator for every series of a cadence: the days or the week starts of the chart's own period.
+  const periodCount = { 1: analysisTickDates(start, end, false).length, 7: analysisTickDates(start, end, true).length };
   const legend = h("ul", "analysis-chart-legend");
   series.forEach((item, index) => {
+    if (!shown.includes(item)) return;
     const latest = analysisLatestPoint(item);
     const label = item.legendLabel || item.label;
     const sourceInfo = item.source ? " · Quelle: " + item.source : "";
@@ -123,7 +128,7 @@ function analysisChart(title, series, unit, start, end, note, {
     if (latest) info.append(h("span", "analysis-metric-meta", `${dateLabel(latest.observedDate || latest.date)}${sourceSuffix}`));
     if (item.referenceLabel) info.append(h("span", "analysis-metric-context", item.referenceLabel));
     const readings = item.points.filter(valid);
-    info.append(h("span", "analysis-metric-meta", item.coverageShort || analysisCoverageText(readings.length, item.points.length, item.cadenceDays === 7 ? "Wochen" : "Tagen")));
+    info.append(h("span", "analysis-metric-meta", item.coverageShort || analysisCoverageText(readings.length, item.cadenceDays === 7 ? periodCount[7] : item.points.length, item.cadenceDays === 7 ? "Wochen" : "Tagen")));
     if (readings.length > 1) {
       const first = readings[0];
       const delta = Number(latest.value) - Number(first.value);
@@ -132,7 +137,7 @@ function analysisChart(title, series, unit, start, end, note, {
     }
     legend.append(entry);
   });
-  if (showLegend && analysisLegendRepeatsTitle(series, title)) analysisLegendInfoToHeading(heading, legend, title);
+  if (showLegend && analysisLegendRepeatsTitle(shown, title)) analysisLegendInfoToHeading(heading, legend, title);
   else if (showLegend) section.append(legend);
 
   if (!series.some(analysisPlottable)) {
@@ -144,18 +149,26 @@ function analysisChart(title, series, unit, start, end, note, {
   if (fewReadings) section.querySelectorAll(".analysis-info-tooltip").forEach((info) => info.append(h("p", "analysis-sparse-note", "Wenige Messungen · kein belastbarer Trend.")));
   const weekTicks = calendarWeeks && series.length > 0 && series.every((item) => item.cadenceDays === 7);
   // A week's mark sits on its week start; half a week of room keeps the first mark off the value axis.
-  const scales = analysisPlotScales(series, weekTicks ? addDateKey(start, -3) : start, end, { unit, zeroCentered });
+  const scales = analysisPlotScales(shown, weekTicks ? addDateKey(start, -3) : start, end, { unit, zeroCentered, domain });
   const svg = svgNode("svg", { viewBox: `0 0 ${scales.chartWidth} 200`, role: "group", "aria-label": `${title}: datierter Verlauf. Tageswerte auswählen oder Werte ansehen öffnen.` });
   svg.append(svgNode("title", {}, `${title} · ${dateLabel(start)} bis ${dateLabel(end)}`));
   svg.append(svgNode("desc", {}, `Eigene Skala: ${caption}. Fehlende Messungen bleiben unbekannt.`));
   appendAnalysisAxes(svg, unit, scales, caption);
-  appendAnalysisSeries(svg, series, unit, scales, zeroCentered, caption);
+  appendAnalysisSeries(svg, series, unit, scales, zeroCentered, caption, weekTicks);
   appendAnalysisDateTicks(svg, start, end, scales, weekTicks ? analysisWeekTickLabel : analysisDayTickLabel);
   appendAnalysisPointInspectors(section, svg, series, unit, scales);
   section.append(svg);
+  appendAnalysisDataStart(section, shown, start, end);
   appendAnalysisReferenceNotes(section, series, unit);
   appendAnalysisTable(section, title, series, unit, caption);
   return section;
+}
+
+// Data that begins in the last part of the period says so, instead of leaving the first part of the axis unexplained.
+function appendAnalysisDataStart(section, series, start, end) {
+  const first = series.flatMap((item) => item.points.filter(analysisValidPoint).map((point) => point.date)).sort()[0];
+  if (!first || (Date.parse(first) - Date.parse(start)) / Math.max(86400000, Date.parse(end) - Date.parse(start)) <= 0.3) return;
+  section.append(h("p", "muted", `Daten ab ${dateLabel(first)}.`));
 }
 
 // A single series named like the chart only repeats the heading in its legend; its info button joins the heading instead.
@@ -230,22 +243,54 @@ function collectAnalysisChart(missing, title, ...chartArguments) {
   return chart;
 }
 
+// One value per week or day, newest first: the last rows show, the rest opens on request (#3928).
+const ANALYSIS_TABLE_ROWS = 6;
+
+// The week's own date and the count have their columns; a later reading date is only worth naming on a daily row.
+function analysisTableValue(item, point, unit, { weekly, counted }) {
+  if (!analysisValidPoint(point)) return "–";
+  const shown = { ...point, observedDate: weekly ? point.date : point.observedDate, ...(counted ? { count: 0, weekReadings: 0 } : {}) };
+  return analysisPointValue(item, point, unit) + analysisReadingDetails(shown, item.unit || unit);
+}
+
 function appendAnalysisTable(section, title, series, unit, caption = analysisAxisCaption(unit)) {
-  const scroll = makeScrollRegionFocusable(h("div", "analysis-chart-table"), `${title}: Einzelwerte`);
-  const dates = [...new Set(series.flatMap((item) => item.points.filter(analysisValidPoint).map((point) => point.date)))].sort((a, b) => a.localeCompare(b));
-  const rows = dates.map((date) => [h("th", { scope: "row" }, dateLabel(date)), ...series.map((item) => {
-    const point = item.points.find((candidate) => candidate.date === date);
-    let value = analysisValidPoint(point) ? analysisPointValue(item, point, unit) : "–";
-    if (point?.count || point?.weekReadings || point?.observedDate) value += analysisReadingDetails(point, item.unit || unit);
-    // A merged body series names each day's source (#3464).
-    if (analysisValidPoint(point) && point.source_label) value += ` · ${point.source_label}`;
-    return value;
-  })]);
-  scroll.append(table(["Tag", ...series.map((item) => item.label)], rows, { caption: `${title} · ${caption} · nur vorhandene Werte` }));
+  const scroll = makeScrollRegionFocusable(h("div", "analysis-chart-table analysis-series-table"), `${title}: Einzelwerte`);
+  const weekly = series.every((item) => item.cadenceDays === 7);
+  const dates = [...new Set(series.flatMap((item) => item.points.filter(analysisValidPoint).map((point) => point.date)))].sort((a, b) => b.localeCompare(a));
+  const single = series.length === 1;
+  const known = series.flatMap((item) => item.points.filter(analysisValidPoint));
+  const counted = single && known.some((point) => point.count || point.weekReadings);
+  const sourced = single && Boolean(series[0].source || known.some((point) => point.source_label));
+  const columns = [weekly ? "Woche ab" : "Tag", ...(single ? ["Wert"] : series.map((item) => item.label)), ...(counted ? ["Messungen"] : []), ...(sourced ? ["Quelle"] : [])];
+  const rows = dates.map((date) => {
+    const points = series.map((item) => item.points.find((candidate) => candidate.date === date));
+    const values = series.map((item, index) => analysisTableValue(item, points[index], unit, { weekly, counted }));
+    const point = points.find(analysisValidPoint);
+    const count = point?.count || point?.weekReadings;
+    return [h("th", { scope: "row" }, dateLabel(date)), ...values,
+      ...(counted ? [count ? String(count) : "–"] : []), ...(sourced ? [point?.source_label || series[0].source || "–"] : [])];
+  });
+  const grid = table(columns, rows, { caption: `${title} · ${caption} · nur vorhandene Werte` });
+  const hidden = [...[...grid.children].at(-1).children].slice(ANALYSIS_TABLE_ROWS);
+  hidden.forEach((row) => { row.hidden = true; });
+  scroll.append(grid);
+  if (hidden.length) {
+    const more = h("button", { type: "button", className: "secondary-button" }, `Alle ${rows.length} ${weekly ? "Wochen" : "Tage"} anzeigen`);
+    more.addEventListener("click", () => {
+      hidden.forEach((row) => { row.hidden = false; });
+      more.remove();
+      // The button had the focus: it moves to the first row that appeared, so a keyboard user keeps their place.
+      const first = hidden[0].children[0];
+      first.tabIndex = -1;
+      first.focus();
+    });
+    scroll.append(more);
+  }
   section.append(h("details", null, h("summary", null, "Werte ansehen"), scroll));
 }
 
-function analysisPlotScales(series, start, end, { unit = "", zeroCentered = false } = {}) {
+// `domain` is a scale with fixed ends, such as 0 to 100 points: { min, max, step }.
+function analysisPlotScales(series, start, end, { unit = "", zeroCentered = false, domain = null } = {}) {
   const values = series.flatMap((item) => [
     ...(analysisPlottable(item) ? item.points.filter(analysisValidPoint) : []).flatMap((point) => [Number(point.value), point.lower, point.upper].filter((v) => v != null && Number.isFinite(Number(v))).map(Number)),
     ...(item.range ? [item.range.lower, item.range.upper] : []),
@@ -254,14 +299,18 @@ function analysisPlotScales(series, start, end, { unit = "", zeroCentered = fals
   let low = Math.min(...values), high = Math.max(...values);
   if (zeroCentered) { const extent = Math.max(Math.abs(low), Math.abs(high), 1); low = -extent; high = extent; }
   if (series.some((item) => item.bars)) low = Math.min(0, low);
+  // A pulse that varies by two beats does not fill the axis: the range is at least ten beats wide.
+  if (unit === "bpm" && high - low < 10) { const middle = (high + low) / 2; low = middle - 5; high = middle + 5; }
   const padding = Math.max((high - low) * .12, analysisMinimumPadding(unit, high));
   const rawStep = (high - low + padding * 2) / 4;
   const magnitude = 10 ** Math.floor(Math.log10(rawStep));
   let step = [1, 2, 5, 10].find((factor) => factor * magnitude >= rawStep) * magnitude;
   if (unit === "s/km") step = Math.max(5, Math.ceil(step / 5) * 5);
   if (analysisCountUnit(unit)) step = Math.max(1, step);
-  const min = series.some((item) => item.bars) ? 0 : Math.floor((low - padding) / step) * step;
-  const max = Math.ceil((high + padding) / step) * step;
+  if (domain) step = domain.step;
+  const fitted = series.some((item) => item.bars) ? 0 : Math.floor((low - padding) / step) * step;
+  const min = domain ? domain.min : fitted;
+  const max = domain ? domain.max : Math.ceil((high + padding) / step) * step;
   // Wide screens place two charts per row, so the plot is drawn at the column width and keeps its text size.
   let chartWidth = 680;
   if (globalThis.innerWidth < 600) chartWidth = Math.max(220, globalThis.innerWidth - 80);
@@ -348,7 +397,7 @@ function appendAnalysisPointMark(svg, item, point, index, unit, scales, obstacle
 
 // Only the latest, highest, lowest and first reading carry a value label (#1782); the tap readout shows the rest.
 function analysisLabelledPoints(item) {
-  const readings = item.points.filter(analysisValidPoint);
+  const readings = item.points.filter(analysisValidPoint).filter((point) => !(item.hideZeroLabels && Number(point.value) === 0));
   if (!readings.length) return [];
   const byValue = [...readings].sort((a, b) => Number(a.value) - Number(b.value));
   return [...new Set([readings.at(-1), byValue.at(-1), byValue[0], readings[0]])];
@@ -463,9 +512,11 @@ function appendAnalysisPointLabels(svg, labels, obstacles, { chartWidth }) {
   accepted.forEach(({ box, index, label }) => svg.append(svgNode("text", { x: (box.left + box.right) / 2, y: box.bottom - 3, "text-anchor": "middle", class: "analysis-point-value", "data-value-series": index }, label)));
 }
 
-function appendAnalysisSeries(svg, series, unit, scales, zeroCentered, caption) {
+function appendAnalysisSeries(svg, series, unit, scales, zeroCentered, caption, weeklyCaption = false) {
   const labels = [];
   const obstacles = [analysisTextBox(4, 15, caption, 6.4)];
+  // The week caption sits at the top right: no value label may overprint it.
+  if (weeklyCaption) obstacles.push(analysisTextBox(scales.chartWidth - 8 - "Woche ab".length * 6.4, 15, "Woche ab", 6.4));
   // A dashed zero line beside a label reads as a minus sign (#3450).
   if (scales.min < 0 && scales.max > 0) obstacles.push({ left: 60, right: scales.chartRight, top: scales.y(0) - 1, bottom: scales.y(0) + 1 });
   series.forEach((item, index) => {
@@ -489,19 +540,26 @@ function analysisDayTickLabel(dateKey) {
   return dateKey.slice(5).split("-").reverse().join(".");
 }
 
+// The label step in ticks: a round step (days of a week, a few weeks) when one fits, else the even step for the labels that fit.
+function analysisTickStep(tickCount, maxLabels) {
+  const fits = (step) => Math.floor((tickCount - 1) / step) + 1 <= maxLabels;
+  return [1, 2, 3, 4, 7, 14, 28, 56, 91].find(fits) || Math.ceil((tickCount - 1) / (maxLabels - 1));
+}
+
 // Tick marks sit on every day (or every week start of a weekly chart); labels repeat at an even step counted back from the latest tick.
 function appendAnalysisDateTicks(svg, start, end, { chartWidth, x }, tickLabel = analysisDayTickLabel) {
   const weekly = tickLabel === analysisWeekTickLabel;
   const dates = analysisTickDates(start, end, weekly);
   const maxLabels = chartWidth < 600 ? 4 : 7;
-  const step = [1, 2, 3, 4, 7, 14, 28].find((candidate) => Math.floor((dates.length - 1) / candidate) + 1 <= maxLabels) || 28;
+  const step = analysisTickStep(dates.length, maxLabels);
   dates.forEach((date, index) => {
     const labelled = (dates.length - 1 - index) % step === 0;
     if (!labelled && dates.length > 31) return;
     svg.append(svgNode("line", { x1: x(date), x2: x(date), y1: 160, y2: labelled ? 168 : 164, class: "analysis-tick-mark" }));
     if (labelled) svg.append(svgNode("text", { x: x(date), y: 188, "text-anchor": "middle", class: "analysis-date-tick" }, tickLabel(date)));
   });
-  if (weekly) svg.append(svgNode("text", { x: 4, y: 188, class: "analysis-week-caption" }, "Woche ab"));
+  // At the top right, clear of the first tick label.
+  if (weekly) svg.append(svgNode("text", { x: chartWidth - 8, y: 15, "text-anchor": "end", class: "analysis-week-caption" }, "Woche ab"));
 }
 
 function analysisTickDates(start, end, weekly) {
@@ -750,7 +808,7 @@ const ALL_TIME_RETRY_MS = 3000;
 // One power-profile read fills the Rekorde cards (#3826) and the sport tabs' CP/CS lines (#2265).
 const PROFILE_CARDS = [["rideActivityRecords", "Einzelne Fahrt"], ["cyclingPowerProfile", "Leistungsprofil"], ["runActivityRecords", "Einzelner Lauf"], ["runningBestEfforts", "Bestwerte"]];
 const CRITICAL_LINES = [["cyclingCriticalPower", "ride"], ["runningCriticalSpeed", "run"]];
-const ANALYSIS_PERFORMANCE_ROUTES = new Set(["analysis", "analysis/running", "analysis/cycling", "analysis/records"]);
+const ANALYSIS_PERFORMANCE_ROUTES = new Set(["analysis", "analysis/running", "analysis/cycling"]);
 // Every measured duration (athlete decision, #3826).
 const CYCLING_POWER_PROFILE_DURATIONS = [[5, "5 Sekunden"], [15, "15 Sekunden"], [30, "30 Sekunden"], [60, "1 Minute"], [120, "2 Minuten"], [180, "3 Minuten"], [300, "5 Minuten"], [420, "7 Minuten"], [600, "10 Minuten"], [720, "12 Minuten"], [1200, "20 Minuten"], [1800, "30 Minuten"], [3600, "1 Stunde"]];
 
@@ -760,7 +818,7 @@ function recordDateCell(point, label) {
   if (!point) return cell;
   if (!point.activity_id) { cell.append(dateLabel(point.date)); return cell; }
   const open = h("button", { type: "button", className: "link-button", "aria-label": `${label} vom ${dateLabel(point.date)} öffnen` }, dateLabel(point.date));
-  open.addEventListener("click", () => void ActivityDetails.open({ activity_id: point.activity_id, name: point.name }, { api, showDialog: showAccessibleDialog, backLabel: "Zurück zu Rekorde" }));
+  open.addEventListener("click", () => void ActivityDetails.open({ activity_id: point.activity_id, name: point.name }, { api, showDialog: showAccessibleDialog, backLabel: state.route === "analysis/cycling" ? "Zurück zu Radfahren" : "Zurück zu Laufen" }));
   cell.append(open);
   return cell;
 }
@@ -826,40 +884,25 @@ function showProfileCardsState(error) {
   }
 }
 
-// Analyse › Kraft (#3764, athlete: layout A): sessions per week, then one top-set chart per exercise
-// with its last sessions. Stored sets only: no strength load, no estimated 1RM; gaps stay gaps.
-const STRENGTH_LAST_SESSIONS = 3;
+// Analyse › Kraft (#3764, athlete B2): how often per week the upper body and the legs were trained over
+// the chosen period, a full body session on both; sessions that decide neither are counted apart.
 let strengthAnalysisGeneration = 0;
+let strengthHistoryPeriod = "91d";
 
-function strengthTopSet(session) {
-  const kg = Number(session.top_kg);
-  if (session.top_kg != null && Number.isFinite(kg)) return `${AppFormat.number(kg, { digits: Number.isInteger(kg) ? 0 : 1 })} kg × ${session.top_reps ?? "–"}`;
-  return session.top_reps != null ? `${session.top_reps} Wdh.` : "–";
-}
-
-function strengthExerciseChart(exercise, report) {
-  const sessions = (exercise.sessions || []).filter((session) => session.date);
-  const weighted = sessions.some((session) => session.top_kg != null);
-  const unit = weighted ? "kg" : "Wdh.";
-  const title = ActivityDetails.strengthExerciseLabel({ name: exercise.exercise === exercise.category ? null : exercise.exercise, category: exercise.category });
-  const points = sessions.map((session) => ({ date: session.date, value: weighted ? session.top_kg : session.top_reps, readout: `${strengthTopSet(session)} · ${session.sets ?? "–"} Sätze` })).reverse();
-  const series = [{ label: weighted ? "Top-Satz (kg)" : "Top-Satz (Wdh.)", legendLabel: title, unit, color: 0, cadenceDays: 1, points }];
-  const chart = analysisChart(title, series, unit, report.start, report.end, "Schwerster Satz je Einheit mit seinen Wiederholungen.", { showLegend: false }) || h("section", "analysis-chart-card", h("h3", null, title));
-  // The last-sessions table replaces the chart's own value list.
-  chart.querySelector("details")?.remove();
-  const rows = sessions.slice(0, STRENGTH_LAST_SESSIONS).map((session) => [h("th", { scope: "row" }, dateLabel(session.date)), String(session.sets ?? "–"), strengthTopSet(session)]);
-  const scroll = makeScrollRegionFocusable(h("div", "table-scroll"), `${title}: letzte Einheiten`);
-  scroll.append(table(["Datum", "Sätze", "Top-Satz"], rows, { className: "race-predictions-table" }));
-  chart.append(h("h5", null, "Letzte Einheiten"), scroll);
-  return chart;
+// One chart per body side: the sessions per week that trained it, a full body session on both.
+function strengthSideChart(title, key, color, report) {
+  const points = (report.weeks || []).map((week) => ({ date: week.week_start, value: week[key] }));
+  const series = [{ label: title, legendLabel: title, unit: "Mal", color, bars: true, connected: true, cadenceDays: 7, average: true, averageInHeading: true, hideZeroLabels: true, points }];
+  return analysisChart(title, series, "Mal", report.start, report.end, "Einheiten pro Woche; Ganzkörper zählt für Oberkörper und Beine.", { calendarWeeks: true, showLegend: false });
 }
 
 function strengthAnalysisCards(report) {
-  const points = (report.weeks || []).map((week) => ({ date: week.week_start, value: week.sessions }));
-  const series = [{ label: "Einheiten pro Woche", legendLabel: "Einheiten pro Woche", unit: "Einheiten", color: 2, bars: true, connected: true, cadenceDays: 7, points }];
-  const weekly = analysisChart("Einheiten pro Woche", series, "Einheiten", report.start, report.end, "Abgeschlossene Krafteinheiten.", { calendarWeeks: true, showLegend: false });
-  const charts = (report.exercises || []).map((exercise) => strengthExerciseChart(exercise, report));
-  return [weekly, charts.length ? analysisChartGroup("Top-Sätze", charts, [], "Schwerster Satz je Einheit mit seinen Wiederholungen.") : null].filter(Boolean);
+  const unknown = (report.weeks || []).reduce((total, week) => total + (week.unknown || 0), 0);
+  return [
+    strengthSideChart("Oberkörper", "upper", 2, report),
+    strengthSideChart("Beine", "legs", 3, report),
+    unknown ? h("p", "analysis-reference-note", `${AppFormat.plural(unknown, "Einheit", "Einheiten")} ohne Oberkörper- oder Beinschwerpunkt, nicht zugeordnet.`) : null,
+  ].filter(Boolean);
 }
 
 async function renderStrengthAnalysis() {
@@ -871,10 +914,13 @@ async function renderStrengthAnalysis() {
     root.replaceChildren(createLoadingState("Kraftdaten werden geladen…"));
   }
   try {
-    const report = await requestAnalysisReport("/api/analysis/strength");
+    const report = await requestAnalysisReport(`/api/analysis/strength?weeks=${analysisPeriod(strengthHistoryPeriod).weeks}`);
     if (generation !== strengthAnalysisGeneration) return;
+    const controls = analysisPeriodControls("Zeitraum für Kraft", strengthHistoryPeriod, (choice) => { strengthHistoryPeriod = choice; void renderStrengthAnalysis(); });
+    // The selector stays above the empty card, so a short period without sessions can be widened.
+    document.getElementById("strengthPeriod").replaceChildren(controls);
     root.replaceChildren(...strengthAnalysisCards(report));
-    root.dataset.analysisEmpty = String(!(report.weeks || []).some((week) => week.sessions) && !(report.exercises || []).length);
+    root.dataset.analysisEmpty = String(!(report.weeks || []).some((week) => week.sessions));
   } catch (error) {
     if (generation !== strengthAnalysisGeneration) return;
     root.dataset.analysisEmpty = "failed";
@@ -1376,15 +1422,20 @@ function providerMetricValue(metric, values) {
   return undefined;
 }
 
-function renderProviderMetrics(metrics, root, start, end, missing) {
+function renderProviderMetrics(metrics, root, start, end, missing, { weeklyReadiness = false } = {}) {
   Object.entries(metrics || {}).forEach(([key, item], index) => {
     const projected = key === "training_readiness_history" || key === "weekly_training_status";
     const raw = (Array.isArray(item?.points) ? item.points : []).map((point) => ({ date: point?.date, value: projected ? point?.value : providerMetricValue(key, point?.values) })).filter((point) => point.date && typeof point.value === "number" && Number.isFinite(point.value));
     if (!raw.some(analysisValidPoint)) { missing.push(providerMetricLabel(key)); return; }
-    const daily = key === "training_readiness_history";
-    const points = daily ? raw.filter((point) => point.date >= start && point.date <= end) : analysisWeeklyPerformancePoints(raw, start, end, false);
+    const daily = key === "training_readiness_history" && !weeklyReadiness;
+    const readiness = key === "training_readiness_history";
+    const inPeriod = raw.filter((point) => point.date >= start && point.date <= end);
+    let points = analysisWeeklyPerformancePoints(raw, start, end, false);
+    if (readiness) points = daily ? inPeriod : analysisWeeklyMeanPoints(inPeriod, start, end);
     const series = [{ label: providerMetricLabel(key), legendLabel: providerMetricLabel(key), source: item.source, unit: providerMetricUnit(key), color: index, cadenceDays: daily ? 1 : 7, points, currentPoint: raw.filter((point) => point.date <= end).findLast(analysisValidPoint) }];
-    const chart = collectAnalysisChart(missing, providerMetricLabel(key), series, providerMetricUnit(key), start, end, "", { sparse: true, showLegend: false, calendarWeeks: true });
+    // The readiness score runs from 0 to 100; a week plots the mean of its days.
+    const options = { sparse: true, showLegend: false, calendarWeeks: true, ...(readiness ? { domain: { min: 0, max: 100, step: 25 } } : {}), ...(readiness && weeklyReadiness ? { caption: analysisBasisCaption("Punkte", true, "mean") } : {}) };
+    const chart = collectAnalysisChart(missing, providerMetricLabel(key), series, providerMetricUnit(key), start, end, "", options);
     if (!chart) return;
     chart.querySelector(".analysis-chart-legend")?.remove();
     root.append(chart);
@@ -1450,8 +1501,9 @@ function bodyMetricChart(metric, title, unit, window, period, preferred = {}) {
   if (weekly) chart.querySelectorAll(".analysis-info-tooltip").forEach((info) => {
     info.append(h("p", "analysis-reference-note", `${analysisPeriod(period).weeks} rollierende Wochen: letzter Messwert je Woche.`));
   });
-  if (metric === "cycling_w_per_kg") chart.querySelectorAll(".analysis-info-tooltip").forEach((info, index) => {
-    const item = entries[index];
+  // The legend tooltip names its series; a hidden series leaves no tooltip, so the position says nothing.
+  if (metric === "cycling_w_per_kg") chart.querySelectorAll(".analysis-info-tooltip[data-series]").forEach((info) => {
+    const item = entries[Number(info.dataset.series)];
     if (item?.power_method) info.append(h("p", "analysis-reference-note", `Methode: ${item.power_method}. FTP- und Gewichtsdatum sind in den Einzelwerten getrennt ausgewiesen.`));
   });
   return chart;
@@ -1662,7 +1714,7 @@ function bindBodyFatDialog() {
     const day = form.elements.date.value;
     const folds = bodyFatMode === "folds";
     const [name, path] = folds ? ["Messung", "/api/body/skinfolds/remove"] : ["Körperfett", "/api/body/body-fat/remove"];
-    if (!await requestConfirmation(`${name} vom ${dateLabel(day)} löschen?`, { title: `${name} löschen?`, confirmLabel: "Löschen" })) return;
+    if (!await requestConfirmation(`${name} vom ${dateLabel(day)} wird gelöscht.`, { title: `${name} löschen?`, danger: true, confirmLabel: "Löschen" })) return;
     await sendBodyEntry("bodyFatDialog", path, { date: day, confirmed: true }, remove, bodyFatReceipt(day, folds, "gelöscht"));
   });
   document.querySelector("#bodyFatDialogCancel").addEventListener("click", () => document.querySelector("#bodyFatDialog").close());
@@ -1818,7 +1870,7 @@ function bindWeightDialog() {
   const remove = document.querySelector("#weightDialogRemove");
   remove.addEventListener("click", async () => {
     const day = form.elements.date.value;
-    if (!await requestConfirmation(`Gewicht vom ${dateLabel(day)} löschen?`, { title: "Gewicht löschen?", confirmLabel: "Löschen" })) return;
+    if (!await requestConfirmation(`Das Gewicht vom ${dateLabel(day)} wird gelöscht.`, { title: "Gewicht löschen?", danger: true, confirmLabel: "Löschen" })) return;
     await sendBodyEntry("weightDialog", "/api/body/weight/remove", { date: day, confirmed: true }, remove, weightReceipt(day, "gelöscht"));
   });
   document.querySelector("#weightDialogCancel").addEventListener("click", () => document.querySelector("#weightDialog").close());
@@ -1901,6 +1953,7 @@ async function saveEnergyGoal(patch, button) {
     document.querySelector("#energyGoalDialog").close();
     toast(patch.energy_goal ? "Energieziel gespeichert." : "Energieziel entfernt.");
     renderBodyAnalysis(state.data?.performance?.history?.body);
+    renderDiaryEnergy();
   } catch (error) {
     document.querySelector("#energyGoalDialogStatus").textContent = error.message;
     button.disabled = false;
@@ -1912,9 +1965,9 @@ async function saveEnergyGoal(patch, button) {
 function energyGoalStrip(read) {
   const goal = read.goal;
   if (!goal) {
-    // The link jumps to the goal row in Körper and opens its dialog.
-    const link = h("button", { type: "button", className: "analysis-legend-info" }, "Ziel festlegen");
-    link.addEventListener("click", () => void AppRouter.navigate("nutrition/body", { historyMode: "push" }).then(openEnergyGoalDialog));
+    // The dialog opens in place: the diary stays under it, and the card is priced again after the save (#3930).
+    const link = h("button", { type: "button", className: "secondary-button" }, "Ziel festlegen");
+    link.addEventListener("click", openEnergyGoalDialog);
     return h("p", { className: "energy-goal", dataset: { energyGoal: "none" } }, link);
   }
   if (goal.remaining_kcal == null) return h("p", { className: "energy-goal muted", dataset: { energyGoal: "pending" } }, "Noch kein Tagesverbrauch für dein Ziel");
@@ -2171,7 +2224,18 @@ function energyUsage(read) {
   const drawn = parts.filter(([, part]) => !row.pending_parts?.includes(part));
   const bar = energySplitBar(row.split, drawn, parts.map(([, , label], index) => `${label} ${texts[index]}`).join(" · "));
   const total = h("li", { className: "energy-total" }, h("span", null, "Tag gesamt"), h("span", null, energyKcal(row.total_kcal, row.total_band_kcal)));
-  return h("div", { className: "energy-usage" }, head, bar, h("ul", "energy-parts", ...items, total), energySourceLine(row));
+  // Today's total with the usual steps and digestion and the planned units (#3917); it only informs.
+  const expected = read.day_partial && read.expected_total_kcal != null
+    ? [h("li", { className: "energy-expected" }, h("span", null, "Tag erwartet"), h("span", null, `≈ ${formatWhole(read.expected_total_kcal)}`))] : [];
+  return h("div", { className: "energy-usage" }, head, bar, h("ul", "energy-parts", ...items, total, ...expected), energySourceLine(row), ...energyGuardNotes(read));
+}
+
+// Energy availability and the weight's loss rate, shown only past their line (#3917); neither blocks anything.
+function energyGuardNotes({ energy_availability: availability, loss_rate: loss }) {
+  const notes = [];
+  if (availability?.below) notes.push(`Energieverfügbarkeit (7 Tage) ${formatWhole(availability.kcal_per_kg_ffm)} kcal/kg FFM · unter ${formatWhole(availability.floor_kcal_per_kg_ffm)}`);
+  if (loss?.fast) notes.push(`Gewicht fällt ${loss.pct_per_week.toLocaleString("de-DE")} %/Woche · schneller als ${formatWhole(loss.limit_pct_per_week)} %`);
+  return notes.map((text) => h("small", { className: "energy-note", dataset: { energyNote: "" } }, text));
 }
 
 // Digestion comes from the logged meals: without any it is not recorded; Garmin has no such part.
@@ -2731,15 +2795,14 @@ async function renderTrainingRecords({ background = false } = {}) { // NOSONAR
 // without a marker, still loading or failed counts as not empty; period controls stay visible.
 // A container shared by both sports names the marker of the sport's part (#2265).
 const ANALYSIS_SEGMENT_CONTENT = {
-  running: [["currentPerformance", "analysisEmptyRunning"], ["analysisHistoryCharts", "analysisEmptyRunning"], ["performancePredictions"], ["runningCriticalSpeed"], ["runningRecurringSessions"]],
-  cycling: [["currentPerformance", "analysisEmptyCycling"], ["analysisHistoryCharts", "analysisEmptyCycling"], ["cyclingCriticalPower"], ["cyclingRecurringSessions"]],
-  records: [["rideActivityRecords"], ["cyclingPowerProfile"], ["runActivityRecords"], ["runningBestEfforts"]],
+  running: [["currentPerformance", "analysisEmptyRunning"], ["analysisHistoryCharts", "analysisEmptyRunning"], ["performancePredictions"], ["runningCriticalSpeed"], ["runningRecurringSessions"], ["runActivityRecords"], ["runningBestEfforts"]],
+  cycling: [["currentPerformance", "analysisEmptyCycling"], ["analysisHistoryCharts", "analysisEmptyCycling"], ["cyclingCriticalPower"], ["cyclingRecurringSessions"], ["rideActivityRecords"], ["cyclingPowerProfile"]],
   load: [["sessionPerformance"], ["analysisLoadCharts"], ["trainingZoneCharts"], ["performanceEnduranceCharts"]],
   recovery: [["personalRecovery"]],
   strength: [["strengthAnalysis"]],
 };
-const ANALYSIS_EMPTY_TITLES = { running: "Noch keine Laufdaten", cycling: "Noch keine Raddaten", load: "Noch keine Belastungsdaten", recovery: "Noch keine Erholungsdaten", strength: "Noch keine Kraftdaten", records: "Noch keine Rekorde" };
-const ANALYSIS_SEGMENT_LABELS = { running: "Laufen", cycling: "Radfahren", strength: "Kraft", load: "Belastung", recovery: "Erholung", records: "Rekorde" };
+const ANALYSIS_EMPTY_TITLES = { running: "Noch keine Laufdaten", cycling: "Noch keine Raddaten", load: "Noch keine Belastungsdaten", recovery: "Noch keine Erholungsdaten", strength: "Noch keine Kraftdaten" };
+const ANALYSIS_SEGMENT_LABELS = { running: "Laufen", cycling: "Radfahren", strength: "Kraft", load: "Belastung", recovery: "Erholung" };
 const ANALYSIS_SEGMENT_SPORTS = { running: "run", cycling: "ride" };
 
 function analysisSegmentEmpty(segment) {
@@ -2752,6 +2815,7 @@ function analysisDataSourceConnected(data = state.data) {
 
 function analysisSegmentPeriod(segment) {
   if (segment === "load") return analysisHistoryPeriod;
+  if (segment === "strength") return strengthHistoryPeriod;
   return segment === "recovery" ? recoveryHistoryPeriod : null;
 }
 
@@ -2764,7 +2828,8 @@ function analysisEmptyCard(segment) {
     cause = "Keine Daten in den letzten 4 Wochen.";
     action = h("button", { className: "push-button", type: "button" }, "3 Monate anzeigen");
     action.addEventListener("click", () => {
-      const controls = document.querySelectorAll(segment === "load" ? "#analysisLoadPeriod button" : "#personalRecovery .analysis-period-controls button");
+      const buttons = { load: "#analysisLoadPeriod button", strength: "#strengthPeriod button" };
+      const controls = document.querySelectorAll(buttons[segment] || "#personalRecovery .analysis-period-controls button");
       [...controls].find((button) => button.textContent === "3 Monate")?.click();
     });
   } else if (connected) {
@@ -2795,7 +2860,7 @@ function renderAnalysisSegmentsIfActive() {
 }
 
 function renderAnalysisSegments(route = state.route) {
-  const segment = { "analysis/load": "load", "analysis/recovery": "recovery", "analysis/cycling": "cycling", "analysis/strength": "strength", "analysis/records": "records" }[route] || "running";
+  const segment = { "analysis/load": "load", "analysis/recovery": "recovery", "analysis/cycling": "cycling", "analysis/strength": "strength" }[route] || "running";
   const empty = renderAnalysisEmptyState(segment);
   document.getElementById("analysisRefreshButton").setAttribute("aria-label", `Analyse aktualisieren: ${ANALYSIS_SEGMENT_LABELS[segment]}`);
   const sport = empty ? null : ANALYSIS_SEGMENT_SPORTS[segment];
@@ -2811,8 +2876,8 @@ function renderAnalysisSegments(route = state.route) {
   document.getElementById("trainingZoneCharts").hidden = !load;
   document.getElementById("analysisLoadCharts").hidden = !load;
   document.getElementById("personalRecovery").hidden = segment !== "recovery";
+  document.getElementById("strengthPeriod").hidden = segment !== "strength";
   document.getElementById("strengthAnalysis").hidden = segment !== "strength" || empty;
-  document.getElementById("analysisRecords").hidden = segment !== "records" || empty;
   document.querySelectorAll("[data-analysis-segment]").forEach((link) => {
     const active = link.dataset.analysisSegment === segment;
     link.classList.toggle("active", active);
@@ -2826,7 +2891,7 @@ const analysisRefresh = AppViewRefresh.create({
   getRoute: () => state.route,
   getRequest: (route) => {
     // Laufen and Radfahren read the same performance values; the week review reads the sessions.
-    const area = { running: "performance", cycling: "performance", records: "performance", week: "sessions", strength: "sessions" }[route.split("/")[1]] || route.split("/")[1] || "performance";
+    const area = { running: "performance", cycling: "performance", week: "sessions", strength: "sessions" }[route.split("/")[1]] || route.split("/")[1] || "performance";
     const days = analysisRefreshDays(area);
     return { path: "/api/analysis/refresh", body: { area, ...(days ? { days } : {}) } };
   },
@@ -2898,15 +2963,11 @@ function recoveryRollingNote(rolling) {
   return `7-Tage-Mittel ${analysisValue(rolling.mean_ms, "ms")} (${rolling.window_nights} Nächte) · ${position} deinem Bereich ${range}${spread}${provisional}`;
 }
 
-// Daily values on `dates`, or the weekly mean of each 7-day block when `weekly`; missing values stay gaps.
+// Daily values on `dates`, or the mean of each calendar week when `weekly`; missing values stay gaps.
 function recoveryPeriodPoints(history, dates, today, weekly) {
+  if (weekly) return analysisWeeklyMeanPoints(history.filter((point) => point.date >= dates[0] && point.date <= today), dates[0], today, 3);
   const values = new Map(history.filter((point) => point.date <= today).map((point) => [point.date, point.value]));
-  if (!weekly) return dates.map((date) => ({ date, value: values.get(date) ?? null }));
-  return Array.from({ length: dates.length / 7 }, (_, weekIndex) => {
-    const weekDates = dates.slice(weekIndex * 7, weekIndex * 7 + 7);
-    const weekValues = weekDates.map((date) => values.get(date)).filter((value) => Number.isFinite(Number(value))).map(Number);
-    return { date: weekDates.at(-1), value: weekValues.length ? weekValues.reduce((sum, value) => sum + value, 0) / weekValues.length : null };
-  });
+  return dates.map((date) => ({ date, value: values.get(date) ?? null }));
 }
 
 function renderRecoveryCharts(report, root) {
@@ -2918,10 +2979,12 @@ function renderRecoveryCharts(report, root) {
   const today = report?.as_of || timezoneDateKey(state.data?.profile?.timezone, new Date());
   const period = analysisPeriod(recoveryHistoryPeriod);
   const weekly = analysisPeriodWeekly(recoveryHistoryPeriod);
-  // Whole weeks of 7 days each, so 12 Monate end on 52 weeks.
-  const dayCount = weekly ? period.weeks * 7 : period.days;
-  const dates = Array.from({ length: dayCount }, (_, index) => addDateKey(today, index - dayCount + 1));
-  const start = dates[0], end = today;
+  // Whole calendar weeks, so 12 Monate end on 52 weeks and every week is dated at its Monday.
+  const weekStart = addDateKey(today, -((new Date(`${today}T12:00:00Z`).getUTCDay() + 6) % 7));
+  const start = weekly ? addDateKey(weekStart, -7 * (period.weeks - 1)) : addDateKey(today, 1 - period.days);
+  const dayCount = Math.round((Date.parse(today) - Date.parse(start)) / 86400000) + 1;
+  const dates = Array.from({ length: dayCount }, (_, index) => addDateKey(start, index));
+  const end = today;
   const series = metrics.map(([metric, title, unit, color]) => {
     const item = baselines.find((candidate) => candidate.metric === metric);
     if (!item) return { label: title, legendLabel: title, unit, color, points: dates.map((date) => ({ date, value: null })) };
@@ -2948,12 +3011,12 @@ function renderRecoveryCharts(report, root) {
     const values = item.points.filter(analysisValidPoint).map((point) => Number(point.value));
     const average = values.length ? values.reduce((sum, value) => sum + value, 0) / values.length : null;
     const title = average == null ? item.legendLabel : `${item.legendLabel} · Ø ${analysisValue(average, item.unit)}`;
-    return collectAnalysisChart(missing, title, [item], item.unit, start, end, "", { compactInfo: true, includeCoverage: false, showLegend: false });
+    return collectAnalysisChart(missing, title, [item], item.unit, start, end, "", { showLegend: false, calendarWeeks: weekly, ...(weekly ? { caption: analysisBasisCaption(item.unit, true, "mean") } : {}) });
   }).filter(Boolean);
   const readiness = state.data?.performance?.history?.provider_metrics?.training_readiness_history;
   if (readiness) {
     const readinessCharts = document.createDocumentFragment();
-    renderProviderMetrics({ training_readiness_history: readiness }, readinessCharts, start, end, missing);
+    renderProviderMetrics({ training_readiness_history: readiness }, readinessCharts, start, end, missing, { weeklyReadiness: weekly });
     charts.unshift(...readinessCharts.children);
   }
   root.append(analysisPeriodControls("Zeitraum für Erholung", recoveryHistoryPeriod, (choice) => { recoveryHistoryPeriod = choice; renderPersonalRecovery(report); }, { trend: true }));
@@ -3293,11 +3356,11 @@ function equipmentForm(tab, item) {
     h("label", null, "Sportart", select("sport", sports, pair)),
     h("label", null, "Art", kind), parent,
     h("label", null, "Im Einsatz seit", h("input", { type: "date", name: "start_date", required: true, value: item?.start_date || timezoneDateKey(state.data?.profile?.timezone, new Date()) })),
-    h("label", null, "Kilometer vorher", number("initial_distance_km", item?.initial_distance_km, true)),
-    h("label", null, "Stunden vorher", number("initial_hours", item?.initial_hours, true)),
-    h("label", null, "Lebensdauer-Ziel km", number("lifetime_target_km", item?.lifetime_target_km)),
-    h("label", null, "Wartung alle km", number("maintenance_km", item?.maintenance_km)),
-    h("label", null, "Wartung alle Stunden", number("maintenance_hours", item?.maintenance_hours)),
+    h("label", null, "Bisherige Strecke (km)", number("initial_distance_km", item?.initial_distance_km, true)),
+    h("label", null, "Bisherige Zeit (h)", number("initial_hours", item?.initial_hours, true)),
+    h("label", null, "Lebensdauer-Ziel (km)", number("lifetime_target_km", item?.lifetime_target_km)),
+    h("label", null, "Wartung alle (km)", number("maintenance_km", item?.maintenance_km)),
+    h("label", null, "Wartung alle (h)", number("maintenance_hours", item?.maintenance_hours)),
     error, h("button", { className: "secondary-button", type: "submit" }, "Speichern"));
   form.addEventListener("submit", async (event) => {
     event.preventDefault();
@@ -3331,7 +3394,7 @@ function equipmentForm(tab, item) {
 }
 
 async function retireEquipment(item, button) {
-  const confirmed = await requestConfirmation(`${item.name} ausmustern?`, { title: "Ausrüstung ausmustern?", confirmLabel: "Ausmustern" });
+  const confirmed = await requestConfirmation(`${item.name} wird ausgemustert.`, { title: "Ausrüstung ausmustern?", danger: true, confirmLabel: "Ausmustern" });
   if (!confirmed) return;
   button.disabled = true;
   const saved = Object.fromEntries(EQUIPMENT_SAVED_FIELDS.filter((key) => key in item).map((key) => [key, item[key]]));
@@ -3448,9 +3511,11 @@ function analysisWeeklySumPoints(points, start, end) {
   }));
 }
 
-function analysisWeeklyMeanPoints(points, start, end) {
+// `digits` keeps the mean as exact as its display needs: sleep hours are shown to the minute, steps to one decimal.
+function analysisWeeklyMeanPoints(points, start, end, digits = 1) {
+  const scale = 10 ** digits;
   return analysisWeeklyPoints(points, start, end, (known) => ({
-    value: Math.round(known.reduce((sum, point) => sum + Number(point.value), 0) / known.length * 10) / 10, observedDate: known.at(-1).date,
+    value: Math.round(known.reduce((sum, point) => sum + Number(point.value), 0) / known.length * scale) / scale, observedDate: known.at(-1).date, count: known.length,
   }));
 }
 

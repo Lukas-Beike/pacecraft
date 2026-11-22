@@ -107,7 +107,7 @@ class ReferenceCaseTests(unittest.TestCase):
     def test_result_is_always_an_experimental_model_estimate(self):
         result = critical_power_speed(_model_rides(), TODAY, input_fingerprint="fp")
         self.assertEqual(
-            ("critical-power-speed", 2, "M4", "experimental", "unknown"),
+            ("critical-power-speed", 3, "M4", "experimental", "unknown"),
             (
                 result["method"],
                 result["method_version"],

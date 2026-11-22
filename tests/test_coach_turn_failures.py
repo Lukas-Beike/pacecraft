@@ -19,6 +19,9 @@ from backend.coach.turn_undo import CoachTurnUndoService
 from backend.db import row_factory as production_row_factory
 from backend.db.repositories import ChatRepository, KeyValueRepository
 from backend.errors import AppError, DatabaseBusyError
+from backend.providers.claude_messages_adapter import (
+    error_message as claude_error_message,
+)
 from backend.providers.state import metered_turn
 from backend.runtime.events import StateEventBuffer
 
@@ -299,7 +302,11 @@ class CoachTurnFailureTests(unittest.TestCase):
             ["start_intervals_plan_sync"],
         )
         self.assertEqual((status, question, cancelled), ("partial", None, False))
-        for expected in ("Anfragelimit", "bleibt bestehen", "Noch offen"):
+        for expected in (
+            "begrenzt gerade die Anfragen",
+            "bleibt bestehen",
+            "Noch offen",
+        ):
             self.assertIn(expected, text)
 
         status, text, question, cancelled = self.service._response(
@@ -341,16 +348,16 @@ class CoachTurnFailureTests(unittest.TestCase):
     def test_provider_failure_explanations_are_actionable_and_safe(self) -> None:
         cases = (
             ("provider_timeout", "nicht rechtzeitig geantwortet"),
-            ("not_found", "Modellkonfiguration prüfen"),
-            ("authentication_or_permission", "API-Zugang"),
-            ("rate_limit_exceeded", "Anfragelimit erreicht"),
+            ("not_found", "kennt das gewählte Modell nicht"),
+            ("authentication_or_permission", "Prüfe den API-Schlüssel"),
+            ("rate_limit_exceeded", "begrenzt gerade die Anfragen"),
             ("provider_unavailable", "vorübergehend nicht verfügbar"),
             ("conversation_locked", "warte kurz"),
             ("conversation_state_invalid", "dein lokaler Chat bleibt erhalten"),
-            ("insufficient_quota", "Guthaben und Abrechnung"),
-            ("organization_spend_limit_exceeded", "Limit im OpenAI-Konto prüfen"),
-            ("project_spend_limit_exceeded", "Limit im OpenAI-Konto prüfen"),
-            ("organization_usage_limit_exceeded", "Limit im OpenAI-Konto prüfen"),
+            ("insufficient_quota", "Guthaben ist aufgebraucht"),
+            ("organization_spend_limit_exceeded", "Ausgabenlimit ist erreicht"),
+            ("project_spend_limit_exceeded", "Ausgabenlimit ist erreicht"),
+            ("organization_usage_limit_exceeded", "Ausgabenlimit ist erreicht"),
         )
         for reason, expected in cases:
             with self.subTest(reason=reason):
@@ -380,7 +387,7 @@ class CoachTurnFailureTests(unittest.TestCase):
     def test_model_not_found_is_a_persisted_actionable_chat_message(self) -> None:
         self._assert_persisted_failure(
             "not_found",
-            "Das konfigurierte KI-Modell oder der angeforderte Dienst wurde nicht gefunden. Bitte die Modellkonfiguration prüfen.",
+            "OpenAI kennt das gewählte Modell nicht. Prüfe es unter Mehr › Coach & Modell.",
         )
 
     def test_openai_billing_failure_is_a_persisted_actionable_chat_message(
@@ -388,7 +395,7 @@ class CoachTurnFailureTests(unittest.TestCase):
     ) -> None:
         self._assert_persisted_failure(
             "credit_balance_exhausted",
-            "Das OpenAI-Guthaben ist aufgebraucht. Bitte im OpenAI-Billing Guthaben hinzufügen.",
+            "Das OpenAI-Guthaben ist aufgebraucht. Lade es im OpenAI-Konto auf.",
         )
 
     def _assert_persisted_failure(self, reason: str, expected: str) -> None:
@@ -410,6 +417,9 @@ class CoachTurnFailureTests(unittest.TestCase):
         self.assertIs(result["message"]["coach_failed"], True)
         # The chat offers to send a failed turn again, after a reload too.
         self.assertIs(self._reloaded_reply()["coach_failed"], True)
+        # The reason tells the chat whether a retry or the connections help.
+        self.assertEqual(result["message"]["coach_failure_reason"], reason)
+        self.assertEqual(self._reloaded_reply()["coach_failure_reason"], reason)
 
     def _reloaded_reply(self) -> dict:
         # The chat reader projects dict rows, as the production database does.
@@ -430,6 +440,22 @@ class CoachTurnFailureTests(unittest.TestCase):
         self.assertEqual(result["message"]["coach_request_kind"], "plan_week")
         self.assertEqual(self._reloaded_reply()["coach_request_kind"], "plan_week")
 
+    def test_the_failure_text_names_the_selected_provider_like_its_status_line(
+        self,
+    ) -> None:
+        self._seed({"command_receipts": [], "model": "claude-opus-5-5"})
+        result = self.service.persist(
+            "turn-1", {}, AppError(502, "x", reason="authentication_or_permission")
+        )
+        self.assertEqual(
+            result["message"]["content"],
+            "Claude hat den Zugang abgelehnt. Prüfe den API-Schlüssel unter Mehr › Anbindungen.",
+        )
+        self.assertEqual(
+            result["message"]["content"],
+            claude_error_message("authentication_or_permission"),
+        )
+
     def test_reloaded_reply_names_the_model_that_wrote_it(self) -> None:
         self._seed({"command_receipts": [], "model": "claude-opus"})
         self.service.persist(
@@ -447,6 +473,9 @@ class CoachTurnFailureTests(unittest.TestCase):
         )
         self.assertNotIn("coach_failed", result["message"])
         self.assertNotIn("coach_failed", self._reloaded_reply())
+        # It is marked as stopped instead, so the chat can say so (#3931).
+        self.assertIs(result["message"]["coach_cancelled"], True)
+        self.assertIs(self._reloaded_reply()["coach_cancelled"], True)
 
 
 if __name__ == "__main__":

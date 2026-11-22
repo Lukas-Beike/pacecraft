@@ -36,7 +36,7 @@ test("a diary card marks an estimated meal and its button flips the flag", async
   const receipts = [];
   const opened = [];
   const status = { textContent: "" };
-  const ctx = extractFunctions("nutrition.js", ["nutritionMealTitle", "NUTRITION_SOURCE_LABELS", "nutritionCard", "nutritionEstimateChip", "nutritionEntryActions", "nutritionEditButton", "markNutritionEstimate"], {
+  const ctx = extractFunctions("nutrition.js", ["nutritionMealTitle", "NUTRITION_MEAL_LABELS", "NUTRITION_SOURCE_LABELS", "nutritionCard", "nutritionEstimateChip", "nutritionEntryActions", "nutritionEditButton", "markNutritionEstimate"], {
     h, document: { querySelector: () => status },
     messageActionButton: (icon, label) => h("button", { "aria-label": label }, icon), openNutritionMealEdit: (item) => opened.push(item.id),
     createStatusChip: (label) => h("span", null, label),
@@ -94,7 +94,7 @@ test("weekly chart averages observed days independently and preserves empty week
   assert.equal(context.nutritionChartDays(days.slice(0, 28)).length, 28);
 });
 
-const BALANCE = ["NUTRITION_WEEK_MACROS", "nutritionStatTile", "nutritionMacroCard", "nutritionGoalText", "nutritionBalanceCard", "nutritionWeekValue", "nutritionChartSeries", "nutritionChartBalance", "nutritionChartDayRow"];
+const BALANCE = ["NUTRITION_WEEK_MACROS", "nutritionStatTile", "nutritionMacroCard", "nutritionGoalText", "nutritionBalanceCard", "nutritionPeriodText", "nutritionDayLabel", "nutritionWeekShown", "nutritionWeekValue", "nutritionChartSeries", "nutritionChartBalance", "nutritionChartDayRow"];
 
 // #3704: the Bilanz card's hero is the mean balance per day, coloured by its distance to the goal.
 test("the Bilanz and Makros cards: hero by goal distance, three tiles, no empty Zucker or Salz tile", () => {
@@ -151,4 +151,32 @@ test("the diary's intake key changes with kcal, macros or the estimate flag of a
   for (const change of [{ kcal: 700 }, { protein_g: 40 }, { estimate_uncertain: true }]) {
     assert.notEqual(nutritionIntakeKey(day({ ...meal, ...change })), shown, JSON.stringify(change));
   }
+});
+
+// #3930 N-01: the start of a period across a year keeps its year, and the days of a long period name theirs.
+test("a Verlauf period keeps the year of its start, and a long period labels its days with the year", () => {
+  const vm = require("node:vm");
+  const ctx = extractFunctions("nutrition.js", ["nutritionExpenditureDate", "nutritionDayLabel", "nutritionPeriodText", "nutritionWeekShown"]);
+  assert.equal(ctx.nutritionPeriodText("2025-11-22", "2026-11-21"), "22.11.2025–21.11.2026");
+  assert.equal(ctx.nutritionPeriodText("2026-10-22", "2026-11-18"), "22.10.–18.11.2026");
+  assert.equal(ctx.nutritionDayLabel("2026-11-18"), "18.11", "no year without a week on screen");
+  vm.runInContext("nutritionWeekShown = { days: new Array(28) }", ctx);
+  assert.equal(ctx.nutritionDayLabel("2026-11-18"), "18.11");
+  vm.runInContext("nutritionWeekShown = { days: new Array(365) }", ctx);
+  assert.equal(ctx.nutritionDayLabel("2026-11-18"), "18.11.2026");
+});
+
+// #3930 N-06: only a missing confidence hides the line; a photo read of 0 is the lowest reading and keeps its warning.
+test("the confidence line is hidden for a manual product and shown, with its warning, for a photo read of 0", () => {
+  const line = { hidden: false, textContent: "" };
+  const checklist = { hidden: false, replaceChildren() {} };
+  const form = { querySelector: (selector) => (selector === "[data-extraction-confidence]" ? line : checklist), elements: { namedItem: () => null } };
+  const { setNutritionProductConfidence } = extractFunctions("nutrition.js", ["setNutritionProductConfidence"], { h: () => ({}) });
+  setNutritionProductConfidence(form, { confidence: null });
+  assert.deepEqual([line.hidden, line.textContent], [true, ""]);
+  setNutritionProductConfidence(form, { confidence: 0 });
+  assert.equal(line.hidden, false);
+  assert.match(line.textContent, /^Erkennungssicherheit: 0 %\. Geringe Erkennungssicherheit/);
+  setNutritionProductConfidence(form, { confidence: 0.9 });
+  assert.match(line.textContent, /^Erkennungssicherheit: 90 %\. Erkannte Werte/);
 });

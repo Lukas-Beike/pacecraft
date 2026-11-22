@@ -254,6 +254,7 @@ estimate. It never rewrites logged values and never falls back to a formula.
 - R68 (Hall 2008): energy content of fat and lean tissue change, and Forbes'
   body-composition curve.
 - M11 and its sources for the activity and TEF terms.
+- R80 (Garthe et al. 2011): the loss-rate note's line; R81 (Hector & Phillips 2018): protein 1.6-2.4 g/kg in a deficit, in the diary's range with the energy goal "Abnehmen" (#3917).
 - The method comment and athlete decisions on #3100 and #3099.
 
 ## Population and reference measurement
@@ -364,6 +365,8 @@ bias that is the same on every day is not visible in the band.
 | Stability band | 2.576 / 1.96 × t | product assumption | about 99 % per pair, so flat series are rarely flagged across up to 6 neighbour pairs (#3614) |
 | Fat share SD for the density | 0.144 | product assumption | share 0.5-1.0 uniform; the density's uncertainty in the band |
 | Estimated intake limits | calibration ≤ 63 days old, weight ± 4 %, activity ± 30 % | product assumption | the resting rate adapts over a lasting deficit; the 12-week view reaches 77 days (#3604) |
+| Loss-rate note | the window's weight line falls faster than 1 % of body mass per week (shown rounded to 0.1), with the minimum basis above | product assumption | athlete decision, #3917; R80 compares about 0.7 and 1.4 % a week; non-blocking |
+| Expected day total (today) | resting and everyday term as shown + the window's 28-day mean steps and digestion + planned units (M11) | product assumption | #3917; the total so far, "Ziel heute" and "Offene Kalorien" are unchanged |
 
 ## Allowed statements
 
@@ -376,6 +379,7 @@ bias that is the same on every day is not visible in the band.
 - "Datenbasis zu gering", with the reason.
 - "Geschätzter Verbrauch" instead of "Echter Verbrauch" for an unstable window, with "Unsicher vor allem: Wasser im Gewicht, die Wochen widersprechen sich" (#3614).
 - "Geschätzte Aufnahme aus Gewicht und Aktivität: ≈ X kcal am Tag (L–H) (erfasst bis D)", only without enough logged days; never as logged or eaten intake (#3604).
+- "Gewicht fällt X %/Woche · schneller als 1 %" and "Tag erwartet ≈ N" (#3917), as notes; neither blocks or changes a goal.
 
 ## Forbidden statements
 
@@ -385,6 +389,10 @@ bias that is the same on every day is not visible in the band.
 
 ## Open points
 
+- Validation check (#3920): after 12 weeks, the own total from intake
+  and the weight trend against the formula rows in `fit_scale`. Whether a
+  best-fitting source is named, and the mean errors with their bands,
+  are recorded here.
 - The reader (`backend/nutrition/energy_inputs.py`) reads the diary, the
   canonical weigh-ins, daily steps and floors, the sessions and their streams
   (`backend/nutrition/wiring.py`); the diagnostics show its counts under

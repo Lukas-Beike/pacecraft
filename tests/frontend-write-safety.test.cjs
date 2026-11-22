@@ -2,7 +2,7 @@ const assert = require("node:assert/strict");
 const { test } = require("node:test");
 const { extractFunctions } = require("./frontend-harness.cjs");
 
-const PROFILE_SAVE = ["profileSaveInFlight", "profileFormValues", "PROFILE_ENTRY_FIELDS", "profileSaveConfirmed", "clearProfileEntryFields", "resetProfileEntryFields", "profileFieldText", "applyAdoptedFirstThreshold", "adoptFirstThreshold", "determineChangedProfileFields", "saveProfile"];
+const PROFILE_SAVE = ["profileSaveInFlight", "profileFormValues", "profileSaveConfirmed", "profileFieldText", "applyAdoptedFirstThreshold", "adoptFirstThreshold", "determineChangedProfileFields", "saveProfile"];
 const COACH_PROPOSALS = ["isHttpClientRejection", "reconcileCoachActionProposal", "executeCoachActionProposal", "showCoachReceiptArea", "lockUnknownCoachActionOutcome", "rejectCoachActionProposal"];
 const SYNC_POLL = ["changedSyncAreas", "renderSyncStatus", "renderMaintenanceStatus", "handleSyncStatus", "scheduleSyncPoll", "pollSyncStatus"];
 
@@ -258,15 +258,13 @@ test("an in-flight sync poll starts no second request", async () => {
   assert.equal(requests, 0);
 });
 
-test("first-threshold entry fields are not required in the profile confirmation", async () => {
-  const { context, state, toasts } = profileContext({ server: {}, baseline: { first_threshold_hr: "", first_threshold_on: "", first_threshold_pct: "", sports: "" }, stateProfile: {} });
-  context.api = async () => ({ first_threshold_pct: "82" });
-  await context.saveProfile(submitEvent([["first_threshold_hr", "150"], ["first_threshold_on", "2026-11-01"]]).event);
+test("the first threshold is a stored bpm field the confirmation checks like any other (#3915)", async () => {
+  const { context, state, toasts } = profileContext({ server: {}, baseline: { first_threshold_hr: "", sports: "" }, stateProfile: {} });
+  context.api = async () => ({ first_threshold_hr: "150" });
+  await context.saveProfile(submitEvent([["first_threshold_hr", "150"]]).event);
   assert.equal(toasts.some((entry) => entry.isError), false);
-  assert.equal(state.profileBaseline.first_threshold_hr, "");
-  assert.equal(state.profileBaseline.first_threshold_pct, "82");
-  assert.equal(context.profileSaveConfirmed({ first_threshold_hr: "150", name: "A" }, {}), false);
-  assert.equal(context.profileSaveConfirmed({ first_threshold_hr: "150", first_threshold_on: "2026-11-01" }, {}), false);
-  assert.equal(context.profileSaveConfirmed({ first_threshold_hr: "150", first_threshold_on: "2026-11-01" }, { first_threshold_pct: "82" }), true);
-  assert.equal(context.profileSaveConfirmed({ first_threshold_on: "2026-11-01" }, {}), true);
+  assert.equal(state.profileBaseline.first_threshold_hr, "150");
+  assert.equal(context.profileSaveConfirmed({ first_threshold_hr: "150", name: "A" }, { first_threshold_hr: "150" }), false);
+  assert.equal(context.profileSaveConfirmed({ first_threshold_hr: "150" }, {}), false);
+  assert.equal(context.profileSaveConfirmed({ first_threshold_hr: "150" }, { first_threshold_hr: "150" }), true);
 });

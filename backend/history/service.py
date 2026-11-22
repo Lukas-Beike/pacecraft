@@ -8,7 +8,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from backend import change_history
-from backend.athlete.profile import DEFAULT_PROFILE, normalize_profile
+from backend.athlete.profile import DEFAULT_PROFILE, audit_view
 from backend.db import planning_store
 from backend.errors import AppError
 
@@ -49,10 +49,16 @@ class ChangeHistoryService:
     def current(
         self, db: Any, entity_type: str, entity_id: str
     ) -> tuple[dict[str, Any] | None, dict[str, Any] | None]:
+        value: dict[str, Any] | None
         if entity_type == "profile":
             payload = self._profile_repository.get(db)
             try:
-                value = normalize_profile(json.loads(payload or "{}"))
+                stored = json.loads(payload or "{}")
+                value = (
+                    audit_view(stored)
+                    if isinstance(stored, dict)
+                    else dict(DEFAULT_PROFILE)
+                )
             except TypeError, json.JSONDecodeError:
                 value = dict(DEFAULT_PROFILE)
         elif entity_type == "zone_configuration" and self._zone_service is not None:

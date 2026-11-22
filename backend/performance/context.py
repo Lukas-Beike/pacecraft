@@ -9,10 +9,9 @@ from typing import Any, Final
 
 from backend.canonical.activity_summary import summary_local_date
 from backend.canonical.first_threshold import (
-    FIRST_THRESHOLD_FIELD,
     first_threshold_estimated,
     first_threshold_origin,
-    first_threshold_percent,
+    stored_bpm,
 )
 from backend.canonical.vocabulary import ProviderId
 from backend.errors import DatabaseBusyError
@@ -212,7 +211,7 @@ def first_threshold_history(
     records = [
         row for row in records if str(row.get("date") or "") >= first.isoformat()
     ]
-    pct = first_threshold_percent(profile.get(FIRST_THRESHOLD_FIELD))
+    bpm = stored_bpm(profile)
     origin = first_threshold_origin(profile)
     monday = today - timedelta(days=today.weekday())
     ends = [
@@ -224,7 +223,7 @@ def first_threshold_history(
         metrics = _dated_metrics(garmin_history, day)
         values = performance_current_metrics.first_thresholds(
             metrics,
-            pct,
+            bpm,
             origin,
             functools.partial(output_at_heart_rate, records, today=day),
         )
@@ -386,13 +385,13 @@ def current_performance_context(
         "thresholds": {
             **performance_current_metrics.coach_thresholds(
                 metrics,
-                first_threshold_percent(profile.get(FIRST_THRESHOLD_FIELD)),
+                stored_bpm(profile),
                 first_threshold_estimated(profile),
             ),
             "weight": metrics["weight_kg"]["value"],
             "first_thresholds": performance_current_metrics.first_thresholds(
                 metrics,
-                first_threshold_percent(profile.get(FIRST_THRESHOLD_FIELD)),
+                stored_bpm(profile),
                 first_threshold_origin(profile),
                 _at_heart_rate(lt1_session_records, today),
             ),

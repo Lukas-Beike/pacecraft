@@ -1,8 +1,8 @@
 # M4 — Critical Power and Critical Speed
 
 - **Card:** M4
-- **Card version:** 5
-- **Method ID:** critical-power-speed v2 (`backend/performance/critical_power.py`)
+- **Card version:** 6
+- **Method ID:** critical-power-speed v3 (`backend/performance/critical_power.py`)
 - **Status:** implemented as an experimental model estimate (#1431) on the local mean-maximal curve (#1430, `mean-max-curve` v3)
 - **Classification:** model estimate
 - **Literature checked:** 2026-10-24
@@ -43,7 +43,7 @@ adopted automatically.
 ## Sources
 
 R3 (model and physiology), R4 (cycling field CP from 3/7/12-min efforts),
-R5 (running CS field tests), R6 (3-min all-out test in cycling), R16 (CS from
+R5 (running CS field tests), R82 (single-visit 3600/2400/1200 m test), R6 (3-min all-out test in cycling), R16 (CS from
 everyday training data, deferred to M5), R50 (trial durations: CP overestimated
 without efforts of 12-20 min), R51 (CS/CP from habitual training valid, D′/W′
 only weakly agreeing). Newer work: protocol choice changes CS
@@ -107,6 +107,41 @@ recreational marathon runners, no lab reference.
   that tells measured from estimated cycling power, so estimated power cannot
   be excluded automatically. Each cycling fit reports its power source as not
   checked (`power_source: unchecked`); virtual rides stay in the indoor fit.
+
+## Critical-speed test from laps (card 6, #3919)
+
+The Coach plans the running test as three maximal runs of 3600, 2400 and 1200 m
+with about 30 min easy between, in one visit (R82). Best windows of 12, 7 and
+3 min inside those runs are not maximal efforts of those durations: a 12-min
+window inside a 15 to 17-min effort overstates CS by about 1.5 % and
+understates D′ by about 40 %. A test is therefore read from its laps.
+
+- Recognition (`critical_speed_test.py`, stored per session curve as
+  `cs_test_efforts`, `CURVE_FORMAT_VERSION` 3): one session whose laps hold
+  exactly one effort lap of each test distance, within 3 %. Warm-up, cool-down
+  and recovery laps never count, and a second lap of a distance (repeated
+  1200 m intervals) makes the session no test. At least 20 min must lie
+  between consecutive efforts (`MIN_RECOVERY_SECONDS`, product assumption
+  below R82's 30 or 60 min), so a 3.6/2.4/1.2 km ladder with short jogs is no
+  test. No planned workout is needed. The three runs belong to one session,
+  as in R82.
+- Fit: `distance = CS × t + D′` by least squares over the three laps (lap
+  distance in m, lap time in s), reported as CS (m/s, pace on the LT2 row) and
+  D′ (m) with the relative residuals, R² and the standard error of the
+  estimate (n − 2 degrees of freedom), plus the leave-one-out and inverse-time
+  sensitivity of the window fit.
+- Stop rules (the test is withheld with its reason): fewer than 3 efforts; an
+  effort lap shorter than 2 min or longer than 20 min; a non-positive CS or D′;
+  CS or D′ outside the plausible running range (CS 1.5-7 m/s, D′ 10-500 m); a
+  relative residual above 3 %. Three points leave one degree of freedom, so the
+  fit quality is a plausibility check, not a validation.
+- Precedence: the newest test session of the 28-day window replaces the
+  outdoor running window fit, so every reader of M4 (performance report, Coach
+  context, LT2 row, session report) shows the test. A withheld test is not
+  replaced by the window fit, whose windows lie inside the same long runs.
+  Without a test the window fit applies unchanged. Cycling is unchanged.
+- No schema change: the efforts are part of the cached session curve, which is
+  recomputed when its format version changes.
 
 ## Measurement error and uncertainty
 
@@ -196,6 +231,8 @@ athlete's power meter or GPS.
 - Quality (F6): `good` when every effort lies within 1.5 % of the model line
   and leaving any one effort out moves CS or CP by at most 3 %; otherwise
   `low` (shown as "mittel"). A withheld fit is unknown with its reason.
+- Note (athlete decision B2, #3919): the row says the value usually lies a
+  few percent above the sustainable threshold; adoption itself is unchanged.
 
 ## Forbidden statements
 
@@ -230,13 +267,14 @@ athlete's power meter or GPS.
 | Constant | Value | Module | Code comment |
 | --- | --- | --- | --- |
 | `METHOD_ID` | `'critical-power-speed'` | `backend/performance/critical_power.py` |  |
-| `METHOD_VERSION` | `2` | `backend/performance/critical_power.py` |  |
+| `METHOD_VERSION` | `3` | `backend/performance/critical_power.py` |  |
 | `WINDOW_DAYS` | `28` | `backend/performance/critical_power.py` |  |
 | `EFFORT_SECONDS` | `{'ride': (180, 420, 720, 1200), 'run': (180, 420, 720)}` | `backend/performance/critical_power.py` |  |
 | `THREE_POINT_SECONDS` | `(180, 420, 720)` | `backend/performance/critical_power.py` | The card 3 protocol, kept for cycling as a sensitivity fit. |
 | `INTERCEPT_RELIABILITY` | `'low'` | `backend/performance/critical_power.py` | Hunter 2023: W′/D′ from everyday training agree only weakly with tests. |
 | `MIN_RECOVERY_SECONDS` | `1800` | `backend/performance/critical_power.py` | Efforts in one session count separately only with this much recovery between. |
 | `MAX_RELATIVE_RESIDUAL` | `0.03` | `backend/performance/critical_power.py` |  |
+| `TEST_DURATION_SECONDS` | `(120, 1200)` | `backend/performance/critical_power.py` | A test effort lap lasts 2 to 20 min (card M4 v6, #3919). |
 | `PLAUSIBLE` | `{'ride': {'intercept': (1000.0, 50000.0), 'slope': (50.0, 600.0)}, 'run': {'intercept': (10.0, 50... (sha256 5065712a)` | `backend/performance/critical_power.py` |  |
 | `SCOPE` | `'Experimentelle Modellschätzung aus den besten Belastungen der letzten 28 Tage (Rad 3, 7, 12 und ... (sha256 3da99455)` | `backend/performance/critical_power.py` |  |
 | `POWER_SOURCE_UNCHECKED` | `'unchecked'` | `backend/performance/critical_power.py` | Garmin and Wahoo deliver no measured-versus-estimated power signal. |

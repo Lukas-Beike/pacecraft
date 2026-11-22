@@ -26,6 +26,7 @@ from backend.athlete.profile import DEFAULT_PROFILE
 from backend.athlete.sessions import AthleteSessionService
 from backend.backup.staging_sweep import remove_orphaned_staging_files
 from backend.backup.wiring import build_backup
+from backend.canonical.first_threshold import stored_bpm
 from backend.canonical.vocabulary import GARMIN_ID, WAHOO_ID
 from backend.coach import limits as coach_limits
 from backend.coach.conversation_gate import CoachConversationGate
@@ -103,6 +104,7 @@ from backend.performance.wiring import (
 from backend.planning import library as planning_library
 from backend.planning import training_plans as planning_training_plans
 from backend.planning.block_review import block_review, last_completed_test
+from backend.planning.leg_strength import sides as strength_sides
 from backend.planning.plan_guard_service import (
     read_load_thresholds,
 )
@@ -236,7 +238,7 @@ DATA_DIR = Path(os.environ.get("DATA_DIR", ROOT / "data"))
 DB_PATH = DATA_DIR / "intervals-coach.db"
 LOG_PATH = DATA_DIR / "intervals-coach.log"
 APP_NAME = "Pacecraft · AI Coach"
-APP_VERSION = "2.2.16"
+APP_VERSION = "2.2.17"
 MAX_BODY_BYTES = 1_000_000
 COACH_CONVERSATION_GATE = CoachConversationGate()
 
@@ -444,6 +446,7 @@ PERFORMANCE = build_performance(
     season_source=lambda: PUBLIC_STATE.season_source(),
     block_review=block_review,
     last_completed_test=last_completed_test,
+    strength_sides=strength_sides,
     season_preparation=season_preparation,
 )
 APP.performance = PERFORMANCE
@@ -910,6 +913,8 @@ CANONICAL_BACKFILL = build_canonical_backfill(
     planned_units=lambda: PLANNING_DATA.planned_unit().list(500),
     # The heart-rate branch's TRIMP constants follow the profile sex (M6 v3).
     athlete_sex=lambda db: ATHLETE_DATA.profile().get_from_db(db).get("sex"),
+    # The stored first threshold moves the 3-zone band split (#3915).
+    first_threshold_bpm=lambda db: stored_bpm(ATHLETE_DATA.profile().get_from_db(db)),
     # The one-time focus backfill of future units (#1849) runs after all stages.
     extra_followups=(
         PROFILE_WEEKLY_PLAN_REMOVAL,

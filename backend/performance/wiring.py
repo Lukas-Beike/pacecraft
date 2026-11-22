@@ -9,7 +9,12 @@ from typing import Any
 from backend.activities.activity_reference import ActivityReferences
 from backend.activities.feedback import ActivityFeedbackService
 from backend.activities.session_corrections import SessionCorrectionService
-from backend.activities.zone_settings import effective_zone_configuration
+from backend.activities.zone_settings import (
+    HR_ZONE_LIMITS,
+    PACE_ZONE_LIMITS,
+    POWER_ZONE_LIMITS,
+    effective_zone_configuration,
+)
 from backend.app.context import AppContext
 from backend.athlete.body_entry import (
     BODY_FAT_ENTRY,
@@ -23,6 +28,7 @@ from backend.athlete.profile import ProfileService
 from backend.athlete.skinfolds import SkinfoldService
 from backend.athlete.zones import ZoneConfigurationService
 from backend.canonical.activity_summary import ActivitySummary
+from backend.canonical.first_threshold import FIRST_THRESHOLD_FIELD
 from backend.canonical.vocabulary import ProviderId
 from backend.db.manager import kept_until_change
 from backend.db.repositories import CheckinRepository, ProfileRepository
@@ -69,6 +75,7 @@ def build_performance(
     season_source: Callable[[], Any],
     block_review: Callable[..., dict[str, Any]],
     last_completed_test: Callable[..., str | None],
+    strength_sides: Callable[..., Any],
     season_preparation: Callable[..., dict[str, Any]],
 ) -> PerformanceServices:
     """One session curve reader for the process; the report services fresh per call.
@@ -136,6 +143,7 @@ def build_performance(
                     review=block_review,
                     last_test=last_completed_test,
                 ),
+                strength_sides=strength_sides,
                 training_model=lambda: str(
                     athlete.profile().get().get("training_model") or ""
                 ),
@@ -253,7 +261,9 @@ def build_athlete_data(
         """
         invalidate_for_location_change(previous, current, **kwargs)
         if any(
-            previous.get(field) != current.get(field) for field in ("timezone", "sex")
+            previous.get(field) != current.get(field)
+            # The first threshold moves the stored band times (#3915).
+            for field in ("timezone", "sex", FIRST_THRESHOLD_FIELD)
         ):
             load_inputs_changed()
 
@@ -279,6 +289,11 @@ def build_athlete_data(
             effective_zone=effective_zone_configuration,
             on_change=zones_changed,
             threshold_warnings=threshold_warnings,
+            default_limits={
+                "power": POWER_ZONE_LIMITS,
+                "heart_rate": HR_ZONE_LIMITS,
+                "pace": PACE_ZONE_LIMITS,
+            },
         )
 
     return AthleteDataServices(

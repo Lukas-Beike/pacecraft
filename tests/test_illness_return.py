@@ -14,7 +14,13 @@ from backend.planning.planned_unit_load import estimate_planned_unit
 PAUSE = {"start_date": "2026-10-27", "end_date": "2026-11-01", "approved": True}
 GOOD_CHECKIN = {"checkin_date": "2026-11-04", "pain": "", "illness": "", "soreness": 3}
 GOOD_NIGHT = {
-    "hrv": {"source": "Garmin", "value": 55, "position": "within", "lower": 50},
+    "hrv": {
+        "source": "Garmin",
+        "value": 55,
+        "position": "within",
+        "lower": 50,
+        "upper": 60,
+    },
     "resting_hr": {"source": "Garmin", "value": 50, "median": 48, "unit": "bpm"},
 }
 
@@ -92,13 +98,25 @@ class StageDecisionTests(unittest.TestCase):
             tuple(result[k] for k in ("action", "stage", "reasons")),
         )
 
-    def test_hrv_below_the_usual_range_holds(self) -> None:
-        night = {**GOOD_NIGHT, "hrv": {**GOOD_NIGHT["hrv"], "position": "below"}}
+    def test_hrv_below_the_m14_margin_holds(self) -> None:
+        # Range 50-60: the margin is 50 - 0.5 x 10 = 45 (#3920).
+        def night(value: float) -> dict[str, Any]:
+            hrv = {**GOOD_NIGHT["hrv"], "value": value, "position": "below"}
+            return {**GOOD_NIGHT, "hrv": hrv}
 
-        result = _decide(_state(1, "2026-10-30"), night=night)
-
+        result = _decide(_state(1, "2026-10-30"), night=night(44.9))
         self.assertEqual(("hold", 1), (result["action"], result["stage"]))
         self.assertEqual(["hrv_below_range"], result["reasons"])
+        hrv = next(item for item in result["evidence"] if item["label"] == "hrv")
+        self.assertEqual(45.0, hrv["limit"])
+
+    def test_one_night_below_the_quartile_alone_does_not_hold(self) -> None:
+        # One night in four lies below the lower quartile (#3920).
+        hrv = {**GOOD_NIGHT["hrv"], "value": 46, "position": "below"}
+
+        result = _decide(_state(1, "2026-10-30"), night={**GOOD_NIGHT, "hrv": hrv})
+
+        self.assertEqual(("advance", 2), (result["action"], result["stage"]))
 
     def test_resting_hr_more_than_five_above_the_usual_value_holds(self) -> None:
         state = _state(1, "2026-10-30")

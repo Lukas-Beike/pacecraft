@@ -292,7 +292,7 @@ test("clearing a stored value asks first and then sends null", async () => {
   harness.context.confirmAnswer = true;
   await harness.fn("clearProviderCredential")("openai_api_key", "openai");
   assert.equal(harness.confirmations.length, 2);
-  assert.match(harness.confirmations[0].message, /OpenAI-API-Schlüssel/);
+  assert.match(harness.confirmations[0].title, /OpenAI-API-Schlüssel/);
   assert.equal(harness.calls.length, 1);
   assert.equal(harness.calls[0].method, "PUT");
   assert.deepEqual(JSON.parse(harness.calls[0].body), { openai_api_key: null });

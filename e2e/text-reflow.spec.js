@@ -19,7 +19,7 @@ test("@responsive navigation and banners keep their text inside at 200 % text si
     const action = { href: "#more/connections", label: "Anbindungen öffnen" };
     updateStatusSources({
       offline: { level: "warning", title: "Offline", detail: "Änderungen können gerade nicht gespeichert werden.", stand: true },
-      coach_error: { level: "critical", title: "Coach benötigt Aufmerksamkeit", detail: "Das OpenAI-Guthaben ist aufgebraucht. Bitte im OpenAI-Billing Guthaben hinzufügen." },
+      coach_error: { level: "critical", title: "Coach benötigt Aufmerksamkeit", detail: "Das OpenAI-Guthaben ist aufgebraucht. Lade es im OpenAI-Konto auf." },
       provider: { level: "critical", title: "Anbindung benötigt Aufmerksamkeit", detail: "2 Anbindungen benötigen manuelles Eingreifen.", action },
       intervals_key: { level: "info", title: "Intervals.icu-API-Schlüssel fehlt", action, dismiss() {} },
     });

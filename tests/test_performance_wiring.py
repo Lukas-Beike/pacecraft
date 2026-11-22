@@ -24,6 +24,7 @@ class PerformanceBuilderTests(unittest.TestCase):
             "season_source": self.public.season_source,
             "block_review": Mock(name="block_review"),
             "last_completed_test": Mock(name="last_completed_test"),
+            "strength_sides": Mock(name="strength_sides"),
             "season_preparation": Mock(name="season_preparation"),
         }
         self.patches = {
@@ -130,6 +131,7 @@ class PerformanceBuilderTests(unittest.TestCase):
         source = kwargs["block_review"]
         self.assertIs(self.inputs["block_review"], source.review)
         self.assertIs(self.inputs["last_completed_test"], source.last_test)
+        self.assertIs(self.inputs["strength_sides"], kwargs["strength_sides"])
         profile = self.athlete.profile.return_value
         profile.get.return_value = {"training_model": "polarized"}
         self.assertEqual("polarized", kwargs["training_model"]())

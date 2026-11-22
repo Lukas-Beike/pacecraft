@@ -59,7 +59,7 @@ test("@responsive cycling power profile loads only on performance and keeps unkn
   await waitForInitialState(page);
   expect(reportCounts()).toEqual({ [ENDURANCE]: 0, [POWER_PROFILES]: 0, [TRAINING_RECORDS]: 0 });
 
-  await routeTo(page, "#analysis/records");
+  await routeTo(page, "#analysis/cycling");
   await expect(page.locator("#dataPanel")).toHaveClass(/active/);
   await expect(page.locator("#cyclingPowerProfile")).toBeVisible();
   // Every measured duration, unknown ones marked (#3826).
@@ -69,45 +69,52 @@ test("@responsive cycling power profile loads only on performance and keeps unkn
   // An indoor ride counts for power with its chip.
   await expect(page.locator("#cyclingPowerProfile [data-power-duration='3600'] td")).toHaveText(["210 WIndoor", "02.10.2026"]);
   await expect(page.locator("#cyclingPowerProfile")).not.toContainText("90 Tage");
-  expect(await page.locator("#cyclingPowerProfile").evaluate((element) => element.closest("#analysisRecords") !== null)).toBe(true);
+  expect(await page.locator("#cyclingPowerProfile").evaluate((element) => element.closest("#rideRecordsCard") !== null)).toBe(true);
   // The first answer said the all-time bests were still being read, so the card asked again.
   expect(reportCounts()).toEqual({ [ENDURANCE]: 0, [POWER_PROFILES]: 2, [TRAINING_RECORDS]: 0 });
 });
 
-// Rekorde (#3826): the single-activity records beside the bests, each date opening its activity.
-test("@responsive Rekorde shows the single-activity records and opens a record's activity", async ({ page }) => {
+// Records (#3826, #3929): the single-activity records sit at the end of each sport tab, each date opening its activity.
+test("@responsive the sport tabs end with their records and a record's date opens its activity", async ({ page }) => {
   await mockReports(page);
   await page.route("**/api/activities/act_ride", (route) => route.fulfill({ json: { session: { name: "Lange Runde" } } }));
   await waitForInitialState(page);
-  await routeTo(page, "#analysis/records");
-  await expect(page.locator("[data-analysis-segment='records']")).toHaveAttribute("aria-current", "page");
-  await expect(page.locator("#analysisRecords h3")).toHaveText(["Radfahren", "Laufen"]);
+  await expect(page.locator("[data-analysis-segment='records']")).toHaveCount(0);
+  await routeTo(page, "#analysis/cycling");
+  await expect(page.locator("#rideRecordsCard h3")).toHaveText("Rekorde");
+  await expect(page.locator("#runRecordsCard")).toBeHidden();
   await expect(page.locator("#rideActivityRecords [data-activity-record='ride:distance_m'] td")).toHaveText(["182,4 km", "01.10.2026"]);
   await expect(page.locator("#rideActivityRecords [data-activity-record='ride:moving_duration_s'] td").first()).toHaveText("6:12:00");
   await expect(page.locator("#rideActivityRecords [data-activity-record='ride:elevation_gain_m'] td").first()).toHaveText("–");
-  await expect(page.locator("#runActivityRecords [data-activity-record='run:distance_m'] td")).toHaveText(["32,1 km", "03.10.2026"]);
-  await expect(page.locator("#runningBestEfforts")).toBeVisible();
   const open = page.locator("#rideActivityRecords [data-activity-record='ride:distance_m'] button");
   await expect(open).toHaveAccessibleName("Weiteste Fahrt vom 01.10.2026 öffnen");
   await open.click();
   await expect(page.locator(".activity-detail-dialog")).toBeVisible();
   await expect(page.locator("#activityDetailTitle")).toHaveText("Lange Runde");
-  // Closing names and returns to Rekorde, not the calendar (#3847).
-  await page.locator(".activity-detail-dialog").getByRole("button", { name: "Zurück zu Rekorde" }).click();
+  // Closing names and returns to the sport tab, not the calendar (#3847).
+  await page.locator(".activity-detail-dialog").getByRole("button", { name: "Zurück zu Radfahren" }).click();
   await expect(page.locator(".activity-detail-dialog")).toHaveCount(0);
-  await expect(page).toHaveURL(/#analysis\/records$/);
+  await expect(page).toHaveURL(/#analysis\/cycling$/);
   await expect(open).toBeFocused();
+  await routeTo(page, "#analysis/running");
+  await expect(page.locator("#runRecordsCard h3")).toHaveText("Rekorde");
+  await expect(page.locator("#rideRecordsCard")).toBeHidden();
+  await expect(page.locator("#runActivityRecords [data-activity-record='run:distance_m'] td")).toHaveText(["32,1 km", "03.10.2026"]);
+  await expect(page.locator("#runningBestEfforts")).toBeVisible();
+  // An old link to the records tab opens Laufen.
+  await page.goto("/#analysis/records");
+  await expect(page).toHaveURL(/#analysis\/running$/);
 });
 
 // The post-release walk's sport steps match what the cards render: tables, not charts (#3009).
-test("@responsive the walk's Laufen, Radfahren and Rekorde steps pass on the rendered cards", async ({ page, request }) => {
+test("@responsive the walk's Laufen and Radfahren steps pass on the rendered cards", async ({ page, request }) => {
   const { STEPS, runStep } = await import(pathToFileURL(path.join(__dirname, "..", "scripts", "ui_walk.mjs")).href);
   // The sport tabs' cards are current values since the bests moved to Rekorde (#3826): the demo has them.
   expect((await request.get("/api/fixture/demo")).ok()).toBeTruthy();
   await mockReports(page);
   await waitForInitialState(page);
   await routeTo(page, "#analysis/running");
-  for (const name of ["Analyse: Laufen", "Analyse: Radfahren", "Analyse: Rekorde"]) {
+  for (const name of ["Analyse: Laufen", "Analyse: Radfahren"]) {
     const outcome = await runStep(page, STEPS.find((step) => step.name === name));
     expect(outcome.status, `${name}: ${outcome.why}`).toBe("ok");
   }
@@ -116,7 +123,7 @@ test("@responsive the walk's Laufen, Radfahren and Rekorde steps pass on the ren
 test("@responsive cold start on performance fetches only the power profile", async ({ page }) => {
   await mockReports(page);
   const reportCounts = trackReportRequests(page);
-  await page.goto("/#analysis/records");
+  await page.goto("/#analysis/cycling");
   await expect(page.locator("#appShell")).toBeVisible();
   await page.waitForFunction(() => AppState.state.initialStateLoaded);
   await expect(page.locator("#cyclingPowerProfile")).toBeVisible();
@@ -129,7 +136,7 @@ test("@responsive cycling power profile stays cached across navigation and chart
   const reportCounts = trackReportRequests(page);
   await waitForInitialState(page);
 
-  await routeTo(page, "#analysis/records");
+  await routeTo(page, "#analysis/cycling");
   await expect(page.locator("#cyclingPowerProfile")).toBeVisible();
   await expect(page.locator("#cyclingPowerProfile tbody tr")).toHaveCount(13);
   const afterFirstVisit = reportCounts();
@@ -138,7 +145,7 @@ test("@responsive cycling power profile stays cached across navigation and chart
 
   await routeTo(page, "#coach");
   await expect(page.locator("#chatPanel")).toHaveClass(/active/);
-  await routeTo(page, "#analysis/records");
+  await routeTo(page, "#analysis/cycling");
   await expect(page.locator("#dataPanel")).toHaveClass(/active/);
   await expect(page.locator("#cyclingPowerProfile")).toBeVisible();
   expect(reportCounts()).toEqual(afterFirstVisit);
@@ -260,4 +267,20 @@ test("@responsive equipment records load only on the equipment route and stay ca
   await routeTo(page, "#more/equipment");
   await expect(page.locator("#equipmentItems").getByRole("heading", { name: "Ausrüstung und Wartung" })).toBeVisible();
   expect(reportCounts()[TRAINING_RECORDS]).toBe(1);
+});
+
+// A cold start has no performance read yet: the cards say they load instead of claiming there is no data (A-13, #3929).
+test("@responsive a cold start shows loading, not no data, until the performance read arrives", async ({ page }) => {
+  expect((await page.request.get("/api/fixture/demo")).ok()).toBe(true);
+  let release;
+  const gate = new Promise((resolve) => { release = resolve; });
+  await page.route("**/api/performance", async (route) => { await gate; await route.continue(); });
+  await page.goto("/#analysis/running");
+  await expect(page.locator("#appShell")).toBeVisible();
+  await expect(page.locator("#currentPerformance")).toContainText("Werte werden geladen…");
+  await expect(page.locator("#performancePredictions")).toContainText("Prognosen werden geladen…");
+  await expect(page.locator("#currentPerformance")).not.toContainText("Noch keine aktuellen Werte");
+  await expect(page.locator("#analysisEmptyState")).toBeHidden();
+  release();
+  await expect(page.locator("#currentPerformance table[data-analysis-sport='run']")).toBeVisible();
 });

@@ -31,6 +31,7 @@ from backend.db.repositories import (
 from backend.nutrition.catalog import ProductCatalogService
 from backend.nutrition.diary import NutritionDiaryService
 from backend.nutrition.energy_balance import EnergyInputs, history_start
+from backend.nutrition.energy_expected import planned_inputs
 from backend.nutrition.energy_inputs import (
     EnergySources,
     energy_basis,
@@ -256,6 +257,9 @@ def build_nutrition(ctx: AppContext) -> NutritionServices:
             weighin_sources=lambda db, s, e: weighin_sources(
                 read.observations(db, MetricKind.WEIGHT, start=s, end=e),
                 saved(profile_weight_history, db, s, e),
+            ),
+            planned=lambda _db, day: planned_inputs(
+                ctx.planning.planned_unit().list_between(day, day)
             ),
         )
 

@@ -41,6 +41,13 @@ REUSE_SPEC.loader.exec_module(reuse_green_tree)
 WORKFLOW = (
     Path(__file__).resolve().parents[1] / ".github/workflows/publish-container.yml"
 )
+# On Windows the bash on PATH can be WSL's, which cannot run a script by its
+# Windows path; use Git for Windows' bash there, as CI's Git Bash does (#3991).
+BASH = shutil.which("bash")
+if os.name == "nt":
+    _GIT = shutil.which("git")
+    _GIT_BASH = _GIT and Path(_GIT).parents[1] / "bin" / "bash.exe"
+    BASH = str(_GIT_BASH) if _GIT_BASH and _GIT_BASH.is_file() else None
 
 
 def _job(workflow, name, following):
@@ -626,7 +633,7 @@ class WorkflowSourceTests(unittest.TestCase):
         self.assertIn('attempts="${NPM_CI_ATTEMPTS:-3}"', script)
         self.assertIn('delay="${NPM_CI_DELAY_S:-15}"', script)
 
-    @unittest.skipUnless(shutil.which("bash"), "bash is not available")
+    @unittest.skipUnless(BASH, "bash is not available")
     def test_npm_retry_passes_on_a_later_attempt_and_fails_after_the_last(self):
         root = Path(__file__).resolve().parents[1]
         with tempfile.TemporaryDirectory() as folder:
@@ -644,8 +651,7 @@ class WorkflowSourceTests(unittest.TestCase):
                 with self.subTest(failures=failures):
                     Path(calls).write_text("", encoding="utf-8")
                     done = subprocess.run(
-                        # The bash on PATH: on Windows a bare "bash" starts WSL's.
-                        [str(shutil.which("bash")), ".github/scripts/npm_ci_retry.sh"],
+                        [str(BASH), ".github/scripts/npm_ci_retry.sh"],
                         cwd=root,
                         env={**os.environ, "NPM": fake.as_posix(),
                              "NPM_CI_DELAY_S": "0", "FAKE_FAILURES": str(failures)},

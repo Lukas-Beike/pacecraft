@@ -215,14 +215,14 @@ function actionContext(responses) {
 test("deleting a database entry removes it from the database after its own confirmation", async () => {
   const { context, calls, status } = actionContext({});
   await context.deleteNutritionProduct({ id: "off:1", name: "Haferdrink", origin: "open_food_facts" });
-  assert.deepEqual(calls, [["confirm", "Eintrag „Haferdrink“ aus der Datenbank entfernen? Eigene Produkte bleiben erhalten."], ["/api/nutrition/products/database/delete", { id: "off:1", confirmed: true }]]);
+  assert.deepEqual(calls, [["confirm", "Der Eintrag „Haferdrink“ wird aus der Datenbank entfernt. Eigene Produkte bleiben erhalten."], ["/api/nutrition/products/database/delete", { id: "off:1", confirmed: true }]]);
   assert.equal(status.textContent, "Eintrag „Haferdrink“ aus der Datenbank entfernt.");
 });
 
-test("deleting an own product archives it after confirmation", async () => {
+test("deleting an own product archives it at once, only the database removal asks (G-03)", async () => {
   const { context, calls } = actionContext({});
   await context.deleteNutritionProduct({ id: "own-1", name: "Whey", origin: "own" });
-  assert.deepEqual(calls.map(([target]) => target), ["confirm", "/api/nutrition/products/archive"]);
+  assert.deepEqual(calls.map(([target]) => target), ["/api/nutrition/products/archive"]);
 });
 
 test("re-checking an own product without an EAN names the EAN and the editor", async () => {

@@ -425,8 +425,8 @@ class FirstThresholdTests(unittest.TestCase):
 
     def test_precedence_of_each_value(self) -> None:
         # Worked examples: 85 % of 172 and 160 bpm is 146 and 136 bpm; 4:30 /km at
-        # 88 % speed is 5:07 /km; 75 % of 280 W is 210 W; 86 % of 172 and 160 bpm
-        # is 148 and 138 bpm. Own sessions are read at the LT1 heart rate in
+        # 88 % speed is 5:07 /km; 75 % of 280 W is 210 W; a stored 148 bpm is
+        # 148 bpm for runs and 148 / 172 of 160 = 138 bpm for rides (#3915). Own sessions are read at the LT1 heart rate in
         # effect. The top of a zone 2 is no LT1 (#3915): no zone input exists.
         fixed, own = "fixed_share", "own_sessions"
         sessions = {("run", 146): 331.6, ("ride", 136): 187.4,
@@ -438,12 +438,12 @@ class FirstThresholdTests(unittest.TestCase):
                         "pace_seconds_per_km": 307, "pace_origin": fixed},
                 "ride": {"hr_bpm": 136, "hr_origin": fixed,
                          "watts": 210, "power_origin": fixed}}),
-            ("measured", 86.0, "measured", None, {
+            ("measured", 148.0, "measured", None, {
                 "run": {"hr_bpm": 148, "hr_origin": "measured",
                         "pace_seconds_per_km": 307, "pace_origin": fixed},
                 "ride": {"hr_bpm": 138, "hr_origin": "measured",
                          "watts": 210, "power_origin": fixed}}),
-            ("adopted DFA estimate", 86.0, "estimated", None, {
+            ("adopted DFA estimate", 148.0, "estimated", None, {
                 "run": {"hr_bpm": 148, "hr_origin": "estimated",
                         "pace_seconds_per_km": 307, "pace_origin": fixed},
                 "ride": {"hr_bpm": 138, "hr_origin": "estimated",
@@ -453,7 +453,7 @@ class FirstThresholdTests(unittest.TestCase):
                         "pace_seconds_per_km": 332, "pace_origin": own},
                 "ride": {"hr_bpm": 136, "hr_origin": fixed,
                          "watts": 187, "power_origin": own}}),
-            ("own sessions at the measured heart rate", 86.0, "measured", at_hr, {
+            ("own sessions at the measured heart rate", 148.0, "measured", at_hr, {
                 "run": {"hr_bpm": 148, "hr_origin": "measured",
                         "pace_seconds_per_km": 296, "pace_origin": own},
                 "ride": {"hr_bpm": 138, "hr_origin": "measured",
@@ -477,7 +477,7 @@ class FirstThresholdTests(unittest.TestCase):
             {"run": {"hr_bpm": 146, "hr_origin": "fixed_share"}},
             first_thresholds(metrics, None, ""),
         )
-        self.assertEqual({}, first_thresholds({}, 86.0, "measured"))
+        self.assertEqual({}, first_thresholds({}, 148.0, "measured"))
         # With an FTP but no threshold HR there is no LT1 heart rate.
         self.assertEqual(
             {"ride": {"watts": 210, "power_origin": "fixed_share"}},

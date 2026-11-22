@@ -113,6 +113,17 @@ class NutritionHttpApiTests(unittest.TestCase):
         self.assertEqual(payload["macro_ranges"]["carbs_g"], (270, 450))
         self.assertEqual(payload["macro_ranges"]["protein_g"], (153, 207))
         self.assertEqual(payload["macro_ranges"]["fat_g"], (60, 90))
+        # #3917: the profile's energy goal "lose" widens protein to 1.6-2.4 g/kg.
+        routes = NutritionGetRoutes(
+            lambda: self.diary_service,
+            lambda: self.meal_library_service,
+            self.local_now,
+            lambda day: (90, None),
+            energy_goal=lambda: "lose",
+        )
+        dispatch_route(routes, self.handler, "/api/nutrition/day")
+        payload = self.handler.send_json.call_args.args[1]
+        self.assertEqual(payload["macro_ranges"]["protein_g"], (144, 216))
 
     def test_day_reference_is_requested_for_the_requested_day_only(self) -> None:
         self.handler.path = "/api/nutrition/day?date=2026-09-24"

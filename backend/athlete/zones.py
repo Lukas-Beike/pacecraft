@@ -286,8 +286,12 @@ class ZoneConfigurationService:
         effective_zone: EffectiveZone,
         on_change: Callable[[], None] = lambda: None,
         threshold_warnings: Callable[[], dict[str, Any] | None] = lambda: None,
+        default_limits: Mapping[str, tuple[float, ...]] | None = None,
     ) -> None:
         self._database_manager = database_manager
+        # The standard zones in effect when no configuration exists, in percent of
+        # the threshold, per metric (named by the activities owner).
+        self._default_limits = dict(default_limits or {})
         # Stale-threshold and Garmin SDK warning shown with the zones (#1768).
         self._threshold_warnings = threshold_warnings
         self._reader = reader
@@ -321,6 +325,9 @@ class ZoneConfigurationService:
                 or (configuration.sport is None and configuration.provenance.provider)
             ],
             "effective": _effective(configurations, today, self._effective_zone),
+            "defaults": {
+                metric: list(limits) for metric, limits in self._default_limits.items()
+            },
         }
         warnings = self._threshold_warnings()
         if warnings:

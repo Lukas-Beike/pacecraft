@@ -12,7 +12,7 @@ It is standalone software for a trusted LAN or private VPN (WireGuard, Tailscale
 4. Intervals.icu as an explicit, output-only target for workouts, competitions (the "Wettkämpfe senden" button), nutrition and thresholds.
 5. Structured strength and run workouts, sent to the Garmin watch on request.
 6. Local performance methods M1-M14 (load, fitness/fatigue/form, critical power/speed, HRV, sleep, energy, early infection hint, running step test) with evidence cards.
-7. Analysis of running, cycling, strength, load, recovery and all-time records (Rekorde) over one period selector, with the history of each recurring route.
+7. Analysis of running, cycling (each with its all-time records), strength, load and recovery over one period selector, with the history of each recurring route.
 8. Weather, air quality, pollen and external calendars shape what the Coach plans; the weather during each outdoor session adds a heat note to its analysis.
 9. Nutrition diary with local food databases, saved meals and products with default times by meal type, direct editing of a meal's components, and Garmin energy use; weight and body fat are entered under Ernährung › Körper, not in the profile.
 10. Private by design: SQLCipher encryption, one athlete, installable and offline-capable PWA with an outbox for your own entries, privacy export and automatic verified backups.
@@ -84,7 +84,7 @@ Provider payloads are stored raw and projected into provider-neutral records: ac
 
 ## Performance methods
 
-Load, fitness/fatigue/form, critical power and speed, session efficiency, HRV, sleep, thresholds, activity energy, body composition and an early infection hint are computed locally by methods M1-M14. Each has an evidence card with its limits, backed by the literature register R1-R77: [docs/performance-methods/README.md](docs/performance-methods/README.md).
+Load, fitness/fatigue/form, critical power and speed, session efficiency, HRV, sleep, thresholds, activity energy, body composition and an early infection hint are computed locally by methods M1-M14. Each has an evidence card with its limits, backed by the literature register R1-R86: [docs/performance-methods/README.md](docs/performance-methods/README.md).
 
 ## Backup, restore and upgrades
 

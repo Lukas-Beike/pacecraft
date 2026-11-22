@@ -7,6 +7,8 @@ import math
 import re
 from typing import Any
 
+from backend.providers.error_texts import failure_text
+
 OPENAI_RATE_LIMIT_HEADERS = {
     "retry-after": "retry_after",
     "x-ratelimit-limit-requests": "limit_requests",
@@ -184,7 +186,7 @@ def _openai_billing_error(
     if code == "credit_balance_exhausted":
         return (
             "credit_balance_exhausted",
-            "Das OpenAI-Guthaben ist aufgebraucht. Bitte im OpenAI-Billing Guthaben hinzufügen.",
+            failure_text("credit_balance_exhausted"),
         )
     if code in {
         "organization_spend_limit_exceeded",
@@ -193,7 +195,7 @@ def _openai_billing_error(
     }:
         return (
             code,
-            "Das OpenAI-Ausgaben- oder Nutzungslimit ist erreicht. Bitte das Limit im OpenAI-Konto prüfen.",
+            failure_text(code),
         )
     if (
         code in {"insufficient_quota", "billing_hard_limit_reached"}
@@ -210,7 +212,7 @@ def _openai_billing_error(
     ):
         return (
             "insufficient_quota",
-            "Das OpenAI-Guthaben bzw. Kontingent ist aufgebraucht. Bitte Guthaben und Abrechnung im OpenAI-Konto prüfen.",
+            failure_text("insufficient_quota"),
         )
     return None
 
@@ -235,7 +237,7 @@ def _openai_error_reason(status: int, error: dict[str, Any]) -> tuple[str, str]:
     ):
         return (
             "rate_limit_exceeded",
-            "OpenAI hat das Anfragelimit erreicht. Bitte kurz warten und erneut versuchen.",
+            failure_text("rate_limit_exceeded"),
         )
     if (
         status in {401, 403}
@@ -244,17 +246,17 @@ def _openai_error_reason(status: int, error: dict[str, Any]) -> tuple[str, str]:
     ):
         return (
             "authentication_or_permission",
-            "Der OpenAI-Zugang wurde abgelehnt. Bitte API-Schlüssel und Projektberechtigungen prüfen.",
+            failure_text("authentication_or_permission"),
         )
     if status == 404 or code in {"model_not_found", "not_found"}:
         return (
             "not_found",
-            "Das konfigurierte OpenAI-Modell oder der angeforderte Dienst wurde nicht gefunden.",
+            failure_text("not_found"),
         )
     if status >= 500:
         return (
             "provider_unavailable",
-            "OpenAI ist vorübergehend nicht verfügbar. Bitte später erneut versuchen.",
+            failure_text("provider_unavailable"),
         )
     return "http_error", f"OpenAI konnte die Anfrage nicht verarbeiten (HTTP {status})."
 

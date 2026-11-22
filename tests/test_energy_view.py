@@ -20,7 +20,17 @@ from backend.nutrition.energy_balance import (
     energy_windows,
     history_start,
 )
-from backend.nutrition.energy_inputs import EnergySources, read_energy_inputs
+from backend.nutrition.energy_expected import (
+    expected_total_kcal,
+    planned_inputs,
+    planned_net_kcal,
+    usual_kcal_per_hour,
+)
+from backend.nutrition.energy_inputs import (
+    EnergySources,
+    SessionCost,
+    read_energy_inputs,
+)
 from backend.nutrition.energy_view import (
     energy_view,
     own_day_totals,
@@ -2096,6 +2106,252 @@ class EnergyDayScenarioTests(unittest.TestCase):
             self.assertEqual(
                 whole["own_window"]["split"][part], past["own_window"]["split"][part]
             )
+
+
+def eaten_week(
+    days: int = 7, intake: float = 2200.0, sport: float | None = 600.0
+) -> EnergyInputs:
+    """``days`` logged days ending on END at 80 kg, 15 % body fat (68 kg lean)."""
+    logged = {
+        END - timedelta(days=n): DayInputs(
+            weight_kg=80.0, intake_kcal=intake, entries=3, sport_kcal=sport
+        )
+        for n in range(days)
+    }
+    base = inputs()
+    return replace(base, days={**base.days, **logged})
+
+
+class EnergyGuardTests(unittest.TestCase):
+    """The energy availability and loss-rate notes (#3917)."""
+
+    def view(self, source: EnergyInputs, latest: EnergyWindow | None = None) -> Any:
+        return energy_view(source, [latest or window(END, 2700.0, 1850.0)], garmin())
+
+    def test_availability_is_the_net_intake_per_kg_fat_free_mass(self) -> None:
+        # (2,200 eaten - 600 net session energy) / 68 kg = 23.5, shown as 23.
+        note = self.view(eaten_week())["energy_availability"]
+        self.assertEqual(
+            (23, 7, 30, 68.0, True),
+            (note["kcal_per_kg_ffm"], note["days"], note["floor_kcal_per_kg_ffm"],
+             note["lean_mass_kg"], note["below"]),
+        )  # fmt: skip
+        # The session energy leaves the intake: without it 2,200 / 68 = 32.4.
+        rested = self.view(eaten_week(sport=0.0))["energy_availability"]
+        self.assertEqual((32, False), (rested["kcal_per_kg_ffm"], rested["below"]))
+
+    def test_the_floor_fires_on_the_shown_whole_number(self) -> None:
+        # (2,108 - 68) / 68 = 30.0 stands at the floor; 2,106 gives 29.97, shown 29.
+        for intake, shown, below in ((2108.0, 30, False), (2106.0, 29, True)):
+            with self.subTest(intake=intake):
+                note = self.view(eaten_week(intake=intake, sport=68.0))[
+                    "energy_availability"
+                ]
+                self.assertEqual(
+                    (shown, below), (note["kcal_per_kg_ffm"], note["below"])
+                )
+
+    def test_it_needs_five_complete_days_among_seven_and_a_lean_mass(self) -> None:
+        self.assertIsNone(self.view(eaten_week(4))["energy_availability"])
+        self.assertEqual(5, self.view(eaten_week(5))["energy_availability"]["days"])
+        # A day without a priced session is no complete day for it.
+        unpriced = eaten_week()
+        days = dict(unpriced.days)
+        for n in (0, 1, 2):
+            days[END - timedelta(days=n)] = replace(
+                days[END - timedelta(days=n)], sport_kcal=None
+            )
+        self.assertIsNone(
+            self.view(replace(unpriced, days=days))["energy_availability"]
+        )
+        # A day eaten under 70 % of the resting rate is no complete day either.
+        thin = eaten_week(5)
+        days = dict(thin.days)
+        days[END] = replace(days[END], intake_kcal=1000.0)
+        self.assertIsNone(self.view(replace(thin, days=days))["energy_availability"])
+        # Without body fat there is no lean mass.
+        self.assertIsNone(
+            self.view(replace(eaten_week(), body_fat_pct={}))["energy_availability"]
+        )
+
+    def test_the_weight_line_falling_faster_than_one_percent_a_week_is_fast(
+        self,
+    ) -> None:
+        # Fat share 0.80: 0.8 x 9,441 + 0.2 x 1,816 = 7,916 kcal/kg. 0.15 kg/day
+        # at 80 kg is 1.05 kg a week, 1.3 %; 80 kg x 1 % a week is 0.8 kg a week.
+        def rate(kg_per_day: float, **changes: Any) -> Any:
+            store = MEASURED._replace(
+                kcal_per_day=-kg_per_day * 7916.0, weight_end_kg=80.0, **changes
+            )
+            return self.view(inputs(), replace(window(END, 3800.0), store=store))[
+                "loss_rate"
+            ]
+
+        self.assertEqual(
+            {"pct_per_week": 1.3, "limit_pct_per_week": 1.0, "fast": True}, rate(0.15)
+        )
+        self.assertEqual(
+            {"pct_per_week": 1.0, "limit_pct_per_week": 1.0, "fast": False},
+            rate(0.8 / 7),
+        )
+        self.assertIsNone(rate(-0.1), "a rising weight has no loss rate")
+        # M12's 21 days of span and the window's 8 weigh-ins gate it.
+        self.assertIsNone(rate(0.15, days=20))
+        short = replace(window(END, 3800.0), weighins=7, store=MEASURED)
+        self.assertIsNone(self.view(inputs(), short)["loss_rate"])
+
+
+class ExpectedTotalTests(unittest.TestCase):
+    """Today's expected day total beside the total so far (#3917)."""
+
+    TODAY = END + timedelta(days=1)
+
+    def view(self, planned: float | None, day: date | None = None) -> Any:
+        return energy_view(
+            inputs(),
+            [window(END, 2700.0, 1850.0)],
+            garmin(),
+            day=day or self.TODAY,
+            planned_kcal=planned,
+        )
+
+    def test_it_adds_the_usual_steps_digestion_and_the_planned_units(self) -> None:
+        # Katch-McArdle's 1,839 rest, its provisional learned everyday +8, the
+        # window's 250 steps and 250 digestion, and 177 planned (3.5 - 1 MET x
+        # 1,700 kcal/day x 1 h / 24): 2,524. The goal stays on the total so far.
+        view = self.view(177.0)
+        km = row(view, "katch_mcardle")
+        self.assertEqual(2524, view["expected_total_kcal"])
+        self.assertEqual(1847, km["total_kcal"], "so far: rest and learned only")
+        # A rest day expects the usual steps and digestion alone.
+        self.assertEqual(2347, self.view(0.0)["expected_total_kcal"])
+
+    def test_it_never_lies_below_what_the_day_counts_so_far(self) -> None:
+        latest = window(END, 2700.0, 1850.0)
+        split = {"resting_kcal": 1800, "neat_kcal": 0, "sport_kcal": 0, "tef_kcal": 0}
+        usual = expected_total_kcal({"split": split}, latest, 100.0, False)
+        assert usual is not None
+        # An unplanned 600 kcal ride, 400 everyday and 300 digestion so far.
+        busy = {**split, "neat_kcal": 400, "sport_kcal": 600, "tef_kcal": 300}
+        self.assertEqual(
+            usual + (400 - 250) + (600 - 100) + (300 - 250),
+            expected_total_kcal({"split": busy}, latest, 100.0, False),
+        )
+
+    def test_garmin_s_row_takes_its_own_everyday_mean(self) -> None:
+        latest = window(END, 2700.0, 1850.0)
+        split = {"resting_kcal": 1800, "neat_kcal": 0, "sport_kcal": 0, "tef_kcal": 0}
+        # Garmin's everyday mean of 400, not the window's 250; no digestion.
+        self.assertEqual(
+            1800 + 400 + 100,
+            expected_total_kcal({"split": split}, latest, 100.0, True, 400.0),
+        )
+        self.assertIsNone(expected_total_kcal({"split": split}, latest, 100.0, True))
+
+    def test_it_is_for_today_and_known_parts_only(self) -> None:
+        self.assertIsNone(self.view(None)["expected_total_kcal"])
+        self.assertIsNone(self.view(177.0, END)["expected_total_kcal"])
+        no_means = replace(window(END, 2700.0, 1850.0), neat_kcal_raw=None)
+        view = energy_view(
+            inputs(), [no_means], garmin(), day=self.TODAY, planned_kcal=177.0
+        )
+        self.assertIsNone(view["expected_total_kcal"])
+
+    def test_the_read_costs_the_days_planned_units(self) -> None:
+        # Through the reader: a rest day, then a planned hour of strength at the
+        # 1,700 kcal/day resting rate, 177 kcal more; a unit without a way to
+        # cost its sport leaves the total unknown.
+        def expected(units: list[dict[str, Any]], day: date = SCENARIO_TODAY) -> Any:
+            source = replace(
+                scenario_sources({"resting_kcal": 300.0}, [], 0),
+                planned=lambda _db, _day: units,
+            )
+            return read_energy_view(None, source, SCENARIO_END, day)[
+                "expected_total_kcal"
+            ]
+
+        rest = expected([])
+        self.assertIsNotNone(rest)
+        hour = {"sport": "strength", "duration_s": 3600.0}
+        self.assertAlmostEqual(177, expected([hour]) - rest, delta=1)
+        self.assertIsNone(expected([{"sport": "ride", "duration_s": 3600.0}]))
+        self.assertIsNone(expected([hour], SCENARIO_END), "yesterday has none")
+
+    def test_the_goal_stays_on_the_total_so_far(self) -> None:
+        goal = {"energy_goal": "lose", "energy_goal_kcal": "500"}
+        before = self.view(None)
+        after = energy_view(
+            inputs(), [window(END, 2700.0, 1850.0)], garmin(), day=self.TODAY,
+            goal=goal, planned_kcal=177.0,
+        )  # fmt: skip
+        target = after["goal"]["target_kcal"]
+        self.assertEqual(row(before, "katch_mcardle")["total_kcal"] - 500, target)
+
+
+class PlannedUnitCostTests(unittest.TestCase):
+    """Planned units priced from their duration by their sport's M11 method (#3917)."""
+
+    def test_strength_takes_its_general_met_and_other_sports_their_own_rate(
+        self,
+    ) -> None:
+        # (3.5 - 1) x 1,700 x 3,600 / 86,400 = 177.08 kcal.
+        strength = {"sport": "strength", "duration_s": 3600.0}
+        self.assertAlmostEqual(
+            177.0833, planned_net_kcal([strength], {}, 1700.0) or 0.0, places=3
+        )
+        self.assertIsNone(planned_net_kcal([strength], {}, None))
+        # A 90 minute ride at the athlete's 600 kcal/h is 900 kcal; both units add.
+        ride = {"sport": "ride", "duration_s": 5400.0}
+        self.assertEqual(900.0, planned_net_kcal([ride], {"ride": 600.0}, 1700.0))
+        self.assertAlmostEqual(
+            1077.0833,
+            planned_net_kcal([ride, strength], {"ride": 600.0}, 1700.0) or 0.0,
+            places=3,
+        )
+        # No unit is a rest day; a sport without a rate or a unit without a
+        # duration leaves the total unknown.
+        self.assertEqual(0.0, planned_net_kcal([], {}, 1700.0))
+        self.assertIsNone(planned_net_kcal([ride], {"run": 700.0}, 1700.0))
+        self.assertIsNone(
+            planned_net_kcal(
+                [{"sport": "ride", "duration_s": None}], {"ride": 600.0}, 1700.0
+            )
+        )
+
+    def test_the_day_s_units_carry_sport_and_seconds_without_deleted_ones(self) -> None:
+        units: list[dict[str, Any]] = [
+            {"sport": "strength", "duration_minutes": 45},
+            {"sport": "ride", "planned_duration_s": 5400, "duration_minutes": 60},
+            {"sport": "run", "duration_minutes": 30, "local_deleted": True},
+            {"sport": "run"},
+        ]
+        self.assertEqual(
+            [
+                {"sport": "strength", "duration_s": 2700},
+                {"sport": "ride", "duration_s": 5400},
+                {"sport": "run", "duration_s": None},
+            ],
+            planned_inputs(units),
+        )
+
+    def test_the_rate_is_the_sport_s_priced_net_kcal_per_hour_of_28_days(self) -> None:
+        def cost(days_back: int, kcal: float | None, seconds: float) -> SessionCost:
+            return SessionCost(
+                END - timedelta(days=days_back), kcal, "power", 0.0,
+                sport="ride", duration_s=seconds,
+            )  # fmt: skip
+
+        costs = [
+            cost(1, 600.0, 3600.0),
+            cost(5, 900.0, 5400.0),
+            cost(27, 900.0, 3600.0),
+            cost(28, 5000.0, 3600.0),  # older than 28 days
+            cost(2, None, 3600.0),  # unpriced
+        ]
+        # (600 + 900 + 900) kcal over 1 + 1.5 + 1 = 3.5 hours = 685.71 kcal/h.
+        rates = usual_kcal_per_hour(costs, END)
+        self.assertEqual(["ride"], list(rates))
+        self.assertAlmostEqual(685.7143, rates["ride"], places=3)
 
 
 if __name__ == "__main__":

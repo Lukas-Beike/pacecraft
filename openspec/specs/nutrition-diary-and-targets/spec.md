@@ -101,7 +101,11 @@ The system SHALL let the athlete remove a component of a logged meal, change its
 - **WHEN** an edit would leave the meal without a component
 - **THEN** it fails with `last_component`; the client deletes the meal after its own confirmation instead.
 
-Evidence: `backend/nutrition/meal_components.py::edited_components`, `backend/nutrition/meal_components.py::entry_components`, `backend/nutrition/diary.py::NutritionDiaryService.edit_components`, `backend/http_api/nutrition.py::NutritionPostRoutes._edit_components`; `tests/test_nutrition_meal_components.py::MealComponentEditTests.test_a_changed_amount_is_recalculated_and_the_others_stay_as_stored`, `tests/test_nutrition_meal_components.py::MealComponentEditTests.test_a_swap_keeps_the_amount_and_takes_the_new_origin`, `tests/test_nutrition_meal_components.py::MealComponentEditTests.test_a_removed_component_leaves_the_rest_and_the_last_one_stays`, `tests/test_nutrition_meal_components.py::MealComponentEditTests.test_a_swap_to_another_unit_is_refused_and_changes_nothing`, `tests/test_nutrition_meal_components.py::MealComponentEditTests.test_an_edit_of_a_meal_that_changed_meanwhile_is_refused`; `e2e/nutrition-meal-edit.spec.js`.
+#### Scenario: Change the meal's day, type or time
+- **WHEN** the same request carries `meal` with `meal_date`, `meal_type`, `meal_time` or `logged_time_known: false`, with or without component edits
+- **THEN** both are saved as one change with one undo reference; a new type moves a default time to the type's default but never a named one, a new day marks both days pending, an unknown time keeps only the type, and a `meal` without edits leaves the components and origin as stored; any other key, `logged_time_known: true`, or a time together with an unknown time fails with 400 and nothing changes.
+
+Evidence: `backend/nutrition/meal_components.py::validated_meal_changes`, `tests/test_nutrition_meal_components.py::MealComponentEditTests.test_the_meal_change_and_the_component_edits_are_one_write`, `tests/test_nutrition_meal_components.py::MealComponentEditTests.test_a_new_day_moves_the_meal_and_marks_both_days`, `tests/test_nutrition_meal_components.py::MealComponentEditTests.test_a_bad_meal_change_changes_nothing`, `backend/nutrition/meal_components.py::edited_components`, `backend/nutrition/meal_components.py::entry_components`, `backend/nutrition/diary.py::NutritionDiaryService.edit_components`, `backend/http_api/nutrition.py::NutritionPostRoutes._edit_components`; `tests/test_nutrition_meal_components.py::MealComponentEditTests.test_a_changed_amount_is_recalculated_and_the_others_stay_as_stored`, `tests/test_nutrition_meal_components.py::MealComponentEditTests.test_a_swap_keeps_the_amount_and_takes_the_new_origin`, `tests/test_nutrition_meal_components.py::MealComponentEditTests.test_a_removed_component_leaves_the_rest_and_the_last_one_stays`, `tests/test_nutrition_meal_components.py::MealComponentEditTests.test_a_swap_to_another_unit_is_refused_and_changes_nothing`, `tests/test_nutrition_meal_components.py::MealComponentEditTests.test_an_edit_of_a_meal_that_changed_meanwhile_is_refused`; `e2e/nutrition-meal-edit.spec.js`.
 
 ### Requirement: Diary changes are recorded and undoable
 The system SHALL record every diary create, correction, added product and deletion as a `nutrition_entry` change in change history, with the audit-projected fields of the entry, and SHALL let the shared undo restore the recorded state only while the entry still matches the state the change produced. A restored entry SHALL mark its date pending for a later explicit export. A Coach turn whose applied writes are all diary tools SHALL be undoable as a whole.
@@ -262,9 +266,13 @@ The diary SHALL subtly color complete macro totals outside athlete-specific dail
 - **WHEN** a current body weight is available
 - **THEN** the protein reference is 2 g/kg with a 15 percent tolerance in either direction.
 
+#### Scenario: Protein in a deficit
+- **WHEN** a current body weight is available and the profile's energy goal is lose
+- **THEN** the protein reference is 1.6 to 2.4 g/kg; every other goal keeps 1.7 to 2.3 g/kg. Evidence: `tests/test_nutrition_macro_ranges.py::MacroRangeTests::test_protein_widens_to_1_6_2_4_g_per_kg_only_in_a_deficit`.
+
 #### Scenario: Training-adjusted carbohydrate range
 - **WHEN** the day's training is known
-- **THEN** the base range is 3–5 g/kg below 90 minutes, 5–7 g/kg from 90 minutes, and 6–10 g/kg from 120 minutes; at least ten minutes in zone 4 or above within one session raises it one range, capped at 6–10 g/kg.
+- **THEN** the base range is 3–5 g/kg below 60 minutes, 5–7 g/kg from 60 minutes, and 6–10 g/kg from 90 minutes; at least ten minutes in zone 4 or above within one session raises it one range, capped at 6–10 g/kg; from 240 minutes it is 8–12 g/kg (Thomas, Erdman & Burke 2016, Table 1, #3920).
 
 #### Scenario: Planned and completed sessions
 - **WHEN** a completed activity is matched to a planned session
@@ -374,6 +382,23 @@ The system SHALL return `energy_expenditure` with every day read, and SHALL keep
 - **THEN** the day is answered without the unavailable ranges; `macro_ranges` omits what cannot be derived.
 
 Evidence: `backend/performance/daily_health.py::daily_energy_expenditure`, `backend/http_api/nutrition.py::NutritionGetRoutes._day_summary`, `backend/nutrition/sync_status.py::NutritionSyncStatusService.get_week_summary`; `tests/test_nutrition_api_and_sync.py::test_get_day_route`, `tests/test_nutrition_api_and_sync.py::test_day_reference_failure_preserves_diary`, `tests/test_nutrition_api_and_sync.py::test_history_period_is_forwarded`, `tests/test_nutrition_meal_times.py::test_entry_route_returns_the_change_for_undo`.
+
+### Requirement: The energy card guards the size of a deficit and shows the expected day total
+The energy card SHALL show two non-blocking notes as its last lines and, for today, an expected day total beside the total so far. "Ziel heute" and "Offene Kalorien" SHALL stay on the total so far.
+
+#### Scenario: Energy availability below the floor
+- **WHEN** at least five of the last seven days are completely logged with priced sessions and a fat-free mass is known
+- **THEN** the 7-day mean of the intake less the sessions' net exercise energy per kg fat-free mass is read as `energy_availability`, and below 30 kcal/kg FFM the card ends with "Energieverfügbarkeit (7 Tage) 27 kcal/kg FFM · unter 30"; with fewer days or without a fat-free mass there is no note. Evidence: `tests/test_energy_view.py::EnergyGuardTests::test_availability_is_the_net_intake_per_kg_fat_free_mass`, `tests/test_energy_view.py::EnergyGuardTests::test_it_needs_five_complete_days_among_seven_and_a_lean_mass`, `tests/test_energy_view.py::EnergyGuardTests::test_the_floor_fires_on_the_shown_whole_number`.
+
+#### Scenario: Fast weight loss
+- **WHEN** the 28-day weight line falls faster than 1 percent of body mass per week
+- **THEN** `loss_rate` is fast and the card ends with "Gewicht fällt 1,3 %/Woche · schneller als 1 %". Evidence: `tests/test_energy_view.py::EnergyGuardTests::test_the_weight_line_falling_faster_than_one_percent_a_week_is_fast`.
+
+#### Scenario: Expected day total
+- **WHEN** today's read has every part known
+- **THEN** `expected_total_kcal` is the outlined source's resting energy and everyday term, plus the latest window's mean steps and digestion, plus today's planned units costed from their planned duration, and the card shows "Tag erwartet ≈ N" directly under "Tag gesamt"; a past day, or an unknown part, shows no row. Evidence: `tests/test_energy_view.py::ExpectedTotalTests::test_it_adds_the_usual_steps_digestion_and_the_planned_units`, `tests/test_energy_view.py::ExpectedTotalTests::test_it_is_for_today_and_known_parts_only`, `tests/test_energy_view.py::ExpectedTotalTests::test_the_goal_stays_on_the_total_so_far`, `tests/test_energy_view.py::PlannedUnitCostTests::test_strength_takes_its_general_met_and_other_sports_their_own_rate`.
+
+Evidence: `backend/nutrition/energy_guard.py`, `backend/nutrition/energy_expected.py`, `public/analysis.js::energyUsage`; `tests/analysis-presentation.test.cjs::the diary's usage card draws the outlined source's parts, its day total and the info behind the small i (#3252, #3703)`.
 
 ### Requirement: Correction and meal-extension semantics
 A correction SHALL accept only meal date, time, time knowledge, meal type, description, kcal, macros (and their aliases), `food_ingredients`, `components` and `packaging_label`, SHALL keep the stored source, and SHALL mark hand-edited nutrients with the basis `manual_correction`. Adding a product to a meal SHALL keep the earlier values as the first component.

@@ -50,6 +50,7 @@ from backend.sync.canonical_backfill import BatchReport
 from backend.sync.canonical_backfill_worker import CanonicalBackfillWorker
 from backend.sync.canonical_table_reader import CanonicalTableReader
 from backend.sync.canonical_wiring import build_canonical_backfill
+from backend.sync.local_load import stored_local_loads
 from backend.sync.session_analysis_stage import (
     SessionAnalysisStage,
     summarize_session_analysis,
@@ -882,6 +883,155 @@ class SessionAnalysisStageTests(unittest.TestCase):
         with self.manager.reader() as db:
             state = summarize_session_analysis(self.key_values, db)
         self.assertEqual(("complete", 0), (state["status"], state["counts"]["pending"]))
+
+
+class NormalizedGradedSpeedStageTests(unittest.TestCase):
+    """Card M6 v8: a run's NGS is stored and reaches the load by the worker alone."""
+
+    def setUp(self) -> None:
+        directory = tempfile.TemporaryDirectory()
+        self.addCleanup(directory.cleanup)
+        self.manager = open_manager(directory.name)
+        self.addCleanup(self.manager.close)
+        add_session_record(
+            self.manager,
+            GARMIN,
+            "r1",
+            "act_r1",
+            sport="run",
+            moving_duration_s=float(SECONDS),
+        )
+        with self.manager.unit_of_work() as db:
+            replace_detail_set(
+                db,
+                ActivityStreamSet(
+                    provider_activity_id="r1",
+                    provenance=_provenance(GARMIN),
+                    origin=ActivityDetailOrigin.FETCH,
+                    resolution=StreamResolution.FULL,
+                    channels={
+                        StreamChannel.TIME_S: TIME,
+                        StreamChannel.SPEED_MPS: tuple(3.0 for _ in TIME),
+                        StreamChannel.GRADE_PCT: tuple(0.0 for _ in TIME),
+                    },
+                ),
+                mapper_version=1,
+                summary_sha256=None,
+                now=NOW,
+            )
+            canonical_store.upsert_observation(
+                db,
+                Observation(
+                    kind=MetricKind.THRESHOLD_PACE,
+                    value=MetricValue(4.0, MetricKind.THRESHOLD_PACE.unit),
+                    observed_on=date(2026, 9, 1),
+                    observed_at=None,
+                    provenance=Provenance(
+                        provider=GARMIN,
+                        source_kind=SourceKind.PROVIDER_REPORTED,
+                        source_record_id="garmin-pace",
+                        recorded_by=RecordingOrigin.GARMIN,
+                        retrieved_at=datetime(2026, 9, 1, tzinfo=UTC),
+                        label=None,
+                    ),
+                    sport=Sport.RUN,
+                ),
+                mapper_version=MAPPER_VERSION,
+                now=NOW,
+            )
+
+    def _assembly(self) -> Any:
+        return build_canonical_backfill(
+            database=lambda: self.manager,
+            key_values=KeyValueRepository(lambda: NOW),
+            zone_provider=lambda: ZONE,
+            maintenance_gate=MaintenanceGate(),
+            clock=lambda: NOW,
+        )
+
+    def _pass(self, assembly: Any) -> None:
+        assembly.worker.start()
+        assembly.worker.join(60)
+        assembly.worker.stop()
+
+    def _inputs(self) -> dict[str, Any]:
+        with self.manager.reader() as db:
+            row = stored_local_loads(db)["act_r1"]["session_load"]
+        return {**row["derivation"]["inputs"], "value": row["value"]}
+
+    def test_the_row_stores_the_normalized_graded_speed(self) -> None:
+        assembly = self._assembly()
+        with self.manager.unit_of_work() as db:
+            assembly.session_analysis.run_batch(db)
+            row = activity_detail_store.analysis_rows_for(db, ["act_r1"])["act_r1"]
+        # 3000 one-second samples, the first mean after 30 s: 2971 s covered.
+        self.assertEqual(
+            {
+                "version": 1,
+                "ngs_mps": 3.0,
+                "seconds": 2971.0,
+                "source": "grade_adjusted_speed",
+            },
+            row["payload"]["ngs"],
+        )
+
+    def test_a_row_stored_before_the_ngs_ends_on_the_ngs_basis_by_the_worker_alone(
+        self,
+    ) -> None:
+        # The current version, with the fingerprint of before the NGS and no key.
+        with self.manager.unit_of_work() as db:
+            save_analysis(
+                db,
+                "act_r1",
+                analysis_version=ANALYSIS_VERSION,
+                input_sha256="a" * 64,
+                payload={"hr_histogram": None, "target_snapshot": None},
+                now=NOW,
+            )
+        self._pass(self._assembly())
+        with self.manager.reader() as db:
+            row = activity_detail_store.analysis_rows_for(db, ["act_r1"])["act_r1"]
+        self.assertEqual(ANALYSIS_VERSION, row["analysis_version"])
+        self.assertEqual(3.0, row["payload"]["ngs"]["ngs_mps"])
+        inputs = self._inputs()
+        self.assertEqual("normalized_graded_speed", inputs["pace_basis"])
+        self.assertEqual(3.0, inputs["speed_mps"])
+        # 3000 s at IF 3.0 / 4.0.
+        self.assertAlmostEqual(3000 / 3600 * 0.75**2 * 100, inputs["value"], places=3)
+
+    def test_a_session_without_detail_sets_keeps_its_row(self) -> None:
+        # Its streams once existed, then went: only its row of the current
+        # version remains, with the fingerprint of a session without details.
+        assembly = self._assembly()
+        self._pass(assembly)
+        with self.manager.unit_of_work() as db:
+            db.execute("DELETE FROM activity_stream_channels")
+            db.execute("DELETE FROM activity_detail_sets")
+        self._pass(assembly)
+        with self.manager.reader() as db:
+            stored = activity_detail_store.analysis_rows_for(db, ["act_r1"])["act_r1"]
+        payload = {
+            **stored["payload"],
+            "zone_times": {"power": [{"id": "Z1", "secs": 600.0}]},
+        }
+        with self.manager.unit_of_work() as db:
+            save_analysis(
+                db,
+                "act_r1",
+                analysis_version=ANALYSIS_VERSION,
+                input_sha256=stored["input_sha256"],
+                payload=payload,
+                now=NOW,
+            )
+        # A later NGS version must not touch it either.
+        with patch.object(canonical_session_analysis, "NGS_VERSION", 99):
+            self._pass(assembly)
+        with self.manager.reader() as db:
+            row = activity_detail_store.analysis_rows_for(db, ["act_r1"])["act_r1"]
+            zones = read_zone_times(db, ["act_r1"])
+        self.assertEqual(ANALYSIS_VERSION, row["analysis_version"])
+        self.assertEqual(payload, row["payload"])
+        self.assertIn("act_r1", zones)
 
 
 class StageOrderTests(unittest.TestCase):

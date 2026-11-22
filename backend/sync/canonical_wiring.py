@@ -86,6 +86,7 @@ def build_canonical_backfill(
     session_feedback: FeedbackLookup | None = None,
     planned_units: PlannedUnits = list,
     athlete_sex: Callable[[Any], str | None] = lambda _db: None,
+    first_threshold_bpm: Callable[[Any], float | None] = lambda _db: None,
     extra_followups: Sequence[BackfillStage] = (),
     activity_weather_fetch: Fetch | None = None,
     home_location: HomeLocation = lambda _db: None,
@@ -115,6 +116,7 @@ def build_canonical_backfill(
         zone_provider=zone_provider,
         clock=clock,
         planned_units=planned_units,
+        first_threshold_bpm=first_threshold_bpm,
     )
     # The weather during outdoor sessions (#1868); without a fetch there is none.
     activity_weather = (

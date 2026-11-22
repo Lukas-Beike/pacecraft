@@ -129,22 +129,12 @@
           <a href="#analysis/strength" data-analysis-segment="strength">Kraft</a>
           <a href="#analysis/load" data-analysis-segment="load">Belastung</a>
           <a href="#analysis/recovery" data-analysis-segment="recovery">Erholung</a>
-          <a href="#analysis/records" data-analysis-segment="records">Rekorde</a>
         </nav>
         <div id="analysisLoadPeriod" hidden></div>
         <section id="sessionPerformance" class="analysis-chart-card" aria-label="Trainingsfokus"></section>
         <section id="personalRecovery" class="analysis-history-charts" aria-label="Persönliche Erholung" hidden></section>
+        <div id="strengthPeriod" hidden></div>
         <section id="strengthAnalysis" class="analysis-history-charts" aria-label="Kraft" hidden></section>
-        <section id="analysisRecords" class="analysis-history-charts" aria-label="Rekorde" hidden>
-          <section class="analysis-chart-card" aria-labelledby="recordsRideTitle"><h3 id="recordsRideTitle">Radfahren</h3>
-            <section id="rideActivityRecords" class="analysis-subchart" aria-label="Einzelne Fahrt"></section>
-            <section id="cyclingPowerProfile" class="analysis-subchart" aria-label="Leistungsprofil Rad"></section>
-          </section>
-          <section class="analysis-chart-card" aria-labelledby="recordsRunTitle"><h3 id="recordsRunTitle">Laufen</h3>
-            <section id="runActivityRecords" class="analysis-subchart" aria-label="Einzelner Lauf"></section>
-            <section id="runningBestEfforts" class="analysis-subchart" aria-label="Bestwerte Laufen"></section>
-          </section>
-        </section>
         <section id="analysisLoadCharts" class="analysis-history-charts" aria-label="Belastung und Trainingszeit" hidden></section>
         <section id="currentPerformance" class="analysis-chart-card" aria-label="Aktuelle Werte" hidden></section>
         <section id="performanceEnduranceCharts" class="analysis-history-charts" aria-label="Ausdauer-Score" hidden></section>
@@ -155,6 +145,14 @@
         <section id="cyclingCriticalPower" class="analysis-subchart" aria-label="Critical Power Rad" data-analysis-sport="ride"></section>
         <section id="runningRecurringSessions" class="analysis-chart-card" aria-label="Wiederkehrende Einheiten Laufen" data-analysis-sport="run" data-analysis-empty="true"></section>
         <section id="cyclingRecurringSessions" class="analysis-chart-card" aria-label="Wiederkehrende Einheiten Rad" data-analysis-sport="ride" data-analysis-empty="true"></section>
+        <section id="runRecordsCard" class="analysis-chart-card" aria-labelledby="runRecordsTitle" data-analysis-sport="run"><h3 id="runRecordsTitle">Rekorde</h3>
+          <section id="runActivityRecords" class="analysis-subchart"></section>
+          <section id="runningBestEfforts" class="analysis-subchart"></section>
+        </section>
+        <section id="rideRecordsCard" class="analysis-chart-card" aria-labelledby="rideRecordsTitle" data-analysis-sport="ride"><h3 id="rideRecordsTitle">Rekorde</h3>
+          <section id="rideActivityRecords" class="analysis-subchart"></section>
+          <section id="cyclingPowerProfile" class="analysis-subchart"></section>
+        </section>
         <section id="analysisEmptyState" aria-label="Keine Daten" hidden></section>
       </section>
 
@@ -224,7 +222,7 @@
           <details class="profile-section collapsible-section">
             <summary class="collapsible-summary"><span class="collapsible-summary-title">Person</span><span id="profileSummary" class="collapsible-summary-meta">Noch nicht ausgefüllt</span></summary>
             <div class="form-grid"><label>Name<input name="name" autocomplete="name"></label></div>
-            <fieldset class="chip-field"><legend>Sportarten</legend><div class="chip-group"><label class="chip"><input type="checkbox" name="sports" value="Cycling"><span>Radfahren</span></label><label class="chip"><input type="checkbox" name="sports" value="Running"><span>Laufen</span></label><label class="chip"><input type="checkbox" name="sports" value="Swimming"><span>Schwimmen</span></label><label class="chip"><input type="checkbox" name="sports" value="Strength"><span>Kraft</span></label><label class="chip"><input type="checkbox" name="sports" value="Triathlon"><span>Triathlon</span></label><label class="chip"><input type="checkbox" name="sports" value="Other"><span>Andere</span></label></div></fieldset>
+            <fieldset class="chip-field"><legend>Sportarten</legend><div class="chip-group"><label class="chip"><input type="checkbox" name="sports" value="Cycling"><span>Radfahren</span></label><label class="chip"><input type="checkbox" name="sports" value="Running"><span>Laufen</span></label><label class="chip"><input type="checkbox" name="sports" value="Strength"><span>Kraft</span></label><label class="chip"><input type="checkbox" name="sports" value="Other"><span>Andere</span></label></div></fieldset>
             <label>Trainingserfahrung<textarea name="training_background" rows="3" placeholder="Erfahrung, Trainingshistorie, Stärken und Schwächen…"></textarea></label>
             <div class="form-grid">
             <label>Größe (cm)<input name="height_cm" type="number" min="50" max="250" step="0.1"></label>
@@ -242,18 +240,17 @@
           <details id="zoneSettings" class="profile-section collapsible-section">
             <summary class="collapsible-summary"><span class="collapsible-summary-title">Zonen &amp; Schwellen</span><span id="zoneSummary" class="collapsible-summary-meta"></span></summary>
             <output id="zoneWarnings" class="provider-key-hint error" hidden></output>
-            <fieldset id="zoneSportTabs" class="segmented-control zone-sport-tabs"><legend class="sr-only">Sportart</legend><button type="button" data-zone-sport="ride" aria-pressed="true">Radfahren</button><button type="button" data-zone-sport="run" aria-pressed="false">Laufen</button><button type="button" data-zone-sport="swim" aria-pressed="false">Schwimmen</button></fieldset>
+            <fieldset id="zoneSportTabs" class="segmented-control zone-sport-tabs"><legend class="sr-only">Sportart</legend><button type="button" data-zone-sport="ride" aria-pressed="true">Radfahren</button><button type="button" data-zone-sport="run" aria-pressed="false">Laufen</button></fieldset>
             <div id="zoneOverview" class="zone-overview"></div>
             <p id="zoneReceipt" class="fine-print settings-message" aria-live="polite" hidden></p>
             <fieldset id="firstThresholdEditor" class="profile-subsection zone-editor" hidden><legend>Erste Schwelle (LT1)</legend>
-              <label>Messwert (bpm)<input name="first_threshold_hr" type="number" min="60" max="220" step="1" inputmode="numeric"></label>
-              <label>Messdatum<input name="first_threshold_on" type="date"></label>
-              <label><span id="firstThresholdStoredLabel">Gespeichert (% LSHF)</span><input name="first_threshold_pct" type="number" min="40" max="100" step="0.1" inputmode="decimal"></label>
+              <label><span id="firstThresholdStoredLabel">Herzfrequenz (bpm)</span><input name="first_threshold_hr" type="number" min="60" max="220" step="1" inputmode="numeric"></label>
+              <output id="firstThresholdPercent" class="fine-print"></output>
               <div id="firstThresholdEstimate" class="profile-estimate" hidden><output id="firstThresholdEstimateText"></output><button id="firstThresholdAdopt" type="button" class="secondary-button">Übernehmen</button></div>
             </fieldset>
             <div id="zoneEditor" class="zone-editor" hidden>
               <div class="form-grid" hidden>
-                <label>Sportart<select id="zoneSport" form="zoneForm"><option value="ride">Radfahren</option><option value="run">Laufen</option><option value="swim">Schwimmen</option></select></label>
+                <label>Sportart<select id="zoneSport" form="zoneForm"><option value="ride">Radfahren</option><option value="run">Laufen</option></select></label>
                 <label>Messgröße<select id="zoneMetric" form="zoneForm"><option value="power">Leistung</option><option value="heart_rate">Herzfrequenz</option><option value="pace">Pace</option></select></label>
               </div>
               <ul id="zoneSources" class="fine-print"></ul>
@@ -290,7 +287,7 @@
             </div>
             <label>Wetter-/Urlaubsstandort<input name="weather_location" placeholder="Stadt oder PLZ, z. B. Münster"></label>
           </details>
-          <div class="save-bar"><span id="profileDirtyIndicator" class="dirty-indicator" hidden>Ungespeichert</span><span class="save-clean">Gespeichert</span><button type="submit">Profil speichern</button></div>
+          <div class="save-bar"><span id="profileDirtyIndicator" class="dirty-indicator" hidden>Ungespeichert</span><button type="submit">Profil speichern</button></div>
         </form>
         <form id="zoneForm" hidden></form>
       </section>
@@ -651,7 +648,7 @@
             <button id="backupDownloadButton" type="button" class="secondary-button">Backup herunterladen</button>
           </div>
           <div class="settings-inline-action backup-actions">
-            <label>Backup wiederherstellen<input id="backupFileInput" type="file" accept=".backup,.db,application/octet-stream"></label>
+            <label>Backup-Datei<input id="backupFileInput" type="file" accept=".backup,.db,application/octet-stream"></label>
             <button id="backupRestoreButton" type="button" class="secondary-button danger-button">Backup wiederherstellen</button>
           </div>
         </details>
@@ -710,7 +707,7 @@
       <video id="nutritionBarcodeVideo" playsinline muted aria-label="Kamerabild für Barcode-Scan"></video>
       <p id="nutritionBarcodeStatus" class="tab-sync-detail" aria-live="polite">Kamera wird vorbereitet …</p>
       <label for="nutritionBarcodeManual">EAN manuell eingeben<input id="nutritionBarcodeManual" inputmode="numeric" pattern="[0-9]{8,14}" maxlength="14" autocomplete="off"></label>
-      <div class="dialog-actions"><button type="button" id="nutritionBarcodeCancel" class="secondary-button">Abbrechen</button><button type="submit" id="nutritionBarcodeLookup" class="adaptive-planning-button">Produkt suchen</button></div>
+      <div class="dialog-actions"><button type="button" id="nutritionBarcodeCancel" class="secondary-button">Abbrechen</button><button type="submit" id="nutritionBarcodeLookup">Produkt suchen</button></div>
     </form>
   </dialog>
   <dialog id="nutritionCleanupDialog" aria-labelledby="nutritionCleanupTitle">
@@ -731,7 +728,7 @@
       <fieldset id="nutritionProductUseSizes" class="chip-field" hidden><legend class="sr-only">Menge wählen</legend><div class="chip-group"></div></fieldset>
       <label for="nutritionProductUseMeal">Mahlzeit<select id="nutritionProductUseMeal"></select></label>
       <output id="nutritionProductUseStatus" class="tab-sync-detail" aria-live="polite"></output>
-      <div class="dialog-actions"><button type="button" id="nutritionProductUseCancel" class="secondary-button">Abbrechen</button><button type="button" id="nutritionProductUseCoach" class="secondary-button">Zur Coach-Nachricht</button><button type="submit" id="nutritionProductUseAdd" class="adaptive-planning-button">Erfassen</button></div>
+      <div class="dialog-actions"><button type="button" id="nutritionProductUseCancel" class="secondary-button">Abbrechen</button><button type="button" id="nutritionProductUseCoach" class="secondary-button">Zur Coach-Nachricht</button><button type="submit" id="nutritionProductUseAdd">Erfassen</button></div>
     </form>
   </dialog>
   <dialog id="nutritionMealEditDialog" aria-labelledby="nutritionMealEditTitle">
@@ -739,6 +736,12 @@
       <h2 id="nutritionMealEditTitle">Mahlzeit bearbeiten</h2>
       <p id="nutritionMealEditSubtitle"></p>
       <form id="nutritionMealEditMain">
+        <div class="edit-meal">
+          <label for="nutritionMealEditDate">Datum<input id="nutritionMealEditDate" type="date" required></label>
+          <label for="nutritionMealEditTime">Uhrzeit<input id="nutritionMealEditTime" type="time" required></label>
+          <label for="nutritionMealEditType">Mahlzeit<select id="nutritionMealEditType"></select></label>
+          <label class="chip" for="nutritionMealEditUnknown"><input id="nutritionMealEditUnknown" type="checkbox"><span>Uhrzeit unbekannt</span></label>
+        </div>
         <ul id="nutritionMealEditList" class="edit-list"></ul>
         <output id="nutritionMealEditStatus" class="tab-sync-detail" aria-live="polite"></output>
         <div class="dialog-actions"><button type="button" id="nutritionMealEditCancel" class="secondary-button">Abbrechen</button><button type="submit" id="nutritionMealEditSave" class="push-button">Speichern</button></div>
@@ -762,7 +765,7 @@
       <label for="bodyFatDialogPct">Körperfett (%)<input id="bodyFatDialogPct" name="pct" type="number" min="2" max="70" step="0.1" inputmode="decimal" required></label>
       <output id="bodyFatDialogResult" aria-live="polite" hidden></output>
       <output id="bodyFatDialogStatus" class="tab-sync-detail" aria-live="polite"></output>
-      <div class="dialog-actions"><button type="button" id="bodyFatDialogCancel" class="secondary-button">Abbrechen</button><button type="button" id="bodyFatDialogRemove" class="secondary-button" hidden>Löschen</button><button type="submit" id="bodyFatDialogSave" class="adaptive-planning-button">Speichern</button></div>
+      <div class="dialog-actions"><button type="button" id="bodyFatDialogCancel" class="secondary-button">Abbrechen</button><button type="button" id="bodyFatDialogRemove" class="secondary-button" hidden>Löschen</button><button type="submit" id="bodyFatDialogSave">Speichern</button></div>
     </form>
   </dialog>
   <dialog id="lt2AdoptDialog" aria-labelledby="lt2AdoptTitle">
@@ -772,7 +775,7 @@
       <fieldset class="chip-field"><legend class="sr-only">Werte</legend><div id="lt2AdoptValues" class="lt2-adopt-values"></div></fieldset>
       <div class="dialog-actions">
         <button type="button" id="lt2AdoptCancel" class="secondary-button">Abbrechen</button>
-        <button type="submit" id="lt2AdoptAccept" class="adaptive-planning-button">Übernehmen</button>
+        <button type="submit" id="lt2AdoptAccept">Übernehmen</button>
       </div>
     </form>
   </dialog>
@@ -782,7 +785,7 @@
       <label for="weightDialogDate">Datum<input id="weightDialogDate" name="date" type="date" required></label>
       <label for="weightDialogKg">Gewicht (kg)<input id="weightDialogKg" name="kg" type="number" min="30" max="300" step="0.1" inputmode="decimal" required></label>
       <output id="weightDialogStatus" class="tab-sync-detail" aria-live="polite"></output>
-      <div class="dialog-actions"><button type="button" id="weightDialogCancel" class="secondary-button">Abbrechen</button><button type="button" id="weightDialogRemove" class="secondary-button" hidden>Löschen</button><button type="submit" id="weightDialogSave" class="adaptive-planning-button">Speichern</button></div>
+      <div class="dialog-actions"><button type="button" id="weightDialogCancel" class="secondary-button">Abbrechen</button><button type="button" id="weightDialogRemove" class="secondary-button" hidden>Löschen</button><button type="submit" id="weightDialogSave">Speichern</button></div>
     </form>
   </dialog>
   <dialog id="competitionDialog" aria-labelledby="competitionDialogTitle">
@@ -824,7 +827,7 @@
       <label for="energyGoalDialogKcal"><span id="energyGoalDialogKcalLabel">Defizit pro Tag (kcal)</span><input id="energyGoalDialogKcal" name="kcal" type="number" min="0" max="1500" step="1" inputmode="numeric"></label>
       <output id="energyGoalDialogWeek" class="tab-sync-detail"></output>
       <output id="energyGoalDialogStatus" class="tab-sync-detail" aria-live="polite"></output>
-      <div class="dialog-actions"><button type="button" id="energyGoalDialogCancel" class="secondary-button">Abbrechen</button><button type="button" id="energyGoalDialogRemove" class="secondary-button" hidden>Entfernen</button><button type="submit" id="energyGoalDialogSave" class="adaptive-planning-button">Speichern</button></div>
+      <div class="dialog-actions"><button type="button" id="energyGoalDialogCancel" class="secondary-button">Abbrechen</button><button type="button" id="energyGoalDialogRemove" class="secondary-button" hidden>Entfernen</button><button type="submit" id="energyGoalDialogSave">Speichern</button></div>
     </form>
   </dialog>
   <dialog id="confirmationDialog" aria-labelledby="confirmationDialogTitle" aria-describedby="confirmationDialogMessage">
@@ -839,7 +842,7 @@
       <div class="dialog-actions">
         <button type="button" id="confirmationDialogSecondary" class="secondary-button" hidden></button>
         <button type="button" id="confirmationDialogCancel" class="secondary-button">Abbrechen</button>
-        <button type="submit" id="confirmationDialogAccept" class="adaptive-planning-button">Bestätigen</button>
+        <button type="submit" id="confirmationDialogAccept">Bestätigen</button>
       </div>
     </form>
   </dialog>

@@ -455,6 +455,18 @@ function renderConnectionsSyncProgress(data) {
 }
 
 
+// Pure: one line of a card's last attempt, success and retry, without the words that say nothing
+// (a retry is named only where one is due) and in "gesendet" words for the output target (#3936 M-03).
+function freshnessMeta(entry, format, sends = entry.provider === providerIds().intervals) {
+  const parts = [];
+  if (entry.last_attempt_at) parts.push(`${sends ? "Letzter Sendeversuch" : "Letzter Versuch"}: ${format(entry.last_attempt_at)}`);
+  if (entry.last_success_at) parts.push(`${sends ? "Zuletzt gesendet" : "Letzter Erfolg"}: ${format(entry.last_success_at)}`);
+  else if (entry.last_attempt_at) parts.push(sends ? "Noch nichts gesendet" : "Noch kein erfolgreicher Abruf");
+  if (entry.next_retry_at) parts.push(`Nächster Versuch ab: ${format(entry.next_retry_at)}`);
+  else if (["error", "stale"].includes(entry.state)) parts.push("Keine automatische Wiederholung geplant");
+  return parts.join(" · ");
+}
+
 // Each provider's freshness and retry entries go into its own card.
 function renderProviderFreshness(data) {
   document.querySelectorAll('.connection-card [id^="freshness-"]').forEach((root) => root.replaceChildren());
@@ -477,11 +489,9 @@ function renderProviderFreshness(data) {
     } else {
       const meta = document.createElement("span");
       meta.className = "provider-freshness-meta";
-      const attempt = entry.last_attempt_at ? `Letzter Versuch: ${formatTime(entry.last_attempt_at)}` : "Noch kein Versuch";
-      const success = entry.last_success_at ? `Letzter Erfolg: ${formatTime(entry.last_success_at)}` : "Noch kein erfolgreicher Abruf";
-      const retry = entry.next_retry_at ? `Nächster Versuch ab: ${formatTime(entry.next_retry_at)}` : "Keine automatische Wiederholung geplant";
-      meta.textContent = `${attempt} · ${success} · ${retry}`;
-      item.append(header, meta);
+      meta.textContent = freshnessMeta(entry, formatTime);
+      item.append(header);
+      if (meta.textContent) item.append(meta);
     }
     if (entry.error_code) {
       const error = document.createElement("span");

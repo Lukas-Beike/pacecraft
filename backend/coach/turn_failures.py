@@ -11,6 +11,7 @@ from typing import Any
 from backend import observability
 from backend.coach.authorization import authorized_operations
 from backend.coach.change_receipts import change_summary
+from backend.coach.constants import turn_ai_provider
 from backend.coach.context_selection import infer_coach_domain
 from backend.coach.outcomes import (
     coach_effect_label,
@@ -26,7 +27,9 @@ from backend.db.manager import DatabaseManager
 from backend.db.repositories import ChatRepository, KeyValueRepository
 from backend.errors import AppError
 from backend.providers.claude_messages_adapter import REFUSED_MESSAGE
+from backend.providers.claude_models import family_setting
 from backend.providers.claude_requests import ANTHROPIC_API_KEY_ERROR
+from backend.providers.error_texts import FAILURE_REASONS, failure_text
 from backend.providers.state import turn_usage
 from backend.runtime.events import StateEventBuffer
 
@@ -37,10 +40,20 @@ OPENAI_NOT_CONFIGURED_MESSAGE = (
 OPENAI_TIMEOUT_MESSAGE = (
     "Der KI-Dienst hat nicht rechtzeitig geantwortet. Bitte versuche es erneut."
 )
-OPENAI_USAGE_LIMIT_MESSAGE = (
-    "Das OpenAI-Ausgaben- oder Nutzungslimit ist erreicht. "
-    "Bitte das Limit im OpenAI-Konto prüfen."
-)
+
+_EXPLANATIONS = {
+    "openai_not_configured": OPENAI_NOT_CONFIGURED_MESSAGE,
+    # OpenAI configuration errors carry the shared not_configured reason.
+    "not_configured": OPENAI_NOT_CONFIGURED_MESSAGE,
+    "anthropic_not_configured": ANTHROPIC_API_KEY_ERROR,
+    "refused": REFUSED_MESSAGE,
+    "conversation_state_invalid": "Der KI-Dienst konnte den Gesprächszustand nicht fortsetzen. Bitte versuche es erneut; dein lokaler Chat bleibt erhalten.",
+    "conversation_locked": "Der KI-Dienst verarbeitet noch eine andere Anfrage. Bitte warte kurz und versuche es erneut.",
+    "database_busy": "Die lokale Datenbank war kurz ausgelastet. Bitte versuche es erneut.",
+    "provider_timeout": OPENAI_TIMEOUT_MESSAGE,
+    "response_error": "Der KI-Dienst konnte die Antwort nicht fertigstellen. Bitte versuche es erneut.",
+    "response_failed": "Der KI-Dienst konnte die Antwort nicht fertigstellen. Bitte versuche es erneut.",
+}
 
 
 def coach_error_metadata(exc: BaseException, repository_root: Path) -> dict[str, Any]:
@@ -105,7 +118,12 @@ class CoachTurnFailureService:
                 return receipt
             commands, successes, failures, pending = self._steps(receipt, intent)
             status, text, question, cancelled = self._response(
-                error, commands, successes, failures, pending
+                error,
+                commands,
+                successes,
+                failures,
+                pending,
+                turn_ai_provider(family_setting(str(receipt.get("model") or ""))),
             )
             self._pending_request(
                 db, receipt, question=question, cancelled=cancelled, successes=successes
@@ -144,10 +162,10 @@ class CoachTurnFailureService:
             )
             if summary:
                 receipt["message"]["coach_changes"] = summary
-            if status == "failed":
-                receipt["message"]["coach_failed"] = True
-                if receipt.get("request_kind"):
-                    receipt["message"]["coach_request_kind"] = receipt["request_kind"]
+            flags = self._outcome_flags(status, receipt, error)
+            receipt["message"].update(flags)
+            if "coach_failure_reason" in flags:
+                receipt["failure_reason"] = flags["coach_failure_reason"]
             coach_store.write_command(
                 db,
                 client_turn_id,
@@ -200,39 +218,42 @@ class CoachTurnFailureService:
         return commands, successes, failures, pending
 
     @staticmethod
+    def _outcome_flags(
+        status: str, receipt: dict[str, Any], error: BaseException
+    ) -> dict[str, Any]:
+        """What the chat reads off a stopped or failed reply: kind, reason (#3931)."""
+        if status == "cancelled":
+            # Stored on the receipt: a finished turn that only cleared a pending request is no stop.
+            receipt["stopped"] = True
+            return {"coach_cancelled": True}
+        if status != "failed":
+            return {}
+        flags: dict[str, Any] = {"coach_failed": True}
+        if receipt.get("request_kind"):
+            flags["coach_request_kind"] = receipt["request_kind"]
+        # The reason decides whether a retry or the connections help.
+        reason = getattr(error, "reason", "")
+        if isinstance(reason, str) and reason:
+            flags["coach_failure_reason"] = reason[:60]
+        return flags
+
+    @staticmethod
     def _base_response(
-        error: BaseException, commands: list[dict[str, Any]]
+        error: BaseException,
+        commands: list[dict[str, Any]],
+        provider: str = "openai",
     ) -> tuple[str, str, str | None, bool]:
         cancelled = isinstance(error, AppError) and error.reason == "chat_cancelled"
         status = "cancelled" if cancelled else "failed"
         reason = getattr(error, "reason", "")
         if not isinstance(reason, str):
             reason = ""
-        explanations = {
-            "openai_not_configured": OPENAI_NOT_CONFIGURED_MESSAGE,
-            # OpenAI configuration errors carry the shared not_configured reason.
-            "not_configured": OPENAI_NOT_CONFIGURED_MESSAGE,
-            "anthropic_not_configured": ANTHROPIC_API_KEY_ERROR,
-            "refused": REFUSED_MESSAGE,
-            "conversation_state_invalid": "Der KI-Dienst konnte den Gesprächszustand nicht fortsetzen. Bitte versuche es erneut; dein lokaler Chat bleibt erhalten.",
-            "conversation_locked": "Der KI-Dienst verarbeitet noch eine andere Anfrage. Bitte warte kurz und versuche es erneut.",
-            "authentication_or_permission": "Der KI-Dienst hat den Zugriff abgelehnt. Bitte prüfe den API-Zugang in den Einstellungen.",
-            "insufficient_quota": "Das KI-Kontingent ist aufgebraucht. Bitte prüfe Guthaben und Abrechnung beim KI-Anbieter.",
-            "credit_balance_exhausted": "Das OpenAI-Guthaben ist aufgebraucht. Bitte im OpenAI-Billing Guthaben hinzufügen.",
-            "organization_spend_limit_exceeded": OPENAI_USAGE_LIMIT_MESSAGE,
-            "project_spend_limit_exceeded": OPENAI_USAGE_LIMIT_MESSAGE,
-            "organization_usage_limit_exceeded": OPENAI_USAGE_LIMIT_MESSAGE,
-            "database_busy": "Die lokale Datenbank war kurz ausgelastet. Bitte versuche es erneut.",
-            "provider_timeout": OPENAI_TIMEOUT_MESSAGE,
-            "not_found": "Das konfigurierte KI-Modell oder der angeforderte Dienst wurde nicht gefunden. Bitte die Modellkonfiguration prüfen.",
-            "provider_unavailable": "Der KI-Dienst ist vorübergehend nicht verfügbar. Bitte versuche es in Kürze erneut.",
-            "response_error": "Der KI-Dienst konnte die Antwort nicht fertigstellen. Bitte versuche es erneut.",
-            "response_failed": "Der KI-Dienst konnte die Antwort nicht fertigstellen. Bitte versuche es erneut.",
-        }
+        failure = failure_text(reason, provider) if reason in FAILURE_REASONS else None
         text = (
             "Die Coach-Verarbeitung wurde abgebrochen."
             if cancelled
-            else explanations.get(
+            else failure
+            or _EXPLANATIONS.get(
                 reason,
                 "Bei der Coach-Verarbeitung ist ein technischer Fehler aufgetreten. Bitte versuche es erneut. Wenn der Fehler wieder auftritt, exportiere die Diagnose in den Einstellungen.",
             )
@@ -254,7 +275,7 @@ class CoachTurnFailureService:
             or getattr(error, "provider_error_code", None) == "rate_limit_exceeded"
         )
         if rate_limited and not question:
-            text = "Der KI-Dienst hat sein Anfragelimit erreicht. Die Antwort konnte noch nicht abgeschlossen werden. Bitte versuche es in Kürze erneut."
+            text = failure_text("rate_limit_exceeded", provider)
         return status, text, question, cancelled
 
     @staticmethod
@@ -307,8 +328,11 @@ class CoachTurnFailureService:
         successes: list[dict[str, Any]],
         failures: list[dict[str, Any]],
         pending: list[str],
+        provider: str = "openai",
     ) -> tuple[str, str, str | None, bool]:
-        status, text, question, cancelled = self._base_response(error, commands)
+        status, text, question, cancelled = self._base_response(
+            error, commands, provider
+        )
         if successes and (cancelled or not question):
             status = "partial"
         return (

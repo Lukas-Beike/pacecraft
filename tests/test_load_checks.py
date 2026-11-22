@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from datetime import date
 from types import SimpleNamespace
 from typing import Any, ClassVar
+from unittest.mock import patch
 
 from backend.activities.zone_settings import ZoneSettings
 from backend.canonical.vocabulary import (
@@ -17,7 +18,10 @@ from backend.canonical.vocabulary import (
     ZoneConfigurationMetric,
 )
 from backend.planning import load_checks, plan_checks
-from backend.planning.planned_unit_load import estimate_planned_unit
+from backend.planning.planned_unit_load import (
+    PlannedUnitEstimator,
+    estimate_planned_unit,
+)
 from backend.planning.sport import planned_sport_environment
 from tests.canonical_domain_support import provenance, zone_configuration
 
@@ -275,6 +279,62 @@ class SessionSpikeTests(unittest.TestCase):
     def test_no_history_no_spike_note(self) -> None:
         plan = [planned("a", "2026-11-04", "ride", "- 60m 100%")]
         self.assertEqual([], only(check(plan), "load_spike"))
+
+
+class HeartRateStepLoadTests(unittest.TestCase):
+    """Planned heart-rate steps are scored like a completed heart-rate session (A8)."""
+
+    def references(self, resting_hr: float | None) -> load_checks.LoadThresholds:
+        settings = ZoneSettings(lthr=170.0, max_hr=190.0)
+        return load_checks.LoadThresholds(
+            resolver=lambda *_: settings, resting_hr=resting_hr, sex="male"
+        )
+
+    def estimate(self, steps: str, resting_hr: float | None) -> Any:
+        unit = planned("h", "2026-11-04", "run", steps)
+        (session,) = load_checks.plan_sessions([unit], self.references(resting_hr))
+        return session.estimate
+
+    def test_an_hour_at_the_threshold_scores_100_like_m6(self) -> None:
+        estimate = self.estimate("- 60m 100% LTHR", 50.0)
+        self.assertAlmostEqual(100.0, estimate.load, places=6)
+        self.assertEqual("heart_rate_trimp", estimate.load_basis)
+
+    def test_easy_heart_rate_steps_score_below_the_intensity_factor_rule(self) -> None:
+        # 60 min at 75 % LTHR: the old IF rule gave 0.75^2 x 100 = 56; TRIMP with
+        # rest 50 and max 190 gives clearly less, as a completed easy run does.
+        trimp = self.estimate("- 60m 75% LTHR", 50.0).load
+        self.assertLess(trimp, 45.0)
+        self.assertGreater(trimp, 20.0)
+
+    def test_without_a_resting_hr_the_load_is_unknown_with_its_reason(self) -> None:
+        estimate = self.estimate("- 60m 100% LTHR", None)
+        self.assertIsNone(estimate.load)
+        self.assertIn("missing_heart_rate_reference", estimate.unknown)
+        # Power and pace steps keep their own rule.
+        unit = planned("p", "2026-11-04", "ride", "- 60m 100%")
+        settings = ZoneSettings(ftp=250.0)
+        (ride,) = load_checks.plan_sessions(
+            [unit], load_checks.LoadThresholds(resolver=lambda *_: settings)
+        )
+        assert ride.estimate.load is not None
+        self.assertAlmostEqual(100.0, ride.estimate.load, places=6)
+
+    def test_the_coach_s_estimator_scores_like_the_plan_checks(self) -> None:
+        references = self.references(50.0)
+        unit = planned("h", "2026-11-04", "run", "- 60m 75% LTHR")
+        estimator = PlannedUnitEstimator(
+            lambda: None,
+            lambda: None,
+            lambda: (),
+            heart_rate_references=lambda: references,
+        )
+        settings = references.for_sport(Sport.RUN)
+        with patch.object(PlannedUnitEstimator, "thresholds", return_value=settings):
+            coach = estimator(unit)
+        (session,) = load_checks.plan_sessions([unit], references)
+        self.assertEqual(session.estimate.load, coach.load)
+        self.assertEqual("heart_rate_trimp", coach.load_basis)
 
 
 class LighterWeekTests(unittest.TestCase):

@@ -3,9 +3,17 @@
 from __future__ import annotations
 
 import math
-from typing import Any
+from typing import Any, Final
 
 from backend.canonical.activity_summary import summary_leading_duration_s
+
+# Daily carbohydrate in g/kg by training load (Thomas, Erdman & Burke 2016,
+# Table 1): light, moderate (about 1 h a day), high (1-3 h), very high
+# (more than 4-5 h). The day's training minutes step up at 60 and 90 minutes,
+# hard work one more level, and 240 minutes are very high (#3920).
+CARB_G_PER_KG: Final = ((3, 5), (5, 7), (6, 10), (8, 12))
+CARB_STEP_MINUTES: Final = (60, 90)
+CARB_VERY_HIGH_MINUTES: Final = 240
 
 
 def _number(value: Any) -> float | None:
@@ -119,12 +127,19 @@ def _training_totals(calendar: list[Any], day: str) -> tuple[float, bool] | None
     return minutes, intense
 
 
-def macro_ranges(weight: Any, calendar: Any, day: str, kcal: Any) -> dict[str, Any]:
-    """Calculate ranges; an unknown input leaves its comparison unavailable."""
+def macro_ranges(
+    weight: Any, calendar: Any, day: str, kcal: Any, energy_goal: str | None = None
+) -> dict[str, Any]:
+    """Calculate ranges; an unknown input leaves its comparison unavailable.
+
+    With the energy goal "lose" protein is 1.6 to 2.4 g/kg (Hector & Phillips
+    2018, R81), else 1.7 to 2.3 g/kg.
+    """
     result: dict[str, Any] = {}
     mass = _number(weight)
     if mass:
-        result["protein_g"] = (mass * 170 / 100, mass * 230 / 100)
+        low, high = (160, 240) if energy_goal == "lose" else (170, 230)
+        result["protein_g"] = (mass * low / 100, mass * high / 100)
         result["carbs_g"] = (mass * 3, mass * 5)
     energy = _number(kcal)
     if energy:
@@ -135,8 +150,12 @@ def macro_ranges(weight: Any, calendar: Any, day: str, kcal: Any) -> dict[str, A
     if totals is None:
         return result
     minutes, intense = totals
-    level = int(minutes >= 90) + int(minutes >= 120)
+    # Thomas, Erdman & Burke 2016, Table 1: light 3-5, about 1 h a day 5-7,
+    # 1-3 h 6-10 and more than 4-5 h 8-12 g/kg (#3920).
+    level = int(minutes >= CARB_STEP_MINUTES[0]) + int(minutes >= CARB_STEP_MINUTES[1])
     level = min(2, level + int(intense))
-    low, high = ((3, 5), (5, 7), (6, 10))[level]
+    if minutes >= CARB_VERY_HIGH_MINUTES:
+        level = 3
+    low, high = CARB_G_PER_KG[level]
     result["carbs_g"] = (mass * low, mass * high)
     return result

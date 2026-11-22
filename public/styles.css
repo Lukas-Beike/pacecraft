@@ -415,6 +415,9 @@ h2 {
 .analysis-zero-line { stroke: var(--muted); stroke-dasharray: 3 3; }
 .analysis-chart-card summary { display: flex; align-items: center; min-height: 44px; color: var(--ink); cursor: pointer; font-size: .8rem; }
 .analysis-chart-table { max-height: 300px; overflow: auto; }
+/* The week and day tables show their last rows and open in full: no box that cuts a row (#3928). */
+.analysis-series-table { max-height: none; overflow-y: visible; }
+.analysis-series-table > button { margin-top: 8px; }
 .analysis-chart-table:focus-visible { outline: 3px solid var(--focus-ring); outline-offset: 2px; }
 .analysis-chart-table table { width: 100%; border-collapse: collapse; color: var(--ink); font-size: .75rem; }
 .analysis-chart-table caption { padding: 8px; text-align: left; color: var(--muted); }
@@ -546,6 +549,11 @@ h2 {
 .message-retry { display: block; min-height: 44px; margin-top: 10px; }
 .message-plan-note { margin-top: 4px; color: var(--muted); font-size: .78rem; overflow-wrap: anywhere; }
 .message-plan-note.is-warning { color: var(--ink); font-weight: 700; }
+.message-changes-details { margin: 6px 0 0; padding: 0 0 0 18px; color: var(--muted); font-size: .82rem; overflow-wrap: anywhere; }
+.message-changes-note { margin: 4px 0 0; color: var(--muted); font-size: .8rem; }
+.message.assistant.is-stopped { padding: 12px 14px; border: 1px dashed var(--line-strong); border-radius: 16px; color: var(--muted); font-weight: 650; }
+.message.assistant.is-undone > :is(p, ul, ol) { color: var(--muted); }
+a.message-retry { display: grid; place-items: center; text-decoration: none; }
 .message-undo { min-height: 44px; margin: -6px 0 -6px auto; padding: 0 10px; border: 0; color: var(--accent-bright); background: var(--transparent); font: inherit; font-weight: 650; }
 .message-undo:focus-visible { outline: 2px solid var(--accent-bright); outline-offset: 2px; }
 .message-undo:disabled { color: var(--subtle); }
@@ -925,6 +933,7 @@ h2 {
 .planned-day-weather { margin-left: auto; color: var(--muted); font-size: .72rem; line-height: 1.5; }
 .planned-day-flag { max-width: 100%; color: var(--muted); font-size: .72rem; line-height: 1.5; overflow-wrap: anywhere; }
 .planned-day-content { display: grid; min-width: 0; align-content: start; gap: 6px; padding: 6px 0 10px; }
+.planned-weather-hint .secondary-button { display: flex; width: fit-content; margin: 8px auto 0; }
 .planned-weather-hint { margin: 0 0 12px; padding: 8px 12px; border: 1px dashed var(--line-strong); border-radius: 10px; color: var(--subtle); font-size: .72rem; line-height: 1.5; text-align: center; }
 .planned-day-observations { display: flex; flex-wrap: wrap; gap: 3px 12px; margin-top: 5px; color: var(--subtle); font-size: .72rem; line-height: 1.5; overflow-wrap: anywhere; }
 .planned-day-observations p { margin: 0; }
@@ -1133,10 +1142,11 @@ h2 {
 .chip input:disabled + span { opacity: .55; }
 .save-bar { position: sticky; bottom: var(--composer-offset); z-index: 4; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 12px; padding: 8px 8px 8px 14px; border: 1px solid var(--line-strong); border-radius: var(--radius-md); background: var(--surface-raised); box-shadow: var(--shadow-soft); }
 .save-bar .dirty-indicator { margin: 0; font-size: .78rem; }
-.save-clean { color: var(--muted); font-size: .78rem; font-weight: 650; }
-.dirty-indicator:not([hidden]) + .save-clean { display: none; }
+/* The bar appears with the first change; a saved profile has nothing to save (#3936 M-02). */
+.save-bar:not(:has(.dirty-indicator:not([hidden]))) { display: none; }
 .save-bar button { width: auto; margin-left: auto; }
 @media (min-width: 768px) { .save-bar { bottom: 12px; } }
+.profile-section:not([open]) { gap: 0; padding-bottom: 0; }
 .profile-section { display: grid; gap: 18px; min-width: 0; margin: 0; border: 1px solid var(--line); border-radius: 18px; padding: 16px; background: var(--surface); }
 .profile-section legend { padding: 0 8px; color: var(--ink); font-size: 1.08rem; font-weight: 700; letter-spacing: -.02em; }
 .profile-section > p { margin: 0; color: var(--muted); font-size: .75rem; line-height: 1.5; overflow-wrap: anywhere; }
@@ -1175,6 +1185,8 @@ h2 {
 .competition-sync-state { display: block; margin-top: 12px; color: var(--subtle); line-height: 1.4; }
 .race-plan { display: grid; gap: 8px; min-width: 0; margin-top: 16px; color: var(--muted); font-size: .8rem; }
 .race-plan h4 { margin: 0; color: var(--ink); font-size: .85rem; }
+/* A source under a race-plan heading is plain text, not a chip that looks pressable (#3932 K-12). */
+.race-plan-source { color: var(--subtle); font-size: .72rem; font-weight: 400; }
 .race-plan h5 { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 8px 0 0; color: var(--muted); font-size: .78rem; font-weight: 600; }
 .race-plan-table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
 .race-plan-table th { padding: 4px 0; color: var(--subtle); font-weight: 500; text-align: left; }
@@ -1728,6 +1740,10 @@ button:focus-visible, a:focus-visible, summary:focus-visible {
 .nutrition-card-head .message-action { margin: -8px -8px 0 0; }
 .nutrition-meal-edit { display: grid; gap: 15px; }
 .nutrition-meal-edit form, #nutritionMealEditSwap { display: grid; gap: 12px; }
+.edit-meal { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.edit-meal label { min-width: 0; }
+.edit-meal label:nth-child(n+3) { grid-column: 1 / -1; }
+.edit-meal .chip { justify-self: start; }
 .edit-list, .swap-results { display: grid; gap: 10px; margin: 0; padding: 0; list-style: none; }
 .edit-row { display: grid; gap: 8px; padding: 12px; border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--surface); }
 .edit-row.is-removed { opacity: .6; }
@@ -1901,10 +1917,11 @@ button:focus-visible, a:focus-visible, summary:focus-visible {
 .energy-parts { display: grid; gap: 4px; margin: 0 0 8px; padding: 0; list-style: none; font-size: .9rem; }
 .energy-parts li { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; }
 .energy-parts li > :last-child { text-align: right; font-variant-numeric: tabular-nums; }
-.energy-parts li:not(.energy-total)::before { content: ""; flex: none; width: 12px; height: 12px; margin-right: -4px; align-self: center; border-radius: 3px; background-color: var(--part-color); }
+.energy-parts li:not(.energy-total, .energy-expected)::before { content: ""; flex: none; width: 12px; height: 12px; margin-right: -4px; align-self: center; border-radius: 3px; background-color: var(--part-color); }
 .energy-parts li > :first-child { flex: 1; }
 .energy-total { padding-top: 4px; border-top: 1px solid var(--line); font-weight: 700; }
-.energy-source { color: var(--muted); }
+.energy-source, .energy-expected, .energy-note { color: var(--muted); }
+.energy-note { display: block; }
 /* Verlauf's deficit card (#3548): hero, goal bar, the boxes with arrows, and the text. */
 .energy-deficit-hero { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; margin: 0 0 12px; }
 .energy-deficit-hero strong { font-size: 1.8rem; font-variant-numeric: tabular-nums; }

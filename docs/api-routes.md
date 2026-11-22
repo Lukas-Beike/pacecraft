@@ -39,7 +39,7 @@ handler's docstring. Regenerate it with
 | GET | `/api/analysis/power-profiles` | Session | no | Analysis projection: power profiles or training records. |
 | POST | `/api/analysis/refresh` | Session + CSRF | after access | Run a targeted refresh of one analysis area. |
 | GET | `/api/analysis/running-dynamics` | Session | no | Running dynamics against the athlete's own runs at the same pace (#2829). |
-| GET | `/api/analysis/strength` | Session | no | Analyse › Kraft: top sets per exercise over twelve weeks (#3764). |
+| GET | `/api/analysis/strength` | Session | no | Analyse › Kraft: how often per week the upper body and the legs were trained. |
 | GET | `/api/analysis/training-records` | Session | no | Analysis projection: power profiles or training records. |
 | GET | `/api/analysis/trend-history` | Session | no | The history of a longer trend period: 3, 6 or 12 months. |
 | GET | `/api/analysis/trends` | Session | no | Pace at equal heart rate and recurring sessions, as the Coach reads them (#2802). |
@@ -106,7 +106,7 @@ handler's docstring. Regenerate it with
 | POST | `/api/nutrition/entry` | Session + CSRF | after access | Log a meal; returns a `change` undo reference. |
 | POST | `/api/nutrition/entry/add-product` | Session + CSRF | after access | Add a saved product to a logged meal as one more component. |
 | GET | `/api/nutrition/entry/components` | Session | no | The components of a logged meal, as the edit addresses them (#3948). |
-| POST | `/api/nutrition/entry/components` | Session + CSRF | after access | Remove, resize or swap components of a logged meal (#3948). |
+| POST | `/api/nutrition/entry/components` | Session + CSRF | after access | Remove, resize or swap components of a logged meal, and change its day, type or time (#3948, #3985). |
 | POST | `/api/nutrition/entry/delete` | Session + CSRF | after access | Delete a logged meal. |
 | POST | `/api/nutrition/entry/estimate` | Session + CSRF | after access | Mark a meal's amounts as estimated (restaurant, friends), or clear the mark. |
 | POST | `/api/nutrition/entry/session` | Session + CSRF | after access | Attach a "Vor/Während der Einheit" entry to the session the athlete chose. |
@@ -326,16 +326,15 @@ than 200 characters.
 
 ### `GET /api/analysis/strength`
 
-Request: no query, no body.
+Request: query `weeks` (optional): 4, 13 (default), 26 or 52; no body.
 
-Response: 200 with `start`, `end` (the twelve calendar weeks up to
-today), `source`, `weeks` (`week_start`, `sessions`: completed strength
-sessions, 0 without one) and `exercises` (`exercise`, `category`,
-`leg`, `sessions` newest first with `date`, `sets`, `top_kg` and
-`top_reps`; null where the stored set has none). From stored sets
-only: no strength load, no estimated 1RM.
+Response: 200 with `start`, `end` (the calendar weeks up to today) and
+`weeks` (`week_start`, `sessions`: completed strength sessions, `upper`
+and `legs`: sessions that trained that side, a full body session both,
+`unknown`: sessions that decide neither, never guessed; 0 without one).
+No strength load.
 
-Errors: none beyond the common ones.
+Errors: 400 "Ungültiger Analysezeitraum." for another `weeks`.
 
 ### `GET /api/analysis/trend-history`
 
@@ -432,7 +431,16 @@ Response: 200 with `end` (yesterday, where the windows end), `day` (the
 day the source rows show) and `day_partial` (true for today, whose values
 are still partial; today `device` takes the newest full day's resting
 kcal of the 7 days before as `resting_kcal`, named by `resting_from`, or
-has none with `resting_missing` `no_recent_resting`), `windows` (the 12
+has none with `resting_missing` `no_recent_resting`), `expected_total_kcal`
+(today only, else null: the outlined source's total with the latest
+window's mean steps and digestion and today's planned units costed from
+their planned duration; null while a part is unknown),
+`energy_availability` (the 7-day mean of the intake less the sessions'
+net exercise energy per kg fat-free mass, `kcal_per_kg_ffm` over `days`
+complete days, `below` the floor of 30; null under 5 days or without a
+fat-free mass), `loss_rate` (the 28-day weight line's fall in
+`pct_per_week` of body mass, `fast` above 1; null when it is not
+falling), `windows` (the 12
 weekly 4-week window ends,
 oldest first), `rows` (`katch_mcardle`, `cunningham`, `device` (the
 wearable's estimate) and `own`, each with `resting_kcal`, `total_kcal`
@@ -677,7 +685,7 @@ No body.
 Response: 200 with `generation` (chat generation, changes on a reset),
 `messages` (one page, oldest first, going back from the cursor; each has
 `id`, `role`, `content`, `created_at` and, when present, `client_turn_id`,
-`attachment_names`, `coach_changes`, `coach_failed`, `coach_request_kind`, `coach_model`),
+`attachment_names`, `coach_changes`, `coach_failed`, `coach_cancelled`, `coach_failure_reason`, `coach_request_kind`, `coach_model`),
 `proposed_actions` (this session's open Coach proposals, at most 30),
 `next_cursor` (null on the last page), `limit` and `search`.
 
@@ -1435,7 +1443,13 @@ Errors: 400 "Ungültige Eintrags-ID."; 404 "Ernährungseintrag nicht gefunden."
 
 ### `POST /api/nutrition/entry/components`
 
-Request: JSON body `{"id": string, "revision": string, "edits": [...]}`; `id` is the
+Request: JSON body `{"id": string, "revision": string, "edits": [...], "meal": {...}}`;
+`edits` and `meal` are each optional, one is required. `meal` changes the meal
+itself: `meal_date` (YYYY-MM-DD, both days are marked for the next Intervals.icu
+synchronization), `meal_type` (a new type moves a default time to the type's
+default), and `meal_time` (HH:MM) or `logged_time_known: false` (the time is
+unknown, only the type stays); a `meal` without `edits` leaves the components and
+the origin as stored. `id` is the
 entry id, `revision` the one `GET /api/nutrition/entry/components` returned, and
 each edit names a component by its `index` (see
 `GET /api/nutrition/entry/components`) and is one of `{"index", "remove": true}`,
@@ -2026,12 +2040,10 @@ characters. Fields: `name`, `goals`, `sports`, `training_background`,
 day, 0 to 1500, required for `lose` and `build`, empty for `hold`),
 `learned_everyday_checked` (`YYYY-MM-DD` the athlete took the learned
 everyday term over, or empty; the Coach cannot set it, #3577),
-`first_threshold_pct` (40 to 100, percent of the run threshold HR),
-`first_threshold_origin` (`measured`, `estimated` or empty) and
-`preferred_source_thresholds`, `_body`, `_hrv`, `_resting_hr`, `_sleep`
-(`garmin` or empty). Instead of the percent, `first_threshold_hr` (bpm, 60
-to 220) with optional `first_threshold_on` (`YYYY-MM-DD`) is converted with
-the run threshold HR of that day and stored as `measured`. `weight_kg` and
+`first_threshold_hr` (bpm, 60 to 220, stored as entered, #3915; a changed
+value without an origin is `measured`), `first_threshold_origin`
+(`measured`, `estimated` or empty) and `preferred_source_thresholds`,
+`_body`, `_hrv`, `_resting_hr`, `_sleep` (`garmin` or empty). `weight_kg` and
 `body_fat_pct` are no profile fields (#3640): Körper enters them
 (`/api/body/weight`, `/api/body/body-fat`, skinfolds); a sent value is
 ignored and the stored one stays as data.
@@ -2046,11 +2058,7 @@ Geburtsjahr muss zwischen 1920 und 2010 liegen."; 400 "Die Größe muss
 zwischen 50 und 250 cm liegen.", "Das Schlafziel muss zwischen 4 und 12
 Stunden liegen."; 400
 "Die Herkunft der ersten Schwelle muss gemessen oder geschätzt sein."; 400
-"Die gemessene erste Schwelle muss zwischen 40 und 100 % LSHF liegen."; 400
-"Die gemessene erste Schwelle muss zwischen 60 und 220 bpm liegen."; 400
-"Das Messdatum muss das Format JJJJ-MM-TT haben."; 400 "Zu diesem Datum ist
-keine Laktatschwelle (LSHF) bekannt, mit der die erste Schwelle in Prozent
-gespeichert werden kann.".
+"Die gemessene erste Schwelle muss zwischen 60 und 220 bpm liegen.".
 
 ### `POST /api/profile/first-threshold/adopt`
 
@@ -2059,12 +2067,12 @@ Request: JSON body `{"percent_lthr": number, "replace_measured": boolean}`.
 `GET /api/profile`; `replace_measured: true` is needed to replace a value
 stored with origin `measured`. Or `{"step_test": string, "heart_rate_bpm":
 number, "replace_measured": boolean}` adopts the good LT1 of the run step
-test with that session id (#3833) as percent of today's run threshold HR;
+test with that session id (#3833) in bpm (#3915);
 `heart_rate_bpm` must equal `step_test.lt1.heart_rate_bpm` of
 `GET /api/activities/{id}`.
 
 Response: 200 `{"profile": object, "first_threshold_estimate": object,
-"adopted": boolean}`. The estimate is stored as percent of the run
+"adopted": boolean}`. The estimate is stored in bpm of today's run
 threshold HR with origin `estimated`; `adopted` is `false` without a profile
 write when that value is already stored.
 
@@ -2073,7 +2081,8 @@ Schätzung hat sich geändert. Bitte die Anzeige aktualisieren." when
 `percent_lthr` differs from the current estimate; 409 "Ein gemessener Wert
 ist gespeichert. Zum Ersetzen bitte bestätigen." without
 `replace_measured`; 409 "Dieser Stufentest liefert keinen guten Wert der
-ersten Schwelle."; 409 "Ohne Schwellenpuls lässt sich der Wert nicht
+ersten Schwelle."; 409 "Der Wert der ersten Schwelle ist nicht
+plausibel."; 409 "Ohne Schwellenpuls lässt sich der Wert nicht
 speichern."; 404 for an unknown session.
 
 ### `GET /api/providers/connections`
@@ -2382,8 +2391,10 @@ date), `configurations` (each with `key`, `source` `local` or the provider,
 `label`, `sport`, `metric`, `environment`, `valid_from`, `valid_until`,
 `threshold`, `maximum`, `limits`, `percent_limits`, `percent_basis`),
 `effective` (per sport, metric and environment the configuration in effect
-today: `sport`, `metric`, `environment`, `key`) and, only when there is one,
-`threshold_warnings`.
+today: `sport`, `metric`, `environment`, `key`), `defaults` (the standard
+zones that apply where no configuration exists: per metric `power`,
+`heart_rate` and `pace` the upper limits in percent of the threshold) and,
+only when there is one, `threshold_warnings`.
 
 Errors: none beyond the common ones.
 

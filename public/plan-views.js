@@ -646,12 +646,14 @@ function plannedStrengthName(exercise) {
 function plannedStrengthRows(strength) {
   if (!strength?.exercises?.length) return null;
   return h("ul", "planned-strength", strength.exercises.map((exercise) => {
-    const load = exercise.planned_kg == null ? "" : ` @ ${calendarMetricNumber(exercise.planned_kg)} kg`;
+    const load = Number(exercise.planned_kg) > 0 ? ` @ ${calendarMetricNumber(exercise.planned_kg)} kg` : "";
     const plan = `${exercise.planned_sets}×${exercise.planned_reps}${load}`;
     const name = plannedStrengthName(exercise);
-    return h("li", null, exercise.status === "matched"
-      ? `${name}: ${calendarMetricNumber(exercise.completed_sets)}/${exercise.planned_sets} Sätze erreicht · Ist ${(exercise.reps || []).map((reps) => reps ?? "?").join("/") || "–"} Wdh. · Plan ${plan}`
-      : `${name}: nicht zugeordnet · Plan ${plan}`);
+    // A unit without recorded reps names none ("Ist – Wdh." says nothing), a plan without weight no "0 kg" (#3932 K-16).
+    const reps = (exercise.reps || []).map((value) => value ?? "?").join("/");
+    const done = reps ? ` · Ist ${reps} Wdh.` : "";
+    if (exercise.status !== "matched") return h("li", null, `${name}: nicht zugeordnet · Plan ${plan}`);
+    return h("li", null, `${name}: ${calendarMetricNumber(exercise.completed_sets)}/${exercise.planned_sets} Sätze erreicht${done} · Plan ${plan}`);
   }));
 }
 
@@ -973,10 +975,24 @@ function plannedWeatherDetails(weather) {
   ].filter(Boolean);
 }
 
+// Without a location the hint's link opens the profile at that field (#3932 K-03).
+function openWeatherLocationField(event) {
+  // A modified click keeps the browser's own behaviour (new tab, new window).
+  if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button > 0) return;
+  event.preventDefault();
+  void AppRouter.navigate("more/profile", { historyMode: "push" }).then((shown) => {
+    const field = shown && document.querySelector('#profileForm [name="weather_location"]');
+    if (!field) return;
+    field.closest("details")?.setAttribute("open", "");
+    field.focus();
+  });
+}
+
 function plannedWeatherHint() {
-  return h("p", "planned-weather-hint", state.data?.weather?.configured
-    ? "Für die kommenden Tage liegt noch keine Wettervorhersage vor."
-    : "Wetter fehlt: Im Profil ist kein Wetterort hinterlegt.");
+  if (state.data?.weather?.configured) return h("p", "planned-weather-hint", "Für die kommenden Tage liegt noch keine Wettervorhersage vor.");
+  const link = h("a", { className: "secondary-button", href: "#more/profile" }, "Wetterort angeben");
+  link.addEventListener("click", openWeatherLocationField);
+  return h("p", "planned-weather-hint", "Wetter fehlt: Im Profil ist kein Wetterort hinterlegt. ", link);
 }
 
 function plannedWeekSummary(weekKey, weekEndKey, weekEntries, compliance, todayKey) {
@@ -992,9 +1008,10 @@ function plannedWeekSummary(weekKey, weekEndKey, weekEntries, compliance, todayK
     ? `${plannedUnits} geplant · ${completedUnits} absolviert`
     : `${plannedUnits} geplant`;
   if (compliance?.basis !== "training_load" || compliance.planned_value == null) return units;
-  const load = [`Belastung geplant ${formatWhole(compliance.planned_value)}`];
-  if (isPast || completedUnits > 0) load.push(`absolviert ${formatWhole(compliance.actual_value || 0)}`);
-  return `${units} · ${load.join(" · ")}`;
+  // One load figure: the done part of the plan once a unit is done, else the plan (#3932 K-13).
+  const planned = formatWhole(compliance.planned_value);
+  const load = isPast || completedUnits > 0 ? `${formatWhole(compliance.actual_value || 0)} von ${planned}` : planned;
+  return `${units} · Belastung ${load}`;
 }
 
 function calendarPaceLabel(activity) {
@@ -1439,42 +1456,33 @@ function plannedDayStrip(todayKey, skip, label, pick) {
   return days;
 }
 
-// "Löschen" asks once inside the card (#3027, #3028); `remove` runs on the confirmation and its error shows here.
-function inCardDelete(idBase, note, remove) {
-  const id = `delete-${String(idBase).replace(/[^\w-]/g, "")}`;
-  const open = h("button", { type: "button", className: "secondary-button danger-button" }, "Löschen");
-  const confirmDelete = h("button", { type: "button", className: "secondary-button danger-button", "aria-describedby": note ? `${id}-note` : null }, "Löschen");
-  const cancel = h("button", { type: "button", className: "secondary-button" }, "Abbrechen");
+// "Löschen" acts at once (athlete decision, #3934 G-03): the card's undo line at its place takes the
+// question's place. `remove` runs on the tap and its error shows beside the button.
+function inCardDelete(remove) {
+  const button = h("button", { type: "button", className: "secondary-button danger-button" }, "Löschen");
   const failure = h("p", { className: "planned-delete-note", role: "status" });
-  const confirm = h("div", { className: "planned-delete-confirm", role: "group", "aria-labelledby": `${id}-question`, hidden: true },
-    h("p", { id: `${id}-question` }, "Einheit löschen?"),
-    h("div", "planned-activity-actions", confirmDelete, cancel),
-    note ? h("p", { className: "planned-delete-note", id: `${id}-note` }, note) : null,
-    failure);
-  open.addEventListener("click", () => { confirm.hidden = false; open.hidden = true; confirmDelete.focus(); });
-  cancel.addEventListener("click", () => { confirm.hidden = true; open.hidden = false; open.focus(); });
-  confirmDelete.addEventListener("click", async () => {
-    confirmDelete.disabled = true;
-    cancel.disabled = true;
+  button.addEventListener("click", async () => {
+    button.disabled = true;
+    failure.textContent = "";
     try {
       await remove();
     } catch (error) {
-      confirmDelete.disabled = false;
-      cancel.disabled = false;
+      button.disabled = false;
       failure.textContent = error.message;
     }
   });
-  return [open, confirm];
+  return [button, failure];
 }
 
 // A planned unit goes through the Coach's delete path; a copy at a provider goes with the next explicit sync.
 function plannedDeleteControls(entry, dateKey, key) {
   const copies = (Array.isArray(entry.remote_copies) ? entry.remote_copies : []).map((provider) => state.data?.provider_labels?.[provider]).filter(Boolean);
   const name = entry.name || "Trainingseinheit";
-  return inCardDelete(entry.local_id, copies.length ? `${copies.join(", ")}: weg beim nächsten Sync` : "", async () => {
+  const copyNote = copies.length ? ` · ${copies.join(", ")}: weg beim nächsten Sync` : "";
+  return inCardDelete(async () => {
     try {
       const result = await api(`/api/planned-units/${encodeURIComponent(entry.local_id)}/delete`, { method: "POST", body: JSON.stringify({ confirmed: true, expected_payload_hash: entry.payload_hash }) });
-      plannedDeleteReceipts.set(String(entry.local_id), { day: dateKey, text: `Gelöscht: ${name}`, change: result.change, from: dateKey });
+      plannedDeleteReceipts.set(String(entry.local_id), { day: dateKey, text: `Gelöscht: ${name}${copyNote}`, change: result.change, from: dateKey });
     } catch (error) {
       // A changed unit reloads, so the card names the reason and the next try sends the current hash.
       if (error.status === 409) {
@@ -1593,7 +1601,7 @@ async function adoptStepTestValue(activityId, row, button) {
     return;
   }
   const profile = state.data?.profile || {};
-  const replacesMeasured = Boolean(profile.first_threshold_pct) && profile.first_threshold_origin === "measured";
+  const replacesMeasured = Boolean(profile.first_threshold_hr) && profile.first_threshold_origin === "measured";
   if (replacesMeasured && !(await requestConfirmation("Der gemessene Wert wird durch den Wert aus dem Stufentest ersetzt.", { title: "Gemessenen Wert ersetzen?", confirmLabel: "Ersetzen" }))) return;
   button.disabled = true;
   try {
@@ -2265,7 +2273,7 @@ function plannedViewSwitch() {
 // appointments; the choice is a per-device convenience and never reaches the server.
 const CALENDAR_SPORT_KEY = "pacecraft-calendar-sport";
 // Chip label, then the sport labels (activitySportLabel) the chip shows.
-const CALENDAR_SPORTS = { all: ["Alle", []], run: ["Lauf", ["Laufen"]], ride: ["Rad", ["Radfahren", "Rad indoor"]], strength: ["Kraft", ["Kraft"]] };
+const CALENDAR_SPORTS = { all: ["Alle", []], run: ["Lauf", ["Laufen"]], ride: ["Rad", ["Radfahren", "Rad indoor"]], strength: ["Kraft", ["Kraft"]], other: ["Andere", null] };
 
 function readCalendarSport() {
   try {
@@ -2275,7 +2283,11 @@ function readCalendarSport() {
 }
 
 function calendarSportShown(entry, sport = calendarSport) {
-  return sport === "all" || CALENDAR_SPORTS[sport][1].includes(activitySportLabel(calendarSportType(calendarActualActivity(entry) || entry)));
+  if (sport === "all") return true;
+  const label = activitySportLabel(calendarSportType(calendarActualActivity(entry) || entry));
+  // "Andere" holds every sport without a filter of its own: swims, walks and sessions without a type (#3936 G-10).
+  if (sport === "other") return !Object.values(CALENDAR_SPORTS).some(([, labels]) => labels?.includes(label));
+  return CALENDAR_SPORTS[sport][1].includes(label);
 }
 
 function plannedSportFilter() {
@@ -2878,6 +2890,8 @@ function libraryWahooRow(workout) {
 // "Einplanen" and "Löschen" without the Coach (#3028): the calendar's day strip plans a local unit from the
 // entry; "Löschen" archives the entry and units planned from it stay. Each receipt offers "Rückgängig".
 const libraryReceipts = new Map();
+// Entries whose day strip is open, so a background reload's redraw keeps it open (#3980).
+const libraryOpenStrips = new Set();
 
 function libraryActions(workout) {
   if (!workout.id) return [];
@@ -2890,6 +2904,7 @@ function libraryActions(workout) {
     const buttons = [...days.querySelectorAll("button, input")];
     buttons.forEach((item) => { item.disabled = true; });
     status.replaceChildren();
+    libraryOpenStrips.delete(id);
     try {
       const result = await api(`/api/library/${encodeURIComponent(id)}/schedule`, { method: "POST", body: JSON.stringify({ date: day }) });
       const text = `Eingeplant: ${MOVE_DAY_FORMAT.format(dateFromKey(day))}`;
@@ -2900,14 +2915,18 @@ function libraryActions(workout) {
     } catch (error) {
       buttons.forEach((item) => { item.disabled = false; });
       status.textContent = error.message;
+      libraryOpenStrips.add(id);
     }
   };
   const days = plannedDayStrip(timezoneDateKey(state.data?.profile?.timezone, new Date()), null, "Tag", (day) => void schedule(day));
-  toggle.addEventListener("click", () => {
-    days.hidden = !days.hidden;
-    toggle.setAttribute("aria-expanded", String(!days.hidden));
-  });
-  const [remove, confirm] = inCardDelete(id, "", async () => {
+  const showDays = (open) => {
+    days.hidden = !open;
+    toggle.setAttribute("aria-expanded", String(open));
+    if (open) libraryOpenStrips.add(id); else libraryOpenStrips.delete(id);
+  };
+  toggle.addEventListener("click", () => showDays(days.hidden));
+  if (libraryOpenStrips.has(id)) showDays(true);
+  const [remove, confirm] = inCardDelete(async () => {
     const result = await api(`/api/library/${encodeURIComponent(id)}/archive`, { method: "POST", body: JSON.stringify({ confirmed: true }) });
     libraryReceipts.clear();
     libraryReceipts.set(id, { text: `Gelöscht: ${name}`, change: result.change });
@@ -3037,7 +3056,7 @@ function racePlanDuring(during) {
 }
 
 function racePlanHeading(text, badge) {
-  return h("h5", null, text, badge ? h("span", "planned-badge", badge) : null);
+  return h("h5", null, text, badge ? h("span", "race-plan-source", badge) : null);
 }
 
 function racePlanPacing(pacing) {

@@ -3,8 +3,8 @@
 Each session with a chest-strap recording that carried RR intervals may hold an
 estimate in bpm (``dfa_alpha1``). The athlete-level value is the median over the
 sessions of the last 60 days, each expressed as percent of the run threshold HR
-in effect on its own date (like the measured ``first_threshold_pct``), so a later
-threshold change moves neither. It needs at least three qualifying sessions. Only
+in effect on its own date, so a later threshold change does not move it; an
+adoption stores it in bpm of today's threshold HR (#3915). It needs at least three qualifying sessions. Only
 sessions whose own quality is good qualify. It is research-grade, an estimate
 for the athlete to review, and it never replaces a measured value by itself.
 

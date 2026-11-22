@@ -24,6 +24,11 @@ test("a failed request without a server response shows an honest German message 
     : route.fallback()));
   await page.evaluate(() => { location.hash = "more/profile"; });
   await expect(page.locator("#profilePanel")).toBeVisible();
+  // The save bar appears with a change the field reports.
+  await page.locator('#profileForm [name="name"]').evaluate((field) => {
+    field.value = `${field.value} `;
+    field.dispatchEvent(new Event("input", { bubbles: true }));
+  });
   await page.getByRole("button", { name: "Profil speichern" }).click();
   const toast = page.locator("#toast");
   await expect(toast).toContainText(NETWORK_MESSAGE);
@@ -78,4 +83,15 @@ test("a Coach message sent without a connection returns to the composer and surv
   await page.reload();
   await expect(page.locator("#appShell")).toBeVisible();
   await expect(page.locator("#messageInput")).toHaveValue("Dieser Satz wurde ohne Verbindung geschrieben.");
+});
+
+test("a toast does not follow the athlete to another screen @responsive", async ({ page }) => {
+  await ready(page);
+  await page.evaluate(() => { toast("Wettkampf gespeichert", false); });
+  await expect(page.locator("#toast")).toHaveClass(/show/);
+  // A toast a moment old belongs to the route change after it; the athlete's own tap comes later.
+  await page.waitForTimeout(1600);
+  await page.evaluate(() => { location.hash = "nutrition/diary"; });
+  await expect(page.locator("#nutritionPanel")).toBeVisible();
+  await expect(page.locator("#toast")).not.toHaveClass(/show/);
 });

@@ -117,6 +117,10 @@ class EnergySources:
     weighin_sources: Callable[[Any, date, date], Mapping[date, str]] = field(
         default=lambda _db, _start, _end: {}
     )
+    # The day's planned units as ``sport`` and ``duration_s`` (the expected total).
+    planned: Callable[[Any, date], Sequence[Mapping[str, Any]]] = field(
+        default=lambda _db, _day: ()
+    )
 
 
 @dataclass(frozen=True)
@@ -132,6 +136,9 @@ class SessionCost:
     # A strength session's RPE, local first, and the MET it set (#3530).
     rpe: float | None = None
     met: float | None = None
+    # The session's sport and priced duration, for the planned units' cost.
+    sport: str = ""
+    duration_s: float | None = None
 
 
 # Net kcal and method of a session from its mean HR, duration, mass and day.
@@ -351,7 +358,9 @@ def session_cost(
     if sport in FOOT_SPORTS and mass:
         kcal = _foot_kcal(sources, db, summary, sport, mass)
         method = "minetti" if kcal is not None else "unknown"
-        return SessionCost(day, kcal, method, steps, climb)
+        return SessionCost(
+            day, kcal, method, steps, climb, sport=sport, duration_s=duration
+        )
     if sport in STRENGTH_SPORTS:
         # Its MET follows its session RPE (#3530), the general one without.
         met = energy.strength_met(rpe)
@@ -361,9 +370,11 @@ def session_cost(
             else None
         )
         method = "met" if kcal is not None else "unknown"
-        return SessionCost(day, kcal, method, steps, climb, rpe, met)
+        return SessionCost(day, kcal, method, steps, climb, rpe, met, sport, duration)
     kcal, method = _timed_cost(summary, sport, duration, rmr, hr_cost, mass, day)
-    return SessionCost(day, kcal, method, steps, climb)
+    return SessionCost(
+        day, kcal, method, steps, climb, sport=sport, duration_s=duration
+    )
 
 
 def _foot_kcal(

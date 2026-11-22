@@ -21,12 +21,17 @@ class MacroRangeTests(unittest.TestCase):
         }
 
     def test_weight_duration_and_intensity_boundaries(self):
+        # Thomas et al. 2016, Table 1, at 90 kg (#3920): 3-5 g/kg below an
+        # hour, 5-7 from 60 min, 6-10 from 90 min or 60 hard, 8-12 from 4 h.
         for minutes, high, expected in [
-            (60, 0, (270, 450)),
-            (90, 0, (450, 630)),
+            (59, 0, (270, 450)),
+            (60, 0, (450, 630)),
+            (90, 0, (540, 900)),
             (120, 0, (540, 900)),
-            (60, 600, (450, 630)),
-            (90, 600, (540, 900)),
+            (30, 600, (450, 630)),
+            (60, 600, (540, 900)),
+            (239, 0, (540, 900)),
+            (240, 0, (720, 1080)),
         ]:
             with self.subTest(minutes=minutes, high=high):
                 ranges = macro_ranges(
@@ -35,6 +40,22 @@ class MacroRangeTests(unittest.TestCase):
                 self.assertEqual(expected, ranges["carbs_g"])
                 self.assertEqual((153, 207), ranges["protein_g"])
                 self.assertEqual((60, 90), ranges["fat_g"])
+
+    def test_protein_widens_to_1_6_2_4_g_per_kg_only_in_a_deficit(self):
+        # #3917: 90 kg x 1.6 and 2.4 g/kg; every other goal keeps 1.7 to 2.3.
+        for goal, expected in [
+            ("lose", (144, 216)),
+            ("hold", (153, 207)),
+            ("build", (153, 207)),
+            ("", (153, 207)),
+            (None, (153, 207)),
+        ]:
+            with self.subTest(goal=goal):
+                ranges = macro_ranges(90, [], "2026-11-02", 2700, goal)
+                self.assertEqual(expected, ranges["protein_g"])
+        self.assertNotIn(
+            "protein_g", macro_ranges(None, [], "2026-11-02", 2700, "lose")
+        )
 
     def test_completed_replaces_plan_and_missing_intensity_is_unknown(self):
         planned = self.workout(120)
@@ -46,12 +67,12 @@ class MacroRangeTests(unittest.TestCase):
             }
         }
         self.assertEqual(
-            (450, 630), macro_ranges(90, [planned], "2026-11-02", 2700)["carbs_g"]
+            (540, 900), macro_ranges(90, [planned], "2026-11-02", 2700)["carbs_g"]
         )
         planned["compliance"]["actual_activity"]["elapsed_duration_s"] = 3600
         planned["compliance"]["actual_activity"].pop("moving_duration_s")
         self.assertEqual(
-            (450, 630), macro_ranges(90, [planned], "2026-11-02", 2700)["carbs_g"]
+            (540, 900), macro_ranges(90, [planned], "2026-11-02", 2700)["carbs_g"]
         )
         planned["compliance"]["actual_activity"].pop("heart_rate_zone_times")
         self.assertEqual(
@@ -91,15 +112,15 @@ class MacroRangeTests(unittest.TestCase):
         self.assertEqual((270, 450), macro_ranges(90, None, "2026-11-02", 0)["carbs_g"])
 
     def test_multiple_sessions_and_exact_high_intensity_cutoff(self):
-        first = self.workout(45, 599)
-        second = self.workout(45)
+        first = self.workout(30, 599)
+        second = self.workout(30)
         ranges = macro_ranges(90, [first, second], "2026-11-02", 2700)
         self.assertEqual((450, 630), ranges["carbs_g"])
-        first = self.workout(45, 600)
+        first = self.workout(30, 600)
         ranges = macro_ranges(90, [first, second], "2026-11-02", 2700)
         self.assertEqual((540, 900), ranges["carbs_g"])
-        first = self.workout(45, 300)
-        second = self.workout(45, 300)
+        first = self.workout(30, 300)
+        second = self.workout(30, 300)
         ranges = macro_ranges(90, [first, second], "2026-11-02", 2700)
         self.assertEqual((450, 630), ranges["carbs_g"])
 

@@ -25,7 +25,7 @@ from __future__ import annotations
 
 import math
 import re
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from typing import Any
 
@@ -234,7 +234,7 @@ def _estimate_step(
     band = (
         None
         if target.intensity is None
-        else intensity_band(str(step["kind"]), target.intensity)
+        else intensity_band(str(step["kind"]), target.intensity, thresholds.lt1_share)
     )
     return StepEstimate(
         kind=str(step["kind"]),
@@ -313,11 +313,15 @@ def estimate_workout(
     thresholds: ZoneSettings,
     *,
     fallback_duration_s: float | None = None,
+    heart_rate_load: Callable[[float, float], float | None] | None = None,
 ) -> WorkoutEstimate:
     """Estimate one planned workout; unknown inputs stay unknown, never raise.
 
     Only run and ride have evaluable steps. ``fallback_duration_s`` is the unit's
     own planned duration, used only when the steps cannot be parsed.
+    ``heart_rate_load(seconds, bpm)`` scores a unit of heart-rate steps like a
+    completed heart-rate session (M6 TRIMP, #3918); without its references the
+    load stays unknown with ``missing_heart_rate_reference``.
     """
     if sport not in {Sport.RUN, Sport.RIDE}:
         return _empty(sport.value, "sport_without_step_targets", fallback_duration_s)
@@ -327,9 +331,14 @@ def estimate_workout(
         return _empty(sport.value, error.reason, fallback_duration_s)
     steps = tuple(_estimate_step(step, thresholds, sport) for step in parsed)
     load = factor = basis = None
+    reasons = _reasons(steps)
     if _all_known(steps, "duration_s", "intensity"):
         factor, hours, basis = _unit_intensity(steps)
         load = hours * factor**2 * 100
+        if heart_rate_load is not None and all(step.kind == "hr" for step in steps):
+            load, basis = _heart_rate_load(steps, thresholds, heart_rate_load)
+            if load is None:
+                reasons = tuple(sorted({*reasons, "missing_heart_rate_reference"}))
     return WorkoutEstimate(
         sport=sport.value,
         steps=steps,
@@ -339,8 +348,25 @@ def estimate_workout(
         intensity_factor=factor,
         load=load,
         load_basis=basis,
-        unknown=_reasons(steps),
+        unknown=reasons,
     )
+
+
+def _heart_rate_load(
+    steps: tuple[StepEstimate, ...],
+    thresholds: ZoneSettings,
+    score: Callable[[float, float], float | None],
+) -> tuple[float | None, str | None]:
+    """The M6 heart-rate load of heart-rate steps, or (None, None) without references."""
+    if not thresholds.lthr:
+        return None, None
+    total = 0.0
+    for step in steps:
+        value = score(step.duration_s or 0.0, (step.intensity or 0.0) * thresholds.lthr)
+        if value is None:
+            return None, None
+        total += value
+    return total, "heart_rate_trimp"
 
 
 # A single-value target (no range) is read as this share either side of it.

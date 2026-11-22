@@ -15,6 +15,7 @@ import re
 from typing import Any
 
 from backend.errors import AppError
+from backend.providers.error_texts import failure_text
 from backend.providers.model_seam import ModelRequest, ModelTurn
 
 # Server-side refusal fallback to an older Claude model (athlete decision 2 on #2355).
@@ -420,11 +421,16 @@ _ERROR_REASONS = {
     "invalid_request_error": "request_failed",
 }
 _ERROR_MESSAGES = {
-    "authentication_or_permission": "Claude hat den API-Schlüssel abgelehnt.",
-    "not_found": "Claude kennt das angefragte Modell nicht.",
-    "rate_limit_exceeded": "Claude begrenzt gerade die Anfragen.",
-    "provider_unavailable": "Claude ist vorübergehend nicht verfügbar.",
-    "insufficient_quota": "Das Claude-Guthaben reicht nicht aus.",
+    **{
+        reason: failure_text(reason, "anthropic")
+        for reason in (
+            "authentication_or_permission",
+            "not_found",
+            "rate_limit_exceeded",
+            "provider_unavailable",
+            "insufficient_quota",
+        )
+    },
     "request_failed": "Claude hat die Anfrage zurückgewiesen.",
 }
 

@@ -345,10 +345,21 @@ class NutritionProductHttpContractTests(unittest.TestCase):
                 method="POST",
             )
         )
-        self.diary.edit_components.assert_called_once_with("entry-1", edits, "r1")
+        self.diary.edit_components.assert_called_once_with("entry-1", edits, "r1", None)
         self.handler.send_json.assert_called_once_with(
             200, {"ok": True, "entry": {"id": "entry-1"}}
         )
+
+        self.diary.edit_components.reset_mock()
+        meal = {"meal_type": "dinner", "meal_date": "2026-11-03"}
+        self.handler.read_json.return_value = {"id": "entry-1", "meal": meal}
+        dispatch_route(
+            self.post_routes,
+            self.handler,
+            "/api/nutrition/entry/components",
+            method="POST",
+        )
+        self.diary.edit_components.assert_called_once_with("entry-1", None, None, meal)
 
 
 if __name__ == "__main__":

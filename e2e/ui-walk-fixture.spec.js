@@ -7,9 +7,9 @@ const { pathToFileURL } = require("node:url");
 // or kind does not match the app's markup fails here and not first in production (#3065).
 // A step the fixture cannot satisfy is named with its reason; it must keep skipping for that reason.
 // The fixture's runs carry no running dynamics; how many runs the shown week holds depends on the day.
-// The fixture stores no GPS tracks, so no run has a recognised route (#3763), and no strength sets (#3764).
+// The fixture stores no GPS tracks, so no run has a recognised route (#3763).
 // The fixture configures no Intervals.icu key, so its card has no Wettkämpfe row to send from (#3838).
-const FIXTURE_SKIPS = { "Kalender: Laufdynamik": /^skip \(none of [1-9]\d* has it\)$/, "Kalender: Streckenhistorie": /^skip \(none of [1-9]\d* has it\)$/, "Analyse: Kraft": /^skip \(none of 1 has it\)$/, "Mehr: Wettkämpfe senden": /^skip \(none of 1 has it\)$/ };
+const FIXTURE_SKIPS = { "Kalender: Laufdynamik": /^skip \(none of [1-9]\d* has it\)$/, "Kalender: Streckenhistorie": /^skip \(none of [1-9]\d* has it\)$/, "Mehr: Wettkämpfe senden": /^skip \(none of 1 has it\)$/ };
 
 test("@responsive every UI walk step passes on the fixture app", async ({ page, request }) => {
   // Every step of every view runs in one test; with the step test steps (#3833) it took 52 to 61 s in

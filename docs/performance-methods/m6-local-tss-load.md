@@ -1,8 +1,8 @@
 # M6 — Local TSS-scale session load and intensity
 
 - **Card:** M6
-- **Card version:** 7
-- **Method ID:** local-tss-load v7 (#1725, v2 #1726, v3 #1774, v4 #1771, v5 #1773, v6 #1892, v7 #1950)
+- **Card version:** 8
+- **Method ID:** local-tss-load v8 (#1725, v2 #1726, v3 #1774, v4 #1771, v5 #1773, v6 #1892, v7 #1950, v8 #3920)
 - **Status:** implemented (`backend/performance/local_tss.py`, `backend/sync/local_load.py`)
 - **Classification:** model estimate
 - **Literature checked:** 2026-11-08
@@ -17,7 +17,11 @@ session's day. The sessions sum to the day, week and period load of the
 rollups and of the local fitness and fatigue curves (#1726), and the plan
 checks compare planned load with the stored values (athlete decision
 2026-11-11, #2082: one completed-session load for plan checks and charts; a
-session without a stored value is unknown there). It is not
+session without a stored value is unknown there). A planned unit of heart-rate
+steps is scored with the same heart-rate branch (the newest resting HR of 7
+days, the threshold and maximum HR in effect, the profile sex), so planned and
+completed loads share one scale; without those references its planned load is
+unknown with its reason (#3918). It is not
 measured fatigue, readiness, metabolic stress or injury risk, and not the
 session-RPE load M1.
 
@@ -128,10 +132,21 @@ uses only the fourth. The value records which branch gave it
      a provider indoor FTP is not read.
 2. **Pace** (run only, without power):
    `IF = v / v_threshold`, `TSS = hours × IF² × 100`.
-   - `v`: Garmin's grade-adjusted average speed (`avgGradeAdjustedSpeed`,
-     m/s, mapped since Garmin activity mapper version 15), otherwise the
-     average speed. Without it the value is marked
-     `pace_basis: average_speed`.
+   - `v`: the normalized graded speed (NGS) of the run's stored streams (v8,
+     #3920), `pace_basis: normalized_graded_speed`. The analysis stage takes the
+     moving grade-adjusted speed per sample (the Minetti 2002 adjustment of M8;
+     the belt speed indoors), smooths it with a 30 s rolling mean, averages the
+     rolling means to the 4th power weighted by time and takes the 4th root,
+     the analogue of normalized power. It is stored with its covered seconds
+     and is used only when those are at least 10 minutes and 80 % of the TSS
+     duration. Otherwise `v` is Garmin's grade-adjusted average speed
+     (`avgGradeAdjustedSpeed`, m/s, mapped since Garmin activity mapper
+     version 15), `pace_basis: grade_adjusted_speed`, else the average speed,
+     `pace_basis: average_speed`. The covered seconds count only rolling means
+     with a full 30 s window, so the first 30 s after each stop or dropout do
+     not count; a stop-and-go run can fall back to Garmin's average for this
+     reason. A steady run has NGS equal to its speed; an
+     interval run scores higher than on its average speed.
    - `v_threshold`: the resolver's run threshold pace on the day, stored as
      m/s.
 3. **Heart rate** (every sport except strength, yoga and alpine ski, without
@@ -211,7 +226,7 @@ General rules:
   - `observed_on`: the session's local day.
   - `sport`: the session's sport.
   - `source_kind`: `derived`.
-  - `method`: `local-tss-load`, `method_version`: 7.
+  - `method`: `local-tss-load`, `method_version`: 8.
   - The owner is the canonical session.
   - `details` hold the branch, the pace basis, and the thresholds used with
     their sources and dates; a heart-rate value also holds the sex the
@@ -343,8 +358,11 @@ hour, or a mix of branches on one scale.
   Banister weights of the profile sex, not the individual lactate and
   heart-rate weights of R52. The threshold-hour normalisation follows the
   vendor convention (V2), not a published method.
-- Pace uses Garmin's grade-adjusted average speed, not normalized graded pace
-  from streams, and the flat average speed when that is missing.
+- Pace uses the normalized graded speed of the streams (v8). Its 30 s window,
+  4th power and the grade adjustment follow the NP convention and Minetti 2002;
+  the rTSS definition itself was not read (V1, R30). Without enough stream
+  coverage it uses Garmin's grade-adjusted average speed, then the flat average
+  speed.
 - Yoga and alpine ski get no TSS. Their sRPE AU stays beside the sum.
 - Strength TSS is the session-RPE load scaled by a personal factor, not a
   published TSS method.
@@ -358,7 +376,8 @@ hour, or a mix of branches on one scale.
   shows its sRPE AU beside the sum (`backend/performance/load.py`). A
   provider load is never used as a fallback.
 - Power: `NP > 0` and an `FTP > 0` for the sport on the day.
-- Pace: `v > 0` and `v_threshold > 0`.
+- Pace: `v > 0` and `v_threshold > 0`; the NGS needs 600 s of covered rolling
+  means and 80 % of the TSS duration (`NGS_MIN_COVERED_S`, `NGS_COVERAGE_MIN`).
 - Heart rate: average HR, HR_rest, HR_max and the threshold HR all known,
   with `HR_rest < threshold HR < HR_max`. The distribution needs covered
   seconds of at least 80 % of the TSS duration and a positive TRIMP; else
@@ -382,7 +401,9 @@ hour, or a mix of branches on one scale.
 | --- | --- | --- | --- |
 | TSS formula | hours × IF² × 100, IF = NP/FTP | source | R18 as given in vendor text V1; R20 relates TSS to fitness change. |
 | Branch order | power, pace (run), heart rate | product assumption | Athlete decision 2026-11-06; external load before internal load. |
-| Pace TSS | hours × (v/v_threshold)² × 100 | product assumption | rTSS convention (V1), formula unverified; R25 does not support it. |
+| Pace TSS | hours × (NGS/v_threshold)² × 100 | product assumption | rTSS convention (V1), formula unverified; R25 does not support it. |
+| NGS | 30 s rolling mean, 4th-power time-weighted mean, 4th root of the grade-adjusted speed | product assumption | Analogue of the NP definition of R18 (not verified from the book) on the Minetti-adjusted speed; R30 uses pace-based TSS, its abstract gives no formula (#3920). |
+| NGS minimum | 600 s covered and 80 % of the TSS duration | product assumption | Fewer rolling means are too short for a 4th-power mean; same share as the HR distribution. |
 | TRIMP prefactor and coefficient | male 0.64 and 1.92, female 0.86 and 1.67 | product assumption | Banister constants as cited for R19, not verified from the chapter; male coefficient chosen by the athlete 2026-11-06, constants by profile sex 2026-11-07 (v3). |
 | Unset sex | male constants, marked `sex_assumed` | product assumption | Athlete decision 2026-11-07 (#1774); keeps existing values for the male athlete. |
 | HR distribution | TRIMP summed per bpm over the moving samples, scaled by TSS duration / covered seconds | source | R52 weights the impulse by the heart-rate distribution of the session; the Banister weights of R19 replace its individual ones (product assumption). Athlete decision 2026-11-08 (v5). |
@@ -458,16 +479,19 @@ hour, or a mix of branches on one scale.
 | Constant | Value | Module | Code comment |
 | --- | --- | --- | --- |
 | `METHOD_ID` | `'local-tss-load'` | `backend/performance/local_tss.py` |  |
-| `METHOD_VERSION` | `7` | `backend/performance/local_tss.py` |  |
+| `METHOD_VERSION` | `8` | `backend/performance/local_tss.py` |  |
 | `CARD` | `'M6'` | `backend/performance/local_tss.py` |  |
 | `POWER_BRANCH` | `'power'` | `backend/performance/local_tss.py` |  |
 | `PACE_BRANCH` | `'pace'` | `backend/performance/local_tss.py` |  |
+| `PACE_BASIS_NGS` | `'normalized_graded_speed'` | `backend/performance/local_tss.py` |  |
 | `HEART_RATE_BRANCH` | `'heart_rate'` | `backend/performance/local_tss.py` |  |
 | `SESSION_RPE_BRANCH` | `'session_rpe'` | `backend/performance/local_tss.py` |  |
 | `MALE` | `'male'` | `backend/performance/local_tss.py` | Banister TRIMP prefactor and coefficient by profile sex (card M6 v3); an unset sex takes the male constants and marks the value sex_assumed. |
 | `FEMALE` | `'female'` | `backend/performance/local_tss.py` |  |
 | `MAX_INTENSITY_FACTOR` | `2.0` | `backend/performance/local_tss.py` |  |
 | `HR_COVERAGE_MIN` | `0.8` | `backend/performance/local_tss.py` | The histogram must cover this share of the TSS duration (card M6 v5). |
+| `NGS_MIN_COVERED_S` | `600.0` | `backend/performance/local_tss.py` | The NGS needs at least this much covered time and share of the TSS duration. |
+| `NGS_COVERAGE_MIN` | `0.8` | `backend/performance/local_tss.py` |  |
 | `HR_BASIS_DISTRIBUTION` | `'distribution'` | `backend/performance/local_tss.py` |  |
 | `HR_BASIS_AVERAGE` | `'average'` | `backend/performance/local_tss.py` |  |
 | `LATER_STAND_IN_MAX_DAYS` | `90` | `backend/performance/local_tss.py` | A later threshold stands in only when observed within this many days after the session day (card M6 v5). |

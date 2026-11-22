@@ -24,7 +24,8 @@ with the zones in effect on the session day (``session_zones``). Their
 thresholds and limits are part of the fingerprint.
 
 It also stores ``hr_histogram``: the seconds per integer bpm of the merged heart-rate
-stream, which the local load stage reads for the heart-rate branch of card M6 (v5).
+stream, which the local load stage reads for the heart-rate branch of card M6 (v5),
+and ``ngs``: the run's normalized graded speed for its pace branch (v8, #3920).
 """
 
 from __future__ import annotations
@@ -61,12 +62,14 @@ from backend.performance.canonical_session_analysis import (
     calendar_profile,
     session_analysis,
     session_heart_rate_histogram,
+    session_normalized_graded_speed,
 )
 from backend.performance.local_tss import THRESHOLD_KINDS, DatedThresholds
 from backend.performance.session_zones import (
     dated_thresholds,
     own_configurations,
     session_zone_settings,
+    with_own_lt1,
     zone_settings_part,
 )
 from backend.planning.target_snapshot import freeze_targets
@@ -141,6 +144,21 @@ class _Tally:
     outcomes: Counter[str] = field(default_factory=Counter)
 
 
+def _own_lt1_zones(
+    summary: Mapping[str, Any],
+    thresholds: DatedThresholds,
+    configurations: Sequence[ZoneConfiguration],
+    first_threshold_bpm: float | None,
+) -> ZoneSettings | None:
+    """The session's zones with the stored first threshold as its LT1 share."""
+    zones = session_zone_settings(summary, thresholds, configurations)
+    try:
+        day = date.fromisoformat(summary_local_date(summary))
+    except ValueError:
+        return zones
+    return with_own_lt1(zones, thresholds, day, first_threshold_bpm)
+
+
 def _thresholds(
     db: Any, reader: CanonicalTableReader
 ) -> tuple[DatedThresholds, tuple[ZoneConfiguration, ...]]:
@@ -210,6 +228,10 @@ def _value(threshold: Mapping[str, Any] | None) -> float | None:
 class SessionAnalysisStage:
     """Backfill follow-up that keeps the stored canonical session analyses current."""
 
+    # The local load stage, earlier in the pass, reads the stored histogram and
+    # normalized graded speed: after rows were stored the worker runs one more pass.
+    FEEDS_EARLIER_STAGES = True
+
     def __init__(
         self,
         *,
@@ -219,6 +241,7 @@ class SessionAnalysisStage:
         planned_units: PlannedUnits = list,
         reader: CanonicalTableReader | None = None,
         batch_size: int = DEFAULT_BATCH_SIZE,
+        first_threshold_bpm: Callable[[Any], float | None] = lambda _db: None,
     ) -> None:
         if batch_size < 1:
             raise ValueError("batch_size must be at least 1")
@@ -228,6 +251,8 @@ class SessionAnalysisStage:
         self._planned_units = planned_units
         self._reader = reader or CanonicalTableReader()
         self._batch_size = batch_size
+        # The athlete's stored first threshold (bpm) moves the band split (#3915).
+        self._first_threshold_bpm = first_threshold_bpm
         self._prepared: dict[str, tuple[str, _Analysed]] | None = None
         # The clock reading the prefetch froze targets with.
         self._prepared_at: str | None = None
@@ -350,6 +375,7 @@ class SessionAnalysisStage:
             },
         )
         thresholds, configurations = _thresholds(db, self._reader)
+        first_threshold = self._first_threshold_bpm(db)
         sessions: list[tuple[_Session, Mapping[str, Any] | None]] = []
         for summary in summaries:
             session_id = str(summary["id"])
@@ -359,7 +385,7 @@ class SessionAnalysisStage:
             if not own and _version(row) != ANALYSIS_VERSION:
                 continue
             zones = (
-                session_zone_settings(summary, thresholds, configurations)
+                _own_lt1_zones(summary, thresholds, configurations, first_threshold)
                 if own
                 else None
             )
@@ -453,6 +479,7 @@ class SessionAnalysisStage:
             "calendar_profile": None,
             "zone_times": None,
             "hr_histogram": None,
+            "ngs": None,
             "stale": session.stale,
             "source": " / ".join(
                 dict.fromkeys(
@@ -488,6 +515,7 @@ class SessionAnalysisStage:
         payload["calendar_profile"] = profile
         payload["zone_times"] = _zone_times(session, merged)
         payload["hr_histogram"] = session_heart_rate_histogram(session.records, merged)
+        payload["ngs"] = session_normalized_graded_speed(session.records, merged)
         return payload
 
     def mark_failed(self, db: Any) -> None:

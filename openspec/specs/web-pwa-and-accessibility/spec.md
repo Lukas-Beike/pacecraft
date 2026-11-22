@@ -174,7 +174,7 @@ The client SHALL show at most one status strip above every screen: the most seve
 Evidence: `public/status-strip.js::statusStripItems`, `public/status-strip.js::renderStatusStrip`, `public/shared.js::renderStatus`, `public/sync-status.js::renderProviderAttention`, `public/settings.js::thresholdStatusItem`, `public/analysis.js::equipmentStatusItem`, `public/analysis.js::refreshEquipmentNotice`; `e2e/status-strip.spec.js::@responsive due equipment is one notice of the strip that opens Mehr › Ausrüstung`, `tests/analysis-presentation.test.cjs::the equipment notice names exceeded targets first and never archived items or items without a target`, `tests/analysis-report-cache.test.cjs::the equipment notice reads once per activity state when idle and never retries a failed read`, `e2e/status-strip.spec.js::offline, a Coach error and the missing Intervals.icu key show one strip @responsive`, `tests/status-strip.test.cjs::the strip ranks notices by the athlete's order and shows only one as text`, `tests/status-strip.test.cjs::the loading notice stands alone`.
 
 ### Requirement: Mehr groups settings under one title with text status and a structured profile
-The client SHALL show the settings areas under the fixed title "Mehr" as one swipeable row whose active area is filled, show every provider connection as one collapsible card that states its status as a text chip (Verbunden, Nicht eingerichtet, Fehler or Nicht geprüft) and let the athlete pick sports by touch. The profile SHALL be four collapsible sections with a one-line summary each and a save bar that stays above the navigation and shows the unsaved state.
+The client SHALL show the settings areas under the fixed title "Mehr" as one swipeable row whose active area is filled, open on Profil, show every provider connection as one collapsible card that states its status as a text chip (Verbunden, Nicht eingerichtet, Fehler or Nicht geprüft) and let the athlete pick sports by touch. The profile SHALL be four collapsible sections with a one-line summary each and a save bar that stays above the navigation and shows the unsaved state.
 
 #### Scenario: Sports without a hint
 - **WHEN** the athlete opens the profile
@@ -198,7 +198,7 @@ The client SHALL show the settings areas under the fixed title "Mehr" as one swi
 
 #### Scenario: Unsaved profile
 - **WHEN** a profile field changes
-- **THEN** the save bar shows "Ungespeichert" until the profile is saved, then "Gespeichert"; a closed section opens when it holds an invalid value.
+- **THEN** the save bar appears with "Ungespeichert" until the profile is saved and then goes away; a closed section opens when it holds an invalid value.
 
 Evidence: `public/connection-status.js::openConnectionCard`, `public/connection-status.js::garminSourceLines`, `public/sync-status.js::renderProviderFreshness`, `public/views.js::profileSummaries`; `e2e/settings-hub.spec.js::sports are toggle chips of at least 44 px and need no hint @responsive`, `e2e/settings-hub.spec.js::@responsive the seven connections start collapsed and name their status in words`, `e2e/settings-hub.spec.js::@responsive an open card holds only its own provider's status, access, settings and actions`, `e2e/provider-actions.spec.js::@responsive the setup line is shown on every tab and Jetzt einrichten opens the Intervals.icu card`, `tests/provider-checks.test.cjs::Intervals.icu and Claude chips follow the last explicit check, also after a reload`, `tests/settings-hub.test.cjs::the Intervals.icu detail names the last export, also one that was no library push`, `e2e/provider-checks.spec.js::@responsive Intervals.icu shows the server's last export after a reload and checks nothing`, `e2e/yazio-connection.spec.js::@responsive Yazio shows the server's last check or lookup after a reload without checking`.
 
@@ -236,7 +236,7 @@ The client SHALL display incremental response text and distinguish started, back
 
 #### Scenario: Failed reply
 - **WHEN** the newest Coach reply of a turn failed and the request was plain text
-- **THEN** that reply shows its error with one "Erneut senden" action that sends the same text and request kind as a new turn without disturbing the current draft or attachments; older replies and requests with attachments offer no retry.
+- **THEN** that reply shows its error with one "Erneut senden" action that sends the same text and request kind as a new turn without disturbing the current draft or attachments, or "Anbindungen öffnen" for a failure only the connections can fix; every failed or stopped reply keeps its status style without a model label, older ones without action, and a stopped reply reads "Abgebrochen" with the same retry.
 
 Evidence: `public/coach.js::readChatStream`, `public/coach.js::recoverChatRequestFailure`, `public/coach.js::drainChatQueue`, `public/coach.js::cancelChat`, `public/coach.js::appendFailedTurnRetry`; `e2e/contracts.spec.js::every definite HTTP rejection retains the draft and concrete error`, `e2e/contracts.spec.js::a completed answer accepts an immediate follow-up without showing a queue`, `e2e/audit-remediation.spec.js::cancel before stream identity is retained for the matching operation`, `tests/coach-turn-undo.test.cjs::the newest failed reply sends its request again and keeps the draft`, `tests/coach-turn-undo.test.cjs::older, attached or successful replies offer no retry`. Durable Coach effects, receipts, approvals, and undo use the Coach/history specifications.
 
@@ -363,7 +363,7 @@ The client SHALL present domain-provided planning, performance, activity, and eq
 - **THEN** it shows the current week as a timeline (weekday and date column, today filled) with previous/next week buttons and the ISO week, limited to the configured weeks ahead (the configured weeks back load at once; paging back has no limit and older weeks load their completed sessions on demand); each session is one compact row with sport icon, title, duration and distance and, for a planned unit only, a zone bar for its workout profile (16 px high on narrow screens), and opened, its session-type and intensity labels sit above their selects so no word breaks at phone width; a completed or missed unit is one slim row whose line holds the time and the status ("✓ Absolviert" with the share of the plan, "✓ Ungeplant", "✕ Nicht absolviert") without zone or compliance bar, its activity name shown without the place prefix of the profile's weather location; opened, it shows its chart, each value once with German labels and per sport (runs and rides have their own lists, a value without data is left out), the plan line, the "Details" toggle, "Mit Coach besprechen" and "Feedback" (see "Calendar cards carry the single-session analysis"); planned sessions are dashed, completed ones solid and missed ones outlined in red; identical extra activities of a day form one row; on screens at least 1100 px wide the opened session shows as a detail pane beside the week, level with its card (title, day, status, larger profile with its axis, and the session details), and one session of the week is opened by default; a "Woche | Monat" switch (never stored, entering the calendar shows the week again) shows the month of the selected day as whole weeks Monday to Sunday with neighbouring days muted, one mark per session (a dot coloured by sport, outlined when planned, red when missed; a duration chip and the ISO week with its planned time on wide screens), today filled, the selected day ringed and the current week tinted, and selecting a day shows its week below; "Ungeplant" appears only in weeks with a plan; the week summary is a fixed planned/completed grid with one duration format and no dash-only rows, the planned load only when every planned unit has one (else "–" and the count of units without), a change against the week before named "ggü. Vorwoche", and under a sport filter the header says "Gefiltert: <sport>" and an empty day "Keine Einheit dieser Sportart"; calendar notes are neutral text, each conflict is one component with one Coach action, and weeks with workout profiles show a zone legend.
 
 #### Scenario: Calendar sport filter
-- **WHEN** the athlete picks "Lauf", "Rad" or "Kraft" in the chip row below the week or month switch
+- **WHEN** the athlete picks "Lauf", "Rad", "Kraft" or "Andere" (every other sport, swims included, and units without a type) in the chip row below the week or month switch
 - **THEN** the week and month show only units of that sport (a done unit by its recorded sport), the week figures and the month's hours per ISO week count only those, the whole-week plan compliance line is left out, calendar appointments stay, "Woche synchronisieren" still covers every unit of the week, and the choice is kept in this browser only; "Alle" shows every sport.
 
 #### Scenario: Move a planned unit
@@ -371,7 +371,7 @@ The client SHALL present domain-provided planning, performance, activity, and eq
 - **THEN** a strip of the next seven days from today (the unit's own day disabled) and "…" for the system date picker appear, both ending with the last day the calendar shows; one tap moves the local unit, the opened card follows it to its new week with "Verschoben auf <Tag, Datum>" and "Rückgängig", and undo puts it back with "Zurückgenommen."; a unit already sent shows its pending sync and nothing is written remotely.
 #### Scenario: Delete a planned unit
 - **WHEN** the athlete taps the red "Löschen" at the end of an opened planned unit's actions
-- **THEN** the card asks once ("Einheit löschen?" with "Löschen" and "Abbrechen", plus "<provider names>: weg beim nächsten Sync" when an upcoming unit has a copy there); confirming posts `confirmed` with the unit's content hash to `POST /api/planned-units/{id}/delete`, which refuses an unconfirmed delete with 409, deletes the local unit as one Coach change batch and writes nothing remotely; an outdated hash answers 409, the calendar reloads and the card names the reason; the day shows "Gelöscht: <Name>" with "Rückgängig" while its week is shown, and undo restores the unit's content unchanged, waiting for the next sync like any local edit (#3027).
+- **THEN** the unit is deleted at once, no question (the receipt adds "<provider names>: weg beim nächsten Sync" when an upcoming unit has a copy there); the tap posts `confirmed` with the unit's content hash to `POST /api/planned-units/{id}/delete`, which refuses an unconfirmed delete with 409, deletes the local unit as one Coach change batch and writes nothing remotely; an outdated hash answers 409, the calendar reloads and the card names the reason; the day shows "Gelöscht: <Name>" with "Rückgängig" while its week is shown, and undo restores the unit's content unchanged, waiting for the next sync like any local edit (#3027).
 
 #### Scenario: Planned steps as a list
 - **WHEN** the athlete opens a planned unit whose workout has structured steps
@@ -434,7 +434,7 @@ Evidence:
 - `e2e/analysis-info.spec.js::@responsive recovery uses independent scales, honest coverage over exactly four weeks`
 - `e2e/analysis-info.spec.js::@responsive steps and floors show per-day units, whole numbers and the plotted basis`
 - `e2e/calendar-detail-pane.spec.js::@responsive a planned unit lists its steps with zone and target range instead of the workout notation`
-- `e2e/calendar-detail-pane.spec.js::@responsive Löschen asks once in the card, deletes a planned unit and Rückgängig brings it back`
+- `e2e/calendar-detail-pane.spec.js::@responsive Löschen acts at once, deletes a planned unit and Rückgängig brings it back`
 - `e2e/calendar-detail-pane.spec.js::@responsive Mit Coach besprechen puts the planned unit into the Coach field without sending`
 - `e2e/calendar-detail-pane.spec.js::@responsive Verschieben moves a planned unit to a tapped day and Rückgängig puts it back`
 - `e2e/calendar-week-compact.spec.js::@responsive compact calendar week shows one week, groups repeats and keeps one conflict style`
@@ -581,23 +581,23 @@ Evidence:
 - `tests/test_coach_activity_read_tools.py:test_activity_detail_exposes_the_session_bundle_for_corrections`
 
 ### Requirement: Analyse is split by sport
-The Analyse tab SHALL show the segments Laufen, Radfahren, Kraft, Belastung, Erholung and Rekorde in this order, without a Leistung segment. Laufen and Radfahren SHALL each show only their sport's values and estimates, Rekorde the records of both sports; Belastung and Erholung SHALL stay sport-independent. Every value and chart of the former Leistung segment SHALL appear in exactly one segment, and an old Leistung link SHALL open Laufen.
+The Analyse tab SHALL show the segments Laufen, Radfahren, Kraft, Belastung and Erholung in this order, without a Leistung segment. Laufen and Radfahren SHALL each show only their sport's values and estimates and end with their records; Belastung and Erholung SHALL stay sport-independent. Every value and chart of the former Leistung segment SHALL appear in exactly one segment, and an old Leistung or Rekorde link SHALL open Laufen.
 
 #### Scenario: Laufen
 - **WHEN** the athlete opens Analyse › Laufen
-- **THEN** it shows the running current values (LT2 pace, power and heart rate as "Anaerobe Schwelle (LT2) · …", LT1 pace and heart rate as "Aerobe Schwelle (LT1) · …", VO2max), the development charts (threshold pace with the LT1 pace line, VO2max, running tolerance), the race predictions and directly below them the experimental critical-speed line; no cycling value and no best effort appears.
+- **THEN** it shows the running current values (LT2 pace, power and heart rate as "Anaerobe Schwelle (LT2) · …", LT1 pace and heart rate as "Aerobe Schwelle (LT1) · …", VO2max), the development charts (threshold pace with the LT1 pace line, VO2max, running tolerance), the race predictions and directly below them the experimental critical-speed line; its records card closes the tab; no cycling value appearss.
 
 #### Scenario: Radfahren
 - **WHEN** the athlete opens Analyse › Radfahren
 - **THEN** it shows the cycling current values (LT2 FTP and heart rate as "Anaerobe Schwelle (LT2) · …", power per weight, LT1 power and heart rate as "Aerobe Schwelle (LT1) · …", VO2max), the experimental critical-power line and the development charts (FTP with the LT1 power line, VO2max); an LT1 point's readout names its heart rate and origin, and a week without three own steady sessions is a gap; no running value appears.
 
-#### Scenario: Rekorde
-- **WHEN** the athlete opens Analyse › Rekorde
-- **THEN** it shows Radfahren and then Laufen: "Einzelne Fahrt" (farthest ride, longest ride by moving time, most elevation gain in one outdoor ride; indoor and virtual rides never count) and the all-time power profile with its coverage note; "Einzelner Lauf" (the same three for one run) and the all-time best efforts under the title "Bestwerte" (only the best time over 1 km, 5 km, 10 km, half marathon and marathon, always these five rows; a distance without an own best shows Garmin's personal record with its record date and a dashed "Garmin" chip, and "–" where neither exists); each value has its date in its own column and its source, a missing value reads "–", a tie goes to the earlier session, and every date that names an activity opens it.
+#### Scenario: Records card
+- **WHEN** the athlete opens Analyse › Laufen or Radfahren
+- **THEN** the card "Rekorde" at the end of the tab shows (Radfahren) or (Laufen): "Einzelne Fahrt" (farthest ride, longest ride by moving time, most elevation gain in one outdoor ride; indoor and virtual rides never count) and the all-time power profile with its coverage note; "Einzelner Lauf" (the same three for one run) and the all-time best efforts under the title "Bestwerte" (only the best time over 1 km, 5 km, 10 km, half marathon and marathon, always these five rows; a distance without an own best shows Garmin's personal record with its record date and a dashed "Garmin" chip, and "–" where neither exists); each value has its date in its own column and its source, a missing value reads "–", a tie goes to the earlier session, and every date that names an activity opens it.
 
 #### Scenario: Kraft
-- **WHEN** the athlete opens Kraft and stored strength sets exist in the last twelve calendar weeks
-- **THEN** "Einheiten pro Woche" shows each week's completed strength sessions (0 without one), and the group "Top-Sätze" shows per exercise, from stored sets only and without strength load or estimated 1RM, a chart of each session's top set (weight, or reps without weight) and a "Letzte Einheiten" table of its last three sessions; a session without the value is a gap and the section shows its empty card without stored sets
+- **WHEN** the athlete opens Kraft and completed strength sessions exist in the chosen period
+- **THEN** the shared period selector (4 Wochen, 3 Monate, 6 Monate, 12 Monate; 3 Monate at first) sits above two charts, "Oberkörper" and "Beine", each bar the number of sessions of that calendar week that trained the side (its executed sets, else the session focus; a full body session counts for both), with the average in the heading and no label for a zero; sessions that decide neither are named below as "<n> Einheiten ohne Oberkörper- oder Beinschwerpunkt, nicht zugeordnet." and never guessed; no strength load, no volume; without a session in the period the one empty card shows
 
 #### Scenario: Cross-sport values
 - **WHEN** the athlete opens Analyse › Belastung or Erholung
@@ -619,7 +619,7 @@ The Analyse tab SHALL show the segments Laufen, Radfahren, Kraft, Belastung, Erh
 - **WHEN** the power profile and the critical-power estimate are shown
 - **THEN** the table lists all thirteen all-time durations from 5 s to 1 h, a value from an indoor ride with a dashed "Indoor" chip, and the line "Experimentell · CP (28 Tage): …" (CS for running) names per fit CP and W′ (kJ) or CS and D′ with "(unsicher)", the count of race efforts, or "—" for a fit that is not `ok`.
 
-Evidence: `public/analysis.js::renderAnalysisSegments`, `public/analysis.js::renderStrengthAnalysis`, `backend/performance/report_service.py::TrainingReportReadService.strength`, `public/analysis.js::renderRunningBestEfforts`, `public/analysis.js::renderActivityRecords`, `backend/performance/activity_records.py::activity_records`, `public/analysis.js::criticalPowerLine`, `public/analysis.js::renderAnalysisHistory`, `public/performance-view.js::renderCurrentPerformance`, `public/navigation.js::routeFromHash`; `tests/analysis-presentation.test.cjs::an analysis segment is empty only when every content container reports no data`, `tests/analysis-presentation.test.cjs::current performance shows the status lines below its heading`, `e2e/performance-values.spec.js::@responsive Laufen and Radfahren each show only their sport`, `e2e/analysis-on-demand.spec.js::@responsive Rekorde shows the single-activity records and opens a record's activity`, `tests/test_activity_records.py`.
+Evidence: `public/analysis.js::renderAnalysisSegments`, `public/analysis.js::renderStrengthAnalysis`, `backend/performance/report_service.py::TrainingReportReadService.strength`, `public/analysis.js::renderRunningBestEfforts`, `public/analysis.js::renderActivityRecords`, `backend/performance/activity_records.py::activity_records`, `public/analysis.js::criticalPowerLine`, `public/analysis.js::renderAnalysisHistory`, `public/performance-view.js::renderCurrentPerformance`, `public/navigation.js::routeFromHash`; `tests/analysis-presentation.test.cjs::an analysis segment is empty only when every content container reports no data`, `tests/analysis-presentation.test.cjs::current performance shows the status lines below its heading`, `e2e/performance-values.spec.js::@responsive Laufen and Radfahren each show only their sport`, `e2e/analysis-on-demand.spec.js::@responsive the sport tabs end with their records and a record's date opens its activity`, `e2e/analysis-info.spec.js::@responsive Kraft shows how often per week the upper body and the legs were trained`, `tests/test_activity_records.py`.
 
 ### Requirement: Stamping inputs and refusal
 
@@ -701,7 +701,15 @@ Evidence: `public/views.js::replaceMarkdownLinks`; `public/views.js::linkHostNot
 
 ### Requirement: Shared confirmation dialog
 
-Destructive or discarding actions SHALL use one modal confirmation with a title (default "Aktion bestätigen"), a message, "Abbrechen" and an accept button (default "Bestätigen"); `docs/view-catalogue.md` lists the texts per action. Closing the dialog in any way SHALL count as declined, and a newer confirmation SHALL decline a pending one.
+Destructive or discarding actions SHALL use one modal confirmation with a title that asks the question, a message that names the consequence, "Abbrechen" and an accept button named by a verb (no default title or label); `docs/view-catalogue.md` lists the texts per action. Closing the dialog in any way SHALL count as declined, and a newer confirmation SHALL decline a pending one.
+
+#### Scenario: Reversible deletes act at once
+- **WHEN** the athlete taps "Löschen" on a planned unit, a library entry, a meal or an own product
+- **THEN** it is removed at once, the undo line "Gelöscht: …" with "Rückgängig" shows at its place, and no question is asked; only a bulk or irreversible action (the removal from the product database, data deletion, logout) keeps its dialog
+
+#### Scenario: Accent and danger buttons
+- **WHEN** a dialog offers a save or a confirmation
+- **THEN** the save and every accept are the accent button; only a confirmed destructive action fills red (`danger` on the call, for "Löschen", "Entfernen", "Ausmustern", "Zurücksetzen", "Verwerfen", "Trennen" and "Wiederherstellen"), and a "Löschen" outside a confirmation is the red-outlined `danger-button`
 
 #### Scenario: Typed confirmation
 - **WHEN** an action requires a confirmation text
@@ -757,7 +765,11 @@ Evidence: `public/coach.js::chatSendLabel`; `public/coach.js::updateChatSendButt
 
 ### Requirement: Reply annotations and receipts
 
-Under a Coach reply the client SHALL show its change labels joined by " · ", then one line per plan note code and severity as "Warnung|Hinweis: <label> · <dates> · <evidence>" using a fixed label and evidence phrase per note code, the dates of all its notes merged (an intensity distribution note names its week as "Woche ab <first planned day>", several as "Wochen ab <days>"); unknown codes are skipped. A user message with files SHALL show "Anhänge: <names>" and offer no edit action.
+Under a Coach reply the client SHALL show its change labels joined by " · ", the records changed, why no undo is offered, a removal not carried out and one sentence per plan note code and severity (scenario "Receipt lines"); unknown codes are skipped. A user message with files SHALL show "Anhänge: <names>" and offer no edit action.
+
+#### Scenario: Receipt lines
+- **WHEN** a Coach reply carries a change summary
+- **THEN** the labels are struck after "Zurückgenommen: " once undone and the reply text is muted; one line per changed record follows when the receipt has them (for example "Langer Lauf, So 22.11.: Dauer 80 → 85 min"), then why no undo is offered ("Rückgängig im Kalender" or "Nicht rückgängig zu machen: <changes>", after a refused undo "Nicht mehr rückgängig zu machen"), "Löschen nicht ausgeführt – bitte bestätigen" for a removal not carried out, and plan notes as "Warnung|Hinweis: <label> am <dates> (<evidence>)." with the dates of all notes merged; an intensity distribution note names its week by its Monday ("in der Woche ab <date>", several "in den Wochen ab <dates>")
 
 #### Scenario: Receipt toast
 - **WHEN** a turn reports command receipts
@@ -835,6 +847,14 @@ Evidence: `public/plan-views.js::plannedDayNoteSpecs`; `public/plan-views.js::re
 
 Every analysis chart SHALL pad its value axis by 12 % of the span (at least a unit-specific minimum), label only the latest, highest, lowest and first reading, and offer "Werte ansehen" with a table of the plotted values. Each day with a value SHALL be one inspectable marker; the chart is one tab stop on the latest day and arrow keys, Home and End move between days.
 
+#### Scenario: Value table
+- **WHEN** "Werte ansehen" is opened
+- **THEN** the table has the columns "Woche ab" (weekly) or "Tag", "Wert", and for one series "Messungen" and "Quelle"; it lists the newest first, shows the last six rows and offers "Alle N Wochen|Tage anzeigen" for the rest (#3928).
+
+#### Scenario: Recovery beyond 3 months
+- **WHEN** Erholung shows 6 or 12 months
+- **THEN** every chart plots the mean of each calendar week, dated at its Monday, with "Wochenmittel" in its caption, and the readiness axis runs from 0 to 100 (#3928).
+
 #### Scenario: Weekly values
 - **WHEN** a period of 3, 6 or 12 months is shown
 - **THEN** each chart plots one value per week: the last value for acute and smoothed load, fitness and threshold pace, the sum for training time and session-RPE load, the mean for steps and floors, the median for VO2max, and every dated value for FTP
@@ -846,6 +866,10 @@ Every analysis chart SHALL pad its value axis by 12 % of the span (at least a un
 #### Scenario: One reading
 - **WHEN** a series has a single reading
 - **THEN** no curve is drawn and "Ein einzelner Messwert zeigt noch keinen Verlauf; mindestens zwei datierte Werte sind erforderlich." is shown with the table
+
+#### Scenario: Readable axes and honest series
+- **WHEN** a chart has a long period or a series without a drawn line
+- **THEN** the date labels keep a round step, or an even one, so that no more labels than fit are drawn (4 on a phone, 7 on a wide screen) even for 12 months of days; a weekly chart names its week starts at the top right, clear of the first label; a series with one reading or none has no legend entry and sets no axis range, and its table cell is "–" without a date; the coverage of a weekly series counts the weeks of the chart's period; data that begins in the last 70 % of the period says "Daten ab dd.mm.jjjj."; a pulse chart spans at least ten beats
 
 Evidence: `public/analysis.js::analysisChart`; `public/analysis.js::analysisPlotScales`; `public/analysis.js::analysisLabelledPoints`; `public/analysis.js::appendAnalysisPointInspectors`; `public/analysis.js::analysisWeeklyLastPoints`; `public/analysis.js::analysisWeeklySumPoints`; `public/analysis.js::analysisWeeklyMeanPoints`; `public/analysis.js::analysisWeeklyPerformancePoints`; `public/activity-analysis.js::chartRange`; `public/activity-analysis.js::speedChannel`. Tests: `e2e/analysis-info.spec.js::@responsive a history chart is one tab stop with arrow-key navigation inside a named region`; `tests/analysis-presentation.test.cjs::analysis popovers stay inside the viewport on narrow screens and flip above when needed`; `tests/analysis-presentation.test.cjs::weekly daily-activity mean averages known days and keeps empty weeks as gaps`.
 

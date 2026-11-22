@@ -72,6 +72,22 @@ def stored_heart_rate_histogram(
     return histogram if isinstance(histogram, dict) else None
 
 
+def stored_normalized_graded_speed(
+    db: Any, analysis_version: int, session_id: str
+) -> dict[str, Any] | None:
+    """The stored normalized graded speed of one ``analysis_version`` row, if any."""
+    row = db.execute(
+        "SELECT json_extract(payload, '$.ngs') AS ngs "
+        "FROM activity_detail_analysis WHERE analysis_version = ? "
+        "AND json_type(payload, '$.ngs') = 'object' AND activity_id = ?",
+        (analysis_version, session_id),
+    ).fetchone()
+    if row is None:
+        return None
+    ngs = json.loads(row["ngs"])
+    return ngs if isinstance(ngs, dict) else None
+
+
 def recent_session_analyses(
     db: Any, analysis_version: int, limit: int = 100
 ) -> list[dict[str, Any]]:

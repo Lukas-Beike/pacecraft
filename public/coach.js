@@ -735,7 +735,7 @@ async function resetCoachChat() {
     toast("Bitte warte, bis die wartenden Nachrichten gesendet sind. Danach kannst du den Chat zurücksetzen.", true);
     return;
   }
-  if (!button || !await requestConfirmation("Coach-Chat wirklich zurücksetzen und eine neue Unterhaltung beginnen?", { title: "Coach-Chat zurücksetzen?" })) return;
+  if (!button || !await requestConfirmation("Der Verlauf dieses Chats wird gelöscht, eine neue Unterhaltung beginnt. Profil, Pläne und Einträge bleiben.", { title: "Coach-Chat zurücksetzen?", danger: true, confirmLabel: "Zurücksetzen" })) return;
   button.disabled = true;
   button.textContent = "Wird zurückgesetzt…";
   try {
@@ -987,9 +987,12 @@ function addStructuredCoachReceipts(payload) {
     || commands.some((entry) => entry.tool === "commit_training_plan");
   const finalCommit = commands.findLast((entry) => entry.tool === "commit_training_plan");
   // Read-only tools load information and change nothing, so only writes, jobs and failures are announced.
+  // The receipt line under the answer already names what changed, so the toast keeps failures and pending jobs.
+  const shownLabels = payload?.message?.coach_changes?.labels || [];
+  const receiptShows = (entry) => shownLabels.some((label) => label.startsWith(COACH_RECEIPT_LABELS[entry.tool]));
   toastCoachReceipts(commands.filter((entry) => receiptIsVisible(entry, planCommitRequested, finalCommit))
     .map((entry) => [entry, commandReceipt(entry)])
-    .filter(([entry, receipt]) => receipt.status !== "success" || COACH_RECEIPT_LABELS[entry.tool])
+    .filter(([entry, receipt]) => receipt.status !== "success" || (COACH_RECEIPT_LABELS[entry.tool] && !receiptShows(entry)))
     .map(([, receipt]) => receipt));
 }
 
@@ -1356,8 +1359,9 @@ async function executeCoachActionProposal(proposal, button) {
     state.coachActionProposals = (state.coachActionProposals || []).filter((item) => item.id !== proposal.id);
     renderCoachActionReview();
     const receipt = coachActionReceipt(proposal, result);
-    toast(receipt.message);
+    // The receipt shows on the screen it leads to: a route change hides the toast it follows.
     if (state.route === originalRoute) await showCoachReceiptArea(receipt);
+    toast(receipt.message);
     await load("/api/bootstrap?local=1", ["plan", "library", "profile", "feedback"]);
   } catch (error) {
     if (executeSent && !executeResponded && !isHttpClientRejection(error)) lockUnknownCoachActionOutcome(proposal);
@@ -1625,7 +1629,8 @@ function messageActionButton(icon, label) {
 function renderMessageNode(message, latest = false) {
   const node = h("div", `message ${message.role}`);
   if (message.id != null) node.dataset.messageId = String(message.id);
-  if (message.role === "assistant") node.innerHTML = markdownToHtml(message.content);
+  if (message.role === "assistant" && message.coach_cancelled) node.textContent = "Abgebrochen";
+  else if (message.role === "assistant") node.innerHTML = markdownToHtml(message.content);
   else {
     node.textContent = message.content;
     if (message.attachment_names) {
@@ -1633,9 +1638,9 @@ function renderMessageNode(message, latest = false) {
     }
   }
   appendMessageRetry(node, message);
-  appendFailedTurnRetry(node, message, latest);
+  appendFailedTurnActions(node, message, latest);
   appendMessageChanges(node, message);
-  if (message.role === "assistant" && message.coach_model) {
+  if (message.role === "assistant" && message.coach_model && !message.coach_failed && !message.coach_cancelled) {
     const option = (state.data?.model?.options || []).find((entry) => entry.id === message.coach_model);
     node.append(h("small", "message-model", option?.label || message.coach_model));
   }
@@ -1664,21 +1669,39 @@ function renderMessageNode(message, latest = false) {
   return node;
 }
 
-// What the Coach turn changed locally, with one undo for the whole turn.
-function appendMessageChanges(node, message) {
-  const changes = message.role === "assistant" ? message.coach_changes : null;
-  if (!Array.isArray(changes?.labels) || !changes.labels.length) return;
-  const line = h("div", `message-changes${changes.undone_at ? " is-undone" : ""}`);
+// The line naming the labels of a turn's changes, with its one undo for the whole turn.
+function changesLine(message, changes, labels) {
+  const undone = Boolean(changes.undone_at);
+  const line = h("div", `message-changes${undone ? " is-undone" : ""}`);
   const icon = h("span", "message-changes-icon");
-  icon.innerHTML = `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="${changes.undone_at ? "M9 14 4 9l5-5M4 9h11a5 5 0 0 1 0 10h-3" : "m5 12 5 5 9-10"}"></path></svg>`;
-  line.append(icon, h("span", "message-changes-text", changes.undone_at ? `Zurückgenommen: ${changes.labels.join(" · ")}` : changes.labels.join(" · ")));
-  if (changes.undoable && !changes.undone_at && message.client_turn_id) {
+  icon.innerHTML = `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="${undone ? "M9 14 4 9l5-5M4 9h11a5 5 0 0 1 0 10h-3" : "m5 12 5 5 9-10"}"></path></svg>`;
+  line.append(icon, h("span", "message-changes-text", undone ? ["Zurückgenommen: ", h("s", null, labels.join(" · "))] : labels.join(" · ")));
+  if (changes.undoable && !undone && message.client_turn_id) {
     const undo = h("button", { type: "button", className: "message-undo" }, "Rückgängig");
     undo.addEventListener("click", () => undoCoachTurn(message.client_turn_id, undo));
     line.append(undo);
   }
-  node.append(line);
+  return line;
+}
+
+// What the Coach turn changed locally.
+function appendMessageChanges(node, message) {
+  const changes = message.role === "assistant" ? message.coach_changes : null;
+  const labels = Array.isArray(changes?.labels) ? changes.labels : [];
+  const notDone = Array.isArray(changes?.not_done) ? changes.not_done : [];
+  if (!labels.length && !notDone.length) return;
+  if (changes.undone_at) node.classList.add("is-undone");
+  if (labels.length) node.append(changesLine(message, changes, labels));
+  appendChangeLines(node, changes, notDone);
   appendPlanNotes(node, changes.plan_check_notes);
+}
+
+// One line per changed record, why a turn has no undo, and a removal that was not carried out.
+function appendChangeLines(node, changes, notDone) {
+  const details = Array.isArray(changes.details) ? changes.details : [];
+  if (details.length) node.append(h("ul", "message-changes-details", ...details.map((line) => h("li", null, String(line)))));
+  const note = changes.undone_at ? "" : changes.undo_note;
+  for (const text of [typeof note === "string" ? note : "", ...notDone]) if (text) node.append(h("p", "message-changes-note", text));
 }
 
 // One entry per known finding and severity, its dates merged (#2617); a
@@ -1714,18 +1737,28 @@ function appendPlanNotes(node, planNotes) {
   };
   for (const { code, severity, days } of groupPlanNotes(planNotes, planNoteLabels)) {
     const label = planNoteLabels[code];
-    const dates = [...new Set(days)].sort((a, b) => a.localeCompare(b)).map((day) => AppFormat.date(day)).filter(Boolean);
-    let weeks = "";
-    if (code === "intensity_distribution") weeks = dates.length > 1 ? "Wochen ab " : "Woche ab ";
-    const dateLabel = dates.length ? ` · ${weeks}${dates.join(", ")}` : "";
-    node.append(h("div", `message-plan-note${severity === "warning" ? " is-warning" : ""}`, `${severity === "warning" ? "Warnung" : "Hinweis"}: ${label[0]}${dateLabel} · ${label[1]}`));
+    // A distribution note covers a week, named by its Monday like every week in the app.
+    const isos = [...new Set(days.map((day) => (code === "intensity_distribution" ? weekMonday(day) : day)).filter(Boolean))].sort((a, b) => a.localeCompare(b));
+    const dates = isos.map((day) => AppFormat.date(day)).filter(Boolean);
+    const weeks = dates.length > 1 ? "den Wochen" : "der Woche";
+    let when = "";
+    if (dates.length) when = code === "intensity_distribution" ? ` in ${weeks} ab ${dates.join(", ")}` : ` am ${dates.join(", ")}`;
+    node.append(h("div", `message-plan-note${severity === "warning" ? " is-warning" : ""}`, `${severity === "warning" ? "Warnung" : "Hinweis"}: ${label[0]}${when} (${label[1]}).`));
   }
+}
+
+// The Monday of an ISO day's week, as an ISO day (empty for an unreadable day).
+function weekMonday(iso) {
+  const day = new Date(`${String(iso).slice(0, 10)}T12:00:00Z`);
+  if (Number.isNaN(day.getTime())) return "";
+  day.setUTCDate(day.getUTCDate() - ((day.getUTCDay() + 6) % 7));
+  return day.toISOString().slice(0, 10);
 }
 
 async function undoCoachTurn(clientTurnId, button) {
   if (button.disabled) return;
   button.disabled = true;
-  const confirmed = await requestConfirmation("Alle lokalen Änderungen dieser Coach-Antwort zurücknehmen? Intervals.icu bleibt unverändert.", { title: "Änderungen zurücknehmen?", confirmLabel: "Zurücknehmen" });
+  const confirmed = await requestConfirmation("Alle lokalen Änderungen dieser Coach-Antwort werden zurückgenommen. Intervals.icu bleibt unverändert.", { title: "Änderungen zurücknehmen?", confirmLabel: "Zurücknehmen" });
   if (!confirmed) {
     button.disabled = false;
     return;
@@ -1743,17 +1776,44 @@ async function undoCoachTurn(clientTurnId, button) {
     await load("/api/bootstrap?local=1", ["plan", "library", "profile"]);
   } catch (error) {
     button.disabled = false;
+    // A record edited since keeps the turn from being undone as one: say so on its receipt.
+    if (error.status === 409) {
+      (state.data?.messages || []).forEach((item) => {
+        if (item.role === "assistant" && item.client_turn_id === clientTurnId && item.coach_changes) {
+          item.coach_changes = { ...item.coach_changes, undoable: false, undo_note: "Nicht mehr rückgängig zu machen" };
+        }
+      });
+      renderMessages(state.data?.messages || [], false, true);
+    }
     toast(error.message, true);
   }
 }
 
-// The newest reply of a failed turn offers to send the athlete's text again as a new turn.
-function appendFailedTurnRetry(node, message, latest) {
-  if (message.role !== "assistant" || !message.coach_failed || !latest || !message.client_turn_id) return;
+// A failure a retry cannot fix: the key, the balance or the model name is the athlete's to change.
+const FAILURE_NEEDS_CONNECTIONS = new Set([
+  "authentication_or_permission", "insufficient_quota", "credit_balance_exhausted", "organization_spend_limit_exceeded",
+  "project_spend_limit_exceeded", "organization_usage_limit_exceeded", "openai_not_configured", "anthropic_not_configured",
+  "not_configured",
+]);
+
+// A failed or stopped reply keeps its status style; the newest one offers the fitting action.
+function appendFailedTurnActions(node, message, latest) {
+  const stopped = message.coach_cancelled === true;
+  if (message.role !== "assistant" || !(message.coach_failed || stopped)) return;
+  node.classList.add(stopped ? "is-stopped" : "is-failed");
+  if (!latest || !message.client_turn_id) return;
+  if (FAILURE_NEEDS_CONNECTIONS.has(message.coach_failure_reason)) {
+    node.append(h("a", { className: "secondary-button message-retry", href: "#more/connections" }, "Anbindungen öffnen"));
+    return;
+  }
+  // The model setting names a model the provider does not know.
+  if (message.coach_failure_reason === "not_found") {
+    node.append(h("a", { className: "secondary-button message-retry", href: "#more/coach" }, "Modell prüfen"));
+    return;
+  }
   const request = (state.data?.messages || []).find((entry) => entry.role === "user" && entry.client_turn_id === message.client_turn_id);
   // Attachments are not kept after a turn, so only a text request can be sent again.
   if (!request?.content || messageAttachmentLabel(request.attachment_names)) return;
-  node.classList.add("is-failed");
   const retry = h("button", { type: "button", className: "secondary-button message-retry" }, "Erneut senden");
   retry.addEventListener("click", () => resendChatText(String(request.content), message.coach_request_kind));
   node.append(retry);

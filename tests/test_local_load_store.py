@@ -22,6 +22,7 @@ from backend.canonical.vocabulary import (
     Sport,
 )
 from backend.db import canonical_store
+from backend.db.activity_analysis_reads import stored_normalized_graded_speed
 from backend.db.activity_detail_store import save_analysis
 from backend.db.repositories import KeyValueRepository
 from backend.performance.canonical_session_analysis import ANALYSIS_VERSION
@@ -410,6 +411,103 @@ class LocalLoadHeartRateHistogramTests(unittest.TestCase):
         value, inputs = self._load()
         self.assertAlmostEqual(value, 32.84, places=2)
         self.assertEqual((inputs["hr_basis"], inputs["hr_coverage"]), ("average", 0.5))
+
+
+class LocalLoadNormalizedGradedSpeedTests(unittest.TestCase):
+    """Card M6 v8: a 50 min run, Garmin's average 3.0 m/s, threshold 4.0 m/s."""
+
+    def setUp(self) -> None:
+        directory = tempfile.TemporaryDirectory()
+        self.addCleanup(directory.cleanup)
+        self.manager = open_manager(directory.name)
+        self.addCleanup(self.manager.close)
+        self.stage = LocalLoadStage(
+            key_values=KeyValueRepository(lambda: NOW),
+            zone_provider=lambda: ZONE,
+            clock=lambda: NOW,
+        )
+        add_session_record(
+            self.manager,
+            ProviderId.GARMIN,
+            "g1",
+            "act_g1",
+            sport="run",
+            moving_duration_s=3000.0,
+        )
+        with self.manager.unit_of_work() as db:
+            db.execute(
+                "UPDATE activity_records SET details = json_set(COALESCE(details, '{}'), "
+                "'$.grade_adjusted_speed_mps', 3.0) WHERE activity_id = 'act_g1'"
+            )
+            _heart_threshold(
+                db, MetricKind.THRESHOLD_PACE, 4.0, Sport.RUN, date(2026, 9, 1)
+            )
+
+    def _run(self) -> dict[str, Any]:
+        with self.manager.unit_of_work() as db:
+            self.stage.run_batch(db)
+            return self.stage.summary(db)["counts"]
+
+    def _row(self) -> dict[str, Any]:
+        with self.manager.reader() as db:
+            return stored_local_loads(db)["act_g1"]["session_load"]
+
+    def _store(
+        self, ngs: dict[str, Any] | None, version: int = ANALYSIS_VERSION
+    ) -> None:
+        with self.manager.unit_of_work() as db:
+            save_analysis(
+                db,
+                "act_g1",
+                analysis_version=version,
+                input_sha256="a" * 64,
+                payload={"ngs": ngs},
+                now=NOW,
+            )
+
+    def test_the_stored_value_is_read_for_the_current_version_only(self) -> None:
+        ngs = {"version": 1, "ngs_mps": 3.6, "seconds": 2900.0, "source": "x"}
+        self._store(ngs, ANALYSIS_VERSION - 1)
+        with self.manager.reader() as db:
+            self.assertIsNone(
+                stored_normalized_graded_speed(db, ANALYSIS_VERSION, "act_g1")
+            )
+        self._store(ngs)
+        with self.manager.reader() as db:
+            self.assertEqual(
+                ngs, stored_normalized_graded_speed(db, ANALYSIS_VERSION, "act_g1")
+            )
+            self.assertIsNone(
+                stored_normalized_graded_speed(db, ANALYSIS_VERSION, "none")
+            )
+
+    def test_the_pass_scores_the_run_on_the_stored_ngs(self) -> None:
+        self._run()
+        row = self._row()
+        self.assertEqual(
+            row["derivation"]["inputs"]["pace_basis"], "grade_adjusted_speed"
+        )
+        self.assertAlmostEqual(row["value"], 3000 / 3600 * 0.75**2 * 100, places=3)
+        self._store({"ngs_mps": 3.6, "seconds": 2900.0, "source": "x"})
+        self.assertEqual(self._run()["written"], 1)
+        row = self._row()
+        inputs = row["derivation"]["inputs"]
+        self.assertEqual(inputs["pace_basis"], "normalized_graded_speed")
+        self.assertEqual((inputs["speed_mps"], inputs["ngs_seconds"]), (3.6, 2900.0))
+        self.assertAlmostEqual(row["value"], 3000 / 3600 * 0.9**2 * 100, places=3)
+
+    def test_the_fingerprint_follows_the_ngs_only(self) -> None:
+        self._store({"ngs_mps": 3.6, "seconds": 2900.0, "source": "x"})
+        self._run()
+        first = self._row()["input_fingerprint"]
+        self.assertEqual(self._run()["written"], 0)
+        # Another covered time alone is a new input.
+        self._store({"ngs_mps": 3.6, "seconds": 2800.0, "source": "x"})
+        self.assertEqual(self._run()["written"], 1)
+        second = self._row()["input_fingerprint"]
+        self._store({"ngs_mps": 3.7, "seconds": 2800.0, "source": "x"})
+        self.assertEqual(self._run()["written"], 1)
+        self.assertEqual(len({first, second, self._row()["input_fingerprint"]}), 3)
 
 
 class LocalLoadReviewRegressionTests(unittest.TestCase):

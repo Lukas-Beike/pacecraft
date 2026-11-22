@@ -13,21 +13,21 @@ from backend.activities.strength_progress import strength_progress
 from backend.athlete.checkins import reports_complaint
 from backend.athlete.local_date import iso_date_prefix
 from backend.canonical.first_threshold import (
-    FIRST_THRESHOLD_FIELD,
     first_threshold_estimated,
-    first_threshold_percent,
 )
 from backend.canonical.stored_sports import resolve_competition_sport
-from backend.canonical.vocabulary import Sport
+from backend.canonical.vocabulary import MetricKind, Sport
 from backend.errors import AppError
 from backend.performance.canonical_current import read_current_inputs
 from backend.performance.canonical_inputs import resolve_reader
+from backend.performance.local_tss import RESTING_HR_LOOKBACK_DAYS, DatedThresholds
 from backend.planning import (
     brief_budget,
     calendar_load,
     intensity_distribution,
     leg_strength,
     plan_checks,
+    run_hr_cap,
     season,
 )
 from backend.planning.load_checks import (
@@ -124,11 +124,32 @@ def read_load_thresholds(
     observations: Any,
     today: date,
     configurations: Sequence[Any] = (),
+    sex: str | None = None,
 ) -> LoadThresholds:
-    """Local zone configurations, then the source-policy provider thresholds."""
+    """Local zone configurations, then the source-policy provider thresholds.
+
+    The newest resting HR of the last 7 days (Garmin, then Wahoo, as M6 reads
+    it) scores planned heart-rate steps (#3918).
+    """
     with database_manager.reader() as db:
-        current = read_current_inputs(resolve_reader(observations, db), db, as_of=today)
-    return load_thresholds(current, today, configurations)
+        reader = resolve_reader(observations, db)
+        current = read_current_inputs(reader, db, as_of=today)
+        rest = DatedThresholds(
+            (),
+            resting_hr=reader.observations(
+                db,
+                MetricKind.RESTING_HR,
+                start=today - timedelta(days=RESTING_HR_LOOKBACK_DAYS),
+                end=today,
+            ),
+        ).resting_hr(today)
+    return load_thresholds(
+        current,
+        today,
+        configurations,
+        resting_hr=None if rest is None else float(rest.value),
+        sex=sex,
+    )
 
 
 def read_progress(reports: Any) -> Mapping[str, Any]:
@@ -280,13 +301,13 @@ def _focus_estimate(
 def season_phase_brief(
     competitions: Sequence[Mapping[str, Any]], today: date
 ) -> dict[str, Any]:
-    """Phase toward the next A/B race with its weeks, or unknown."""
+    """Phase toward the next A race with its weeks, or unknown (#3919)."""
     return {
         **season.target_phase(
             [{**row, "event_date": _competition_day(row)} for row in competitions],
             today,
         ),
-        "source": "derived from competition dates and priority A/B, read-only",
+        "source": "derived from competition dates and priority A, read-only",
         "boundaries": season.PHASE_BOUNDARIES,
     }
 
@@ -467,6 +488,8 @@ class PlanGuardService:
         self._infection_hint: Callable[[], Mapping[str, Any] | None] = lambda: None
         self._return_stage: Callable[[], int | None] = lambda: None
         self._profile = profile
+        # The stored first threshold as percent of today's run threshold HR (#3915).
+        self._first_threshold_percent: Callable[[], float | None] = lambda: None
         self._planned_units = planned_units
         self._completed = completed_activities
         self._competitions = competitions
@@ -536,7 +559,7 @@ class PlanGuardService:
         profile = self._profile()
         return plan_checks.hr_cap_invalid(
             units,
-            first_threshold_percent(profile.get(FIRST_THRESHOLD_FIELD)),
+            self._first_threshold_percent(),
             first_threshold_estimated(profile),
         )
 
@@ -558,6 +581,13 @@ class PlanGuardService:
     ) -> PlanGuardService:
         """Check that units come from these library templates (#2379)."""
         self._templates = templates
+        return self
+
+    def with_first_threshold_percent(
+        self, percent: Callable[[], float | None]
+    ) -> PlanGuardService:
+        """Check the heart-rate caps against the stored first threshold (#3915)."""
+        self._first_threshold_percent = percent
         return self
 
     def with_return_stage(
@@ -712,6 +742,18 @@ class PlanGuardService:
         )
         if coverage:
             brief = brief_budget.fit_brief({**brief, "load_coverage": coverage})
+        # Units still carrying an older, higher default cap (#3915): a note only.
+        outdated = run_hr_cap.outdated_default_caps(units)
+        if outdated:
+            brief = brief_budget.fit_brief(
+                {
+                    **brief,
+                    "outdated_hr_caps": {
+                        "note": run_hr_cap.OUTDATED_CAPS_NOTE,
+                        "units": outdated,
+                    },
+                }
+            )
         # A shown infection hint (M14, #3762) is information only; no check reads it.
         # It is never trimmed: the brief is fitted again with it, older entries go first.
         infection_hint = self._infection_hint()

@@ -222,7 +222,7 @@ class ProviderStateServiceTests(unittest.TestCase):
                     },
                 },
             )
-        message = "Das OpenAI-Guthaben ist aufgebraucht. Bitte im OpenAI-Billing Guthaben hinzufügen."
+        message = "Das OpenAI-Guthaben ist aufgebraucht. Lade es im OpenAI-Konto auf."
         self.assertEqual(raised.exception.reason, "credit_balance_exhausted")
         self.assertEqual(raised.exception.message, message)
         self.assertEqual(

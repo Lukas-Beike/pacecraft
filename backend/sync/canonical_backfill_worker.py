@@ -166,6 +166,11 @@ class CanonicalBackfillWorker:
             except Exception as exc:  # noqa: BLE001 - a failed run is recorded, not raised
                 self._fail(stage, name, exc)
                 return False
+            if report.items and getattr(stage, "FEEDS_EARLIER_STAGES", False) is True:
+                # The stage's rows are inputs of a stage that ran before it (the
+                # local load reads the stored analysis): one more pass.
+                with self._start_lock:
+                    self._rerun_requested = True
             # Outside the writer and the gate: rest as long as the batch worked.
             self._pause(max(0.0, self._clock() - started))
             if report.done:

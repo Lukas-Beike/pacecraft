@@ -1405,6 +1405,14 @@ _MESSAGE_COLUMNS = (
     "WHERE messages.role='assistant' "
     "AND coach_commands.client_turn_id=messages.client_turn_id "
     "AND json_valid(receipt)) AS coach_failed, "
+    "(SELECT json_extract(receipt, '$.stopped') FROM coach_commands "
+    "WHERE messages.role='assistant' "
+    "AND coach_commands.client_turn_id=messages.client_turn_id "
+    "AND json_valid(receipt)) AS coach_cancelled, "
+    "(SELECT json_extract(receipt, '$.failure_reason') FROM coach_commands "
+    "WHERE messages.role='assistant' "
+    "AND coach_commands.client_turn_id=messages.client_turn_id "
+    "AND json_valid(receipt)) AS coach_failure_reason, "
     "(SELECT json_extract(receipt, '$.model') FROM coach_commands "
     "WHERE messages.role='assistant' "
     "AND coach_commands.client_turn_id=messages.client_turn_id "
@@ -1419,9 +1427,11 @@ def _message_view(row: Any) -> dict[str, Any]:
         if (key != "client_turn_id" or value is not None)
         and (key != "attachment_names" or value != "[]")
         and (key != "coach_changes" or value is not None)
-        and key != "coach_failed"
-        and (key != "coach_model" or value is not None)
+        and key not in {"coach_failed", "coach_cancelled"}
+        and (key not in {"coach_model", "coach_failure_reason"} or value is not None)
     }
+    if row["coach_cancelled"]:
+        message["coach_cancelled"] = True
     if row["coach_failed"] is not None:
         message["coach_failed"] = True
         if row["coach_failed"]:

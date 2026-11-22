@@ -219,8 +219,10 @@ class AthleteGetRoutes:
         `label`, `sport`, `metric`, `environment`, `valid_from`, `valid_until`,
         `threshold`, `maximum`, `limits`, `percent_limits`, `percent_basis`),
         `effective` (per sport, metric and environment the configuration in effect
-        today: `sport`, `metric`, `environment`, `key`) and, only when there is one,
-        `threshold_warnings`.
+        today: `sport`, `metric`, `environment`, `key`), `defaults` (the standard
+        zones that apply where no configuration exists: per metric `power`,
+        `heart_rate` and `pace` the upper limits in percent of the threshold) and,
+        only when there is one, `threshold_warnings`.
 
         Errors: none beyond the common ones.
         """
@@ -257,7 +259,16 @@ class AthleteGetRoutes:
         day the source rows show) and `day_partial` (true for today, whose values
         are still partial; today `device` takes the newest full day's resting
         kcal of the 7 days before as `resting_kcal`, named by `resting_from`, or
-        has none with `resting_missing` `no_recent_resting`), `windows` (the 12
+        has none with `resting_missing` `no_recent_resting`), `expected_total_kcal`
+        (today only, else null: the outlined source's total with the latest
+        window's mean steps and digestion and today's planned units costed from
+        their planned duration; null while a part is unknown),
+        `energy_availability` (the 7-day mean of the intake less the sessions'
+        net exercise energy per kg fat-free mass, `kcal_per_kg_ffm` over `days`
+        complete days, `below` the floor of 30; null under 5 days or without a
+        fat-free mass), `loss_rate` (the 28-day weight line's fall in
+        `pct_per_week` of body mass, `fast` above 1; null when it is not
+        falling), `windows` (the 12
         weekly 4-week window ends,
         oldest first), `rows` (`katch_mcardle`, `cunningham`, `device` (the
         wearable's estimate) and `own`, each with `resting_kcal`, `total_kcal`
