@@ -120,13 +120,15 @@ class PushChecks:
                 morning_data_event(db, today),
                 new_activity_event(recent),
             ]
-        if self._infection_hint():
+        if self._source(self._infection_hint):
             found.append(infection_hint_event(today))
         # The subscription day as the athlete counts days, like the staleness hint.
         subscribed_on = (
             since.astimezone(local.tzinfo).date() if local.tzinfo else since.date()
         )
-        found.append(step_test_event(self._threshold_warnings(), subscribed_on))
+        found.append(
+            step_test_event(self._source(self._threshold_warnings), subscribed_on)
+        )
         found += self._derived_events(local, subscribed_on, units, bool(recent))
         return [event for event in found if event is not None]
 
@@ -148,7 +150,7 @@ class PushChecks:
         # A record needs a session; the records are read only while one is recent.
         if news:
             found.append(
-                personal_best_event(self._source(self._records), subscribed_on)
+                personal_best_event(self._source(self._records), subscribed_on, today)
             )
         if local.hour >= MISSING_FEEDBACK_HOUR:
             found.append(

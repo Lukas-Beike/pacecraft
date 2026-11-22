@@ -69,7 +69,7 @@ The server SHALL send each event key at most once, only to subscribed devices, o
 
 #### Scenario: Coach answer
 - **WHEN** a Coach turn started by the athlete's own stored message finishes with an answer
-- **THEN** "Coach" / "Deine Antwort ist da." opens `#coach` right away at any hour, after the turn's operation; a failed delivery never fails the turn and no unfinished turn sends one
+- **THEN** "Coach" / "Deine Antwort ist da." opens `#coach` right away at any hour, after the turn's operation; it is sent on its own thread, once and without a retry; a failed delivery never fails or holds the turn and no unfinished turn sends one
 
 #### Scenario: Morning plan
 - **WHEN** today has a planned unit

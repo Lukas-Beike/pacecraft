@@ -572,8 +572,9 @@ class PushChecksTests(unittest.TestCase):
     def test_the_morning_plan_is_announced_once_a_day_without_details(self):
         self._unit("u0", date="2026-11-23", name="Morgen", sport="Swim")
         self._unit("u1", date="2026-11-22", name="Archiviert", archived=True)
+        self._unit("u_rest", date="2026-11-22", name="Ruhetag", duration_minutes=0)
         self.checks.check()
-        self.assertEqual(self.sender.sent, [])  # tomorrow's and archived units
+        self.assertEqual(self.sender.sent, [])  # tomorrow's, archived and rest units
         self._unit("u2", date="2026-11-22", name="Geheime Intervalle", sport="Swim")
         self._at(6)
         self.checks.check()
@@ -691,6 +692,12 @@ class PushChecksTests(unittest.TestCase):
         )
         self.checks.check()
         self.assertEqual(len(self._titled("Neue Bestleistung")), 2)
+        # A record first seen long after its day is no news (its key could have aged out).
+        window["power"].append(record("a3", "2026-11-22", duration_seconds=1200))
+        self._at(11, day=30)
+        self._session("act_2", 60 * 24 * 8, started="2026-11-30T08:00:00+00:00")
+        self.checks.check()
+        self.assertEqual(len(self._titled("Neue Bestleistung")), 2)
 
     def test_missing_feedback_is_announced_once_a_day_from_the_evening(self):
         self.state["unrated"] = ["act_1"]
@@ -787,9 +794,12 @@ class PushChecksTests(unittest.TestCase):
         cases = {
             "calm": ({"apparent_temperature_max": 24.9, "weather_code": 3}, False),
             "heat": ({"apparent_temperature_max": 25.0}, True),
-            "air": ({"air_quality": {"european_aqi_max": 60.0}}, True),
-            "fair air": ({"air_quality": {"european_aqi_max": 59.0}}, False),
-            "pollen": ({"pollen": {"levels": {"Birke": "2-3"}}}, True),
+            # 60 is "mäßig" in the app; "schlecht" starts above it.
+            "air": ({"air_quality": {"european_aqi_max": 61.0}}, True),
+            "moderate air": ({"air_quality": {"european_aqi_max": 60.0}}, False),
+            # DWD level 3 is high; the in-between "2-3" is not.
+            "pollen": ({"pollen": {"levels": {"Birke": "3"}}}, True),
+            "medium pollen": ({"pollen": {"levels": {"Birke": "2-3"}}}, False),
             "light pollen": ({"pollen": {"levels": {"Birke": "1-2"}}}, False),
             "storm": ({"weather_code": 95}, True),
             "no forecast": (None, False),

@@ -15,7 +15,8 @@ from backend.weather import projection as weather_projection
 from backend.weather.activity_weather import HEAT_APPARENT_C
 
 WEATHER_RECOMMENDATION_DAYS = 5
-# The recommendation names the air quality from this European AQI on ("schlecht").
+# The recommendation names the air quality from this European AQI on; the
+# warning starts above it, where the app's category is "schlecht".
 AIR_QUALITY_POOR_FROM = 60
 # Weather codes from thunderstorm on are severe (the window score's own cut).
 SEVERE_WEATHER_CODE = 95
@@ -350,15 +351,21 @@ def day_warning(day: Any) -> bool:
             SEVERE_WEATHER_CODE,
         ),
     )
-    return any(value is not None and value >= limit for value, limit in checks) or any(
+    heat, air, storm = (value for value, _limit in checks)
+    return (
+        (heat is not None and heat >= HEAT_APPARENT_C)
+        or (air is not None and air > AIR_QUALITY_POOR_FROM)
+        or (storm is not None and storm >= SEVERE_WEATHER_CODE)
+    ) or any(
         _pollen_level(level) >= POLLEN_HIGH_LEVEL
         for level in (levels.values() if isinstance(levels, dict) else ())
     )
 
 
 def _pollen_level(level: Any) -> int:
-    """The highest index in a DWD level such as "2-3"; 0 when unreadable."""
-    return max((int(digit) for digit in re.findall(r"\d", str(level))), default=0)
+    """The DWD index of a single level ("3"); a range such as "2-3" counts as its lower end."""
+    digits = re.findall(r"\d", str(level))
+    return int(digits[0]) if digits else 0
 
 
 def weather_recommendations(

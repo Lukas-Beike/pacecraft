@@ -17,6 +17,7 @@ from typing import Any, Final
 
 from backend.canonical.vocabulary import GARMIN_ID, WAHOO_ID, MetricKind
 from backend.db import canonical_store, planning_store
+from backend.planning.calendar import workout_is_rest
 from backend.push.service import Notification
 from backend.weather.recommendations import day_warning, is_outdoor_activity
 
@@ -96,8 +97,11 @@ def planned_units(db: Any, start: date, end: date) -> list[tuple[str, dict[str, 
 def morning_plan_event(
     units: list[tuple[str, dict[str, Any]]], today: date
 ) -> Notification | None:
-    """Today has a planned unit: once a day, without saying which."""
-    if not any(str(unit.get("date"))[:10] == today.isoformat() for _, unit in units):
+    """Today has a planned unit that is no rest day: once a day, without saying which."""
+    if not any(
+        str(unit.get("date"))[:10] == today.isoformat() and not workout_is_rest(unit)
+        for _, unit in units
+    ):
         return None
     return Notification(
         "morning_plan",
@@ -219,16 +223,22 @@ def _record_keys(window: dict[str, Any]) -> Iterable[tuple[str, dict[str, Any]]]
                 yield identity, entry
 
 
-def personal_best_event(records: Any, since_day: date) -> Notification | None:
-    """Records set on or after the day of the subscription, one key per record."""
+def personal_best_event(
+    records: Any, since_day: date, today: date
+) -> Notification | None:
+    """Records set since the subscription and recently, one key per record.
+
+    Only a record of the last days counts, so an old record whose key aged out of
+    the sent record is never announced again.
+    """
     window = records.get("all_time") if isinstance(records, dict) else None
     if not isinstance(window, dict):
         return None
+    first = max(since_day, today - timedelta(days=NEW_ACTIVITY_DAYS)).isoformat()
     keys = [
         f"record:{key}"
         for key, entry in _record_keys(window)
-        if entry.get("status") == "ok"
-        and str(entry.get("date"))[:10] >= since_day.isoformat()
+        if entry.get("status") == "ok" and str(entry.get("date"))[:10] >= first
     ]
     return _one(
         "personal_best",

@@ -7,6 +7,7 @@ stateless instance per process.
 
 from __future__ import annotations
 
+import threading
 import time
 import uuid
 from collections.abc import Callable, Collection
@@ -128,9 +129,16 @@ def build_coach_background_jobs(
         )
 
     def announce_answer(client_turn_id: str) -> None:
-        # The push checks are wired after the context is built (#3914).
+        # The push checks are wired after the context is built (#3914). The
+        # delivery runs on its own thread, so the Coach worker never waits on a
+        # push service; it is sent once and not retried (the answer is in the app).
         if ctx.push_checks is not None:
-            ctx.push_checks.notify(coach_answer_event(client_turn_id))
+            threading.Thread(
+                target=ctx.push_checks.notify,
+                args=(coach_answer_event(client_turn_id),),
+                name="coach-answer-push",
+                daemon=True,
+            ).start()
 
     def background_job_runner() -> CoachBackgroundJobRunner:
         return CoachBackgroundJobRunner(
