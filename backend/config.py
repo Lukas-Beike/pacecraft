@@ -15,7 +15,7 @@ from datetime import date
 from pathlib import Path
 from urllib.parse import urlsplit, urlunsplit
 
-from backend.errors import AppError
+from backend.errors import AppError, SchemaRefusedError
 
 DEFAULT_OPENAI_BASE_URL = "https://api.openai.com/v1"
 DEFAULT_ANTHROPIC_BASE_URL = "https://api.anthropic.com"
@@ -239,14 +239,24 @@ DATABASE_KEY_MISMATCH_MESSAGE = (
 )
 
 
-def refuse_wrong_database_key(error: BaseException, logger: logging.Logger) -> None:
-    """Stop start-up with one plain reason when APP_PASSWORD does not open the database.
+def refuse_unopenable_database(error: BaseException, logger: logging.Logger) -> None:
+    """Stop start-up with one plain reason when the database cannot be opened.
 
     SQLCipher notices a wrong key only at the first read and reports it as the
     driver's ``DatabaseError`` "file is not a database"; the file is unchanged.
+    A schema this release does not open is refused before any write (#3927).
     Logs one critical event without driver text, key or path, and exits non-zero
     (#2912). Any other error returns, for the caller to re-raise.
     """
+    if isinstance(error, SchemaRefusedError):
+        logger.critical(
+            "Secure startup refused",
+            extra={
+                "event": "secure_startup_refused",
+                "context": {"reason": "schema_unsupported"},
+            },
+        )
+        raise SystemExit(str(error)) from None
     if not (
         type(error).__name__ == "DatabaseError"
         and str(error).strip().lower() == "file is not a database"

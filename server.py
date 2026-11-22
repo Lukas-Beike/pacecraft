@@ -1019,7 +1019,7 @@ def main() -> None:
     try:
         initialise_database()
     except Exception as error:
-        app_config.refuse_wrong_database_key(error, LOGGER)
+        app_config.refuse_unopenable_database(error, LOGGER)
         raise
     remove_orphaned_staging_files(DATA_DIR, LOGGER)
     server = http_server.CoachHTTPServer(

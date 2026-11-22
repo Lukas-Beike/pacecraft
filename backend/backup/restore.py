@@ -170,10 +170,12 @@ class DatabaseRestoreService:
             dependencies.coach_wake.set()
 
     def _invalid_backup(self, exc: Exception) -> AppError:
+        # Damaged pages raise without text; the answer still names a reason (#3927).
+        detail = self._dependencies.redact(str(exc)).strip()[:300]
         return AppError(
             400,
             "Das Datenbank-Backup konnte nicht validiert werden: "
-            f"{self._dependencies.redact(str(exc))[:300]}",
+            f"{detail or 'Die Datei ist beschädigt oder unlesbar.'}",
         )
 
     @staticmethod

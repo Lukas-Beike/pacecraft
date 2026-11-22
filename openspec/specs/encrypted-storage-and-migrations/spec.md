@@ -207,7 +207,7 @@ The database SHALL reject schema versions older than the baseline v26 (releases 
 - **WHEN** a database from a release with schema v25 or older is opened
 - **THEN** startup rejects it with the release 2.0.5 hint and leaves its rows and version unchanged.
 
-Evidence: `backend/db/migrations.py::migrate_schema`, `backend/db/schema_history.py::OLDEST_SUPPORTED_SCHEMA_VERSION`; `tests/test_db_migrations.py::test_older_database_file_is_refused_at_startup_without_changes`, `tests/test_db_migrations.py::test_older_or_newer_schema_version_is_rejected_without_modification`, `tests/test_change_history.py::test_planning_field_names_before_schema_v16_are_not_translated`.
+Evidence: `backend/db/migrations.py::migrate_schema`, `backend/db/schema_history.py::OLDEST_SUPPORTED_SCHEMA_VERSION`; `tests/test_db_migrations.py::test_older_or_newer_database_file_is_refused_at_startup_byte_identical`, `tests/test_db_migrations.py::test_older_or_newer_schema_version_is_rejected_without_modification`, `tests/test_change_history.py::test_planning_field_names_before_schema_v16_are_not_translated`.
 
 ### Requirement: Closed value columns of the current schema
 
