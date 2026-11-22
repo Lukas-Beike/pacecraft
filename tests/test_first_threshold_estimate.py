@@ -930,6 +930,22 @@ class LegacyPercentTests(unittest.TestCase):
         self.assertEqual("150", raw[FIRST_THRESHOLD_FIELD])
         self.assertNotIn("first_threshold_pct", raw)
 
+    def test_a_save_that_keeps_the_percent_stays_undoable(self) -> None:
+        service = self.profile_service(lambda _day: None)
+        self.store(
+            {"first_threshold_pct": "88", FIRST_THRESHOLD_ORIGIN_FIELD: "measured"}
+        )
+        service.patch({"name": "Ada"})
+        with self.manager.unit_of_work() as db:
+            row = db.execute(
+                "SELECT after_hash FROM change_history WHERE entity_type='profile' "
+                "ORDER BY rowid DESC LIMIT 1"
+            ).fetchone()
+        current = change_history.audit_projection("profile", audit_view(self.raw()))
+        self.assertIn(
+            row["after_hash"], change_history.accepted_audit_hashes("profile", current)
+        )
+
     def test_clearing_a_legacy_derived_bpm_drops_the_percent(self) -> None:
         service = self.profile_service(lambda _day: 170.0)
         self.store(

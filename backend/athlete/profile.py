@@ -530,8 +530,9 @@ class ProfileService:
                 previous=previous,
             )
         )
+        stored = self._stored(db)
         kept = self._kept_legacy(
-            self._stored(db), normalized, previous.get(FIRST_THRESHOLD_FIELD, "")
+            stored, normalized, previous.get(FIRST_THRESHOLD_FIELD, "")
         )
         self._profile_repository.set(db, json.dumps(kept, ensure_ascii=False))
         self._on_location_changed(
@@ -540,8 +541,10 @@ class ProfileService:
             repository=self._key_value_repository,
             db=db,
         )
+        # Recorded as the history's current view rebuilds it, so a kept legacy
+        # percent still matches for undo (Gitar, #3915).
         change_history.record_change(
-            db, "profile", "profile", "update", previous, normalized
+            db, "profile", "profile", "update", audit_view(stored), audit_view(kept)
         )
         return normalized
 
