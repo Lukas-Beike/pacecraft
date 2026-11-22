@@ -170,7 +170,6 @@ async function expectStructure(page, view) {
 
 // #3935 X-03: on the phone every control that is not a link inside a sentence keeps a 44 px hit area.
 async function expectTouchTargets(page, view) {
-  if (page.viewportSize().width > 480) return;
   const small = await page.evaluate(() => {
     const found = new Map();
     const name = (element) => `${element.tagName.toLowerCase()}${element.id ? `#${element.id}` : ""}${typeof element.className === "string" && element.className ? `.${element.className.trim().split(/\s+/)[0]}` : ""}`;
@@ -220,7 +219,7 @@ test.describe("colour contrast sweep", () => {
           await expectContrast(page, view, theme);
           if (theme === "light") await expectTextFormats(page, view);
           if (theme === "light") await expectStructure(page, view);
-          if (theme === "light") await expectTouchTargets(page, view);
+          if (theme === "light" && page.viewportSize().width <= 480) await expectTouchTargets(page, view);
           if (route === "analysis/running") {
             // One opened explanation popover, named so a new chart legend cannot change it (#2766).
             await page.locator(".panel.active").getByRole("button", { name: "Entwicklung: Informationen", exact: true }).click();
