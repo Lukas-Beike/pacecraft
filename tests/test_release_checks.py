@@ -7,6 +7,7 @@ import sys
 import unittest
 import urllib.error
 from contextlib import redirect_stdout
+from datetime import UTC, datetime
 from pathlib import Path
 from unittest import mock
 
@@ -320,6 +321,81 @@ class ReleaseDispatchTests(unittest.TestCase):
         )
         self.assertEqual((3, []), (code, dispatched))
         self.assertIn("no green container run", out)
+
+    def test_quiet_means_no_recent_merge_and_no_armed_pr_about_to_merge(self):
+        # #3922: each version commit restarted every open PR's CI.
+        now = datetime(2026, 1, 1, 12, 0, tzinfo=UTC)
+        running = {"name": "browser", "status": "IN_PROGRESS", "conclusion": ""}
+        done = {"name": "unit", "status": "COMPLETED", "conclusion": "SUCCESS"}
+        red = {"name": "lint", "status": "COMPLETED", "conclusion": "FAILURE"}
+        armed = {"autoMergeRequest": {"mergeMethod": "SQUASH"}}
+        for prs, merged_at, reason in (
+            ([], "2026-01-01T11:57:00Z", "#5 merged 3 min ago"),
+            ([], "2026-01-01T11:40:00Z", None),
+            ([dict(armed, number=8, statusCheckRollup=[done, running])], None,
+             "#8 is armed with 1 check(s) left"),
+            ([dict(armed, number=8, statusCheckRollup=[red, running])], None, None),
+            ([{"number": 8, "statusCheckRollup": [running]}], None, None),
+            ([dict(armed, number=8, statusCheckRollup=[running] * 4)], None, None),
+            ([dict(armed, number=8, statusCheckRollup=[done])], None, None),
+        ):  # fmt: skip
+            last = {"number": 5, "mergedAt": merged_at} if merged_at else None
+            with self.subTest(prs=prs, merged_at=merged_at):
+                self.assertEqual(
+                    release_dispatch.quiet_reason(prs, last, now, 10), reason
+                )
+
+    def test_dispatch_when_quiet_waits_and_stops_at_the_time_limit(self):
+        busy = [{"number": 8, "autoMergeRequest": {}, "statusCheckRollup": []}]
+        recent = [{"number": 5, "mergedAt": "2999-01-01T00:00:00Z"}]
+        answers = [busy, recent, [], []]
+        clock = iter(range(0, 10**6, 30))
+        out = io.StringIO()
+        with (
+            mock.patch.object(release_dispatch, "gh_json", side_effect=answers),
+            mock.patch.object(release_dispatch.time, "sleep"),
+            mock.patch.object(release_dispatch.time, "monotonic", lambda: next(clock)),
+            redirect_stdout(out),
+        ):
+            self.assertEqual(release_dispatch.when_quiet(60, 10), 0)
+        self.assertIn("waiting for quiet: #5 merged", out.getvalue())
+        self.assertIn("develop quiet", out.getvalue())
+        with (
+            mock.patch.object(release_dispatch, "when_quiet", return_value=3),
+            mock.patch.object(release_dispatch, "dispatch") as start,
+        ):
+            self.assertEqual(release_dispatch.main(["dispatch", "--when-quiet"]), 3)
+        start.assert_not_called()
+
+    def test_follow_lists_the_prs_the_release_contains(self):
+        # #3922: late merges missed a release three times unnoticed.
+        title = "chore(release): set application version to {}"
+        versions = [
+            {"title": title.format("2.1.1"), "mergedAt": "2026-01-01T10:00:00Z"},
+            {"title": title.format(V), "mergedAt": "2026-01-01T12:00:00Z"},
+        ]
+        merged = [
+            {"number": 40, "title": "fix: a", "mergedAt": "2026-01-01T11:00:00Z"},
+            {
+                "number": 41,
+                "title": title.format(V),
+                "mergedAt": "2026-01-01T12:00:00Z",
+            },
+            {"number": 39, "title": "fix: b", "mergedAt": "2026-01-01T10:00:00Z"},
+            {"number": 42, "title": "feat: c", "mergedAt": "2026-01-01T11:59:00Z"},
+        ]
+        with mock.patch.object(
+            release_dispatch, "gh_json", side_effect=[versions, merged]
+        ) as read:
+            self.assertEqual(release_dispatch.contained(V), [40, 42])
+        self.assertIn(
+            "merged:2026-01-01T10:00:00Z..2026-01-01T12:00:00Z", read.call_args.args
+        )
+        with mock.patch.object(release_dispatch, "gh_json", return_value=versions[:1]):
+            self.assertIsNone(release_dispatch.contained("2.1.1"))
+        with mock.patch.object(release_dispatch, "contained", return_value=[40, 42]):
+            _code, out, _ = follow("--version", V, prs=[VERSION_PR])
+        self.assertIn("contains #40 #42", out)
 
     def test_follow_wait_loops_until_published_and_prints_only_changes(self):
         published = {"tagName": V, "isDraft": False, "targetCommitish": "abc"}

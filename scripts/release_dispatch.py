@@ -1,14 +1,19 @@
 """Dispatch the daily release workflow and follow its release chain.
 
-    python scripts/release_dispatch.py dispatch [--version 2.1.2] [--when-green [--timeout MIN]]
+    python scripts/release_dispatch.py dispatch [--version 2.1.2] [--when-quiet [--quiet MIN]]
+        [--when-green] [--timeout MIN]
     python scripts/release_dispatch.py follow [--version 2.1.2] [--since ISO] [--wait [--timeout MIN]]
 
 `dispatch` starts `daily-release.yml` on develop and prints the run it started;
 with `--when-green` it first waits until the "Test and publish container image"
 run of the develop head succeeded, the head read through the GitHub API, never a
-local fetch (#3539): a newer head takes over, a red run exits 1. `follow` prints
+local fetch (#3539): a newer head takes over, a red run exits 1. With
+`--when-quiet` it first waits until no PR merged into develop in the last
+`--quiet` minutes and no armed PR is down to its last checks, so one release
+carries a batch of merges instead of restarting every open PR (#3922). `follow` prints
 one line per link of the chain: the version PR, the promotion PR to main, the
-GitHub Release, and the container publish run for that tag; with `--wait` it
+GitHub Release, and the container publish run for that tag, and the PRs the
+release contains (merged after the previous version PR); with `--wait` it
 follows by itself and prints only changed links, until done or the time limit.
 Exit 0 published, 1 a link failed or was closed unmerged, 2 bad input or a
 failed gh call, 3 still in progress. A transient GitHub error (HTTP 5xx, a
@@ -45,6 +50,11 @@ RETRY_DELAYS = (2, 5, 10)
 POLL_SECONDS = 30
 WHEN_GREEN_MINUTES = 60
 WAIT_MINUTES = 90
+# --when-quiet: minutes without a merge, and how few running checks mark an
+# armed PR as about to merge.
+QUIET_MINUTES = 10
+FINISHING_CHECKS = 3
+PASSING = {"SUCCESS", "SKIPPED", "NEUTRAL"}
 
 
 def gh_json(*args: str) -> Any:
@@ -122,6 +132,94 @@ def when_green(minutes: int) -> int:
             print(f"develop {head[:12]}: no green container run within {minutes} min")
             return 3
         time.sleep(POLL_SECONDS)
+
+
+def _check_counts(rollup: list[dict]) -> tuple[int, int]:
+    """(running, failed) checks of a PR's status rollup."""
+    running = failed = 0
+    for item in rollup:
+        if "context" in item:
+            state = str(item.get("state"))
+            running += state in {"PENDING", "EXPECTED"}
+            failed += state not in {"PENDING", "EXPECTED", "SUCCESS"}
+        elif item.get("status") != "COMPLETED":
+            running += 1
+        else:
+            failed += str(item.get("conclusion")) not in PASSING
+    return running, failed
+
+
+def quiet_reason(
+    open_prs: list[dict], last_merge: dict | None, now: datetime, minutes: int
+) -> str | None:
+    """Why develop is not quiet yet, or None (#3922): a merge in the last
+    ``minutes``, or an armed PR whose last few checks are still running."""
+    if last_merge:
+        merged = datetime.fromisoformat(last_merge["mergedAt"])
+        age = (now - merged).total_seconds() / 60
+        if age < minutes:
+            return f"#{last_merge['number']} merged {age:.0f} min ago"
+    for pr in open_prs:
+        running, failed = _check_counts(pr.get("statusCheckRollup") or [])
+        if (
+            pr.get("autoMergeRequest")
+            and not failed
+            and 0 < running <= FINISHING_CHECKS
+        ):
+            return f"#{pr['number']} is armed with {running} check(s) left"
+    return None
+
+
+def when_quiet(minutes: int, quiet: int) -> int:
+    """Wait until develop is quiet; 0 quiet, 3 not within ``minutes``."""
+    deadline = time.monotonic() + minutes * 60
+    while True:
+        open_prs = gh_json(
+            "pr", "list", "--base", "develop", "--state", "open", "--limit", "100",
+            "--json", "number,autoMergeRequest,statusCheckRollup",
+        )  # fmt: skip
+        merged = gh_json(
+            "pr", "list", "--base", "develop", "--state", "merged", "--limit", "1",
+            "--json", "number,mergedAt",
+        )  # fmt: skip
+        reason = quiet_reason(
+            open_prs, merged[0] if merged else None, datetime.now(UTC), quiet
+        )
+        if reason is None:
+            print("develop quiet")
+            return 0
+        if time.monotonic() >= deadline:
+            print(f"develop not quiet within {minutes} min: {reason}")
+            return 3
+        print(f"waiting for quiet: {reason}")
+        time.sleep(POLL_SECONDS)
+
+
+def contained(version: str) -> list[int] | None:
+    """The PRs merged into develop after the previous version PR, up to this
+    version's (#3922); None while either version PR is not merged."""
+    versions = gh_json(
+        "pr", "list", "--base", "develop", "--state", "merged", "--limit", "10",
+        "--search", '"set application version to" in:title', "--json", "title,mergedAt",
+    )  # fmt: skip
+    times = sorted(
+        (pr["mergedAt"], match[1])
+        for pr in versions
+        if (match := VERSION_PR.match(pr["title"])) and pr.get("mergedAt")
+    )
+    mine = [index for index, (_, name) in enumerate(times) if name == version]
+    if not mine or mine[0] == 0:
+        return None
+    start, end = times[mine[0] - 1][0], times[mine[0]][0]
+    merged = gh_json(
+        "pr", "list", "--base", "develop", "--state", "merged", "--limit", "200",
+        "--search", f"merged:{start}..{end}", "--json", "number,title,mergedAt",
+    )  # fmt: skip
+    return sorted(
+        pr["number"]
+        for pr in merged
+        if start < pr["mergedAt"] <= end and not VERSION_PR.match(pr["title"])
+    )
 
 
 def follow_wait(version: str | None, since: str | None, minutes: int) -> int:
@@ -236,6 +334,8 @@ def follow(version: str | None, since: str | None) -> int:
     links.append((state, f"publish {detail}"))
     for state, text in links:
         print(f"{state} {text}")
+    if links[0][0] == "ok" and (numbers := contained(version)) is not None:
+        print("contains " + (" ".join(f"#{n}" for n in numbers) or "no PRs"))
     states = {state for state, _ in links}
     if "failed" in states:
         return 1
@@ -248,6 +348,8 @@ def main(argv: list[str] | None = None) -> int:
     start = sub.add_parser("dispatch")
     start.add_argument("--version", type=version_arg)
     start.add_argument("--when-green", action="store_true")
+    start.add_argument("--when-quiet", action="store_true")
+    start.add_argument("--quiet", type=int, default=QUIET_MINUTES, help="minutes")
     start.add_argument(
         "--timeout", type=int, default=WHEN_GREEN_MINUTES, help="minutes"
     )
@@ -259,6 +361,8 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     try:
         if args.command == "dispatch":
+            if args.when_quiet and (busy := when_quiet(args.timeout, args.quiet)):
+                return busy
             if args.when_green and (green := when_green(args.timeout)):
                 return green
             return dispatch(args.version)
