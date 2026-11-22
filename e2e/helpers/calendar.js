@@ -30,7 +30,6 @@ async function renderSyntheticCalendar(page) {
       { duration: 300, value: 280, end_value: 280, zone: 4, label: "Schwelle" },
       { duration: 600, value: 120, end_value: 120, zone: 1, label: "Locker" },
     ] };
-    state.data.calendar_display = { past_weeks: 1, future_weeks: 1 };
     state.data.daily_planning_context = [{ date: day(1), appointments: [{ name: "Arzt [NO_TRAINING]", start_local: `${day(1)}T09:00:00` }] }];
     state.data.training_calendar = [
       { id: "past-ride", date: day(-2), name: "Vergangene Ausfahrt", type: "Ride", is_completed_activity: true, moving_duration_s: 3600, distance_m: 30000 },

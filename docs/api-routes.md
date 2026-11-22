@@ -154,7 +154,6 @@ handler's docstring. Regenerate it with
 | POST | `/api/push/unsubscribe` | Session + CSRF | after access | Remove this device's push subscription. |
 | GET | `/api/readiness` | Public | no | Readiness status; 503 while not ready. |
 | POST | `/api/routes/rename` | Session + CSRF | after access | Rename one recognised activity route; nothing is written remotely. |
-| PUT | `/api/settings/calendar-display` | Session + CSRF | before access | Update the calendar display settings. |
 | PUT | `/api/settings/credentials` | Session + CSRF | before access | Save or clear provider credentials in the encrypted database. |
 | PUT | `/api/settings/model` | Session + CSRF | before access | Select the Coach model of one task. |
 | PUT | `/api/settings/service-tier` | Session + CSRF | before access | Select the OpenAI service tier. |
@@ -2180,19 +2179,6 @@ as `label`.
 Errors: 400 "Der Name muss aus 1 bis 60 Zeichen ohne Steuerzeichen
 bestehen." for an invalid `name`; 404 "Nicht gefunden." when `route_id`
 names no stored route.
-
-### `PUT /api/settings/calendar-display`
-
-Request: JSON body `{"past_weeks": integer, "future_weeks": integer}`, each
-0 to 52, at least one required; a field not sent keeps its value.
-
-Response: 200 `{"status": "ok", "past_weeks": integer, "future_weeks":
-integer}` with the stored values (defaults 1 and 4).
-
-Errors: 400 "Wochen zurück muss eine ganze Zahl sein." and "Wochen voraus
-muss eine ganze Zahl sein."; 400 "Wochen zurück muss zwischen 0 und 52
-liegen." and "Wochen voraus muss zwischen 0 und 52 liegen."; 400 "Keine
-Kalenderansicht-Einstellungen eingegeben." when neither field is sent.
 
 ### `PUT /api/settings/credentials`
 

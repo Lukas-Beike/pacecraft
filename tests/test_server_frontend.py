@@ -162,7 +162,7 @@ class ServerFrontendTests(ServerTestCase):
             ),
             "settings.js": (
                 "saveProfile",
-                "saveCalendarDisplaySettings",
+                "downloadDatabaseBackup",
             ),
         }
         for module, names in moved.items():

@@ -15,7 +15,7 @@ The client SHALL provide Coach, plan, nutrition, analysis, and more navigation w
 
 #### Scenario: Keyboard shortcuts for the main views
 - **WHEN** the athlete presses Alt+1 to Alt+5 while no text field has focus and no dialog or popover menu is open
-- **THEN** Coach, Kalender, Analyse, Ernährung or Mehr opens as if its navigation item were selected; with Ctrl or AltGr, while typing or behind a dialog or menu nothing changes; the navigation items name their key in `aria-keyshortcuts`, and Mehr › Darstellung lists the keys in a collapsed "Tastenkürzel" section on screens at least 768 px wide.
+- **THEN** Coach, Kalender, Analyse, Ernährung or Mehr opens as if its navigation item were selected; with Ctrl or AltGr, while typing or behind a dialog or menu nothing changes; the navigation items name their key in `aria-keyshortcuts`, and Mehr › App lists the keys in a collapsed "Tastenkürzel" section on screens at least 768 px wide.
 
 #### Scenario: Unsaved profile form
 - **WHEN** navigation would leave a dirty profile panel
@@ -25,7 +25,7 @@ The client SHALL provide Coach, plan, nutrition, analysis, and more navigation w
 - **WHEN** the athlete returns to Coach or opens the plan overview
 - **THEN** route-specific scroll restoration preserves Coach reading position or reveals the planned-today section according to the recorded navigation state.
 
-Evidence: `public/navigation.js::AppRouter.navigate`, `public/shared.js::restoreRouteScroll`, `public/views.js::renderPlanSegments`; `e2e/navigation.spec.js::@responsive each hash navigation renders its target once`, `e2e/navigation.spec.js::@responsive Alt+1 to Alt+5 switch the main views outside text fields and are listed in Darstellung`, `e2e/coach.spec.js::login, main views, dialog and profile form state`, `e2e/settings-hub.spec.js::@responsive sports are toggle chips of at least 44 px and need no hint`, `e2e/contracts.spec.js::plan overview deep link focuses and reveals today after loading`.
+Evidence: `public/navigation.js::AppRouter.navigate`, `public/shared.js::restoreRouteScroll`, `public/views.js::renderPlanSegments`; `e2e/navigation.spec.js::@responsive each hash navigation renders its target once`, `e2e/navigation.spec.js::@responsive Alt+1 to Alt+5 switch the main views outside text fields and are listed in App`, `e2e/coach.spec.js::login, main views, dialog and profile form state`, `e2e/settings-hub.spec.js::@responsive sports are toggle chips of at least 44 px and need no hint`, `e2e/contracts.spec.js::plan overview deep link focuses and reveals today after loading`.
 
 ### Requirement: Responsive controls remain named and keyboard reachable
 The client SHALL use semantic labels, focusable controls and scroll regions, current-route indications, and responsive layouts for the supported mobile, tablet, and desktop views. Icon actions SHALL retain accessible names and the existing touch target sizing.
@@ -329,10 +329,10 @@ The client SHALL expose server-advertised model, thinking, and speed capabilitie
 - **THEN** the newer edits remain visible/dirty; invalid JSON or an incomplete save response does not mark the draft saved.
 
 #### Scenario: Device and read settings
-- **WHEN** appearance or the calendar display (weeks back and ahead) changes
-- **THEN** appearance persists on the device with system/light/dark support, while the calendar display uses its explicit API and reports validation errors.
+- **WHEN** the appearance changes in Mehr › App
+- **THEN** it persists on the device with system/light/dark support; the calendar shows a fixed range of one week back and four ahead, with no setting (#3914).
 
-Evidence: `public/settings.js::saveProfile`, `public/settings.js::saveModel`, `public/settings.js::saveThinkingLevel`, `public/settings.js::saveServiceTier`, `public/settings.js::saveCalendarDisplaySettings`, `public/shared.js::applyAppearance`, `public/appearance.js` (early theme projection), `public/views.js::renderModel`; `e2e/model-settings.spec.js::model and speed selection persist with capability checks @responsive`, `e2e/audit-remediation.spec.js::profile edits made while saving remain dirty and visible`, `e2e/contracts.spec.js::appearance choice updates the theme and survives reload on this device`, `tests/test_settings.py::SettingsServiceTests.test_calendar_defaults_clamping_and_write_keys`.
+Evidence: `public/settings.js::saveProfile`, `public/settings.js::saveModel`, `public/settings.js::saveThinkingLevel`, `public/settings.js::saveServiceTier`, `public/plan-views.js::CALENDAR_WEEKS`, `public/shared.js::applyAppearance`, `public/appearance.js` (early theme projection), `public/views.js::renderModel`; `e2e/model-settings.spec.js::model and speed selection persist with capability checks @responsive`, `e2e/audit-remediation.spec.js::profile edits made while saving remain dirty and visible`, `e2e/contracts.spec.js::appearance choice updates the theme and survives reload on this device`, `tests/test_server_http.py` (no `calendar_display` in the start data), `tests/test_http_settings_put_routes.py::test_the_calendar_range_has_no_route_any_more`.
 
 ### Requirement: Diagnostics and destructive operational controls retain reviewable outcomes
 The client SHALL expose operations through their explicit controls, keep downloads and destructive requests visibly pending, request applicable confirmation, and display failures without implying a completed restore/deletion. Diagnostic values SHALL be displayed as inert text.
@@ -620,23 +620,6 @@ The Analyse tab SHALL show the segments Laufen, Radfahren, Kraft, Belastung, Erh
 - **THEN** the table lists all thirteen all-time durations from 5 s to 1 h, a value from an indoor ride with a dashed "Indoor" chip, and the line "Experimentell · CP (28 Tage): …" (CS for running) names per fit CP and W′ (kJ) or CS and D′ with "(unsicher)", the count of race efforts, or "—" for a fit that is not `ok`.
 
 Evidence: `public/analysis.js::renderAnalysisSegments`, `public/analysis.js::renderStrengthAnalysis`, `backend/performance/report_service.py::TrainingReportReadService.strength`, `public/analysis.js::renderRunningBestEfforts`, `public/analysis.js::renderActivityRecords`, `backend/performance/activity_records.py::activity_records`, `public/analysis.js::criticalPowerLine`, `public/analysis.js::renderAnalysisHistory`, `public/performance-view.js::renderCurrentPerformance`, `public/navigation.js::routeFromHash`; `tests/analysis-presentation.test.cjs::an analysis segment is empty only when every content container reports no data`, `tests/analysis-presentation.test.cjs::current performance shows the status lines below its heading`, `e2e/performance-values.spec.js::@responsive Laufen and Radfahren each show only their sport`, `e2e/analysis-on-demand.spec.js::@responsive Rekorde shows the single-activity records and opens a record's activity`, `tests/test_activity_records.py`.
-
-### Requirement: Calendar display range setting
-The system SHALL store how many weeks the training calendar shows back and ahead as `past_weeks` and `future_weeks`, each a whole number from 0 to 52 with defaults 1 and 4, stored under `calendar_display_past_weeks` and `calendar_display_future_weeks`. `PUT /api/settings/calendar-display` SHALL change only the values it names and return `status: "ok"` with both (contract in `docs/api-routes.md`).
-
-#### Scenario: Partial update
-- **WHEN** only `future_weeks` is sent
-- **THEN** only that value changes.
-
-#### Scenario: Invalid input
-- **WHEN** the body is not an object, names neither value, or a value cannot be converted to an integer or lies outside 0 to 52 (a convertible value such as `3.7` or `true` is stored as its integer)
-- **THEN** the request fails with 400 and nothing changes, also when one of two sent values is valid.
-
-#### Scenario: Stored value out of range
-- **WHEN** a stored value is not a number or lies outside the range
-- **THEN** the default is used for the first, and the value is clamped to 0 to 52 for the second.
-
-Evidence: `backend/settings.py::SettingsService._calendar_display_settings`, `backend/settings.py::SettingsService.save_calendar_display_settings`, `backend/http_api/settings_put.py`, `public/settings.js`; `tests/test_server_weather_calendar.py::test_calendar_display_settings_are_persisted_and_validated`, `tests/test_http_settings_put_routes.py::test_calendar_display_route_passes_whole_payload`, `tests/test_settings.py::test_calendar_defaults_clamping_and_write_keys`, `tests/test_settings.py::test_calendar_invalid_values_have_exact_errors_and_no_partial_write`.
 
 ### Requirement: Stamping inputs and refusal
 

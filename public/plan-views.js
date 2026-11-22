@@ -308,6 +308,9 @@ function plannedAppointmentLabel(event) {
 // name such as "Sweet Spot - 3 x 12 min" stays whole; the stored name never changes.
 const CALENDAR_NAME_PREFIX = /^(.+?) [-–—] (\S.*)$/u;
 
+// The calendar shows a fixed range: one week back, four ahead (#3914).
+const CALENDAR_WEEKS = Object.freeze({ past: 1, future: 4 });
+
 function calendarDisplayName(name, place = "") {
   const text = String(name || "").trim();
   const match = CALENDAR_NAME_PREFIX.exec(text);
@@ -2094,7 +2097,7 @@ function runningWeekSyncCount(trainingCalendar) {
   const todayKey = timezoneDateKey(state.data?.profile?.timezone, new Date());
   const weekKey = planWeekStart(todayKey);
   const lastDay = addDateKey(weekKey, 6);
-  const futureWeeks = calendarDisplayValue(state.data?.calendar_display?.future_weeks, 4);
+  const futureWeeks = CALENDAR_WEEKS.future;
   const entries = (Array.isArray(trainingCalendar) ? trainingCalendar : [])
     .filter((item) => item && !item.archived && !item.local_deleted)
     .filter((item) => { const day = plannedEventDate(item); return day && day >= weekKey && day <= lastDay; });
@@ -2718,7 +2721,7 @@ function withOlderSessions(calendar) {
   return calendar.concat(olderSessions.items.filter((item) => !known.has(String(item.activity_id || item.id))));
 }
 
-// Only a week before the configured ones asks for more: the startup data covers those.
+// Only a week before the shown range asks for more: the startup data covers that range.
 function loadOlderSessions(calendar, shownStartKey, configuredStartKey) {
   if (olderSessions.loading || olderSessions.cursor === null || shownStartKey >= configuredStartKey) return;
   const loadedStart = calendar.filter((item) => calendarActualActivity(item)).map(plannedEventDate).filter(Boolean).sort()[0];
@@ -2758,16 +2761,15 @@ function renderPlanned(trainingCalendar) {
   const calendar = withOlderSessions(Array.isArray(trainingCalendar) ? trainingCalendar : []);
   const todayKey = timezoneDateKey(state.data?.profile?.timezone, new Date());
   const currentWeekKey = planWeekStart(todayKey);
-  const display = state.data?.calendar_display || {};
-  const pastWeeks = calendarDisplayValue(display.past_weeks, 1);
-  const futureWeeks = calendarDisplayValue(display.future_weeks, 4);
+  const pastWeeks = CALENDAR_WEEKS.past;
+  const futureWeeks = CALENDAR_WEEKS.future;
   const firstWeekKey = addDateKey(currentWeekKey, -7 * pastWeeks);
   const lastWeekKey = addDateKey(currentWeekKey, 7 * futureWeeks);
   const lastDateKey = addDateKey(lastWeekKey, 6);
   plannedLastDateKey = lastDateKey;
   keepPlannedSelection(todayKey, lastDateKey);
   dropDeleteReceiptsOutsideWeek();
-  const snapshot = JSON.stringify([calendar, todayKey, selectedWeekKey, calendarView, calendarSport, selectedDayKey, display, state.data?.daily_planning_context, state.data?.planning_compliance, state.data?.competitions, state.data?.weather, (state.data?.external_calendar?.events || []).map((event) => [event?.uid, event?.start_local, event?.impact, event?.name]), state.data?.external_calendar?.undecided_upcoming]);
+  const snapshot = JSON.stringify([calendar, todayKey, selectedWeekKey, calendarView, calendarSport, selectedDayKey, state.data?.daily_planning_context, state.data?.planning_compliance, state.data?.competitions, state.data?.weather, (state.data?.external_calendar?.events || []).map((event) => [event?.uid, event?.start_local, event?.impact, event?.name]), state.data?.external_calendar?.undecided_upcoming]);
   if (snapshot === plannedRenderSnapshot && root.childElementCount) {
     if (state.plannedTodayFocusPending) requestAnimationFrame(() => focusPlannedToday());
     refreshWeekReview(root);

@@ -33,7 +33,7 @@ test("@responsive the logout button only appears in Betrieb & Diagnose", async (
   await page.goto("/");
   await expect(page.locator("#appShell")).toBeVisible();
   await expect.poll(() => page.evaluate(() => Boolean(state.data))).toBe(true);
-  for (const segment of ["appearance", "equipment", "connections", "coach"]) {
+  for (const segment of ["app", "equipment", "connections", "coach"]) {
     await page.goto(`/#more/${segment}`);
     await expect(page.locator(`#settingsPanel [data-more-segment-panel="${segment}"]`).first()).toBeVisible();
     await expect(page.locator("#logoutButton"), segment).toBeHidden();
@@ -102,7 +102,7 @@ test("@responsive each navigation item is a stable hash link that opens and focu
   }
 });
 
-test("@responsive Alt+1 to Alt+5 switch the main views outside text fields and are listed in Darstellung", async ({ page }) => {
+test("@responsive Alt+1 to Alt+5 switch the main views outside text fields and are listed in App", async ({ page }) => {
   await page.route("**/api/state/events*", (route) => route.abort());
   await page.goto("/");
   await expect(page.locator("#appShell")).toBeVisible();
@@ -138,7 +138,7 @@ test("@responsive Alt+1 to Alt+5 switch the main views outside text fields and a
   await probe("tooltip");
   await page.keyboard.press("Alt+Digit3");
   await expect(page).toHaveURL(/#analysis/);
-  await page.evaluate(async () => { document.getElementById("shortcutProbe").remove(); await AppRouter.navigate("more/appearance", { historyMode: "replace" }); });
+  await page.evaluate(async () => { document.getElementById("shortcutProbe").remove(); await AppRouter.navigate("more/app", { historyMode: "replace" }); });
   const help = page.locator(".shortcut-help");
   if ((page.viewportSize()?.width || 0) < 768) {
     await expect(help).toBeHidden();

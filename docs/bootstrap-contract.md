@@ -47,7 +47,6 @@ when its marker changes. Each marker is built from local durable state
 | `activity_feedback` | object | `recent`, `scope` |
 | `app` | object | `name`, `version` |
 | `calendar` | list |  |
-| `calendar_display` | object | `future_weeks`, `past_weeks` |
 | `checkins` | list | always empty here; its area route loads it |
 | `coach_quick_actions` | object | `adjust_plan`, `analyze_latest_activity`, `horizon_days`, `morning_checkin`, `plan_blockers` |
 | `competitions` | list |  |

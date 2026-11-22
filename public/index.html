@@ -213,11 +213,11 @@
           <div><h2>Mehr</h2></div>
         </div>
         <nav class="more-segment-nav" aria-label="Mehr-Bereiche">
-          <a href="#more/appearance" data-more-segment="appearance">Darstellung</a>
           <a href="#more/profile" data-more-segment="profile" aria-current="page">Profil</a>
-          <a href="#more/equipment" data-more-segment="equipment">Ausrüstung und Wartung</a>
           <a href="#more/connections" data-more-segment="connections">Anbindungen</a>
+          <a href="#more/equipment" data-more-segment="equipment">Ausrüstung und Wartung</a>
           <a href="#more/coach" data-more-segment="coach">Coach &amp; Modell</a>
+          <a href="#more/app" data-more-segment="app">App</a>
           <a href="#more/operations" data-more-segment="operations">Betrieb &amp; Diagnose</a>
         </nav>
         <form id="profileForm" class="profile-form">
@@ -301,19 +301,26 @@
           <div><h2>Mehr</h2></div>
         </div>
         <nav class="more-segment-nav" aria-label="Mehr-Bereiche">
-          <a href="#more/appearance" data-more-segment="appearance">Darstellung</a>
           <a href="#more/profile" data-more-segment="profile">Profil</a>
-          <a href="#more/equipment" data-more-segment="equipment">Ausrüstung und Wartung</a>
           <a href="#more/connections" data-more-segment="connections" aria-current="page">Anbindungen</a>
+          <a href="#more/equipment" data-more-segment="equipment">Ausrüstung und Wartung</a>
           <a href="#more/coach" data-more-segment="coach">Coach &amp; Modell</a>
+          <a href="#more/app" data-more-segment="app">App</a>
           <a href="#more/operations" data-more-segment="operations">Betrieb &amp; Diagnose</a>
         </nav>
         <section class="settings-section" data-more-segment-panel="equipment" hidden>
           <section id="equipmentItems" class="analysis-chart-card" aria-label="Ausrüstung und Wartung"></section>
         </section>
-        <section class="settings-section appearance-settings" data-more-segment-panel="appearance" aria-labelledby="appearanceTitle">
-          <div><h3 id="appearanceTitle">Darstellung</h3></div>
+        <section class="settings-section appearance-settings" data-more-segment-panel="app" aria-labelledby="appearanceTitle">
+          <div><h3 id="appearanceTitle">App</h3></div>
           <fieldset id="appearanceSelect" class="appearance-control"><legend>Farbschema</legend><div class="segmented-control"><label><input type="radio" name="appearance" value="system" checked>System</label><label><input type="radio" name="appearance" value="light">Hell</label><label><input type="radio" name="appearance" value="dark">Dunkel</label></div></fieldset>
+        </section>
+        <section id="notificationSettings" class="settings-section notification-settings" data-more-segment-panel="app" aria-label="Benachrichtigungen">
+          <div class="settings-inline-action notification-actions">
+            <div><strong>PWA-Benachrichtigungen</strong><span id="notificationStatus">Noch nicht aktiviert</span></div>
+            <button id="notificationEnableButton" type="button" class="secondary-button">Benachrichtigungen aktivieren</button>
+          </div>
+          <fieldset id="notificationTypes" class="notification-types" hidden><legend class="sr-only">Benachrichtigungsarten</legend></fieldset>
         </section>
         <section class="settings-section" data-more-segment-panel="connections" aria-label="Anbindungen">
           <output id="connectionsSyncProgress" class="connections-sync-progress" aria-label="Laufende Synchronisierungen" aria-live="polite" hidden></output>
@@ -552,17 +559,7 @@
             </details>
           </div>
         </section>
-        <details class="settings-section collapsible-section" data-more-segment-panel="appearance">
-          <summary class="collapsible-summary"><span class="collapsible-summary-title">Kalenderansicht</span><span id="calendarDisplaySummary" class="collapsible-summary-meta">Einstellungen werden geladen...</span></summary>
-          <form id="calendarDisplayForm" class="calendar-display-form">
-            <div class="calendar-display-fields">
-              <label for="calendarDisplayPastWeeks">Wochen zurück<input id="calendarDisplayPastWeeks" type="number" min="0" max="52" step="1" value="1"></label>
-              <label for="calendarDisplayFutureWeeks">Wochen voraus<input id="calendarDisplayFutureWeeks" type="number" min="0" max="52" step="1" value="4"></label>
-            </div>
-            <button id="calendarDisplaySaveButton" class="secondary-button" type="submit">Kalenderansicht speichern</button>
-          </form>
-        </details>
-        <details class="settings-section collapsible-section shortcut-help" data-more-segment-panel="appearance">
+        <details class="settings-section collapsible-section shortcut-help" data-more-segment-panel="app">
           <summary class="collapsible-summary"><span class="collapsible-summary-title">Tastenkürzel</span></summary>
           <dl class="shortcut-list"><dt><kbd>Alt</kbd>+<kbd>1</kbd></dt><dd>Coach</dd><dt><kbd>Alt</kbd>+<kbd>2</kbd></dt><dd>Kalender</dd><dt><kbd>Alt</kbd>+<kbd>3</kbd></dt><dd>Analyse</dd><dt><kbd>Alt</kbd>+<kbd>4</kbd></dt><dd>Ernährung</dd><dt><kbd>Alt</kbd>+<kbd>5</kbd></dt><dd>Mehr</dd></dl>
         </details>
@@ -640,10 +637,6 @@
         </details>
         <details id="privacySection" class="settings-section collapsible-section" data-more-segment-panel="operations">
           <summary class="collapsible-summary"><span class="collapsible-summary-title">Datenschutz &amp; Backup</span></summary>
-          <div class="settings-inline-action notification-actions">
-            <div><strong>PWA-Benachrichtigungen</strong><span id="notificationStatus">Noch nicht aktiviert</span></div>
-            <button id="notificationEnableButton" type="button" class="secondary-button">Benachrichtigungen aktivieren</button>
-          </div>
           <div class="settings-inline-action">
             <button id="privacyExportButton" type="button" class="secondary-button">Daten exportieren</button>
             <button id="privacyDeleteButton" type="button" class="secondary-button danger-button">Lokale Daten löschen</button>

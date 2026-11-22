@@ -29,12 +29,6 @@ class SettingsPutRoutes:
                 Access.SESSION_CSRF,
                 self._thinking_level,
             ),
-            Route(
-                "PUT",
-                "/api/settings/calendar-display",
-                Access.SESSION_CSRF,
-                self._calendar,
-            ),
         ]
 
     def _model(self, handler: Any, _request: RouteRequest) -> None:
@@ -97,22 +91,4 @@ class SettingsPutRoutes:
             self._settings.save_thinking_level(
                 body.get("thinking_level"), body.get("task", "conversation")
             ),
-        )
-
-    def _calendar(self, handler: Any, _request: RouteRequest) -> None:
-        """Update the calendar display settings.
-
-        Request: JSON body `{"past_weeks": integer, "future_weeks": integer}`, each
-        0 to 52, at least one required; a field not sent keeps its value.
-
-        Response: 200 `{"status": "ok", "past_weeks": integer, "future_weeks":
-        integer}` with the stored values (defaults 1 and 4).
-
-        Errors: 400 "Wochen zurück muss eine ganze Zahl sein." and "Wochen voraus
-        muss eine ganze Zahl sein."; 400 "Wochen zurück muss zwischen 0 und 52
-        liegen." and "Wochen voraus muss zwischen 0 und 52 liegen."; 400 "Keine
-        Kalenderansicht-Einstellungen eingegeben." when neither field is sent.
-        """
-        handler.send_json(
-            200, self._settings.save_calendar_display_settings(handler.read_json())
         )

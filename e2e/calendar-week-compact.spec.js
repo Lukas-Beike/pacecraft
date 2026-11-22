@@ -189,7 +189,6 @@ test("@responsive a unit missed on a confirmed rest day is dropped, missing weat
     const today = timezoneDateKey(state.data?.profile?.timezone, new Date());
     const day = addDateKey(today, -1);
     state.data.weather = null;
-    state.data.calendar_display = { past_weeks: 1, future_weeks: 1 };
     state.data.daily_planning_context = [{ date: day, day_status: "rest" }];
     state.data.training_calendar = [
       { id: "rest-missed", date: day, name: "Radausfahrt mit einem sehr langen Bezeichnungswort", type: "Ride", duration_minutes: 45, compliance: { status: "missed", percentage: 0 } },

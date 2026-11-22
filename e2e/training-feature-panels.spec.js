@@ -251,13 +251,15 @@ test("@responsive recovery, power, training focus, season and calendar profiles 
   await page.evaluate(async () => { await AppRouter.navigate("more/profile", { historyMode: "replace" }); });
   await expect(page.locator("#profilePanel").getByRole("heading", { name: "Mehr", exact: true })).toBeVisible();
   await expect(page.locator("#equipmentItems")).toBeHidden();
-  await page.evaluate(async () => { await AppRouter.navigate("more/appearance", { historyMode: "replace" }); });
-  const calendarSettings = page.locator("details").filter({ has: page.locator("#calendarDisplayForm") });
-  await expect(calendarSettings).toBeVisible();
-  await calendarSettings.locator("summary").click();
-  await expect(page.locator("#calendarDisplayPastWeeks")).toBeVisible();
+  // #3914: the old Darstellung link opens the App tab: colour scheme and notifications, no calendar range.
+  await page.goto("/#more/appearance");
+  await expect.poll(() => page.evaluate(() => AppState.state.route)).toBe("more/app");
+  const notifications = page.locator("#notificationSettings");
+  await expect(notifications).toBeVisible();
+  await expect(page.locator("#appearanceSelect")).toBeVisible();
+  await expect(page.locator("#calendarDisplayForm")).toHaveCount(0);
   await page.evaluate(async () => { await AppRouter.navigate("more/operations", { historyMode: "replace" }); });
-  await expect(calendarSettings).toBeHidden();
+  await expect(notifications).toBeHidden();
   await page.evaluate(async () => { await AppRouter.navigate("nutrition/diary", { historyMode: "replace" }); });
   await expect(page.locator('[data-nutrition-segment="fueling"], #trainingFueling, #nutritionLog, #nutritionDefine')).toHaveCount(0);
   await expect(page.locator("#nutritionPanel").getByRole("button", { name: /Coach/ })).toHaveCount(0);

@@ -1072,28 +1072,6 @@ class ServerWeatherCalendarTests(ServerTestCase):
             7,
         )
 
-    def test_calendar_display_settings_are_persisted_and_validated(self):
-        self.assertEqual(
-            server.SETTINGS.calendar_display_settings(),
-            {"past_weeks": 1, "future_weeks": 4},
-        )
-        self.assertEqual(
-            server.SETTINGS.save_calendar_display_settings(
-                {"past_weeks": 3, "future_weeks": 12}
-            ),
-            {"status": "ok", "past_weeks": 3, "future_weeks": 12},
-        )
-        self.assertEqual(
-            server.SETTINGS.calendar_display_settings(),
-            {"past_weeks": 3, "future_weeks": 12},
-        )
-        with self.assertRaises(AppError):
-            server.SETTINGS.save_calendar_display_settings({"past_weeks": -1})
-        with self.assertRaises(AppError):
-            server.SETTINGS.save_calendar_display_settings({"future_weeks": 53})
-        server.key_value_service().set("calendar_display_past_weeks", "invalid")
-        self.assertEqual(server.SETTINGS.calendar_display_settings()["past_weeks"], 1)
-
     def test_explicit_plan_push_records_a_remote_calendar_write(self):
         recorder = IntervalsRequestRecorder()
         client = RecordedIntervalsClient(recorder)

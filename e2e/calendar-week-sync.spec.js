@@ -18,7 +18,6 @@ async function renderUnits(page) {
     ] };
     const unit = (id, name, pending) => ({ id, local_id: id, payload_hash: "a".repeat(64), date, name, type: "Ride", duration_minutes: 60, workout_profile: profile, session_focus: "threshold", focus_origin: "set", push_pending: pending });
     state.data.configured = { ...(state.data.configured || {}), intervals: true };
-    state.data.calendar_display = { past_weeks: 0, future_weeks: 1 };
     state.data.training_calendar = [
       unit("sent-unit", "Bereits gesendet", { intervals: false }),
       unit("new-unit", "Nie gesendet", { intervals: true }),
@@ -109,7 +108,6 @@ test("@responsive the Kalender badge sums undecided events and the running week'
     const today = timezoneDateKey(state.data?.profile?.timezone, new Date());
     const unit = (id) => ({ id, local_id: id, payload_hash: "a".repeat(64), date: today, name: id, type: "Ride", duration_minutes: 60, push_pending: { intervals: true } });
     state.data.configured = { ...(state.data.configured || {}), intervals: true };
-    state.data.calendar_display = { past_weeks: 0, future_weeks: 1 };
     state.data.training_calendar = [unit("neu"), unit("geaendert"), { ...unit("gesendet"), push_pending: { intervals: false } }];
     state.data.external_calendar = { ...(state.data.external_calendar || {}), undecided_upcoming: 1, events: [] };
     // The week sync reloads the state; the server then reports every unit as sent.

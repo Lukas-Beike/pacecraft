@@ -1,5 +1,3 @@
-const CALENDAR_DISPLAY_DEFAULTS = { past_weeks: 1, future_weeks: 4 };
-
 // Profile values as the form presents them; sports is the comma-joined multi-select.
 let profileSaveInFlight = false;
 function profileFormValues(form) {
@@ -180,33 +178,6 @@ function saveSelectSetting({ currentTarget: select }, name, field, label) {
     await api(`/api/settings/${name}`, { method: "PUT", body: JSON.stringify({ [field]: select.value, ...task }) });
     return `${label}: ${select.options[select.selectedIndex].text}`;
   });
-}
-
-async function saveCalendarDisplaySettings(event) {
-  event.preventDefault();
-  const form = event.currentTarget;
-  const button = $("#calendarDisplaySaveButton");
-  if (!button) return;
-  button.disabled = true;
-  button.textContent = "Wird gespeichert...";
-  try {
-    await api("/api/settings/calendar-display", {
-      method: "PUT",
-      body: JSON.stringify({
-        past_weeks: $("#calendarDisplayPastWeeks")?.value,
-        future_weeks: $("#calendarDisplayFutureWeeks")?.value,
-      }),
-    });
-    toast("Kalenderansicht gespeichert");
-    await load();
-  } catch (error) {
-    toast(error.message, true);
-    renderSettings(state.data || {});
-  } finally {
-    button.disabled = false;
-    button.textContent = "Kalenderansicht speichern";
-    form.querySelectorAll("input").forEach((input) => { input.disabled = false; });
-  }
 }
 
 // Export and deletion run up to minutes: a second click starts nothing, and no deletion runs

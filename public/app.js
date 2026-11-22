@@ -108,7 +108,6 @@ for (const [task, label] of [["conversation", "Gespräch"], ["planning", "Planen
   $(taskSelectId(task, "ThinkingLevel")).addEventListener("change", (event) => saveSelectSetting(event, "thinking-level", "thinking_level", `${label}: Thinking`));
 }
 $("#serviceTierSelect").addEventListener("change", (event) => saveSelectSetting(event, "service-tier", "service_tier", "Geschwindigkeit"));
-$("#calendarDisplayForm").addEventListener("submit", saveCalendarDisplaySettings);
 $("#zoneSettings").addEventListener("toggle", (event) => { if (event.currentTarget.open) void loadZones(); });
 $("#zoneEnvironment").addEventListener("change", renderZoneEditor);
 $("#zoneSportTabs").addEventListener("click", (event) => { const sport = event.target.closest("[data-zone-sport]")?.dataset.zoneSport; if (sport) showZoneSport(sport); });
@@ -130,6 +129,7 @@ $("#privacySection").addEventListener("toggle", (event) => { if (event.currentTa
 $("#gpsTracksToggle").addEventListener("change", saveGpsTracks);
 $("#gpsTracksDeleteButton").addEventListener("click", deleteGpsTracks);
 $("#notificationEnableButton").addEventListener("click", enableNotifications);
+$("#notificationTypes").addEventListener("change", savePushType);
 $("#backupDownloadButton").addEventListener("click", () => { downloadDatabaseBackup().catch((error) => toast(error.message, true)); });
 $("#backupRestoreButton").addEventListener("click", restoreDatabaseBackup);
 $("#logoutButton").addEventListener("click", logout);

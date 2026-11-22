@@ -33,11 +33,11 @@ Default route: `#coach`. Navigation items: `#coach`, `#plan`, `#nutrition`, `#an
 | `#analysis/strength` | `dataPanel` | `analysis` | `/api/performance`, `/api/analysis/strength` | Analyse aktualisieren, Jetzt abgleichen, Anbindung einrichten | loading, empty, error, notConfigured, offline |
 | `#coach` | `chatPanel` | `coach` | `/api/chat/history?limit=100` | Senden, Morgen-Check-in, Analyse & Plan, Antwort stoppen, Weitere Nachrichten laden, Coach fragen | loading, empty, error, notConfigured, offline |
 | `#more` | `settingsPanel` | `more` | `/api/context-preview`, `/api/logs?limit=250`, `/api/providers/connections`, `/api/nutrition/yazio/status` | Verbindung prüfen, Mit Garmin anmelden, Garmin trennen, Wahoo verbinden, Synchronisieren, Speichern, Entfernen | loading, error, notConfigured, offline |
-| `#more/appearance` | `settingsPanel` | `more` | `/api/context-preview`, `/api/logs?limit=250` | System, Hell, Dunkel, Kalenderansicht speichern | loading, offline |
+| `#more/app` | `settingsPanel` | `more` | `/api/context-preview`, `/api/logs?limit=250`, `/api/push` | System, Hell, Dunkel, Benachrichtigungen aktivieren | loading, offline |
 | `#more/coach` | `settingsPanel` | `more` | `/api/context-preview`, `/api/logs?limit=250` | Chat zurücksetzen, Kontext laden | loading, error, offline |
 | `#more/connections` | `settingsPanel` | `more` | `/api/context-preview`, `/api/logs?limit=250`, `/api/providers/connections`, `/api/nutrition/yazio/status` | Verbindung prüfen, Mit Garmin anmelden, Garmin trennen, Wahoo verbinden, Synchronisieren, Speichern, Entfernen | loading, error, notConfigured, offline |
 | `#more/equipment` | `settingsPanel` | `more` | `/api/context-preview`, `/api/logs?limit=250`, `/api/analysis/training-records` | Fahrrad, Laufschuhe, Wartung erledigt, Rückgängig | loading, empty, error, offline |
-| `#more/operations` | `settingsPanel` | `more` | `/api/context-preview`, `/api/logs?limit=250`, `/api/privacy/gps` | Logs herunterladen, Benachrichtigungen aktivieren, Daten exportieren, Lokale Daten löschen, Backup herunterladen, Backup wiederherstellen, Diagnose herunterladen, Diagnose löschen, Abmelden | loading, empty, error, offline |
+| `#more/operations` | `settingsPanel` | `more` | `/api/context-preview`, `/api/logs?limit=250`, `/api/privacy/gps` | Logs herunterladen, Daten exportieren, Lokale Daten löschen, Backup herunterladen, Backup wiederherstellen, Diagnose herunterladen, Diagnose löschen, Abmelden | loading, empty, error, offline |
 | `#more/profile` | `profilePanel` | `more` | `/api/context-preview`, `/api/logs?limit=250`, `/api/profile`, `/api/zones` | Profil speichern, Lokal speichern, Übernehmen | empty, offline |
 | `#nutrition` | `nutritionPanel` | `nutrition` | `/api/nutrition/day`, `/api/body/energy` | Ernährung aktualisieren, Vorheriger Tag, Nächster Tag, Heute, Als geschätzt markieren, Nicht geschätzt, Löschen, Rückgängig, Erneut laden | loading, empty, error, offline |
 | `#nutrition/body` | `nutritionPanel` | `nutrition` | `/api/performance`, `/api/body/skinfolds`, `/api/body/energy` | Ernährung aktualisieren, 4 Wochen, 3 Monate, 6 Monate, 12 Monate, Gewicht eintragen, Körperfett eintragen, Prozent, Hautfalten, Speichern, Löschen, Abbrechen | loading, empty, error, offline |
@@ -50,13 +50,14 @@ Default route: `#coach`. Navigation items: `#coach`, `#plan`, `#nutrition`, `#an
 | `#plan/season` | `workoutsPanel` | `plan` | `/api/plan`, `/api/library?limit=100`, `/api/profile` | Kalender aktualisieren, Erneut laden | loading, empty, error, offline |
 
 Kalender segments: `overview`, `library`, `season`.
-Mehr segments: `profile`, `equipment`, `connections`, `coach`, `operations`, `appearance`.
+Mehr segments: `profile`, `connections`, `equipment`, `coach`, `app`, `operations`.
 
 Former routes that open another view:
 
 - `#analysis/performance` opens `#analysis/running`
 - `#analysis/sessions` opens `#plan/overview`
 - `#analysis/week` opens `#plan/overview`
+- `#more/appearance` opens `#more/app`
 <!-- END GENERATED VIEWS -->
 
 ## State texts

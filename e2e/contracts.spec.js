@@ -124,7 +124,7 @@ test("@responsive Coach links are underlined, keep their contrast in both themes
 test("appearance choice updates the theme and survives reload on this device", { tag: "@responsive" }, async ({ page }) => {
   await ready(page);
   await page.getByRole("link", { name: "Mehr", exact: true }).click();
-  await page.locator("#settingsPanel").getByRole("link", { name: "Darstellung", exact: true }).click();
+  await page.locator("#settingsPanel").getByRole("link", { name: "App", exact: true }).click();
   await page.locator("#appearanceSelect").getByRole("radio", { name: "Hell", exact: true }).check();
   await expect(page.locator("html")).toHaveAttribute("data-theme", "light");
   await expect.poll(() => page.locator('meta[name="theme-color"]').getAttribute("content")).toBe("#f4f5f6");
@@ -574,7 +574,6 @@ test("planned agenda prioritizes dates and sessions with compact weather and exp
   await expect.poll(() => page.evaluate(() => state.loadPromise === null)).toBe(true);
   const today = await page.evaluate(() => {
     const date = timezoneDateKey(state.data?.profile?.timezone, new Date());
-    state.data.calendar_display = { past_weeks: 1, future_weeks: 1 };
     state.data.daily_planning_context = [{ date,
       weather: { weather_code: 2, condition: "Leicht bewölkt", temperature_min: 12, temperature_max: 21, precipitation_probability_max: 0, wind_speed_max: 14, wind_gusts_max: 25, wind_direction_dominant: 225, forecast_location: "Emsdetten",
         air_quality: { european_aqi_max: 64, european_aqi_category: "schlecht", uv_index_max: 5.2 },

@@ -13,6 +13,10 @@ The client SHALL subscribe to Web Push only after the athlete activates the enab
 - **WHEN** the athlete selects "Benachrichtigungen aktivieren" and grants permission
 - **THEN** the browser subscribes with the server's public VAPID key, the server stores the subscription, and the status reads "Aktiv" with the button "Benachrichtigungen ausschalten"
 
+#### Scenario: Per-type switches
+- **WHEN** push is active on this device in Mehr › App
+- **THEN** one switch per type follows the row (label left, switch right, all on by default), and switching one saves it through `POST /api/push/preferences`; a failed save turns the switch back
+
 #### Scenario: Athlete turns notifications off
 - **WHEN** the athlete selects "Benachrichtigungen ausschalten"
 - **THEN** the server removes that device's subscription and the browser unsubscribes
