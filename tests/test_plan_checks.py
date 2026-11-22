@@ -262,8 +262,37 @@ class PlanCheckRuleTests(unittest.TestCase):
             )
         ]
         self.assertEqual(["missing_taper"], codes(check(flat, competitions=[race])))
-        tapered = [*flat[:2], unit("t", "2026-11-28", "ride", 20)]
+        # A10 (#3919): lighter run and ride time with a hard session in each
+        # final week is a taper; dropping the intensity is not.
+        hard = {"planned_intensity": 0.9}
+        tapered = [
+            *flat[:2],
+            unit("t1", "2026-11-24", "ride", 20, **hard),
+            unit("t2", "2026-12-01", "ride", 15, **hard),
+        ]
         self.assertEqual([], check(tapered, competitions=[race]))
+        easy = [*flat[:2], unit("t", "2026-11-28", "ride", 20)]
+        (finding,) = check(easy, competitions=[race])
+        self.assertEqual(
+            ["2026-11-22", "2026-11-29"], finding["evidence"]["weeks_without_hard"]
+        )
+        # Strength time no longer counts as taper volume.
+        strength = [*tapered, unit("s", "2026-11-30", "strength", 120)]
+        self.assertEqual([], check(strength, competitions=[race]))
+
+    def test_a_b_race_checks_only_its_last_five_days(self) -> None:
+        # B1 (#3919): no full taper, the five days before are lighter than the
+        # five before them; no hard session is required.
+        race = {"event_date": "2026-11-20", "priority": "B", "name": "B"}
+        build = [
+            unit("a", "2026-11-11", "ride", 60),
+            unit("b", "2026-11-13", "ride", 60),
+        ]
+        lighter = [*build, unit("c", "2026-11-17", "ride", 40)]
+        self.assertEqual([], check(lighter, competitions=[race]))
+        heavy = [*build, unit("c", "2026-11-17", "ride", 120)]
+        (finding,) = check(heavy, competitions=[race])
+        self.assertEqual(5, finding["evidence"]["window_days"])
 
     def test_missing_taper_skips_c_races_and_short_plans(self) -> None:
         race = {"date": "2026-12-06", "priority": "C"}
