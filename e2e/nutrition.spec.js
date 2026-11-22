@@ -12,7 +12,7 @@ async function openProductSection(page, key) {
   return section.locator(".nutrition-product-card");
 }
 
-test("@responsive nutrition diary and saved meals remain read-only and preserve confirmed consumption", async ({ page }) => {
+test("@responsive nutrition diary keeps saved meals in Produkte and preserves confirmed consumption", async ({ page }) => {
   const showNutrition = async (route) => {
     await page.evaluate((nextRoute) => AppRouter.navigate(nextRoute, { historyMode: "push" }), route);
     await expect(page.locator("#nutritionStatus")).not.toContainText("wird geladen");
@@ -25,7 +25,9 @@ test("@responsive nutrition diary and saved meals remain read-only and preserve 
   await expect(page.locator("#nutritionTotals")).toBeHidden();
   await expect(page.locator("#nutritionStatus")).toHaveText("Noch keine Mahlzeiten erfasst.");
   await expect(page.locator("#nutritionTellCoach")).toBeVisible();
-  await expect(page.locator('[data-nutrition-segment="meals"], #nutritionMeals, #nutritionTemplates')).toHaveCount(0);
+  // Saved meals (#3952) live under Produkte, not in the diary: no own segment, and the list is hidden here.
+  await expect(page.locator('[data-nutrition-segment="meals"], #nutritionMeals')).toHaveCount(0);
+  await expect(page.locator("#nutritionTemplates")).toBeHidden();
   await expect(page.locator("#nutritionDefine, #nutritionLog, #trainingFueling")).toHaveCount(0);
   const send = async (text) => {
     await page.locator('a[href="#coach"]:visible').first().click();
