@@ -142,7 +142,7 @@ export function requestKey(method, url, appOrigin) {
 // A view is loaded once its active panel shows no visible loading marker and no
 // request started for it has been open for QUIET_MS (the event stream stays open
 // by design). Network idle never came on the Coach view since 2.1.6 (#2581).
-async function rendered(page, route, open) {
+export async function rendered(page, route, open) {
   const before = new Set(open.keys());
   const started = Date.now();
   await page.evaluate(async ([next, cap]) => {
@@ -230,7 +230,7 @@ const STEP_TOTAL_MS = 30000;
 // The longest a step waits for the app's data loads to end before it starts.
 const SETTLE_MS = 15000;
 // Runs in the page: no data load of the app runs (a page without the app is always settled).
-const settled = () => !globalThis.AppState || (!globalThis.AppState.state.loadPromise && !globalThis.AppState.state.loadingAreas?.size);
+export const settled = () => !globalThis.AppState || (!globalThis.AppState.state.loadPromise && !globalThis.AppState.state.loadingAreas?.size);
 // Runs in the page: a data load runs or the shown view marks itself as loading (2.1.26 cold start);
 // a unit's fuelling read marks only its section (2.1.37: 2.0-2.1 s against the candidate cap, #3298).
 const loading = () => Boolean(globalThis.AppState?.state.loadPromise || globalThis.AppState?.state.loadingAreas?.size)
@@ -490,6 +490,22 @@ export async function waitForCurves(page, capMs = CURVES_CAP_MS, pollMs = 10000)
   }
 }
 
+// Login through the login dialog and logout with the CSRF token; ui_explore.mjs uses the same two.
+export async function login(page, password) {
+  await page.goto("/");
+  await page.getByLabel("Passwort", { exact: true }).fill(password);
+  await page.getByRole("button", { name: "Anmelden" }).click();
+  await page.locator("#appShell").waitFor({ state: "visible", timeout: 30000 });
+}
+
+export async function logout(page) {
+  return page.evaluate(async () => {
+    const token = document.cookie.split("; ").find((item) => item.startsWith("ic_csrf="))?.slice(8) || "";
+    const response = await fetch("/api/logout", { method: "POST", headers: { "X-CSRF-Token": decodeURIComponent(token), "Content-Type": "application/json" }, body: "{}" });
+    return response.status;
+  });
+}
+
 async function walk({ chromium, url, password, outDir, earlier = {} }) {
   const result = { measure: LOAD_MEASURE, loadMs: {}, notReady: {}, errors: {}, calendar: {}, steps: {}, marks: null, logout: {} };
   const browser = await chromium.launch();
@@ -509,10 +525,7 @@ async function walk({ chromium, url, password, outDir, earlier = {} }) {
         if (key) open.set(request, key);
       });
       for (const event of ["requestfinished", "requestfailed"]) page.on(event, (request) => open.delete(request));
-      await page.goto("/");
-      await page.getByLabel("Passwort", { exact: true }).fill(password);
-      await page.getByRole("button", { name: "Anmelden" }).click();
-      await page.locator("#appShell").waitFor({ state: "visible", timeout: 30000 });
+      await login(page, password);
       // Every error counts against a step: login, a view (with its calendar walk), or the rest.
       result.errors[`${name} login`] = errors.length;
       result.curves ??= await waitForCurves(page);
@@ -535,12 +548,7 @@ async function walk({ chromium, url, password, outDir, earlier = {} }) {
         counted = errors.length;
       }
       result.marks ??= releaseMarks(await (await page.request.get("/service-worker.js")).text(), await (await page.request.get("/")).text());
-      const logout = await page.evaluate(async () => {
-        const token = document.cookie.split("; ").find((item) => item.startsWith("ic_csrf="))?.slice(8) || "";
-        const response = await fetch("/api/logout", { method: "POST", headers: { "X-CSRF-Token": decodeURIComponent(token), "Content-Type": "application/json" }, body: "{}" });
-        return response.status;
-      });
-      result.logout[name] = logout;
+      result.logout[name] = await logout(page);
       result.errors[`${name} other`] = errors.length - counted;
       await context.close();
     }

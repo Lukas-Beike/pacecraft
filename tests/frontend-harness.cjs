@@ -32,7 +32,10 @@ function readPublic(file) {
 // `globals` is a plain object of sandbox globals (contextified in place, so a test may keep
 // reaching it), or an existing vm context to run into.
 function contextFor(globals) {
-  return vm.isContext(globals) ? globals : vm.createContext(globals);
+  if (vm.isContext(globals)) return globals;
+  // The shared formatter is a browser global; a test may stub it.
+  if (!("AppFormat" in globals)) globals.AppFormat = require("../public/format.js");
+  return vm.createContext(globals);
 }
 
 // Scripts that render get the element helpers of components.js unless the test stubs them.

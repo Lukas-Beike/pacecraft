@@ -52,6 +52,25 @@ class GuardPrivatePathsTests(unittest.TestCase):
                 self.assertEqual(run_hook(command), 2)
         self.assertEqual(run_hook(f"cat {ENV}", bom=True), 2)
 
+    def test_a_block_names_its_match_and_the_grep_tool(self) -> None:
+        # A refused source search named no word to adapt (#3924).
+        for command, word in (
+            (f"rg -n {TOKENS}/ backend", f"{TOKENS}/"),
+            (f"cat '{ENV}'", ENV),
+        ):
+            body = json.dumps({"tool_name": "Bash", "tool_input": {"command": command}})
+            result = subprocess.run(
+                [sys.executable, str(HOOK)],
+                input=body.encode("utf-8"),
+                capture_output=True,
+                check=False,
+            )
+            with self.subTest(command=command):
+                self.assertEqual(result.returncode, 2)
+                message = result.stderr.decode("utf-8")
+                self.assertIn(f"(matched `{word}`)", message)
+                self.assertIn("use the Grep tool", message)
+
     def test_ordinary_commands_pass(self) -> None:
         bare = DATA.rstrip("/")
         for command in (
@@ -86,6 +105,14 @@ class GuardPrivatePathsTests(unittest.TestCase):
             f'python scripts/other.py --password-file "{secret}"',
             f'python -c "print(1)" scripts/prod_guards.py --password-file "{secret}"',
             f'node scripts/evil.mjs --password-file "{secret}"',
+            # #3913: only the vetted explorer itself, and only its --password-file value.
+            f'node scripts/ui_explorer.mjs --password-file "{secret}"',
+            f'node scripts/ui_explore.js --password-file "{secret}"',
+            f'node scratch/ui_explore.mjs --password-file "{secret}"',
+            f'node C:\\Temp\\scripts\\ui_explore.mjs --password-file "{secret}"',
+            f'node --import ./x.mjs scripts/ui_explore.mjs --password-file "{secret}"',
+            f'node scripts/ui_explore.mjs --password-file "{secret}" --plan "{secret}"',
+            f'node scripts/ui_explore.mjs --password-file "{secret}" --plan - < "{secret}"',
             f"python scripts/prod_guards.py --url u --password-f {posix}",
             f"python scripts/prod_client.py --password-file {posix}",
             f"python scripts/prod_dump.py --password-file {posix}",
@@ -116,6 +143,8 @@ class GuardPrivatePathsTests(unittest.TestCase):
             f"python scripts/prod_logs.py --url u --password-file={posix} --since x",
             f"py .\\scripts\\prod_guards.py --url u --password-file '{secret}'",
             f'node scripts/ui_walk.mjs --url u --password-file "{secret}" --out-dir t',
+            f'node scripts/ui_explore.mjs --url u --password-file "{secret}" --out-dir t --plan - < p.json',
+            f"Get-Content p.json | node .\\scripts\\ui_explore.mjs --url u --password-file={posix} --plan -",
             f'& node scripts/post_release_actions.mjs --url u --password-file "{secret}"',
             f'git status && node scripts/post_release_actions.mjs --password-file "{secret}" --url u',
             f'py.exe -3 scripts/prod_guards.py --url u --password-file "{secret}"',

@@ -47,5 +47,6 @@ python scripts/check_changed.py [--base origin/develop] [--js] [--fix-format]
   failure's cause.
 - Exit 0: all passed. Exit 1: a step failed; fix it and rerun, never relax a
   check. Exit 2: unknown base ref or a tool (such as `node`) is missing.
-- When the selector falls back to the full suite, the `tests` step is slow;
-  that is expected.
+- Under `ok tests` it shows the selection line. When the selector falls back
+  to the full suite, that line names why, and the step stops there: CI runs
+  the full suite on every PR. `--full` runs it here (#3924).

@@ -31,7 +31,7 @@ from support import (
     store_garmin_activities,
 )
 
-from backend.errors import AppError
+from backend.errors import AppError, SchemaRefusedError
 from backend.http_api import server as http_server_module
 from backend.http_api import wiring as http_wiring
 from backend.http_api.static_assets import StaticAssetService
@@ -96,12 +96,36 @@ class ServerSyncTests(ServerTestCase):
         # traceback (#2912); nothing starts and no secret reaches the log.
         sentinel = "sentinel-app-password-2912"
         config = replace(server.CONFIG_HOLDER.value, app_password=sentinel)
-        for error, refused in (
-            (sqlite3.DatabaseError("file is not a database"), True),
-            (sqlite3.DatabaseError("database disk image is malformed"), False),
+        wrong_key = (
+            "Die Datenbank lässt sich mit diesem App-Passwort nicht öffnen: "
+            "Das Passwort passt nicht, oder die Datei ist beschädigt. "
+            "Die Datenbank wurde nicht verändert."
+        )
+        unreadable = {"reason": "database_unreadable", "error_class": "DatabaseError"}
+        # A refused schema crash-looped as a traceback with nothing counted (#3927).
+        schema = "Die Datenbankversion wird von diesem Release nicht unterstützt."
+        for error, refused, context, message in (
+            (
+                sqlite3.DatabaseError("file is not a database"),
+                True,
+                unreadable,
+                wrong_key,
+            ),
+            (
+                sqlite3.DatabaseError("database disk image is malformed"),
+                False,
+                None,
+                None,
+            ),
+            (
+                SchemaRefusedError(schema),
+                True,
+                {"reason": "schema_unsupported"},
+                schema,
+            ),
         ):
             with (
-                self.subTest(refused=refused),
+                self.subTest(error=repr(error)),
                 patch.object(server.observability, "configure_logging"),
                 patch.object(server.CONFIG_HOLDER, "value", config),
                 patch.object(
@@ -124,16 +148,8 @@ class ServerSyncTests(ServerTestCase):
                 continue
             self.assertEqual(1, len(critical))
             self.assertEqual("secure_startup_refused", critical[0].event)
-            self.assertEqual(
-                {"reason": "database_unreadable", "error_class": "DatabaseError"},
-                critical[0].context,
-            )
-            self.assertEqual(
-                "Die Datenbank lässt sich mit diesem App-Passwort nicht öffnen: "
-                "Das Passwort passt nicht, oder die Datei ist beschädigt. "
-                "Die Datenbank wurde nicht verändert.",
-                raised.exception.code,
-            )
+            self.assertEqual(context, critical[0].context)
+            self.assertEqual(message, raised.exception.code)
             for text in (
                 *logs.output,
                 str(critical[0].__dict__),

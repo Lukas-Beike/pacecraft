@@ -102,3 +102,33 @@ test("a completed session's duration leads with the total time for strength only
   assert.equal(AppFormat.sessionSeconds({ sport: "strength", moving_duration_s: 1860 }), 1860, "without a total time the moving time stands in");
   assert.equal(AppFormat.sessionSeconds({ sport: "run", elapsed_duration_s: 3000 }), 3000, "without a moving time the total time stands in");
 });
+
+test("negative values take the minus sign and a value that rounds to zero carries none (#3933)", () => {
+  assert.equal(AppFormat.number(-1.2), "−1,2");
+  assert.equal(AppFormat.number(-0.04), "0");
+  assert.equal(AppFormat.number(-0.04, { digits: 1, minDigits: 1 }), "0,0");
+  assert.equal(AppFormat.signed(1.24), "+1,2");
+  assert.equal(AppFormat.signed(-0.4), "−0,4");
+  assert.equal(AppFormat.signed(0.04), "0");
+  assert.equal(AppFormat.signed("x"), null);
+});
+
+test("percent, speed and pace have one spelling each (#3933)", () => {
+  assert.equal(AppFormat.percent(42.5), "42,5 %");
+  assert.equal(AppFormat.percent(125, { digits: 0 }), "125 %");
+  assert.equal(AppFormat.percent(-0.04), "0 %");
+  assert.equal(AppFormat.speed(25), "25,0 km/h");
+  assert.equal(AppFormat.speed(32.94), "32,9 km/h");
+  assert.equal(AppFormat.pace(400), "6:40 /km");
+  assert.equal(AppFormat.pace(274), "4:34 /km");
+  assert.equal(AppFormat.pace(null), null);
+});
+
+test("plural names exactly one in the singular, a fraction in the plural (#3933)", () => {
+  assert.equal(AppFormat.plural(1, "Messung", "Messungen"), "1 Messung");
+  assert.equal(AppFormat.plural(0, "Messung", "Messungen"), "0 Messungen");
+  assert.equal(AppFormat.plural(2, "Einheit", "Einheiten"), "2 Einheiten");
+  assert.equal(AppFormat.plural(0.5, "Portion", "Portionen"), "0,5 Portionen");
+  assert.equal(AppFormat.plural(1234, "Einheit", "Einheiten"), "1.234 Einheiten");
+  assert.equal(AppFormat.plural(undefined, "Einheit", "Einheiten"), "0 Einheiten");
+});

@@ -65,6 +65,22 @@ def evaluated(stages=10, **options):
     return step_test.evaluate(dfa.first_threshold([series]), laps, DAY)
 
 
+def linear_windows(count, offset=0.0):
+    """Windows every 15 s whose alpha1 falls linearly through 0.75 at 145 bpm."""
+    windows = []
+    for index in range(count):
+        rate = 138 + 0.6 * index
+        windows.append(
+            DfaWindow(
+                start_s=offset + 15.0 * index,
+                heart_rate_bpm=rate,
+                alpha1=round(0.75 + (145 - rate) * 0.035, 4),
+                artifact_share=0.0,
+            )
+        )
+    return tuple(windows)
+
+
 class ProtocolTests(unittest.TestCase):
     def test_without_stored_paces_stage_1_is_9_5_kmh_and_ten_stages_follow(
         self,
@@ -178,35 +194,139 @@ class EvaluationTests(unittest.TestCase):
 
     def test_the_pace_is_read_between_the_stages_around_the_heart_rate(self) -> None:
         laps = [
-            {
-                "start_offset_s": 0,
-                "end_offset_s": 180,
-                "avg_hr": 140,
-                "avg_speed_mps": 3.0,
-            },
-            {
-                "start_offset_s": 180,
-                "end_offset_s": 360,
-                "avg_hr": 150,
-                "avg_speed_mps": 3.5,
-            },
-        ]
-        windows = tuple(
-            DfaWindow(
-                start_s=30.0 * i,
-                heart_rate_bpm=140 + i,
-                alpha1=0.9 - 0.05 * i,
-                artifact_share=0.0,
-            )
-            for i in range(10)
-        )
-        result = ActivityDfaAlpha1(145.0, 10, 0.0, DfaQuality.GOOD, 3, windows)
+            {"start_offset_s": 0, "end_offset_s": 180, "avg_hr": 140, "avg_speed_mps": 3.0},
+            {"start_offset_s": 180, "end_offset_s": 360, "avg_hr": 150, "avg_speed_mps": 3.5},
+        ]  # fmt: skip
+        # A straight line through alpha1 0.75 at 145 bpm, every midpoint in a stage.
+        result = ActivityDfaAlpha1(None, 20, 0.0, None, 3, linear_windows(20))
         lt1 = step_test.evaluate(result, laps, DAY)["lt1"]
+        self.assertEqual(lt1["heart_rate_bpm"], 145)
         # 145 bpm is halfway: 3.25 m/s is 1000 / 3.25 = 307.7 s/km.
         self.assertEqual(lt1["pace_seconds_per_km"], 308)
-        result = ActivityDfaAlpha1(160.0, 10, 0.0, DfaQuality.GOOD, 3, windows)
+        # Each stage's heart rate is its last minute's mean, not the lap mean
+        # with its rise (#3916): 145 and 155 bpm put 145 at the slower stage.
+        streams = {
+            "time_s": [100, 130, 160, 280, 310, 340],
+            "channels": {"heart_rate": {"values": [120, 145, 145, 130, 155, 155]}},
+        }
+        lt1 = step_test.evaluate(result, laps, DAY, streams)["lt1"]
+        self.assertEqual(lt1["pace_seconds_per_km"], 333)
+        higher = [{**lap, "avg_hr": lap["avg_hr"] + 10} for lap in laps]
         self.assertIsNone(
-            step_test.evaluate(result, laps, DAY)["lt1"]["pace_seconds_per_km"]
+            step_test.evaluate(result, higher, DAY)["lt1"]["pace_seconds_per_km"]
+        )
+
+    def test_warm_up_and_cool_down_windows_never_move_the_crossings(self) -> None:
+        # Stage laps 0 to 360 s hold the line through 145 bpm. A cool-down after
+        # the hardest stage keeps alpha1 low at a low heart rate (fatigue), and a
+        # warm-up sits on the flat upper plateau: over the whole run they pull the
+        # line, over the stage windows they are left out (#3916).
+        laps = [
+            {"start_offset_s": 600, "end_offset_s": 780, "avg_hr": 140, "avg_speed_mps": 3.0},
+            {"start_offset_s": 780, "end_offset_s": 960, "avg_hr": 150, "avg_speed_mps": 3.5},
+        ]  # fmt: skip
+        stages = linear_windows(20, offset=600)
+        warm_up = tuple(
+            DfaWindow(start_s=30.0 * i, heart_rate_bpm=110 + i, alpha1=1.0, artifact_share=0.0)
+            for i in range(17)
+        )  # fmt: skip
+        cool_down = tuple(
+            DfaWindow(start_s=1000.0 + 30 * i, heart_rate_bpm=135 - i, alpha1=0.55, artifact_share=0.0)
+            for i in range(17)
+        )  # fmt: skip
+        whole = warm_up + stages + cool_down
+        run_wide = dfa.crossing(whole, 0.0)
+        assert run_wide is not None
+        self.assertLess(run_wide[0], 140)
+        result = ActivityDfaAlpha1(run_wide[0], len(whole), 0.0, run_wide[1], 3, whole)
+        found = step_test.evaluate(result, laps, DAY)
+        alone = step_test.evaluate(
+            ActivityDfaAlpha1(None, 20, 0.0, None, 3, stages), laps, DAY
+        )
+        self.assertEqual(found["lt1"]["heart_rate_bpm"], 145)
+        self.assertEqual(found["lt1"], alone["lt1"])
+        self.assertEqual(found["lt2"], alone["lt2"])
+
+    def test_lt2_uses_stage_windows_from_03_to_075_only(self) -> None:
+        # alpha1 falls from 0.75 at 150 bpm to 0.30 at 165 bpm over two stages;
+        # stage windows below 0.3 (overshoot at the very end) are left out.
+        laps = [
+            {"start_offset_s": 0, "end_offset_s": 180, "avg_hr": 150, "avg_speed_mps": 3.5},
+            {"start_offset_s": 180, "end_offset_s": 360, "avg_hr": 165, "avg_speed_mps": 4.0},
+        ]  # fmt: skip
+        line = tuple(
+            DfaWindow(
+                start_s=15.0 * i,
+                heart_rate_bpm=150 + 0.75 * i,
+                alpha1=round(0.75 - 0.0225 * i, 4),
+                artifact_share=0.0,
+            )
+            for i in range(21)
+        )
+        overshoot = DfaWindow(
+            start_s=290.0, heart_rate_bpm=150.0, alpha1=0.1, artifact_share=0.0
+        )
+        result = ActivityDfaAlpha1(None, 22, 0.0, None, 3, (*line, overshoot))
+        lt2 = step_test.evaluate(result, laps, DAY)["lt2"]
+        # 0.5 is reached after (0.75 - 0.5) / 0.0225 = 11.1 steps: 158.3 bpm.
+        self.assertEqual((lt2["status"], lt2["heart_rate_bpm"]), ("ok", 158))
+
+    def test_a_stage_fit_needs_ten_windows_and_lt2_keeps_the_runs_floor(self) -> None:
+        laps = [
+            {"start_offset_s": 0, "end_offset_s": 180, "avg_hr": 140, "avg_speed_mps": 3.0},
+            {"start_offset_s": 180, "end_offset_s": 360, "avg_hr": 150, "avg_speed_mps": 3.5},
+        ]  # fmt: skip
+        # Nine stage windows on a clean line are too few for an LT1 (MIN_WINDOWS 10).
+        few = linear_windows(20)[::2][:9]
+        result = ActivityDfaAlpha1(None, 9, 0.0, None, 3, few)
+        self.assertEqual(
+            step_test.evaluate(result, laps, DAY)["lt1"]["status"], "unknown"
+        )
+        # Without a stage LT1, LT2 must still lie above the run's stored crossing.
+        line = tuple(
+            DfaWindow(start_s=15.0 * i, heart_rate_bpm=140 + 0.6 * i, alpha1=round(0.75 - 0.0225 * i, 4), artifact_share=0.0)
+            for i in range(21)
+        )  # fmt: skip
+        floor = ActivityDfaAlpha1(150.0, 21, 0.0, DfaQuality.GOOD, 3, line)
+        self.assertEqual(
+            step_test.evaluate(floor, laps, DAY)["lt2"]["status"], "unknown"
+        )
+        free = ActivityDfaAlpha1(140.0, 21, 0.0, DfaQuality.GOOD, 3, line)
+        self.assertEqual(step_test.evaluate(free, laps, DAY)["lt2"]["status"], "ok")
+
+    def test_not_reached_reads_the_stage_windows_not_the_cool_down(self) -> None:
+        laps = [
+            {"start_offset_s": 0, "end_offset_s": 180, "avg_hr": 140, "avg_speed_mps": 3.0},
+            {"start_offset_s": 180, "end_offset_s": 360, "avg_hr": 150, "avg_speed_mps": 3.5},
+        ]  # fmt: skip
+        cool_down = tuple(
+            DfaWindow(start_s=400.0 + 30 * i, heart_rate_bpm=130.0, alpha1=0.45, artifact_share=0.0)
+            for i in range(5)
+        )  # fmt: skip
+        result = ActivityDfaAlpha1(
+            None, 25, 0.0, None, 3, linear_windows(20) + cool_down
+        )
+        self.assertEqual(
+            step_test.evaluate(result, laps, DAY)["lt2"]["status"], "not_reached"
+        )
+
+    def test_a_stage_without_a_last_minute_keeps_all_stages_on_the_lap_mean(
+        self,
+    ) -> None:
+        laps = [
+            {"start_offset_s": 0, "end_offset_s": 180, "avg_hr": 140, "avg_speed_mps": 3.0},
+            {"start_offset_s": 180, "end_offset_s": 360, "avg_hr": 150, "avg_speed_mps": 3.5},
+        ]  # fmt: skip
+        result = ActivityDfaAlpha1(None, 20, 0.0, None, 3, linear_windows(20))
+        # The second stage's last minute is a strap dropout: lap means for both.
+        streams = {
+            "time_s": [130, 160, 280, 310, 340],
+            "channels": {"heart_rate": {"values": [145, 145, 130, None, None]}},
+        }
+        lt1 = step_test.evaluate(result, laps, DAY, streams)["lt1"]
+        self.assertEqual(lt1["pace_seconds_per_km"], 308)
+        self.assertEqual(
+            step_test.evaluate(result, laps, DAY)["method"], "run-step-test-v2"
         )
 
     def test_a_stamped_unit_is_a_step_test_after_its_template_is_gone(self) -> None:

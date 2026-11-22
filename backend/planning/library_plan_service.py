@@ -21,6 +21,14 @@ from backend.planning.repository import parse_payload
 from backend.planning.sport import planned_stored_sport
 
 
+def _day_month(value: Any) -> str:
+    """ "21.09." for a day key; any other value as it is."""
+    text = str(value)
+    if len(text) == 10 and text[4] == text[7] == "-":
+        return f"{text[8:10]}.{text[5:7]}."
+    return text
+
+
 class WorkoutLibraryPlanService:
     """Plan local workout-library templates as one atomic batch."""
 
@@ -124,7 +132,7 @@ class WorkoutLibraryPlanService:
         if not conflicts:
             return
         descriptions = ", ".join(
-            f"{item.get('date')}: {item.get('name') or 'Einheit'}"
+            f"{_day_month(item.get('date'))}: {item.get('name') or 'Einheit'}"
             for item in conflicts[:8]
         )
         suffix = (

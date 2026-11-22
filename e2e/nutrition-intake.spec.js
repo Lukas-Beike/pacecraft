@@ -13,7 +13,7 @@ test("@responsive nutrition overview shows consumed sugar and salt with honest m
   const sugar = page.locator("#nutritionTotals .nutrition-total").filter({ hasText: "Zucker" });
   const salt = page.locator("#nutritionTotals .nutrition-total").filter({ hasText: "Salz" });
   await expect(sugar).toHaveText("12,5 gZucker");
-  await expect(salt).toHaveText("0 gSalz");
+  await expect(salt).toHaveText("0,0 gSalz");
   mode = "partial";
   await page.reload();
   await expect(sugar).toHaveText("6,2 gZucker · unvollständig");

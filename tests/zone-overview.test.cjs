@@ -21,7 +21,7 @@ function zones(globals = {}) {
     zoneConfigurations: [GARMIN_HR, LOCAL_POWER],
     zoneEffective: EFFECTIVE,
     state: { data: {} },
-    formatPace: (seconds) => `${Math.floor(seconds / 60)}:${String(Math.round(seconds % 60)).padStart(2, "0")} min/km`,
+    formatPace: (seconds) => `${Math.floor(seconds / 60)}:${String(Math.round(seconds % 60)).padStart(2, "0")} /km`,
     AppFormat: require("../public/format.js"),
     ...globals,
   });
@@ -63,7 +63,7 @@ test("pace zones read the percent of the threshold speed as paces", () => {
   // The stored limits end with the open top zone's cap.
   const pace = { metric: "pace", percent_limits: [80, 90, 100, 150], threshold: null };
   const { zoneRows } = zones();
-  // 4:00 min/km threshold: 80 % of its speed is 5:00, 90 % 4:27, 100 % 4:00.
+  // 4:00 /km threshold: 80 % of its speed is 5:00, 90 % 4:27, 100 % 4:00.
   assert.deepEqual(plain(zoneRows(pace, 240).map((row) => row.range)), ["langsamer als 5:00 · 80 %", "5:00–4:27 · 90 %", "4:27–4:00 · 100 %", "schneller als 4:00"]);
   // Without a threshold pace (swimming) the limits stay percents.
   assert.deepEqual(plain(zoneRows(pace, null).map((row) => row.range)), ["langsamer als 80 %", "80 %–90 %", "90 %–100 %", "schneller als 100 %"]);

@@ -28,7 +28,7 @@ function providerCheckView(result, busy = false) {
   let text = PROVIDER_CHECK_TEXT[status] || "Verbindung: Status nicht verfügbar";
   if (status === "auth_failed" && typeof result.guidance === "string" && result.guidance) text = result.guidance;
   const date = result?.checked_at ? new Date(result.checked_at) : null;
-  const time = date && !Number.isNaN(date.getTime()) ? date.toLocaleString("de-DE") : "";
+  const time = date && !Number.isNaN(date.getTime()) ? AppFormat.dateTime(date) : "";
   return {
     text: time ? `${text} · ${time}` : text,
     failed: PROVIDER_CHECK_FAILURES.has(status),

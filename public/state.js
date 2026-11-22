@@ -74,7 +74,6 @@ globalThis.AppState = (() => {
     plannedTodayFocusPending: false,
     loadedAreas: new Set(),
     localSync: { competitions: false, garmin: false, externalCalendar: false, weather: false, garminFull: false, wahoo: false, wahooFull: false },
-    notificationKeys: new Set(),
     quickTemplatesVisible: false,
     activityTracked: false,
     syncPoll: {

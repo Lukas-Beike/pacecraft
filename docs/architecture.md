@@ -12,7 +12,7 @@ The AST layer tests in `tests/test_backend_layer_contracts.py` enforce the permi
 | providers | `backend.providers` | `backend.canonical`, `backend.config`, `backend.errors`, `backend.observability`, `backend.providers`, `backend.runtime.clock`, `backend.runtime.ports`, `backend.runtime.socket_deadline` |
 | canonical | `backend.canonical` | `backend.canonical` |
 | http_api | `backend.http_api` | domain packages, shared modules, `backend.http_api`, `backend.runtime` |
-| domain | `backend.activities`, `backend.athlete`, `backend.backup`, `backend.calendar`, `backend.coach`, `backend.diagnostics`, `backend.history`, `backend.nutrition`, `backend.performance`, `backend.planning`, `backend.sync`, `backend.weather` | domain packages, shared modules, `backend.app`, `backend.db`, `backend.providers`, `backend.runtime` |
+| domain | `backend.activities`, `backend.athlete`, `backend.backup`, `backend.calendar`, `backend.coach`, `backend.diagnostics`, `backend.history`, `backend.nutrition`, `backend.performance`, `backend.planning`, `backend.push`, `backend.sync`, `backend.weather` | domain packages, shared modules, `backend.app`, `backend.db`, `backend.providers`, `backend.runtime` |
 | db | `backend.db` | shared modules, `backend.db`, `backend.runtime` |
 | runtime | `backend.runtime` | shared modules, `backend.runtime` |
 | shared | every other `backend` package or module, among them `backend.app`, `backend.change_history`, `backend.config`, `backend.errors`, `backend.observability`, `backend.pagination`, `backend.privacy`, `backend.provider_credentials`, `backend.settings` | domain packages, shared modules, `backend.db`, `backend.providers`, `backend.runtime` |
@@ -87,8 +87,8 @@ The browser client is a plain JavaScript PWA. `app.js` bootstraps the client;
 `auth.js` owns login, session, confirmation, and app-shell loading; `shared.js`
 owns generic helpers and cross-view UI state; `sync-status.js` owns sync,
 connectivity, provider freshness, and progress state; and `sync-actions.js`
-owns refresh actions. `notifications.js` owns notification permission,
-notifications, and service-worker registration. `performance-view.js` owns
+owns refresh actions. `notifications.js` owns the push subscription (permission,
+subscribe and unsubscribe) and service-worker registration. `performance-view.js` owns
 performance, Garmin, and editable metrics; `diagnostics.js` owns change
 history, logs, and diagnostic capture; and `settings.js` owns profile,
 check-ins, model and calendar settings, backups, and privacy actions. The

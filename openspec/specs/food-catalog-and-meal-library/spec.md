@@ -726,7 +726,7 @@ The system SHALL store a saved meal as one portion with `id`, `name`, `descripti
 
 #### Scenario: Log portions
 - **WHEN** a saved meal is logged for `p` portions (above 0 up to 20)
-- **THEN** the entry description is `{name} · {p} Portion(en): {description}` and the nutrients and frozen ingredient amounts are multiplied by `p`.
+- **THEN** the entry description is `{name} · {p} Portion: {description}` for exactly one portion and `{name} · {p} Portionen: {description}` otherwise, `{p}` with a decimal comma, and the nutrients and frozen ingredient amounts are multiplied by `p`.
 
 #### Scenario: Meal type on logging
 - **WHEN** the saved meal has an explicit meal type, or no time is given

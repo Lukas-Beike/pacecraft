@@ -244,7 +244,12 @@ class SelectModulesTests(unittest.TestCase):
                 ["backend/other.py"], self.root
             )
         self.assertIsNone(modules)
-        self.assertRegex(reason, r"^\d+ of \d+ test modules affected; full suite$")
+        # The reason names the changed path behind the fallback (#3924).
+        self.assertRegex(
+            reason,
+            r"^\d+ of \d+ test modules affected, most through backend/other\.py; "
+            r"full suite$",
+        )
 
     def test_canonical_and_store_changes_select_focused_modules(self):
         for path in (
@@ -324,6 +329,25 @@ class ChangedPathsTests(unittest.TestCase):
             mock.patch("sys.stdout"),
         ):
             self.assertEqual(run_tests.main(), 0)
+
+    def test_a_skipped_full_suite_fallback_names_its_reason_and_stops(self):
+        import run_tests
+
+        # A local fallback took 20 minutes without saying why (#3924).
+        fallback = (None, "x.py matches full-suite path x.py")
+        with (
+            mock.patch.object(
+                sys, "argv", ["run_tests.py", "--skip-full-fallback", "--changed"]
+            ),
+            mock.patch.object(changed_tests, "changed_paths", return_value=["x.py"]),
+            mock.patch.object(changed_tests, "select_modules", return_value=fallback),
+            mock.patch.object(run_tests, "discover_tests") as discover,
+            mock.patch("sys.stdout", new_callable=io.StringIO) as output,
+        ):
+            self.assertEqual(run_tests.main(), 0)
+        discover.assert_not_called()
+        self.assertIn("x.py matches full-suite path x.py", output.getvalue())
+        self.assertIn("Full-suite fallback skipped: CI runs", output.getvalue())
 
     def test_with_heavy_keeps_the_selected_slow_modules_for_ci(self):
         import run_tests

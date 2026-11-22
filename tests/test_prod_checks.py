@@ -467,6 +467,28 @@ class ProdChecksTests(unittest.TestCase):
                  "--section", "fit_inventory", "--expect-version", "2.1.2"]
             )  # fmt: skip
 
+    def test_push_notifications_print_counts_only(self):
+        # #3914: device and delivery counts are readable on prod; nothing else is.
+        report = {
+            "push_notifications": {
+                "subscriptions": 1,
+                "per_type": {"upcoming": {"sent": 2, "failed": 1}},
+                "endpoint": "https://fcm.googleapis.com/fcm/send/planted",
+            }
+        }
+        lines = [
+            text
+            for _, text in prod_diagnostics.section_lines(report, "push_notifications")
+        ]
+        self.assertEqual(
+            sorted(lines),
+            [
+                "push_notifications.per_type.upcoming.failed 1",
+                "push_notifications.per_type.upcoming.sent 2",
+                "push_notifications.subscriptions 1",
+            ],
+        )
+
     def test_energy_balance_prints_the_body_codes_and_counts(self):
         # #3362: the energy table's body source and reason are readable on prod.
         report = {

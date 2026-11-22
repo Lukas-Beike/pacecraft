@@ -36,14 +36,14 @@ const CREDENTIAL_VISIBLE_FIELDS = new Set(["openai_base_url", "anthropic_base_ur
 
 const CREDENTIAL_SOURCE_LABELS = Object.freeze({
   db: "In der App gespeichert",
-  env: "Aus Umgebung",
+  env: "Server-Einstellung",
   none: "Nicht gesetzt",
 });
 
 const GARMIN_SOURCE_LABELS = Object.freeze({
   db: "In der App gespeichert",
   file: "Aus Token-Datei",
-  env: "Aus Umgebung",
+  env: "Server-Einstellung",
   none: "Nicht gesetzt",
 });
 
@@ -536,7 +536,7 @@ function renderYazioStatus(result) {
   };
   setConnectionChip("#yazioConnectionStatus", yazioConnectionKind(result?.status));
   const date = result?.checked_at ? new Date(result.checked_at) : null;
-  const checked = date && !Number.isNaN(date.getTime()) ? `Geprüft: ${date.toLocaleString("de-DE")}` : "";
+  const checked = date && !Number.isNaN(date.getTime()) ? `Geprüft: ${AppFormat.dateTime(date)}` : "";
   const message = result ? messages[result.status] : "Status nicht verfügbar";
   setCredentialText("yazioConnectionDetail", [message, checked].filter(Boolean).join(" · "));
   const button = $("#yazioCheckButton");

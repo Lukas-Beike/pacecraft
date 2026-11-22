@@ -36,6 +36,7 @@ from backend.db.schema_history import (
     SHAPE_SCHEMA_V32,
     released_shape,
 )
+from backend.errors import SchemaRefusedError
 
 _LOGGER = logging.getLogger("intervals_coach")
 
@@ -50,7 +51,7 @@ _OLDER_SCHEMA_MESSAGE = (
 )
 
 
-class OlderSchemaError(RuntimeError):
+class OlderSchemaError(SchemaRefusedError):
     """The database predates the oldest supported schema; nothing was changed."""
 
 
@@ -70,13 +71,13 @@ def migrate_schema(
     if 0 < version < OLDEST_SUPPORTED_SCHEMA_VERSION:
         raise OlderSchemaError(_OLDER_SCHEMA_MESSAGE)
     if version not in ACCEPTED_SHAPES_BY_VERSION:
-        raise RuntimeError(
+        raise SchemaRefusedError(
             "Die Datenbankversion wird von diesem Release nicht unterstützt."
         )
     current = database_schema_is_current(db)
     shape = SHAPE_CURRENT if current else released_shape(database_schema_signature(db))
     if shape is None or shape not in ACCEPTED_SHAPES_BY_VERSION[version]:
-        raise RuntimeError(_UNSUPPORTED_SCHEMA_MESSAGE)
+        raise SchemaRefusedError(_UNSUPPORTED_SCHEMA_MESSAGE)
     if shape == SHAPE_CURRENT:
         return
     if before_upgrade is not None:

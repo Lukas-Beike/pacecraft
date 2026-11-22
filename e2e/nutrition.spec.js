@@ -98,14 +98,14 @@ test("@responsive nutrition product library supports review, local save, favorit
   await expect(productSection(page, "all")).not.toHaveAttribute("open", "");
   const cards = await openProductSection(page, "all");
   let card = cards.filter({ hasText: productName });
-  await expect(card).toContainText("72 g");
+  await expect(card).toContainText("72,0 g");
   await expect(card).toContainText("eigen");
   await expect(card).toContainText("fehlt: Kohlenhydrate");
 
   await card.getByRole("button", { name: "Bearbeiten" }).click();
   await editor.locator('[name="protein_g"]').fill("73");
   await editor.getByRole("button", { name: "Produkt lokal speichern" }).click();
-  await expect(card).toContainText("73 g");
+  await expect(card).toContainText("73,0 g");
 
   await page.evaluate(() => {
     const input = document.querySelector("#messageInput");

@@ -880,6 +880,16 @@ The client SHALL format numbers, dates and times for `de-DE`: numbers with at mo
 
 Evidence: `public/format.js` (`number`, `distance`, `duration`, `clock`, `relativeDay`); `public/performance-view.js::activitySportLabel`; `public/views.js::timezoneDateKey`. Tests: `tests/format.test.cjs::duration uses minutes under one hour and h:mm h from one hour`; `tests/plan-views-sport-label.test.cjs::completed activities are labelled from the canonical sport and environment`.
 
+### Requirement: One spelling per value
+
+The client SHALL spell each kind of value one way: a pace as "m:ss /km", a speed as "N,N km/h", a percentage with a space before the sign, a negative number with the minus sign "−" and never as a signed zero, a count with the singular for exactly one, and a timestamp without seconds.
+
+#### Scenario: Views of the fixture
+- **WHEN** a main view of the demo fixture is shown
+- **THEN** its text has no decimal point, no hyphen as minus sign, no percent sign without a space, no plural after one and no timestamp with seconds
+
+Evidence: `public/format.js` (`number`, `percent`, `signed`, `plural`, `speed`, `pace`); `e2e/contrast-sweep.spec.js::expectTextFormats`. Tests: `tests/format.test.cjs::negative values take the minus sign and a value that rounds to zero carries none (#3933)`; `tests/format.test.cjs::percent, speed and pace have one spelling each (#3933)`; `tests/format.test.cjs::plural names exactly one in the singular, a fraction in the plural (#3933)`.
+
 ### Requirement: Operations area details
 
 Betrieb & Diagnose SHALL read the newest 250 log entries and show each as "[time] LEVEL event: message {context}". Downloads SHALL use a 130-second deadline and the names `pacecraft-server-logs-<date>.jsonl`, `pacecraft-diagnostics-<date>.json`, `pacecraft-export-<date>.zip` and `pacecraft-database-<date>.backup`. The area SHALL offer no change-history view; undo is offered on receipts only.

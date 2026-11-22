@@ -98,10 +98,22 @@ globalThis.addEventListener("fetch", (event) => {
     });
   }));
 });
+// Web Push (#3914): the server's message is lock-screen safe; a tap opens its screen.
+globalThis.addEventListener("push", (event) => {
+  let message = {};
+  try { message = event.data?.json() ?? {}; } catch { message = {}; }
+  const route = typeof message.url === "string" && /^#[a-z/-]*$/.test(message.url) ? message.url : "";
+  event.waitUntil(globalThis.registration.showNotification(String(message.title || "Pacecraft"), {
+    body: String(message.body || ""), tag: String(message.tag || "pacecraft"), icon: "/icon-192.png", badge: "/icon.svg", data: { route },
+  }));
+});
 globalThis.addEventListener("notificationclick", (event) => {
   event.notification.close();
-  event.waitUntil(clients.matchAll({ type: "window", includeUncontrolled: true }).then((windows) => {
+  const url = `/${event.notification.data?.route || ""}`;
+  event.waitUntil(clients.matchAll({ type: "window", includeUncontrolled: true }).then(async (windows) => {
     const existing = windows.find((client) => "focus" in client);
-    return existing ? existing.focus() : clients.openWindow("/");
+    if (!existing) return clients.openWindow(url);
+    const focused = await existing.focus();
+    return focused.navigate ? focused.navigate(url).catch(() => focused) : focused;
   }));
 });

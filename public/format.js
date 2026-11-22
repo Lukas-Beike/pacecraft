@@ -34,11 +34,39 @@
     return new Intl.DateTimeFormat(LOCALE, options).format(date);
   }
 
-  // `minDigits` keeps trailing zeros, such as a training effect of 0,0.
+  // `minDigits` keeps trailing zeros, such as a training effect of 0,0. A negative value
+  // takes the minus sign "−"; a value that rounds to zero carries no sign (#3933).
   function number(value, { digits = 1, minDigits = 0 } = {}) {
     const numeric = Number(value);
     if (!Number.isFinite(numeric)) return null;
-    return new Intl.NumberFormat(LOCALE, { minimumFractionDigits: minDigits, maximumFractionDigits: Math.max(digits, minDigits) }).format(numeric);
+    const text = new Intl.NumberFormat(LOCALE, { minimumFractionDigits: minDigits, maximumFractionDigits: Math.max(digits, minDigits), signDisplay: "negative" }).format(numeric);
+    return text.replace("-", "−");
+  }
+
+  // A percentage with a space before the sign, as in "42,5 %".
+  function percent(value, { digits = 1 } = {}) {
+    const text = number(value, { digits });
+    return text == null ? null : `${text} %`;
+  }
+
+  // A change with an explicit sign: "+1,2", "−0,4", "0" (never a signed zero).
+  function signed(value, { digits = 1, minDigits = 0 } = {}) {
+    const text = number(value, { digits, minDigits });
+    if (text == null) return null;
+    return Number(value) > 0 && text !== "0" && /[1-9]/.test(text) ? `+${text}` : text;
+  }
+
+  // "1 Einheit" / "2 Einheiten"; a fraction such as 0,5 takes the plural.
+  function plural(count, one, many) {
+    const numeric = Number(count);
+    const value = Number.isFinite(numeric) ? numeric : 0;
+    return `${number(value, { digits: 1 })} ${value === 1 ? one : many}`;
+  }
+
+  // Speed in km/h with one decimal, "32,0 km/h".
+  function speed(kmh) {
+    const text = number(kmh, { digits: 1, minDigits: 1 });
+    return text == null ? null : `${text} km/h`;
   }
 
   function distance(meters) {
@@ -71,6 +99,12 @@
     return hours
       ? `${hours}:${String(minutes).padStart(2, "0")}:${String(remainder).padStart(2, "0")}`
       : `${minutes}:${String(remainder).padStart(2, "0")}`;
+  }
+
+  // Running pace per kilometre, "4:34 /km".
+  function pace(seconds) {
+    const text = clock(seconds);
+    return text == null ? null : `${text} /km`;
   }
 
   function date(value, { timeZone } = {}) {
@@ -112,7 +146,7 @@
     return times.find((value) => Number(value) > 0);
   }
 
-  const AppFormat = Object.freeze({ number, distance, duration, clock, date, dateTime, relativeDay, strengthCategory, sessionSeconds, STRENGTH_CATEGORIES });
+  const AppFormat = Object.freeze({ number, percent, signed, plural, speed, pace, distance, duration, clock, date, dateTime, relativeDay, strengthCategory, sessionSeconds, STRENGTH_CATEGORIES });
   globalThis.AppFormat = AppFormat;
   if (typeof module !== "undefined") module.exports = AppFormat;
 })();

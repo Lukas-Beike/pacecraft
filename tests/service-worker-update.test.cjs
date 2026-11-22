@@ -354,3 +354,133 @@ test("a versioned asset is served from the cache without the network and fetched
   const failed = await fetching(404)("/app.js?v=abc", "no-cors");
   assert.deepEqual(failed.puts, []);
 });
+
+// Runs the push and notification handlers of public/service-worker.js (#3914).
+function pushWorker(windows = []) {
+  const handlers = {};
+  const shown = [];
+  const opened = [];
+  loadPublicScript("service-worker.js", {
+    URL,
+    addEventListener: (type, handler) => { handlers[type] = handler; },
+    registration: { showNotification: async (title, options) => { shown.push({ title, options }); } },
+    clients: { matchAll: async () => windows, openWindow: async (url) => { opened.push(url); } },
+  });
+  const dispatch = async (type, event) => {
+    const waits = [];
+    handlers[type]({ ...event, waitUntil: (promise) => waits.push(promise) });
+    await Promise.all(waits);
+  };
+  return { dispatch, shown, opened };
+}
+
+test("a push message shows its lock-screen text and keeps only an app route", async () => {
+  const { dispatch, shown } = pushWorker();
+  const message = (payload) => ({ data: { json: () => payload } });
+  await dispatch("push", message({ title: "Wettkampf steht bevor", body: "In 3 Tagen ist ein Wettkampf.", url: "#plan/season", tag: "upcoming" }));
+  await dispatch("push", message({ title: "T", body: "B", url: "javascript:alert(1)" }));
+  await dispatch("push", { data: { json: () => { throw new SyntaxError("no json"); } } });
+  assert.deepEqual(JSON.parse(JSON.stringify(shown.map(({ title, options }) => [title, options.body, options.tag, options.data.route]))), [
+    ["Wettkampf steht bevor", "In 3 Tagen ist ein Wettkampf.", "upcoming", "#plan/season"],
+    ["T", "B", "pacecraft", ""],
+    ["Pacecraft", "", "pacecraft", ""],
+  ]);
+});
+
+test("tapping a notification opens its screen in the open app or a new window", async () => {
+  const navigated = [];
+  const client = { focus: async () => client, navigate: async (url) => { navigated.push(url); return client; } };
+  const open = pushWorker([client]);
+  const tap = (route) => ({ notification: { close: () => {}, data: { route } } });
+  await open.dispatch("notificationclick", tap("#more/connections"));
+  assert.deepEqual(navigated, ["/#more/connections"]);
+  const closed = pushWorker([]);
+  await closed.dispatch("notificationclick", tap(""));
+  assert.deepEqual(closed.opened, ["/"]);
+});
+
+// Runs the push subscription of public/notifications.js against stubbed browser and API.
+function pushPage({ refuse = false, registered = true, boundKey = [1, 2, 3, 255, 239] } = {}) {
+  const calls = [];
+  const subscription = {
+    options: { applicationServerKey: new Uint8Array(boundKey).buffer },
+    endpoint: "https://fcm.googleapis.com/fcm/send/fake",
+    toJSON: () => ({ endpoint: "https://fcm.googleapis.com/fcm/send/fake", keys: { p256dh: "p", auth: "a" } }),
+    unsubscribe: async () => { calls.push(["browser-unsubscribe"]); return true; },
+  };
+  const pushManager = {
+    subscribe: async (options) => { calls.push(["subscribe", options.userVisibleOnly, [...options.applicationServerKey]]); return subscription; },
+    getSubscription: async () => subscription,
+  };
+  const context = extractFunctions("notifications.js", ["pushRefused", "pushSupported", "pushRegistration", "currentPushSubscription", "pushKeyBytes", "storePushSubscription", "enablePush", "syncPushSubscription", "disablePush"], {
+    Notification: { permission: "granted", requestPermission: async () => "granted" },
+    PushManager: function PushManager() {},
+    renderNotificationStatus: async () => {},
+    // Without a registration `ready` never settles, as in a browser.
+    navigator: { serviceWorker: { getRegistration: async () => (registered ? {} : undefined), ready: registered ? Promise.resolve({ pushManager }) : new Promise(() => {}) } },
+    atob,
+    toast: (text) => calls.push(["toast", text]),
+    api: async (path, options) => {
+      calls.push([path, JSON.parse(options.body)]);
+      if (path === "/api/push/key") return { public_key: "AQID_-8" };
+      if (refuse && path === "/api/push/subscribe") throw Object.assign(new Error("Dieser Browser wird für Push-Benachrichtigungen nicht unterstützt."), { status: 400 });
+      return {};
+    },
+  });
+  return { context, calls };
+}
+
+test("enabling push subscribes with the server key and stores the subscription", async () => {
+  const { context, calls } = pushPage();
+  await context.enablePush();
+  assert.deepEqual(JSON.parse(JSON.stringify(calls)), [
+    ["/api/push/key", {}],
+    ["subscribe", true, [1, 2, 3, 255, 239]],
+    ["/api/push/subscribe", { endpoint: "https://fcm.googleapis.com/fcm/send/fake", keys: { p256dh: "p", auth: "a" } }],
+    ["toast", "Benachrichtigungen aktiviert"],
+  ]);
+});
+
+test("a subscription the server refuses is removed from the browser", async () => {
+  const { context, calls } = pushPage({ refuse: true });
+  await assert.rejects(context.enablePush(), /nicht unterstützt/);
+  assert.deepEqual(calls.at(-1), ["browser-unsubscribe"]);
+  // The status then reads "Von diesem Browser nicht unterstützt".
+  assert.equal(context.pushSupported(), false);
+});
+
+test("without a service worker registration enabling fails at once instead of hanging", async () => {
+  const { context, calls } = pushPage({ registered: false });
+  await assert.rejects(context.enablePush(), /unterstützt keine Push/);
+  assert.deepEqual(calls, []);
+});
+
+test("each app start sends the browser's subscription to the server again", async () => {
+  const { context, calls } = pushPage();
+  await context.syncPushSubscription();
+  assert.deepEqual(JSON.parse(JSON.stringify(calls)), [
+    ["/api/push/key", {}],
+    ["/api/push/subscribe", { endpoint: "https://fcm.googleapis.com/fcm/send/fake", keys: { p256dh: "p", auth: "a" } }],
+  ]);
+});
+
+test("a subscription made with another server key is renewed at the app start", async () => {
+  const { context, calls } = pushPage({ boundKey: [9, 9, 9] });
+  await context.syncPushSubscription();
+  assert.deepEqual(JSON.parse(JSON.stringify(calls)), [
+    ["/api/push/key", {}],
+    ["browser-unsubscribe"],
+    ["subscribe", true, [1, 2, 3, 255, 239]],
+    ["/api/push/subscribe", { endpoint: "https://fcm.googleapis.com/fcm/send/fake", keys: { p256dh: "p", auth: "a" } }],
+  ]);
+});
+
+test("disabling push removes the subscription on the server and in the browser", async () => {
+  const { context, calls } = pushPage();
+  await context.disablePush();
+  assert.deepEqual(JSON.parse(JSON.stringify(calls)), [
+    ["/api/push/unsubscribe", { endpoint: "https://fcm.googleapis.com/fcm/send/fake" }],
+    ["browser-unsubscribe"],
+    ["toast", "Benachrichtigungen ausgeschaltet"],
+  ]);
+});

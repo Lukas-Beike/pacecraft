@@ -7,7 +7,8 @@ records: current weight and body fat, `body_records.py`),
 `activities/` (feedback/reads/workout text), `calendar/` (external calendars),
 `diagnostics/` (safe diagnostics), `history/` (changes/undo), `nutrition/`,
 `performance/` (derived/readiness), `runtime/` (lifecycle/maintenance),
-`weather/` (weather/cache), `app/` (application context and composition),
+`weather/` (weather/cache), `push/` (Web Push notifications), `app/`
+(application context and composition),
 and `canonical/` (stdlib-only vocabulary/records).
 Cross-cutting owners: `config.py`, `privacy.py`, `settings.py`,
 `change_history.py`, `observability.py`, `errors.py`, `pagination.py`,

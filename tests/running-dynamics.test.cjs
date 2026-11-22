@@ -45,7 +45,7 @@ test("a flagged form drift leads with its label and lists the changes", () => {
     "Laufstil lässt nach",
     "Bodenkontaktzeit 250 → 265 ms (+6,0 %)",
     "Vertikale Oszillation 9,0 → 9,5 cm (+5,0 %)",
-    "Schrittlänge 1,20 → 1,16 m (-3,3 %)",
+    "Schrittlänge 1,20 → 1,16 m (−3,3 %)",
   ]);
 });
 

@@ -225,6 +225,7 @@ async function loadInitialState() {
   if (!state.data && showStateSnapshot(readStateSnapshot(), { syncing: false })) { retryBootstrapAuth(); return; }
   state.initialStateLoaded = true;
   scheduleStateSnapshotSave();
+  void syncPushSubscription();
   if (state.chatInitialScrollPending && AppRouter.baseRoute() === "coach") scrollChatToLatest();
   // Refresh stale weather in the background; the local bootstrap is already current.
   if (state.data?.profile?.weather_location) {
@@ -1950,6 +1951,9 @@ const CONTEXT_KEY_LABELS = {
   context_characters: "Zeichen im Kontext",
   projection: "Projektion",
   name: "Name",
+  goals: "Ziele",
+  training_background: "Trainingshintergrund",
+  availability: "Verfügbarkeit",
   sports: "Sportarten",
   typical_weekly_volume: "Typischer Wochenumfang",
   timezone: "Zeitzone",
@@ -1973,8 +1977,9 @@ function contextTextNode(text) {
 function contextScalarText(key, value) {
   if (value === null || value === undefined || value === "") return "–";
   if (typeof value === "boolean") return value ? "Ja" : "Nein";
-  if (typeof value === "number") return value.toLocaleString("de-DE", { maximumFractionDigits: 2 });
+  if (typeof value === "number") return AppFormat.number(value, { digits: 2 }) ?? String(value);
   if (typeof value === "string" && key.endsWith("_at")) return formatTime(value);
+  if (key === "sports") return profileSportsLabel(value);
   return String(value);
 }
 

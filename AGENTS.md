@@ -54,7 +54,7 @@ Use [README.md](README.md) for the overview and [docs/setup.md](docs/setup.md) a
 - A new database is created directly as SQLCipher when `APP_PASSWORD` is
   configured. Existing SQLCipher databases are upgraded in place through
   validated, data-preserving migrations; encryption must remain enabled.
-- Workouts created by the coach are local training-library entries until the
+- Workouts created by the Coach or in the UI are local training-library entries until the
   athlete explicitly synchronizes the library to Intervals.icu. Do not add
   implicit remote workout writes. The one exception is the deletion of the
   app's own linked Garmin workouts once their day has passed, after a Garmin

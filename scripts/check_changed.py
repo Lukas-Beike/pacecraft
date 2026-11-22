@@ -3,6 +3,8 @@
     python scripts/check_changed.py [--base origin/develop] [--js] [--fix-format]
         [--tests-since SHA]
 
+A full-suite fallback of the test selection is named and left to CI, which
+runs the full suite on every PR; --full runs it here (#3924).
 --tests-since selects the Python, Node and workflow checks from SHA...HEAD
 only (the head of a green full run of this branch, an ancestor of HEAD, not
 HEAD); --fix-format still formats the files changed against --base, and
@@ -45,6 +47,7 @@ from gh_cli import CliError, git
 ROOT = Path(__file__).resolve().parents[1]
 JS_SUFFIXES = (".js", ".cjs", ".mjs")
 WORKFLOWS = ".github/workflows/"
+SELECTION_LINES = ("Changed-test selection", "Full-suite fallback skipped")
 SPECS = "openspec/"
 # Spec evidence cites `tests/<file>.py:<name>`, so a renamed test breaks it too.
 SPEC_EVIDENCE = re.compile(r"tests/[^/]+\.py$")
@@ -157,7 +160,10 @@ def run_steps(
             # unrun() first: every missing tool is reported, not just the first.
             missing = unrun(name, str(exc)) or missing
             continue
-        print(f"{'ok' if passed else 'FAILED'} {name} ({seconds:.1f}s)", flush=True)
+        # The test selection, and why it fell back to the full suite (#3924).
+        shown = [f"  {x}" for x in output.splitlines() if x.startswith(SELECTION_LINES)]
+        status = f"{'ok' if passed else 'FAILED'} {name} ({seconds:.1f}s)"
+        print("\n".join([status, *shown]), flush=True)
         if not passed:
             failed = True
             for line in failure_report(name, output):
@@ -279,11 +285,15 @@ def build_steps(
     workflows: list[str] | None = None,
     tests_base: str | None = None,
     specs: bool = False,
+    full: bool = False,
 ) -> list[tuple[str, list[str]]]:
     python = sys.executable
     selection = tests_base or base
+    # CI runs the full suite on every PR; a fallback runs here only on --full.
+    skip = [] if full else ["--skip-full-fallback"]
+    runner = [python, "tests/run_tests.py", *skip, "--changed", "--base", selection]
     steps = [
-        ("tests", [python, "tests/run_tests.py", "--changed", "--base", selection]),
+        ("tests", runner),
         (
             "compile",
             [python, "-m", "compileall", "-q", "server.py", "backend", "tests"],
@@ -340,6 +350,11 @@ def main(argv: list[str] | None = None) -> int:
         help="select tests from SHA...HEAD only: the head of a green full run of "
         "this branch, before small follow-up commits (#3813)",
     )
+    parser.add_argument(
+        "--full",
+        action="store_true",
+        help="run the full suite when the selector falls back to it (#3924)",
+    )
     args = parser.parse_args(argv)
     try:
         if args.tests_since:
@@ -363,7 +378,7 @@ def main(argv: list[str] | None = None) -> int:
         }
     )
     specs = any(path.startswith(SPECS) or SPEC_EVIDENCE.match(path) for path in branch)
-    steps = build_steps(args.base, js, workflows, args.tests_since, specs)
+    steps = build_steps(args.base, js, workflows, args.tests_since, specs, args.full)
     return max(run_steps(steps, {"quality": quality_env()}), formatted)
 
 

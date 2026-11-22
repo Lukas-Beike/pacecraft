@@ -199,7 +199,7 @@ test("@responsive Analyse shows recurring sessions after the profile cards and n
   // The answer still carries the run trend, but no card draws it (#3153).
   await expect(page.getByText(/Pace bei \d/)).toHaveCount(0);
   await expect(running.getByRole("heading", { name: /5 × 1000 m @ 4:10 \/km/ })).toContainText("Garmin");
-  await expect(running.locator("tbody tr").first()).toHaveText(/14\.11\.2026\s*4:06 min\/km · Abfall 1,1 %/);
+  await expect(running.locator("tbody tr").first()).toHaveText(/14\.11\.2026\s*4:06 \/km · Abfall 1,1 %/);
   await expect(page.locator("#cyclingRecurringSessions")).toBeHidden();
   // The trends read waits for the profile cards' answer, so it never holds them up.
   expect(order.indexOf(`request ${TRENDS}`)).toBeGreaterThan(order.indexOf("response power"));

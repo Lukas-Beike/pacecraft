@@ -144,6 +144,8 @@ SECTION_FIELDS = {
     "dfa_series": re.compile(
         r"status|runs|with_series|unreadable_series|before_series|without_result"
     ),
+    # Web Push: subscribed devices and sent/failed per type, counts only (#3914).
+    "push_notifications": re.compile(r"subscriptions|per_type\.[a-z_]+\.(sent|failed)"),
     # The energy table's basis and its formula rows' body fat (#3100, #3336, #3362).
     "energy_balance": re.compile(
         r"status|latest_window_(complete_days|weighins|insufficient)|windows"

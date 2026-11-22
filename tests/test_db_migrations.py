@@ -18,7 +18,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from support import temp_database
 
-from backend.canonical.vocabulary import ProviderId
+from backend.canonical.vocabulary import ProviderId, SourceKind
 from backend.db import migrations, repositories, schema_history
 from backend.db.bootstrap import initialize_application_database
 from backend.db.migrations import OlderSchemaError, migrate_schema
@@ -44,6 +44,8 @@ from backend.db.schema_history import (
     released_shape,
     signature_digest,
 )
+from backend.errors import SchemaRefusedError
+from backend.sync.canonical_table_reader import CanonicalTableReader
 from backend.sync.state import settle_interrupted_sync_state
 
 INTERVALS = ProviderId.INTERVALS.value
@@ -260,14 +262,14 @@ def add_baseline_activity_rows(db) -> None:
         "INSERT INTO activity_records(provider, provider_activity_id, activity_id, "
         "mapper_version, source_kind, recorded_by, sport, environment, started_at, "
         "load_model, fetched_at, created_at, updated_at) VALUES ('garmin', 'g1', "
-        "'act_1', 9, 'provider_api', 'garmin', 'run', 'outdoor', ?, 'none', ?, ?, ?)",
+        "'act_1', 9, 'provider_reported', 'garmin', 'run', 'outdoor', ?, 'garmin_training_load', ?, ?, ?)",
         (STAMP, STAMP, STAMP, STAMP),
     )
     db.executemany(
         "INSERT INTO activity_detail_sets(provider, provider_activity_id, "
         "detail_kind, mapper_version, origin, source_kind, recorded_by, resolution, "
         "lap_source, content_sha256, fetched_at, created_at, updated_at) VALUES "
-        "('garmin', 'g1', ?, 9, 'fetch', 'provider_api', 'garmin', ?, ?, ?, ?, ?, ?)",
+        "('garmin', 'g1', ?, 9, 'fetch', 'provider_reported', 'garmin', ?, ?, ?, ?, ?, ?)",
         [
             ("streams", "full", None, "a" * 64, STAMP, STAMP, STAMP),
             ("laps", None, "device_laps", "b" * 64, STAMP, STAMP, STAMP),
@@ -532,6 +534,12 @@ class DatabaseSchemaGateTests(unittest.TestCase):
             db.execute("SELECT content FROM messages").fetchone()[0], "Hallo"
         )
         assert_device_workout_columns_empty(self, db)
+        # The canonical reader serves the upgraded activity (#3927).
+        (activity,) = CanonicalTableReader().activities(db)
+        self.assertEqual(
+            (activity.activity_id, activity.provenance.source_kind),
+            ("g1", SourceKind.PROVIDER_REPORTED),
+        )
         # Every diary row of the baseline, value for value, without volume or
         # session (#3234).
         self.assertEqual(
@@ -714,44 +722,44 @@ class DatabaseSchemaGateTests(unittest.TestCase):
                 db.commit()
                 self.assert_rejected_unchanged(db)
 
-    def test_older_database_file_is_refused_at_startup_without_changes(self):
+    def test_older_or_newer_database_file_is_refused_at_startup_byte_identical(self):
         # A release before 2.0.5 wrote a schema below 26: startup names the
-        # release to upgrade with first and leaves every row and the version.
-        with tempfile.TemporaryDirectory() as root:
-            path = Path(root) / "older.db"
-            with closing(sqlite3.connect(path)) as db:
-                db.executescript(BASELINE_FIXTURE.read_text(encoding="utf-8"))
-                db.execute(
-                    "INSERT INTO messages(role, content, created_at) "
-                    "VALUES ('user', 'Hallo', ?)",
-                    (STAMP,),
-                )
-                db.execute(f"PRAGMA user_version = {OLDEST_SUPPORTED_VERSION - 1}")
-                db.commit()
-                before = list(db.iterdump())
-            manager = temp_database(self, path=path)
-            try:
-                with (
-                    self.assertRaisesRegex(OlderSchemaError, "Release 2.0.5"),
-                    manager.unit_of_work() as db,
-                ):
-                    initialize_application_database(
-                        db,
-                        key_values=KeyValueRepository(lambda: STAMP),
-                        now=STAMP,
-                        current_time=datetime.now(UTC),
-                        default_profile_json="{}",
-                        settle_interrupted=settle_interrupted_sync_state,
-                        retention_days=-1,
+        # release to upgrade with first. A newer schema is refused as well; both
+        # leave the file byte-identical (#3927).
+        for version, refusal, text in (
+            (OLDEST_SUPPORTED_VERSION - 1, OlderSchemaError, "Release 2.0.5"),
+            (CURRENT_SCHEMA_VERSION + 1, SchemaRefusedError, "nicht unterstützt"),
+        ):
+            with self.subTest(version=version), tempfile.TemporaryDirectory() as root:
+                path = Path(root) / "refused.db"
+                with closing(sqlite3.connect(path)) as db:
+                    db.executescript(BASELINE_FIXTURE.read_text(encoding="utf-8"))
+                    db.execute(
+                        "INSERT INTO messages(role, content, created_at) "
+                        "VALUES ('user', 'Hallo', ?)",
+                        (STAMP,),
                     )
-            finally:
-                manager.close()
-            with closing(sqlite3.connect(path)) as db:
-                self.assertEqual(list(db.iterdump()), before)
-                self.assertEqual(
-                    db.execute("PRAGMA user_version").fetchone()[0],
-                    OLDEST_SUPPORTED_VERSION - 1,
-                )
+                    db.execute(f"PRAGMA user_version = {version}")
+                    db.commit()
+                before = path.read_bytes()
+                manager = temp_database(self, path=path)
+                try:
+                    with (
+                        self.assertRaisesRegex(refusal, text),
+                        manager.unit_of_work() as db,
+                    ):
+                        initialize_application_database(
+                            db,
+                            key_values=KeyValueRepository(lambda: STAMP),
+                            now=STAMP,
+                            current_time=datetime.now(UTC),
+                            default_profile_json="{}",
+                            settle_interrupted=settle_interrupted_sync_state,
+                            retention_days=-1,
+                        )
+                finally:
+                    manager.close()
+                self.assertEqual(path.read_bytes(), before)
 
     def test_unknown_schema_shape_is_rejected_without_modification(self):
         changes = (

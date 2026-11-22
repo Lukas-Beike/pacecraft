@@ -6,45 +6,45 @@
       <button aria-describedby="analysis-info-1" aria-expanded="false" aria-label="Erklärung zu Schwellenpace" class="analysis-legend-info" popovertarget="analysis-info-1" type="button">
         "Schwellenpace"
       <div class="analysis-info-tooltip" data-series="0" id="analysis-info-1" on:toggle="1" popover="auto" role="tooltip">
-        "Schwellenpace: 4:50 min/km · 08.10.2026 · Quelle: Garmin Connect. Pace aus Garmin."
+        "Schwellenpace: 4:50 /km · 08.10.2026 · Quelle: Garmin Connect. Pace aus Garmin."
         <span class="analysis-metric-meta">
           "08.10.2026 · Garmin Connect"
         <span class="analysis-metric-meta">
           "Daten für 3 von 4 Tagen vorhanden."
         <span class="analysis-metric-change">
-          "Seit 05.10.2026: −0:10 min/km"
+          "Seit 05.10.2026: −0:10 /km"
     <li data-color="1" data-line="dashed">
       <button aria-describedby="analysis-info-2" aria-expanded="false" aria-label="Erklärung zu Zielpace" class="analysis-legend-info" popovertarget="analysis-info-2" type="button">
         "Zielpace"
       <div class="analysis-info-tooltip" data-series="1" id="analysis-info-2" on:toggle="1" popover="auto" role="tooltip">
-        "Zielpace: 5:05 min/km · 08.10.2026. Pace aus Garmin."
+        "Zielpace: 5:05 /km · 08.10.2026. Pace aus Garmin."
         <span class="analysis-metric-meta">
           "08.10.2026"
         <span class="analysis-metric-meta">
           "Daten für 2 von 2 Tagen vorhanden."
         <span class="analysis-metric-change">
-          "Seit 05.10.2026: −0:05 min/km"
+          "Seit 05.10.2026: −0:05 /km"
         <p class="analysis-reference-note">
           "Mittlere Hälfte deiner früheren Werte (Quartile) · 42 Tage vor der letzten Messung · vorläufig"
   <div class="analysis-info-tooltip" id="point-info-3" on:toggle="1" popover="auto" role="tooltip">
     <strong>
       "05.10.2026"
     <p>
-      "Schwellenpace: 5:00 min/km · Garmin Connect"
+      "Schwellenpace: 5:00 /km · Garmin Connect"
     <p>
-      "Zielpace: 5:10 min/km"
+      "Zielpace: 5:10 /km"
   <div class="analysis-info-tooltip" id="point-info-4" on:toggle="1" popover="auto" role="tooltip">
     <strong>
       "07.10.2026"
     <p>
-      "Schwellenpace: 4:55 min/km · Garmin Connect"
+      "Schwellenpace: 4:55 /km · Garmin Connect"
   <div class="analysis-info-tooltip" id="point-info-5" on:toggle="1" popover="auto" role="tooltip">
     <strong>
       "08.10.2026"
     <p>
-      "Schwellenpace: 4:50 min/km · Garmin Connect"
+      "Schwellenpace: 4:50 /km · Garmin Connect"
     <p>
-      "Zielpace: 5:05 min/km"
+      "Zielpace: 5:05 /km"
   <svg:svg aria-label="Laufpace: datierter Verlauf. Tageswerte auswählen oder Werte ansehen öffnen." role="group" viewBox="0 0 310 200">
     <svg:title>
       "Laufpace · 05.10.2026 bis 08.10.2026"
@@ -69,21 +69,21 @@
       "min/km · schneller oben"
     <svg:circle cx="60" cy="95" data-color="0" data-series="0" r="2.5">
       <svg:title>
-        "Schwellenpace · 05.10.2026: 5:00 min/km"
+        "Schwellenpace · 05.10.2026: 5:00 /km"
     <svg:circle cx="210.66666666666666" cy="78.75" data-color="0" data-series="0" r="2.5">
       <svg:title>
-        "Schwellenpace · 07.10.2026: 4:55 min/km"
+        "Schwellenpace · 07.10.2026: 4:55 /km"
     <svg:circle cx="286" cy="62.5" data-color="0" data-series="0" r="2.5">
       <svg:title>
-        "Schwellenpace · 08.10.2026: 4:50 min/km"
+        "Schwellenpace · 08.10.2026: 4:50 /km"
     <svg:path d="M60.00,95.00 L210.67,78.75 L286.00,62.50 " data-color="0" data-line="solid" data-series="0" fill="none">
     <svg:rect class="analysis-baseline-band" height="97.5" width="226" x="60" y="46.25">
     <svg:circle cx="60" cy="127.5" data-color="1" data-series="1" r="2.5">
       <svg:title>
-        "Zielpace · 05.10.2026: 5:10 min/km"
+        "Zielpace · 05.10.2026: 5:10 /km"
     <svg:circle cx="286" cy="111.25" data-color="1" data-series="1" r="2.5">
       <svg:title>
-        "Zielpace · 08.10.2026: 5:05 min/km"
+        "Zielpace · 08.10.2026: 5:05 /km"
     <svg:path d="M60.00,127.50 L286.00,111.25 " data-color="1" data-line="dashed" data-series="1" fill="none">
     <svg:text class="analysis-point-value" data-value-series="0" text-anchor="middle" x="72" y="85">
       "5:00"
@@ -132,20 +132,20 @@
             <th scope="row">
               "05.10.2026"
             <td>
-              "5:00 min/km"
+              "5:00 /km"
             <td>
-              "5:10 min/km"
+              "5:10 /km"
           <tr>
             <th scope="row">
               "07.10.2026"
             <td>
-              "4:55 min/km"
+              "4:55 /km"
             <td>
               "–"
           <tr>
             <th scope="row">
               "08.10.2026"
             <td>
-              "4:50 min/km"
+              "4:50 /km"
             <td>
-              "5:05 min/km"
+              "5:05 /km"

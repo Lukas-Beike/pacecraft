@@ -139,7 +139,7 @@ class ServerFrontendTests(ServerTestCase):
                 "renderSyncStatus",
             ),
             "notifications.js": (
-                "notificationPermission",
+                "pushSupported",
                 "enableNotifications",
                 "registerServiceWorker",
             ),

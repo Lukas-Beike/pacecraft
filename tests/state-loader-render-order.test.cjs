@@ -7,7 +7,7 @@ function loader(route) {
   const state = { data: null, route, sessionGeneration: 0, replaceDataOnLoad: false };
   const reloads = [];
   const stubs = [
-    "renderAppVersion", "renderCoachOverview", "renderQuickMessageTemplates", "notifyState",
+    "renderAppVersion", "renderCoachOverview", "renderQuickMessageTemplates",
     "renderStatus", "renderMessages", "renderPlanned", "renderLibrary", "renderProfile", "renderCompetitions", "renderGarmin",
     "renderAdaptivePlanning", "renderExternalCalendar", "renderPerformance", "renderModel", "renderThinkingLevel",
     "renderServiceTier", "renderDiagnosticCapture", "renderSettings", "updateChatControls",

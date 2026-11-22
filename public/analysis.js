@@ -11,8 +11,9 @@ function analysisValue(value, unit) {
   if (unit === "s") return formatDuration(Math.round(Number(value)));
   if (unit === "h") {
     const minutes = Math.round(Math.abs(Number(value)) * 60);
-    return `${Number(value) < 0 ? "−" : ""}${Math.floor(minutes / 60)}:${String(minutes % 60).padStart(2, "0")} h`;
+    return `${Number(value) < 0 && minutes > 0 ? "−" : ""}${Math.floor(minutes / 60)}:${String(minutes % 60).padStart(2, "0")} h`;
   }
+  if (unit === "Einheiten") return AppFormat.plural(value, "Einheit", "Einheiten");
   const suffix = unit ? ` ${unit}` : "";
   return `${analysisNumber(value, unit)}${suffix}`;
 }
@@ -34,17 +35,18 @@ function analysisCountUnit(unit) {
 function analysisNumber(value, unit) {
   const numeric = Number(value);
   if (analysisCountUnit(unit)) return AppFormat.number(Math.round(numeric), { digits: 0 });
+  // Mass, speed and percentages always show one decimal; VO₂max keeps the source's own (#2263, #3933).
+  if (["kg", "km/h", "%"].includes(unit)) return AppFormat.number(numeric, { digits: 1, minDigits: 1 });
   if (!analysisRatioUnit(unit) || !numeric) return AppFormat.number(numeric);
   return AppFormat.number(numeric, { digits: Math.max(1, 2 - Math.floor(Math.log10(Math.abs(numeric)))) });
 }
 
 function analysisCountLabel(count, singular, plural) {
-  const value = Number.isFinite(Number(count)) ? Number(count) : 0;
-  return `${value.toLocaleString("de-DE")} ${value === 1 ? singular : plural}`;
+  return AppFormat.plural(count, singular, plural);
 }
 
 function analysisPercent(value) {
-  return `${Number(value).toLocaleString("de-DE", { maximumFractionDigits: 1 })}%`;
+  return AppFormat.percent(value);
 }
 
 function analysisLegendText(item, latest, unit) {
@@ -183,9 +185,14 @@ function appendAnalysisLineKey(section, series) {
   section.append(h("p", "analysis-line-key", h("span", "analysis-line-key-swatch"), ` Gestrichelt: ${dashed.map((item) => item.legendLabel || item.label).join(", ")}`));
 }
 
+// A change that rounds to zero carries no sign.
 function analysisChange(delta, unit) {
-  if (unit === "s/km") return `${delta < 0 ? "−" : "+"}${formatPace(Math.abs(delta))}`;
-  return `${delta < 0 ? "" : "+"}${analysisValue(delta, unit)}`;
+  const text = unit === "s/km" ? formatPace(Math.abs(delta)) : analysisValue(delta, unit);
+  if (/^[−+]?0([,:]0+)?(\s|$)/.test(text)) return text;
+  // A pace is the absolute time and needs its own minus; a value carries it already.
+  let sign = delta < 0 ? "" : "+";
+  if (unit === "s/km") sign = delta < 0 ? "−" : "+";
+  return `${sign}${text}`;
 }
 
 function appendAnalysisReferenceNotes(section, series, unit) {
@@ -201,7 +208,7 @@ function appendAnalysisReferenceNotes(section, series, unit) {
 }
 
 function analysisReadingDetails(point, unit) {
-  let details = point.count ? ` · ${point.count} Messungen` : "";
+  let details = point.count ? ` · ${AppFormat.plural(point.count, "Messung", "Messungen")}` : "";
   if (point.weekReadings > 1) details += ` · ${point.weekReadings} Messungen in der Woche`;
   if (point.observedDate && point.observedDate !== point.date) details += ` · letzter Messwert ${dateLabel(point.observedDate)}`;
   if (point.ftp_observed_at) details += ` · ${point.power_method || "FTP"} ${dateLabel(point.ftp_observed_at)}`;
@@ -1305,7 +1312,7 @@ function appendLocalFitnessChart(report, loadRoot, loadMissing, start, end) {
       points: weekly ? analysisWeeklyLastPoints(points, start, end) : points, currentPoint: points.findLast(analysisValidPoint) };
   });
   const unloaded = days.reduce((sum, day) => sum + (day.sessions_without_load || 0), 0);
-  const unloadedNote = unloaded === 1 ? "1 Einheit ohne TSS" : `${unloaded} Einheiten ohne TSS`;
+  const unloadedNote = `${AppFormat.plural(unloaded, "Einheit", "Einheiten")} ohne TSS`;
   // Share of the visible days, so the note matches the shown period like the session count.
   const incompletePercent = Math.round(100 * days.filter((day) => day.state === "incomplete").length / days.length);
   const notes = [];
@@ -1771,8 +1778,8 @@ async function bodyEntryChanged() {
 // The weight and the body fat save wait in the outbox when the server cannot be reached (#3761);
 // a removal, a skinfold measurement and an undo do not.
 const OUTBOX_BODY_ENTRIES = {
-  "/api/body/weight": { kind: "weight", label: (payload) => `Gewicht ${payload.kg} kg` },
-  "/api/body/body-fat": { kind: "body-fat", label: (payload) => `Körperfett ${payload.pct} %` },
+  "/api/body/weight": { kind: "weight", label: (payload) => `Gewicht ${AppFormat.number(payload.kg, { digits: 1 })} kg` },
+  "/api/body/body-fat": { kind: "body-fat", label: (payload) => `Körperfett ${AppFormat.percent(payload.pct)}` },
 };
 
 async function sendBodyEntry(dialog, path, payload, button, receipt, replaces = null) {
@@ -2720,7 +2727,7 @@ async function renderTrainingRecords({ background = false } = {}) { // NOSONAR
     }
     gear.prepend(tabs);
     gear.querySelectorAll("details").forEach((details) => { details.open = openDetails.has(details.dataset.key); });
-    if (equipment.garmin_synced_at) gear.append(h("p", "muted", `Garmin \u00b7 Stand ${new Date(equipment.garmin_synced_at).toLocaleString("de-DE")}${equipment.garmin_freshness === "stale" ? " \u00b7 letzter erfolgreicher Abruf" : ""}`));
+    if (equipment.garmin_synced_at) gear.append(h("p", "muted", `Garmin \u00b7 Stand ${formatTime(equipment.garmin_synced_at)}${equipment.garmin_freshness === "stale" ? " \u00b7 letzter erfolgreicher Abruf" : ""}`));
   } catch (error) {
     if (generation === trainingRecordsGeneration && session === state.sessionGeneration) {
       if (!rendered()) gear.replaceChildren(heading(), createErrorState(error?.message, () => void renderTrainingRecords()));
@@ -2993,7 +3000,7 @@ function renderTrainingFocus(report) {
 
   const categories = [["low_aerobic", "Leicht aerob"], ["high_aerobic", "Hoch aerob"], ["anaerobic", "Anaerob"]];
   const info = h("button", { className: "analysis-legend-info analysis-info-icon", type: "button", "aria-label": "Trainingsfokus: Informationen" }, "i");
-  const explanation = h("div", { className: "analysis-info-tooltip", id: `focus-info-${++analysisInfoId}` }, `${trainingFocusPeriodLabel(report)}: ${dateLabel(report.start)} bis ${dateLabel(report.end)}. ${report.coverage?.known_sessions ?? 0} erfasste Garmin-Einheiten im Zeitraum${report.coverage?.observed_start && report.coverage?.observed_end ? ` · erfasste Daten ${dateLabel(report.coverage.observed_start)} bis ${dateLabel(report.coverage.observed_end)}` : ""}. Garmin: aufgezeichnete Belastung nach der Hauptwirkung der Einheit (Training Effect). Keine aus Zonen abgeleitete Einteilung und nicht Garmins separat berechnete Load-Focus-Metrik. ${report.unclassified_sessions || 0} Einheiten ohne bekannte Wirkung oder Belastung bleiben ausgeschlossen.`); // NOSONAR
+  const explanation = h("div", { className: "analysis-info-tooltip", id: `focus-info-${++analysisInfoId}` }, `${trainingFocusPeriodLabel(report)}: ${dateLabel(report.start)} bis ${dateLabel(report.end)}. ${report.coverage?.known_sessions ?? 0} erfasste Garmin-Einheiten im Zeitraum${report.coverage?.observed_start && report.coverage?.observed_end ? ` · erfasste Daten ${dateLabel(report.coverage.observed_start)} bis ${dateLabel(report.coverage.observed_end)}` : ""}. Garmin: aufgezeichnete Belastung nach der Hauptwirkung der Einheit (Training Effect). Keine aus Zonen abgeleitete Einteilung und nicht Garmins separat berechnete Load-Focus-Metrik. ${AppFormat.plural(report.unclassified_sessions || 0, "Einheit", "Einheiten")} ohne bekannte Wirkung oder Belastung ${report.unclassified_sessions === 1 ? "bleibt" : "bleiben"} ausgeschlossen.`); // NOSONAR
   bindAnalysisPopover(info, explanation); root.firstChild.append(info); root.append(explanation);
   appendTrainingFocusShare(report, categories, root);
   appendTrainingFocusZones(report, zones);
@@ -3499,7 +3506,7 @@ function trainingFocusZoneInfo(report, model, items) {
   const period = trainingFocusPeriodLabel(report).toLowerCase();
   const source = [...new Set(items.map((item) => item.source).filter(Boolean))].join(", ");
   // Each zone model is summed on its own (#1743); a session can appear for HF and power.
-  const basis = model === "provider" ? "Zonen des Geräts, für Einheiten ohne lokale Zonenzeiten" : "Lokale Zonen am Tag der Einheit, aus den Streams gezählt";
+  const basis = model === "provider" ? "Zonen des Geräts, für Einheiten ohne lokale Zonenzeiten" : "Lokale Zonen am Tag der Einheit, aus den Aufzeichnungen gezählt";
   return `${basis} (${period}). Quelle: ${source || "unbekannt"}.`;
 }
 
