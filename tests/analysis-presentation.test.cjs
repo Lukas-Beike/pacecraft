@@ -415,7 +415,7 @@ test("Verlauf's deficit card: hero, goal marker, boxes and text agree, measured 
   assert.equal(energyDeficitCard({ rows, deficit: null }), null);
 });
 
-const ENERGY_CARD_FUNCTIONS = ["ENERGY_INSUFFICIENT", "ENERGY_STEP_SOURCES", "ENERGY_PARTS", "ENERGY_LEARNED", "energyRowParts", "FIT_SOURCE_NAMES", "energyFitSigned", "energyKcalRange", "energyKcalSpan", "energyKcal", "energyNeatInputs", "energyBodyText", "energyBasisText", "energyBiasText", "energyInfoId", "ENERGY_DAY_NOTE", "energyInfoButton", "energyStandNote", "energyTefNote", "energyInfo", "energySplitValue", "energyStrengthNote", "energyPartText", "energySplitBar", "energySourceLine", "energyUsage"];
+const ENERGY_CARD_FUNCTIONS = ["ENERGY_INSUFFICIENT", "ENERGY_STEP_SOURCES", "ENERGY_PARTS", "ENERGY_LEARNED", "energyRowParts", "FIT_SOURCE_NAMES", "energyFitSigned", "energyKcalRange", "energyKcalSpan", "energyKcal", "energyNeatInputs", "energyBodyText", "energyBasisText", "energyBiasText", "energyInfoId", "ENERGY_DAY_NOTE", "energyInfoButton", "energyStandNote", "energyTefNote", "energyInfo", "energySplitValue", "energyStrengthNote", "energyPartText", "energySplitBar", "energySourceLine", "energyGuardNotes", "energyUsage"];
 const ENERGY_CARD_GLOBALS = (h) => ({
   bindAnalysisPopover: (button, info) => { button.dataset.popoverTarget = info.id; },
   h, formatWhole: (v) => String(v), dateLabel: (v) => v, analysisValue: (v, unit) => `${v} ${unit}`, AppFormat: require("../public/format.js"),
@@ -454,6 +454,21 @@ test("the diary's usage card draws the outlined source's parts, its day total an
   const hidden = parts.children.at(-1).descendants().filter((node) => node.attributes["aria-hidden"] === "true");
   assert.deepEqual(hidden.map(textOf), ["2462–2916"], "the visible span is read once, in words");
   assert.equal(textOf(source), "Quelle: Katch-McArdle");
+  // #3917: today's expected total is its own row directly under "Tag gesamt", for today and when known only.
+  const expected = energyUsage({ ...read, expected_total_kcal: 3050 });
+  assert.deepEqual(expected.children[2].children.map(textOf).slice(-2), [`Tag gesamt${span(2689, 2462, 2916)}`, "Tag erwartet≈ 3050"]);
+  assert.equal(expected.children[2].children.at(-1).className, "energy-expected");
+  assert.equal(expected.children[2].children.length, parts.children.length + 1);
+  for (const unknown of [{ expected_total_kcal: null }, {}, { expected_total_kcal: 3050, day_partial: false }]) {
+    assert.equal(energyUsage({ ...read, ...unknown }).children[2].children.length, parts.children.length, JSON.stringify(unknown));
+  }
+  // #3917: the notes are the card's last lines after the source line, only past their line.
+  const availability = { kcal_per_kg_ffm: 27, days: 6, floor_kcal_per_kg_ffm: 30, below: true };
+  const loss = { pct_per_week: 1.3, limit_pct_per_week: 1, fast: true };
+  const noted = energyUsage({ ...read, energy_availability: availability, loss_rate: loss });
+  assert.deepEqual(noted.children.slice(3).map(textOf), ["Quelle: Katch-McArdle", "Energieverfügbarkeit (7 Tage) 27 kcal/kg FFM · unter 30", "Gewicht fällt 1,3 %/Woche · schneller als 1 %"]);
+  const calm = energyUsage({ ...read, energy_availability: { ...availability, kcal_per_kg_ffm: 31, below: false }, loss_rate: { ...loss, pct_per_week: 0.8, fast: false } });
+  assert.equal(calm.children.length, 4, "above the line the card has no note");
   // The wearable names itself by the read's label (#3323) and has no digestion part.
   const watch = energyUsage({ ...read, outlined: "device", day_partial: false });
   assert.equal(textOf(watch.children[0].children[0]), "Verbrauch");

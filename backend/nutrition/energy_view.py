@@ -58,6 +58,12 @@ from backend.nutrition.energy_balance import (
     window_t,
     windows_bias,
 )
+from backend.nutrition.energy_expected import (
+    expected_total_kcal,
+    planned_net_kcal,
+    usual_kcal_per_hour,
+)
+from backend.nutrition.energy_guard import energy_notes
 from backend.nutrition.energy_inputs import (
     EnergySources,
     learned_everyday,
@@ -544,8 +550,12 @@ def energy_view(
     goal: Mapping[str, str] | None = None,
     fit_inputs: EnergyInputs | None = None,
     fit_days: int | None = None,
+    planned_kcal: float | None = None,
 ) -> dict[str, Any]:
     """The source rows of ``day``, each source's fit over the windows, and the basis.
+
+    ``planned_kcal`` is today's planned units' net kcal (#3917); with it, today's
+    read carries the expected day total.
 
     ``body_missing`` is why the formula rows have no body (#3336), shown with them.
     ``day`` (default the latest window's end) gives the formula and device rows
@@ -715,6 +725,18 @@ def energy_view(
             _own_window_row(shown, implausible, latest), shown, reference
         ),
         "goal": _energy_goal(rows, outlined, goal, inputs.days.get(day_window.end)),
+        # Today's total with the usual steps and digestion and the planned
+        # units; it informs, "Ziel heute" stays on the total so far (#3917).
+        "expected_total_kcal": expected_total_kcal(
+            next((r for r in rows if r["source"] == outlined), None),
+            latest,
+            planned_kcal,
+            outlined == DEVICE,
+        )
+        if day_window.end > latest.end
+        else None,
+        # Energy availability and the weight's loss rate, non-blocking (#3917).
+        **energy_notes(inputs, latest, bodies[-1]),
         # Per formula row, with its sign kept in raw_kcal; checked is the
         # date the athlete took it over, else None (#3577).
         "learned_everyday": {
@@ -1563,6 +1585,14 @@ def read_energy_view(
     health = sources.daily_health(db, min(first, day), last)
     windows = energy_windows(inputs, end)
     _, missing = skinfold_state(db, sources, inputs, day)
+    # Today's planned units priced by the sports' own 28 days (#3917).
+    planned = (
+        planned_net_kcal(
+            sources.planned(db, day), usual_kcal_per_hour(costs, end), inputs.rmr_kcal
+        )
+        if day > end
+        else None
+    )
     # The bias comes from the windows already built, not a second build (Gitar).
     view = energy_view(
         inputs,
@@ -1575,6 +1605,7 @@ def read_energy_view(
         goal=sources.profile(),
         fit_inputs=periods,
         fit_days=fit_days,
+        planned_kcal=planned,
     )
     # Digestion counts kcal without macros at 10 %, so it is estimated (#3617).
     view["tef_estimated"] = inputs.days.get(day, DayInputs()).uncovered_kcal > 0

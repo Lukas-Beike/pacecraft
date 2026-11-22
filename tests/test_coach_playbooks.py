@@ -64,7 +64,8 @@ BLOCK_WORD_BUDGETS = {
     # Test planning from planning_brief.last_tests and the step test (plan kinds only).
     "_TESTS": 160,
     "_ANSWER": 55,
-    "_NUTRITION": 520,
+    # 545: the deficit rule 6i.3 names the EA floor, loss rate and protein range (#3917).
+    "_NUTRITION": 545,
 }
 # 205: the session analysis judges a run against its stored heart-rate cap.
 TASK_WORD_BUDGET = 205

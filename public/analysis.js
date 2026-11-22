@@ -2171,7 +2171,18 @@ function energyUsage(read) {
   const drawn = parts.filter(([, part]) => !row.pending_parts?.includes(part));
   const bar = energySplitBar(row.split, drawn, parts.map(([, , label], index) => `${label} ${texts[index]}`).join(" · "));
   const total = h("li", { className: "energy-total" }, h("span", null, "Tag gesamt"), h("span", null, energyKcal(row.total_kcal, row.total_band_kcal)));
-  return h("div", { className: "energy-usage" }, head, bar, h("ul", "energy-parts", ...items, total), energySourceLine(row));
+  // Today's total with the usual steps and digestion and the planned units (#3917); it only informs.
+  const expected = read.day_partial && read.expected_total_kcal != null
+    ? [h("li", { className: "energy-expected" }, h("span", null, "Tag erwartet"), h("span", null, `≈ ${formatWhole(read.expected_total_kcal)}`))] : [];
+  return h("div", { className: "energy-usage" }, head, bar, h("ul", "energy-parts", ...items, total, ...expected), energySourceLine(row), ...energyGuardNotes(read));
+}
+
+// Energy availability and the weight's loss rate, shown only past their line (#3917); neither blocks anything.
+function energyGuardNotes({ energy_availability: availability, loss_rate: loss }) {
+  const notes = [];
+  if (availability?.below) notes.push(`Energieverfügbarkeit (7 Tage) ${formatWhole(availability.kcal_per_kg_ffm)} kcal/kg FFM · unter ${formatWhole(availability.floor_kcal_per_kg_ffm)}`);
+  if (loss?.fast) notes.push(`Gewicht fällt ${loss.pct_per_week.toLocaleString("de-DE")} %/Woche · schneller als ${formatWhole(loss.limit_pct_per_week)} %`);
+  return notes.map((text) => h("small", { className: "energy-note", dataset: { energyNote: "" } }, text));
 }
 
 // Digestion comes from the logged meals: without any it is not recorded; Garmin has no such part.

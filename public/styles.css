@@ -1906,10 +1906,11 @@ button:focus-visible, a:focus-visible, summary:focus-visible {
 .energy-parts { display: grid; gap: 4px; margin: 0 0 8px; padding: 0; list-style: none; font-size: .9rem; }
 .energy-parts li { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; }
 .energy-parts li > :last-child { text-align: right; font-variant-numeric: tabular-nums; }
-.energy-parts li:not(.energy-total)::before { content: ""; flex: none; width: 12px; height: 12px; margin-right: -4px; align-self: center; border-radius: 3px; background-color: var(--part-color); }
+.energy-parts li:not(.energy-total, .energy-expected)::before { content: ""; flex: none; width: 12px; height: 12px; margin-right: -4px; align-self: center; border-radius: 3px; background-color: var(--part-color); }
 .energy-parts li > :first-child { flex: 1; }
 .energy-total { padding-top: 4px; border-top: 1px solid var(--line); font-weight: 700; }
-.energy-source { color: var(--muted); }
+.energy-source, .energy-expected, .energy-note { color: var(--muted); }
+.energy-note { display: block; }
 /* Verlauf's deficit card (#3548): hero, goal bar, the boxes with arrows, and the text. */
 .energy-deficit-hero { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; margin: 0 0 12px; }
 .energy-deficit-hero strong { font-size: 1.8rem; font-variant-numeric: tabular-nums; }

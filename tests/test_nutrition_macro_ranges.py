@@ -36,6 +36,22 @@ class MacroRangeTests(unittest.TestCase):
                 self.assertEqual((153, 207), ranges["protein_g"])
                 self.assertEqual((60, 90), ranges["fat_g"])
 
+    def test_protein_widens_to_1_6_2_4_g_per_kg_only_in_a_deficit(self):
+        # #3917: 90 kg x 1.6 and 2.4 g/kg; every other goal keeps 1.7 to 2.3.
+        for goal, expected in [
+            ("lose", (144, 216)),
+            ("hold", (153, 207)),
+            ("build", (153, 207)),
+            ("", (153, 207)),
+            (None, (153, 207)),
+        ]:
+            with self.subTest(goal=goal):
+                ranges = macro_ranges(90, [], "2026-11-02", 2700, goal)
+                self.assertEqual(expected, ranges["protein_g"])
+        self.assertNotIn(
+            "protein_g", macro_ranges(None, [], "2026-11-02", 2700, "lose")
+        )
+
     def test_completed_replaces_plan_and_missing_intensity_is_unknown(self):
         planned = self.workout(120)
         planned["compliance"] = {
