@@ -8,6 +8,7 @@ import unittest
 import uuid
 from datetime import date
 from types import SimpleNamespace
+from typing import cast
 from unittest.mock import Mock
 
 from support import temp_database
@@ -23,7 +24,7 @@ from backend.planning import changes, plan_checks
 from backend.planning.calendar_service import CalendarConflictService
 from backend.planning.library import library_payload_hash
 from backend.planning.library_service import WorkoutLibraryService
-from backend.planning.plan_guard_service import PlanCheckError
+from backend.planning.plan_guard_service import PlanCheckError, PlanGuardService
 from backend.planning.planned_unit_edit_service import PlannedUnitEditService
 from backend.planning.planned_unit_service import PlannedUnitService
 from backend.planning.revision import PlanningRevisionService
@@ -118,7 +119,7 @@ class PlannedUnitEditServiceTests(unittest.TestCase):
             self.manager,
             lambda: change_service,
             lambda: self.library,
-            lambda: self.guard,
+            lambda: cast(PlanGuardService, self.guard),
         )
 
     def rows(self, table):

@@ -20,43 +20,55 @@ function unitSportOf(entry) {
 
 // The workout text as rows ({ kind: "step"|"label"|"repeat" }); null when a line is not one of them, so the
 // editor shows the text itself and nothing the Coach wrote is lost.
+// One line as a row: a step, the head of a repeat or a label; null when the rows cannot show it.
+function unitParsedLine(line, inGroup) {
+  const step = UNIT_STEP.exec(line);
+  if (step) return { kind: "step", minutes: Number(step[1]), value: step[2].replace(",", ".").replace(/\s+/, " ") };
+  if (line.startsWith("-")) return null;
+  const repeat = UNIT_REPEAT.exec(line);
+  if (repeat) return { kind: "repeat", name: repeat[1] || "", times: Number(repeat[2]), steps: [] };
+  return inGroup ? null : { kind: "label", name: line };
+}
+
 function unitStepRows(text) {
   const rows = [];
   let group = null;
-  for (const raw of String(text || "").split("\n")) {
-    const line = raw.trim();
+  for (const line of String(text || "").split("\n").map((raw) => raw.trim())) {
     if (!line) { group = null; continue; }
-    const step = UNIT_STEP.exec(line);
-    if (step) {
-      (group ? group.steps : rows).push({ kind: "step", minutes: Number(step[1]), value: step[2].replace(",", ".").replace(/\s+/, " ") });
-      continue;
-    }
-    if (line.startsWith("-")) return null;
-    const repeat = UNIT_REPEAT.exec(line);
-    if (repeat) { group = { kind: "repeat", name: repeat[1] || "", times: Number(repeat[2]), steps: [] }; rows.push(group); continue; }
-    if (group) return null;
-    rows.push({ kind: "label", name: line });
+    const row = unitParsedLine(line, Boolean(group));
+    if (!row) return null;
+    if (row.kind === "step" && group) group.steps.push(row);
+    else rows.push(row);
+    if (row.kind === "repeat") group = row;
   }
   // Prose without a step line stays text: rows would read it as a duration of 0.
-  return rows.length && !rows.some((row) => row.kind !== "label") ? null : rows;
+  return rows.length && rows.every((row) => row.kind === "label") ? null : rows;
+}
+
+function unitRowHead(row) {
+  if (row.kind === "label") return row.name;
+  return [row.name, `${row.times}x`].filter(Boolean).join(" ");
 }
 
 function unitStepsText(rows) {
   const lines = [];
   const stepLine = (row) => `- ${row.minutes}m ${row.value}`;
   for (const row of rows) {
-    if (row.kind === "step") lines.push(stepLine(row));
-    else {
-      if (lines.length) lines.push("");
-      lines.push(row.kind === "label" ? row.name : `${row.name ? `${row.name} ` : ""}${row.times}x`);
-      if (row.kind === "repeat") { lines.push(...row.steps.map(stepLine), ""); }
-    }
+    if (row.kind === "step") { lines.push(stepLine(row)); continue; }
+    if (lines.length) lines.push("");
+    lines.push(unitRowHead(row));
+    if (row.kind === "repeat") lines.push(...row.steps.map(stepLine), "");
   }
   return lines.join("\n").trim();
 }
 
+function unitRowMinutes(row) {
+  if (row.kind === "step") return row.minutes;
+  return row.kind === "repeat" ? row.times * unitStepsMinutes(row.steps) : 0;
+}
+
 function unitStepsMinutes(rows) {
-  return rows.reduce((sum, row) => sum + (row.kind === "step" ? row.minutes : row.kind === "repeat" ? row.times * unitStepsMinutes(row.steps) : 0), 0);
+  return rows.reduce((sum, row) => sum + unitRowMinutes(row), 0);
 }
 
 function unitExerciseRow(item = {}) {
@@ -125,22 +137,29 @@ function unitEditorTitle(editor) {
   return `${noun} ${editor.entry ? "bearbeiten" : "hinzufügen"}`;
 }
 
+function unitEditorPath({ kind, entry }) {
+  const base = kind === "library" ? "/api/library" : "/api/planned-units";
+  if (!entry) return base;
+  return `${base}/${encodeURIComponent(kind === "library" ? entry.id : entry.local_id)}/update`;
+}
+
+function unitEditorProblem(editor, body) {
+  if (!body.name) return "Der Name fehlt.";
+  if (editor.kind === "unit" && !editor.date) return "Der Tag fehlt.";
+  if (body.description) return "";
+  return editor.sport === "WeightTraining" ? "Mindestens eine Übung fehlt." : "Mindestens ein Schritt fehlt.";
+}
+
 async function saveUnitEditor(dialog, status, save, onSaved) {
   const editor = unitEditor;
-  status.textContent = "";
   const body = unitEditorBody(editor);
-  if (!body.name) { status.textContent = "Der Name fehlt."; return; }
-  if (editor.kind === "unit" && !editor.date) { status.textContent = "Der Tag fehlt."; return; }
-  if (!body.description) { status.textContent = editor.sport === "WeightTraining" ? "Mindestens eine Übung fehlt." : "Mindestens ein Schritt fehlt."; return; }
-  const entry = editor.entry;
-  const path = editor.kind === "library"
-    ? (entry ? `/api/library/${encodeURIComponent(entry.id)}/update` : "/api/library")
-    : (entry ? `/api/planned-units/${encodeURIComponent(entry.local_id)}/update` : "/api/planned-units");
-  if (editor.kind === "unit" && entry) body.expected_payload_hash = entry.payload_hash;
+  status.textContent = unitEditorProblem(editor, body);
+  if (status.textContent) return;
+  if (editor.kind === "unit" && editor.entry) body.expected_payload_hash = editor.entry.payload_hash;
   if (editor.accept) body.accept_plan_findings = ["illness_hard"];
   save.disabled = true;
   try {
-    const result = await api(path, { method: "POST", body: JSON.stringify(body) });
+    const result = await api(unitEditorPath(editor), { method: "POST", body: JSON.stringify(body) });
     dialog.close();
     await onSaved(result, editor);
   } catch (error) {
