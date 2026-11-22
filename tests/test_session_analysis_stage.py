@@ -975,24 +975,63 @@ class NormalizedGradedSpeedStageTests(unittest.TestCase):
             row["payload"]["ngs"],
         )
 
-    def test_a_stale_analysis_row_ends_on_the_ngs_basis_by_the_worker_alone(
+    def test_a_row_stored_before_the_ngs_ends_on_the_ngs_basis_by_the_worker_alone(
         self,
     ) -> None:
+        # The current version, with the fingerprint of before the NGS and no key.
         with self.manager.unit_of_work() as db:
             save_analysis(
                 db,
                 "act_r1",
-                analysis_version=ANALYSIS_VERSION - 1,
+                analysis_version=ANALYSIS_VERSION,
                 input_sha256="a" * 64,
-                payload={"ngs": {"ngs_mps": 9.0, "seconds": 3000.0}},
+                payload={"hr_histogram": None, "target_snapshot": None},
                 now=NOW,
             )
         self._pass(self._assembly())
+        with self.manager.reader() as db:
+            row = activity_detail_store.analysis_rows_for(db, ["act_r1"])["act_r1"]
+        self.assertEqual(ANALYSIS_VERSION, row["analysis_version"])
+        self.assertEqual(3.0, row["payload"]["ngs"]["ngs_mps"])
         inputs = self._inputs()
         self.assertEqual("normalized_graded_speed", inputs["pace_basis"])
         self.assertEqual(3.0, inputs["speed_mps"])
         # 3000 s at IF 3.0 / 4.0.
         self.assertAlmostEqual(3000 / 3600 * 0.75**2 * 100, inputs["value"], places=3)
+
+    def test_a_session_without_detail_sets_keeps_its_row(self) -> None:
+        # Its streams once existed, then went: only its row of the current
+        # version remains, with the fingerprint of a session without details.
+        assembly = self._assembly()
+        self._pass(assembly)
+        with self.manager.unit_of_work() as db:
+            db.execute("DELETE FROM activity_stream_channels")
+            db.execute("DELETE FROM activity_detail_sets")
+        self._pass(assembly)
+        with self.manager.reader() as db:
+            stored = activity_detail_store.analysis_rows_for(db, ["act_r1"])["act_r1"]
+        payload = {
+            **stored["payload"],
+            "zone_times": {"power": [{"id": "Z1", "secs": 600.0}]},
+        }
+        with self.manager.unit_of_work() as db:
+            save_analysis(
+                db,
+                "act_r1",
+                analysis_version=ANALYSIS_VERSION,
+                input_sha256=stored["input_sha256"],
+                payload=payload,
+                now=NOW,
+            )
+        # A later NGS version must not touch it either.
+        with patch.object(canonical_session_analysis, "NGS_VERSION", 99):
+            self._pass(assembly)
+        with self.manager.reader() as db:
+            row = activity_detail_store.analysis_rows_for(db, ["act_r1"])["act_r1"]
+            zones = read_zone_times(db, ["act_r1"])
+        self.assertEqual(ANALYSIS_VERSION, row["analysis_version"])
+        self.assertEqual(payload, row["payload"])
+        self.assertIn("act_r1", zones)
 
 
 class StageOrderTests(unittest.TestCase):

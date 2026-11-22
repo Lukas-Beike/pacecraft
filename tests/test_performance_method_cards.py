@@ -343,7 +343,7 @@ METHOD_NUMBER_PINS = {
     "backend/canonical/dfa_alpha1.py": (3, "15f9cecd3bd14787"),
     "backend/nutrition/energy_balance.py": (26, "133a07e43fdc5174"),
     "backend/performance/activity_energy.py": (8, "29737ead83232fbf"),
-    "backend/performance/canonical_session_analysis.py": (9, "208ff670ce0b66c0"),
+    "backend/performance/canonical_session_analysis.py": (9, "bc0a8ff2471f7144"),
     "backend/performance/critical_power.py": (3, "7ddfaff976ff585a"),
     "backend/performance/fitness_fatigue.py": (1, "6c4b32888188ff3f"),
     "backend/performance/form_drift.py": (1, "974248a978784012"),

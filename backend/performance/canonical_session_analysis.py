@@ -45,8 +45,7 @@ from backend.performance.session_analysis import (
 from backend.performance.session_execution import session_execution
 
 # Stored ``activity_detail_analysis.analysis_version`` of canonical analyses.
-ANALYSIS_VERSION: Final = 4
-# v4: the stored normalized graded speed of runs (M6 v8, #3920).
+ANALYSIS_VERSION: Final = 3
 # Bump when the computation below changes, so the stage recomputes every row.
 # v3: grade-adjusted Pa:HR of outdoor runs (#1770).
 # v4: the heart rate and power source, and the optical heart rate warning (#1869).
@@ -229,6 +228,7 @@ def analysis_fingerprint(
     the stream and lap sets (each hash covers its mapper version), whether a
     provider detail is stale, the frozen targets and the thresholds used.
     """
+    hashes = sorted(set_hashes)
     return fingerprint_inputs(
         {
             "versions": [
@@ -238,10 +238,12 @@ def analysis_fingerprint(
                 form_drift_module.METHOD_VERSION,
                 stream_zones.ZONE_TIMES_VERSION,
                 HEART_RATE_HISTOGRAM_VERSION,
-                NGS_VERSION,
+                # Only streams carry an NGS: a session whose details are gone
+                # keeps its stored row and fingerprint.
+                *([NGS_VERSION] if hashes else []),
             ],
             "records": [record_part(record) for record in measured_order(records)],
-            "sets": sorted(set_hashes),
+            "sets": hashes,
             "stale": stale,
             "targets": None if targets is None else dict(targets),
             "thresholds": dict(thresholds),
