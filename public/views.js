@@ -253,13 +253,6 @@ function markdownToHtml(markdown) {
   return output.join("");
 }
 
-const CALENDAR_DISPLAY_MAX_WEEKS = 52;
-
-function calendarDisplayValue(value, fallback) {
-  const number = Number(value);
-  return Number.isInteger(number) && number >= 0 && number <= CALENDAR_DISPLAY_MAX_WEEKS ? number : fallback;
-}
-
 function localDateKey(value) {
   if (typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value)) return value;
   const date = value instanceof Date ? value : new Date(value);
@@ -322,7 +315,7 @@ function weatherDirection(value) {
 }
 
 function renderMoreSegments(segment) {
-  const selected = AppNavigation.moreSegments.includes(segment) ? segment : AppNavigation.moreSegments[2];
+  const selected = AppNavigation.moreSegments.includes(segment) ? segment : "connections";
   document.querySelectorAll("[data-more-segment-panel]").forEach((panel) => {
     panel.hidden = panel.dataset.moreSegmentPanel !== selected;
   });
@@ -697,19 +690,8 @@ function renderSettingsSyncDayInputs(data) {
   updateUnfocusedInput("#garminSyncDays", data.sync_settings?.garmin_days || 84);
 }
 
-function renderCalendarDisplayInputs(data) {
-  const display = data.calendar_display || CALENDAR_DISPLAY_DEFAULTS;
-  const pastWeeks = calendarDisplayValue(display.past_weeks, CALENDAR_DISPLAY_DEFAULTS.past_weeks);
-  const futureWeeks = calendarDisplayValue(display.future_weeks, CALENDAR_DISPLAY_DEFAULTS.future_weeks);
-  updateUnfocusedInput("#calendarDisplayPastWeeks", pastWeeks);
-  updateUnfocusedInput("#calendarDisplayFutureWeeks", futureWeeks);
-  const summary = $("#calendarDisplaySummary");
-  if (summary) summary.textContent = pastWeeks + " zurück · " + futureWeeks + " voraus";
-}
-
 function renderSettingsInputs(data) {
   renderSettingsSyncDayInputs(data);
-  renderCalendarDisplayInputs(data);
 }
 
 function renderIntervalsSyncControls(configured) {

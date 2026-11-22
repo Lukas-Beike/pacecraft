@@ -4,8 +4,6 @@ from dataclasses import replace
 from backend.config import Config
 from backend.errors import AppError
 from backend.settings import (
-    CALENDAR_DISPLAY_DEFAULTS,
-    CALENDAR_DISPLAY_MAX_WEEKS,
     MODEL_OPTIONS,
     THINKING_LEVEL_OPTIONS,
     SettingsService,
@@ -273,48 +271,6 @@ class SettingsServiceTests(unittest.TestCase):
         self.assertFalse(service.coach_ready("planning"))
         self.assertEqual(service.selected_provider("planning"), "anthropic")
 
-    def test_calendar_defaults_clamping_and_write_keys(self):
-        self.assertEqual(
-            self.service.calendar_display_settings(), CALENDAR_DISPLAY_DEFAULTS
-        )
-        self.values.update(
-            {
-                "calendar_display_past_weeks": "-4",
-                "calendar_display_future_weeks": "99",
-                "calendar_display_unknown": "7",
-            }
-        )
-        self.assertEqual(
-            self.service.calendar_display_settings(),
-            {"past_weeks": 0, "future_weeks": CALENDAR_DISPLAY_MAX_WEEKS},
-        )
-        result = self.service.save_calendar_display_settings({"past_weeks": 3})
-        self.assertEqual(
-            result,
-            {
-                "status": "ok",
-                "past_weeks": 3,
-                "future_weeks": CALENDAR_DISPLAY_MAX_WEEKS,
-            },
-        )
-        self.assertEqual(self.writes[-1], ("calendar_display_past_weeks", "3"))
-
-    def test_calendar_invalid_values_have_exact_errors_and_no_partial_write(self):
-        cases = (
-            (None, "Die Kalenderansicht muss als Objekt gesendet werden."),
-            ({}, "Keine Kalenderansicht-Einstellungen eingegeben."),
-            ({"past_weeks": "x"}, "Wochen zur\u00fcck muss eine ganze Zahl sein."),
-            (
-                {"future_weeks": CALENDAR_DISPLAY_MAX_WEEKS + 1},
-                "Wochen voraus muss zwischen 0 und 52 liegen.",
-            ),
-        )
-        for payload, message in cases:
-            with self.subTest(payload=payload), self.assertRaises(AppError) as error:
-                self.service.save_calendar_display_settings(payload)
-            self.assertEqual(error.exception.status, 400)
-            self.assertEqual(str(error.exception), message)
-            self.assertEqual(self.writes, [])
 
 
 if __name__ == "__main__":

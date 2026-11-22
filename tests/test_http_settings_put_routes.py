@@ -60,13 +60,9 @@ class SettingsPutRoutesTests(unittest.TestCase):
                 dispatch_route(self.routes, self.handler, path, method="PUT")
                 save.assert_called_once_with("x", "planning")
 
-    def test_calendar_display_route_passes_whole_payload(self) -> None:
-        payload = {"past_weeks": 3, "future_weeks": 7}
-        self.handler.read_json.return_value = payload
-        result = {"status": "ok", **payload}
-        self.settings.save_calendar_display_settings.return_value = result
-
-        self.assertTrue(
+    def test_the_calendar_range_has_no_route_any_more(self) -> None:
+        # #3914: the calendar shows a fixed range; the stored setting left the API.
+        self.assertFalse(
             dispatch_route(
                 self.routes,
                 self.handler,
@@ -74,10 +70,6 @@ class SettingsPutRoutesTests(unittest.TestCase):
                 method="PUT",
             )
         )
-
-        self.settings.save_calendar_display_settings.assert_called_once_with(payload)
-        self.handler.read_json.assert_called_once_with()
-        self.handler.send_json.assert_called_once_with(200, result)
 
     def test_unknown_path_has_no_side_effects(self) -> None:
         self.assertFalse(
@@ -91,7 +83,6 @@ class SettingsPutRoutesTests(unittest.TestCase):
         for save in (
             self.settings.save_model,
             self.settings.save_thinking_level,
-            self.settings.save_calendar_display_settings,
         ):
             save.assert_not_called()
 

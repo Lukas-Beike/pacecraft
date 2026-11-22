@@ -17,6 +17,50 @@ async function currentPushSubscription() {
   return registration ? registration.pushManager.getSubscription() : null;
 }
 
+// The per-type switches (#3914), in the server's order of the types; all on by default.
+const PUSH_TYPE_LABELS = Object.freeze({
+  coach_answer: "Coach-Antwort fertig",
+  morning_plan: "Tagesplan am Morgen",
+  provider_problem: "Probleme mit Anbindungen",
+  upcoming: "Wettkampf, Stufentest, Infekt-Hinweis",
+  new_activity: "Neue Einheit synchronisiert",
+  morning_data: "Morgenwerte verfügbar",
+  maintenance: "Wartung fällig",
+  personal_best: "Neue Bestleistung",
+  missing_feedback: "Feedback fehlt am Abend",
+  server_backup: "Server oder Backup",
+  weather: "Wetter für Outdoor-Einheit",
+});
+// The endpoint whose switches are shown, so a repeated render reads them once.
+let pushTypesEndpoint = null;
+
+async function renderPushTypes(subscription) {
+  const list = $("#notificationTypes");
+  if (!list) return;
+  list.hidden = !subscription;
+  if (!subscription) { pushTypesEndpoint = null; return; }
+  if (pushTypesEndpoint === subscription.endpoint) return;
+  const { types } = await api(`/api/push?endpoint=${encodeURIComponent(subscription.endpoint)}`);
+  pushTypesEndpoint = subscription.endpoint;
+  list.replaceChildren(list.querySelector("legend"), ...Object.entries(PUSH_TYPE_LABELS).map(([type, label]) => h("label", "chip",
+    h("input", { type: "checkbox", checked: types?.[type] !== false, dataset: { pushType: type } }),
+    h("span", null, label))));
+}
+
+async function savePushType(event) {
+  const input = event.target.closest?.("input[data-push-type]");
+  if (!input) return;
+  input.disabled = true;
+  try {
+    await api("/api/push/preferences", { method: "POST", body: JSON.stringify({ types: { [input.dataset.pushType]: input.checked } }) });
+  } catch (error) {
+    input.checked = !input.checked;
+    toast(error.message || "Die Einstellung konnte nicht gespeichert werden", true);
+  } finally {
+    input.disabled = false;
+  }
+}
+
 async function renderNotificationStatus() {
   const node = $("#notificationStatus");
   const button = $("#notificationEnableButton");
@@ -29,6 +73,7 @@ async function renderNotificationStatus() {
   button.hidden = !pushSupported() || Notification.permission === "denied";
   button.textContent = active ? "Benachrichtigungen ausschalten" : "Benachrichtigungen aktivieren";
   button.dataset.active = active ? "1" : "";
+  await renderPushTypes(subscription).catch(() => { $("#notificationTypes").hidden = true; });
 }
 
 function pushKeyBytes(text) {
@@ -164,7 +209,6 @@ function pageInputPending() {
   return Boolean(active?.matches?.("input, textarea, select") && !active.closest?.("#chatForm"))
     || [...document.querySelectorAll(UPDATE_RELOAD_INPUT_FIELDS)].some((field) => field.value.trim())
     || (typeof providerCredentialBusy !== "undefined" && providerCredentialBusy.size > 0)
-    || Boolean($("#calendarDisplaySaveButton")?.disabled)
     || editedFormPending()
     || Boolean($("#nutritionExtraction") && !$("#nutritionExtraction").hidden && $("#nutritionExtraction").childElementCount);
 }

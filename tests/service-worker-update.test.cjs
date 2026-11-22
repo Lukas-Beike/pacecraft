@@ -46,7 +46,7 @@ test("an activated service worker removes old caches and controls open pages", a
 function page({ controlled = true } = {}) {
   const workerListeners = {};
   const documentListeners = {};
-  const nodes = { "#messageInput": { value: "" }, "#backupRestoreButton": { disabled: false }, "#calendarDisplaySaveButton": { disabled: false }, "dialog[open]": null };
+  const nodes = { "#messageInput": { value: "" }, "#backupRestoreButton": { disabled: false }, "dialog[open]": null };
   const credentialFields = [{ value: "" }, { value: "" }];
   const dirtyForms = [];
   const globalListeners = {};
@@ -161,7 +161,6 @@ const blockers = {
   "an open dialog": ({ nodes }) => { nodes["dialog[open]"] = {}; return () => { nodes["dialog[open]"] = null; }; },
   "a typed credential": ({ credentialFields }) => { credentialFields[1].value = "123456"; return () => { credentialFields[1].value = ""; }; },
   "a credential save": ({ providerCredentialBusy }) => { providerCredentialBusy.add("garmin-login"); return () => { providerCredentialBusy.clear(); }; },
-  "a calendar settings save": ({ nodes }) => { nodes["#calendarDisplaySaveButton"].disabled = true; return () => { nodes["#calendarDisplaySaveButton"].disabled = false; }; },
   "an edited form": ({ dirtyForms }) => { dirtyForms.push({ dataset: { dirty: "1" }, closest: () => null }); return () => { dirtyForms.length = 0; }; },
   "an open nutrition extraction": ({ nodes }) => { nodes["#nutritionExtraction"] = { hidden: false, childElementCount: 2 }; return () => { nodes["#nutritionExtraction"] = { hidden: true, childElementCount: 2 }; }; },
   "a focused settings field": ({ document }) => {

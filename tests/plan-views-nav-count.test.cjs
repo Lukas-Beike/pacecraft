@@ -33,7 +33,7 @@ function navCount(calendar, undecided) {
     addDateKey,
     dateFromKey: (key) => new Date(`${key}T00:00:00Z`),
     UNDECIDED_NOTICE_DAYS: 14,
-    calendarDisplayValue: (value, fallback) => value ?? fallback,
+    CALENDAR_WEEKS: { past: 1, future: 4 },
     plannedEventDate: (entry) => entry.date,
     calendarActualActivity: () => null,
     providerIds: () => ids,

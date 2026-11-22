@@ -2094,7 +2094,7 @@ function runningWeekSyncCount(trainingCalendar) {
   const todayKey = timezoneDateKey(state.data?.profile?.timezone, new Date());
   const weekKey = planWeekStart(todayKey);
   const lastDay = addDateKey(weekKey, 6);
-  const futureWeeks = calendarDisplayValue(state.data?.calendar_display?.future_weeks, 4);
+  const futureWeeks = CALENDAR_WEEKS.future;
   const entries = (Array.isArray(trainingCalendar) ? trainingCalendar : [])
     .filter((item) => item && !item.archived && !item.local_deleted)
     .filter((item) => { const day = plannedEventDate(item); return day && day >= weekKey && day <= lastDay; });
@@ -2758,9 +2758,8 @@ function renderPlanned(trainingCalendar) {
   const calendar = withOlderSessions(Array.isArray(trainingCalendar) ? trainingCalendar : []);
   const todayKey = timezoneDateKey(state.data?.profile?.timezone, new Date());
   const currentWeekKey = planWeekStart(todayKey);
-  const display = state.data?.calendar_display || {};
-  const pastWeeks = calendarDisplayValue(display.past_weeks, 1);
-  const futureWeeks = calendarDisplayValue(display.future_weeks, 4);
+  const pastWeeks = CALENDAR_WEEKS.past;
+  const futureWeeks = CALENDAR_WEEKS.future;
   const firstWeekKey = addDateKey(currentWeekKey, -7 * pastWeeks);
   const lastWeekKey = addDateKey(currentWeekKey, 7 * futureWeeks);
   const lastDateKey = addDateKey(lastWeekKey, 6);
