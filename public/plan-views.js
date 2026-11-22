@@ -646,12 +646,14 @@ function plannedStrengthName(exercise) {
 function plannedStrengthRows(strength) {
   if (!strength?.exercises?.length) return null;
   return h("ul", "planned-strength", strength.exercises.map((exercise) => {
-    const load = exercise.planned_kg == null ? "" : ` @ ${calendarMetricNumber(exercise.planned_kg)} kg`;
+    const load = !(exercise.planned_kg > 0) ? "" : ` @ ${calendarMetricNumber(exercise.planned_kg)} kg`;
     const plan = `${exercise.planned_sets}×${exercise.planned_reps}${load}`;
     const name = plannedStrengthName(exercise);
-    return h("li", null, exercise.status === "matched"
-      ? `${name}: ${calendarMetricNumber(exercise.completed_sets)}/${exercise.planned_sets} Sätze erreicht · Ist ${(exercise.reps || []).map((reps) => reps ?? "?").join("/") || "–"} Wdh. · Plan ${plan}`
-      : `${name}: nicht zugeordnet · Plan ${plan}`);
+    // A unit without recorded reps names none ("Ist – Wdh." says nothing), a plan without weight no "0 kg" (#3932 K-16).
+    const reps = (exercise.reps || []).map((value) => value ?? "?").join("/");
+    const done = reps ? ` · Ist ${reps} Wdh.` : "";
+    if (exercise.status !== "matched") return h("li", null, `${name}: nicht zugeordnet · Plan ${plan}`);
+    return h("li", null, `${name}: ${calendarMetricNumber(exercise.completed_sets)}/${exercise.planned_sets} Sätze erreicht${done} · Plan ${plan}`);
   }));
 }
 
@@ -1006,9 +1008,10 @@ function plannedWeekSummary(weekKey, weekEndKey, weekEntries, compliance, todayK
     ? `${plannedUnits} geplant · ${completedUnits} absolviert`
     : `${plannedUnits} geplant`;
   if (compliance?.basis !== "training_load" || compliance.planned_value == null) return units;
-  const load = [`Belastung geplant ${formatWhole(compliance.planned_value)}`];
-  if (isPast || completedUnits > 0) load.push(`absolviert ${formatWhole(compliance.actual_value || 0)}`);
-  return `${units} · ${load.join(" · ")}`;
+  // One load figure: the done part of the plan once a unit is done, else the plan (#3932 K-13).
+  const planned = formatWhole(compliance.planned_value);
+  const load = isPast || completedUnits > 0 ? `${formatWhole(compliance.actual_value || 0)} von ${planned}` : planned;
+  return `${units} · Belastung ${load}`;
 }
 
 function calendarPaceLabel(activity) {
@@ -3053,7 +3056,7 @@ function racePlanDuring(during) {
 }
 
 function racePlanHeading(text, badge) {
-  return h("h5", null, text, badge ? h("span", "planned-badge", badge) : null);
+  return h("h5", null, text, badge ? h("span", "race-plan-source", badge) : null);
 }
 
 function racePlanPacing(pacing) {
