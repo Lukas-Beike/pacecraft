@@ -734,7 +734,7 @@ function renderSettingsUsage(data) {
   const usage = data.usage || {};
   const rateLimits = usage.rate_limits || {};
   const number = (value) => Number(value || 0).toLocaleString("de-DE");
-  const optionalNumber = (value) => (value == null ? "Noch nicht bekannt" : number(value));
+  const optionalNumber = (value) => (value == null ? "–" : number(value));
   const lastRequest = usage.last_request_at ? new Date(usage.last_request_at) : null;
   const values = {
     usageSummary: `${number(usage.requests)} Anfragen · ${number(usage.total_tokens)} Tokens heute`,
@@ -752,6 +752,11 @@ function renderSettingsUsage(data) {
   for (const [id, text] of Object.entries(values)) {
     const node = document.getElementById(id);
     if (node) node.textContent = text;
+  }
+  // A remaining quota the provider did not report is left out instead of "Noch nicht bekannt" (#3936 M-07).
+  for (const [id, value] of [["usageRemainingRequests", rateLimits.remaining_requests], ["usageRemainingTokens", rateLimits.remaining_tokens]]) {
+    const row = document.getElementById(id)?.parentElement;
+    if (row) row.hidden = value == null;
   }
 }
 

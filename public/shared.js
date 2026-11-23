@@ -147,10 +147,8 @@ function renderActiveRoute(mainRoute, panelRoute) {
     AppViews.renderPlanSegments(planSegment);
   }
   if (mainRoute === "nutrition") { renderNutritionSegments(panelRoute); if (state.data) { if (panelRoute === "nutrition/products") { void loadNutritionProducts(); void pollNutritionRefreshAll(); } else void loadNutrition(); } }
-  if (state.data && mainRoute === "more") {
-    void loadContextPreview();
-    void loadLogs();
-  }
+  // The Coach context loads when its section opens, not with every Mehr route (#3936 M-07).
+  if (state.data && mainRoute === "more") void loadLogs();
 }
 
 function restoreRouteScroll(mainRoute, returningToChat, shouldFocusPlannedToday) {

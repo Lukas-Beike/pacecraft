@@ -3101,7 +3101,7 @@ function equipmentCard(item, source, parents, place) {
       form.hidden = !form.hidden;
       edit.setAttribute("aria-expanded", String(!form.hidden));
     });
-    const retire = h("button", { className: "secondary-button", type: "button" }, "Ausmustern");
+    const retire = h("button", { className: "secondary-button danger-button", type: "button" }, "Ausmustern");
     retire.addEventListener("click", () => void retireEquipment(item, retire));
     actions.append(maintenanceButton(item), edit, retire);
     body.append(actions, form);

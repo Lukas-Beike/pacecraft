@@ -182,7 +182,7 @@ The client SHALL show the settings areas under the fixed title "Mehr" as one swi
 
 #### Scenario: Status without colour
 - **WHEN** the athlete opens Anbindungen
-- **THEN** the seven cards (Garmin, Wahoo, Intervals.icu, OpenAI, Yazio, Gemeinsamer Kalender, Open-Meteo) are collapsed and each shows only its name and a text chip with a coloured dot, and the Garmin card names the Personal API key and the SDK login in words.
+- **THEN** the seven cards (Garmin, Wahoo, Intervals.icu, OpenAI, Yazio, Gemeinsamer Kalender, Open-Meteo) are collapsed and each shows only its name and a text chip with a coloured dot, and the Garmin card names the Personal API key and the SDK login in words once one is set up (an unset card shows its chip alone).
 
 #### Scenario: One card per connection
 - **WHEN** the athlete opens a card or follows a setup link for one provider

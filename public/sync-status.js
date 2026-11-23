@@ -246,6 +246,9 @@ const PROVIDER_FRESHNESS_STATUS = {
 };
 
 
+// Intervals.icu only receives: its states read in sending words (#3936 M-03).
+const SENDING_FRESHNESS_STATUS = { fresh: "Gesendet", partial: "Teilweise gesendet", stale: "Veraltet", syncing: "Wird gesendet", never_loaded: "Noch nichts gesendet" };
+
 const PROVIDER_FRESHNESS_ERRORS = {
   auth_required: "Erneute Anmeldung erforderlich",
   rate_limited: "Rate Limit erreicht",
@@ -482,7 +485,8 @@ function renderProviderFreshness(data) {
     title.textContent = entry.label || entry.provider || "Provider";
     const status = document.createElement("span");
     status.className = entry.state === "fresh" || entry.state === "partial" ? "configured" : "not-configured";
-    status.textContent = PROVIDER_FRESHNESS_STATUS[entry.state] || "Unbekannter Status";
+    const sending = entry.provider === providerIds().intervals ? SENDING_FRESHNESS_STATUS : {};
+    status.textContent = sending[entry.state] || PROVIDER_FRESHNESS_STATUS[entry.state] || "Unbekannter Status";
     header.append(title, status);
     if (entry.configured === false || entry.state === "not_configured") {
       item.append(header);
