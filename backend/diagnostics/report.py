@@ -76,6 +76,9 @@ from backend.sync.garmin_activity_details import (
 )
 from backend.sync.garmin_body_push import summarize_body_push
 from backend.sync.garmin_projection_service import GarminProjectionService
+from backend.sync.garmin_sleep_keys import (
+    summarize_sleep_temperature_keys,
+)
 from backend.sync.garmin_wellness_history import summarize_daily_calories
 from backend.sync.jobs import utc_timestamp
 from backend.sync.library import WorkoutLibrarySyncStateService
@@ -450,6 +453,15 @@ class DiagnosticReportService:
                     "garmin_daily_calories",
                     lambda: summarize_daily_calories(
                         db, date.fromisoformat(self._local_today(athlete_profile()))
+                    ),
+                ),
+                # Skin-temperature key names of the sleep answers, no values (#4017).
+                "garmin_sleep_temperature_keys": section(
+                    "garmin_sleep_temperature_keys",
+                    lambda: summarize_sleep_temperature_keys(
+                        key_values,
+                        db,
+                        date.fromisoformat(self._local_today(athlete_profile())),
                     ),
                 ),
                 "nutrition_expenditure_gaps": section(
