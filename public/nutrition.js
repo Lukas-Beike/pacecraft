@@ -302,9 +302,8 @@ function nutritionExpenditureDate(value) {
 }
 
 function appendNutritionTotals(totals, day) {
-  // Empty days report zero totals, which are unknown: no six tiles of "nicht erfasst", the status line says it (#3930).
+  // Empty days report zero totals, which are unknown, so the tiles stay "nicht erfasst".
   const hasEntries = Number(day.entry_count) > 0;
-  if (!hasEntries) return;
   for (const [label, key, unit] of [["Kalorien", "kcal", "kcal"], ["Kohlenhydrate", "carbs_g", "g"], ["Protein", "protein_g", "g"], ["Fett", "fat_g", "g"], ["Zucker", "sugar_g", "g"], ["Salz", "salt_g", "g"]]) {
     const tile = nutritionTotalTile(label, key, unit, day, hasEntries);
     if (key === "kcal") tile.classList.add("is-hero");
