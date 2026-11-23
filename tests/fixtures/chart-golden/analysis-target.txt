@@ -3,12 +3,10 @@
     "Schlaf"
   <ul class="analysis-chart-legend">
     <li data-color="0" data-line="solid">
-      <button aria-describedby="analysis-info-6" aria-expanded="false" aria-label="Erklärung zu Schlafdauer" class="analysis-legend-info" popovertarget="analysis-info-6" type="button">
+      <button aria-controls="analysis-info-6" aria-describedby="analysis-info-6" aria-expanded="false" aria-label="Erklärung zu Schlafdauer" class="analysis-legend-info" on:click="1" on:keydown="1" type="button">
         "Schlafdauer"
-      <div class="analysis-info-tooltip" data-series="0" id="analysis-info-6" on:toggle="1" popover="auto" role="tooltip">
+      <div class="analysis-info-tooltip" data-series="0" hidden="true" id="analysis-info-6" on:keydown="1" role="note">
         "Schlafdauer: 8:12 h · 07.10.2026. Schlaf aus Garmin."
-        <span class="analysis-metric-meta">
-          "07.10.2026"
         <span class="analysis-metric-meta">
           "Daten für 3 von 3 Tagen vorhanden."
         <span class="analysis-metric-change">

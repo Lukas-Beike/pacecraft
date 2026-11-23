@@ -199,11 +199,11 @@ test("@responsive recovery uses independent scales, honest coverage over exactly
   await expect(root.locator(".analysis-trend-controls")).toHaveCount(1);
   await expect(root.locator(".analysis-period-controls")).toHaveCount(1);
   await root.getByRole("button", { name: "Erholung · Letzte 4 Wochen: Informationen", exact: true }).click();
-  const info = root.locator(".analysis-info-tooltip:popover-open");
-  await expect(info).toContainText("Im Bereich deiner früheren Werte · 50 ms–60 ms");
+  const info = root.locator(".analysis-info-tooltip:not([popover]):not([hidden])");
   await expect(info).toContainText("Vergleich mit 28 früheren Nächten.");
   await expect(info).toContainText("Mindestens 14 frühere passende Nächte erforderlich.");
-  await expect(info).toContainText("Vergleich mit 28 früheren Nächten. Messkontext unbekannt. 7-Tage-Mittel 55,2 ms (3 Nächte) · in deinem Bereich 53 ms–62,2 ms · Schwankung 2,5 % · vorläufig.");
+  await expect(info).toContainText("7-Tage-Mittel 55,2 ms (3 Nächte) · im Bereich deiner früheren Werte (53 ms–62,2 ms) · Schwankung 2,5 % · vorläufig");
+  await expect(info).toContainText("Vergleich mit 28 früheren Nächten. Messkontext unbekannt.");
   await expect(info).toContainText(/Messkontext geändert am 30\.09\.2026\./);
   await expect(info).toContainText("Durchschnitt der angezeigten Werte");
   await page.keyboard.press("Escape");
@@ -365,11 +365,12 @@ test("@responsive sparse performance shows measurements and the current value li
   await expect(root.locator(".analysis-current-line")).toHaveCount(0);
   await expect(root.locator("path[data-series]")).toHaveCount(2);
   expect(await root.locator(".analysis-point-value").allTextContents()).toEqual(expect.arrayContaining(["4:50", "210"]));
-  await expect(root).toContainText("08.09.2026 · Garmin Connect");
   const button = root.getByRole("button", { name: "Erklärung zu FTP", exact: true });
   await button.click();
-  const info = root.getByRole("tooltip").filter({ hasText: "FTP · Garmin Connect" });
+  const info = root.getByRole("note").filter({ hasText: "FTP · Garmin Connect" });
   await expect(info).toBeVisible();
+  // Value, date and source stand once, in the first line of the explanation (A-08).
+  await expect(info).toContainText("08.09.2026");
   await expect(button).toHaveAttribute("aria-expanded", "true");
   const bounds = await info.boundingBox();
   expect(bounds.x).toBeGreaterThanOrEqual(0);
@@ -450,7 +451,7 @@ test("@responsive repeated performance values are labelled once without a normal
   await expect(root.locator(".analysis-current-line")).toHaveCount(0);
   await expect(root.locator(".analysis-baseline-band")).toHaveCount(0);
   await root.getByRole("button", { name: "Erklärung zu FTP", exact: true }).click();
-  await expect(root.locator(".analysis-info-tooltip:popover-open")).not.toContainText("Mittlere Hälfte deiner früheren Werte");
+  await expect(root.locator(".analysis-info-tooltip:not([popover]):not([hidden])")).not.toContainText("Mittlere Hälfte deiner früheren Werte");
 });
 
 test("@responsive performance keeps dated FTP values and weekly medians independently of the load period", async ({ page }) => {
@@ -642,7 +643,7 @@ test("@responsive missing race predictions explain the reason instead of an empt
   await expect(predictions).not.toContainText("Gewicht");
 });
 
-test("@responsive legend info buttons have a 44px layout box, a German name and popovers inside the viewport", async ({ page }) => {
+test("@responsive legend info buttons have a 44px layout box, a German name and an explanation that opens in place", async ({ page }) => {
   await performanceFixture(page, { history: {
     start: "2026-09-01", end: "2026-09-08", load: { points: [] },
     metrics: { cycling_ftp_watts: [{ source: "Garmin Connect", points: [{ date: "2026-09-01", value: 200 }, { date: "2026-09-08", value: 210 }] }] },
@@ -671,15 +672,13 @@ test("@responsive legend info buttons have a 44px layout box, a German name and 
   expect(layout.centerHit).toBe("Erklärung zu FTP");
   expect(layout.edgeHit).toBe("Erklärung zu FTP");
   await button.click();
-  const info = root.getByRole("tooltip").filter({ hasText: "FTP · Garmin Connect" });
+  const info = root.getByRole("note").filter({ hasText: "FTP · Garmin Connect" });
   await expect(info).toBeVisible();
   await expect(button).toHaveAttribute("aria-expanded", "true");
   const viewport = page.viewportSize();
   const bounds = await info.boundingBox();
   expect(bounds.x).toBeGreaterThanOrEqual(0);
-  expect(bounds.y).toBeGreaterThanOrEqual(0);
   expect(bounds.x + bounds.width).toBeLessThanOrEqual(viewport.width);
-  expect(bounds.y + bounds.height).toBeLessThanOrEqual(viewport.height);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
 });
 

@@ -2,6 +2,10 @@
 let nutritionLoadSequence = 0;
 let nutritionHistoryPeriod = "28d";
 
+function restoreNutritionPeriod() {
+  nutritionHistoryPeriod = storedAnalysisPeriod("nutrition", nutritionHistoryPeriod);
+}
+
 const MAX_NUTRITION_IMAGE_EDGE = 1600;
 const MAX_NUTRITION_IMAGE_BYTES = 1_200_000;
 
@@ -342,7 +346,7 @@ function renderNutritionHistoryPeriod() {
     root.append(analysisPeriodControls("Zeitraum für Ernährung", nutritionHistoryPeriod, (period) => {
       nutritionHistoryPeriod = period;
       void loadNutrition();
-    }));
+    }, { remember: "nutrition" }));
   }
   root.querySelectorAll("button").forEach((button, index) => {
     button.setAttribute("aria-pressed", String(ANALYSIS_PERIODS[index].key === nutritionHistoryPeriod));
