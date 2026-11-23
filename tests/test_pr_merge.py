@@ -432,7 +432,9 @@ class PrMergeTests(unittest.TestCase):
             comments=[{"author": {"login": "athlete"}, "body": "wait"}], **armed
         )
         more_than_trigger = view(
-            comments=[{"author": {"login": "athlete"}, "body": "gitar review, then fix"}],
+            comments=[
+                {"author": {"login": "athlete"}, "body": "gitar review, then fix"}
+            ],
             **armed,
         )
         blocking = view(
