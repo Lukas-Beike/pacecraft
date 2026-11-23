@@ -289,7 +289,7 @@ function todayIso() { return timezoneDateKey(state.data?.profile?.timezone, new 
 
 function formatTime(value) {
   if (!value) return "Noch nicht aktualisiert";
-  return AppFormat.dateTime(value, { timeZone: state.data?.profile?.timezone }) ?? value;
+  return AppFormat.dateTime(value, { timeZone: state.data?.profile?.timezone }) ?? "unbekannt";
 }
 
 

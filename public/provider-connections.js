@@ -537,8 +537,8 @@ function renderYazioStatus(result) {
     rate_limited: "Anfragen begrenzt – später erneut versuchen", unavailable: "Momentan nicht verfügbar – später erneut versuchen",
   };
   setConnectionChip("#yazioConnectionStatus", yazioConnectionKind(result?.status));
-  const date = result?.checked_at ? new Date(result.checked_at) : null;
-  const checked = date && !Number.isNaN(date.getTime()) ? `Geprüft: ${AppFormat.dateTime(date)}` : "";
+  const time = result?.checked_at ? AppFormat.dateTime(result.checked_at) : null;
+  const checked = time ? `Geprüft: ${time}` : "";
   const message = result ? messages[result.status] : "Status nicht verfügbar";
   setCredentialText("yazioConnectionDetail", [message, checked].filter(Boolean).join(" · "));
   const button = $("#yazioCheckButton");

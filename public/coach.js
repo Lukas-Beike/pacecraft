@@ -2141,6 +2141,8 @@ function contextTextNode(text) {
   return h("p", "context-preview-text", text);
 }
 
+const CONTEXT_ENVIRONMENTS = { virtual: "Indoor", outdoor: "Draußen", indoor: "Indoor", unknown: "Unbekannt" };
+
 function contextScalarText(key, value) {
   if (value === null || value === undefined || value === "") return "–";
   if (typeof value === "boolean") return value ? "Ja" : "Nein";
@@ -2148,6 +2150,7 @@ function contextScalarText(key, value) {
   if (typeof value === "string" && /_(?:at|local)$/.test(key)) return formatTime(value);
   if (typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value)) return AppFormat.date(value) ?? value;
   if (key === "sports" || key === "sport") return profileSportsLabel(value);
+  if (key === "environment") return CONTEXT_ENVIRONMENTS[value] || String(value);
   const race = /^RACE_([ABC])$/.exec(String(value));
   if (race) return `Wettkampf ${race[1]}`;
   return String(value);

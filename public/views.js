@@ -368,7 +368,7 @@ function populateProfileField(form, key, value) {
   field.value = value || "";
 }
 
-const PROFILE_SPORT_LABELS = { Cycling: "Radfahren", Running: "Laufen", Swimming: "Schwimmen", Strength: "Kraft", WeightTraining: "Kraft", Ride: "Radfahren", VirtualRide: "Rad indoor", Run: "Laufen", Swim: "Schwimmen", Triathlon: "Triathlon", Other: "Andere" };
+const PROFILE_SPORT_LABELS = { Cycling: "Radfahren", Running: "Laufen", Swimming: "Schwimmen", Strength: "Kraft", WeightTraining: "Kraft", Ride: "Radfahren", VirtualRide: "Rad indoor", Run: "Laufen", Swim: "Schwimmen", Triathlon: "Triathlon", Other: "Andere", ride: "Radfahren", run: "Laufen", swim: "Schwimmen", strength: "Kraft", other: "Andere" };
 
 function profileSportsLabel(sports) {
   return String(sports || "").split(",").map((item) => item.trim()).filter(Boolean)
