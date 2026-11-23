@@ -14,7 +14,7 @@ test("logout clears the diary's energy table and a diary refresh reads it again"
   const document = { getElementById: (id) => node(id), querySelector: (selector) => node(selector) };
   let resets = 0;
   const loads = [];
-  const ctx = extractFunctions("nutrition.js", ["resetNutritionView", "nutritionRefresh"], {
+  const ctx = extractFunctions("nutrition.js", ["resetNutritionView", "nutritionRefresh", "syncNutritionDateName", "nutritionDayName"], {
     document, resetSkinfolds() {}, stopNutritionBarcode() {}, resetEnergy: () => { resets += 1; },
     loadNutrition: (options) => loads.push(options),
     nutritionLoadSequence: 0, nutritionProductLoadSequence: 0, nutritionLookupResultShown: false,

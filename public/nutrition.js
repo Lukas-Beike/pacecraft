@@ -623,9 +623,15 @@ function nutritionDayName(date, today) {
   return date === today ? `Heute · ${weekday}` : weekday;
 }
 
+// The caption follows the field wherever the field changes; an empty field is today.
+function syncNutritionDateName() {
+  const today = todayIso();
+  document.querySelector("#nutritionDateName").textContent = nutritionDayName(document.querySelector("#nutritionDate").value || today, today);
+}
+
 function renderNutritionDay(day) {
   document.querySelector("#nutritionDate").value = day.date;
-  document.querySelector("#nutritionDateName").textContent = nutritionDayName(day.date, todayIso());
+  syncNutritionDateName();
   const intake = nutritionIntakeKey(day);
   // Another day is read again by the energy card itself (#3395); only a changed intake of the
   // same day drops the read here, so a day switch starts one read, not two.
@@ -653,6 +659,7 @@ function showNutritionDayLoadError(status, cached, error, dateInput, requestedDa
   }
   // The requested day stays in the date field so ← and → still have a day to move from.
   dateInput.value = requestedDate;
+  syncNutritionDateName();
   const retry = h("button", { type: "button", className: "secondary-button" }, "Erneut laden");
   retry.addEventListener("click", () => void loadNutrition());
   status.textContent = `Ernährung konnte nicht geladen werden: ${error.message}`;
@@ -690,7 +697,7 @@ async function loadNutrition({ preserve = false, expectedRoute = null, expectedD
   }
 }
 
-document.querySelector("#nutritionDate").addEventListener("change", () => void loadNutrition());
+document.querySelector("#nutritionDate").addEventListener("change", () => { syncNutritionDateName(); void loadNutrition(); });
 document.querySelector("#nutritionTellCoach").addEventListener("click", (event) => void globalThis.askCoach?.(nutritionCoachDraft(event.currentTarget.dataset.date, todayIso())));
 for (const [id, offset] of [["nutritionPrevious", -1], ["nutritionNext", 1]]) {
   document.getElementById(id).addEventListener("click", () => {
@@ -699,10 +706,11 @@ for (const [id, offset] of [["nutritionPrevious", -1], ["nutritionNext", 1]]) {
     const day = new Date(`${input.value}T12:00:00Z`);
     day.setUTCDate(day.getUTCDate() + offset);
     input.value = day.toISOString().slice(0, 10);
+    syncNutritionDateName();
     void loadNutrition();
   });
 }
-document.querySelector("#nutritionToday").addEventListener("click", () => { document.querySelector("#nutritionDate").value = ""; void loadNutrition(); });
+document.querySelector("#nutritionToday").addEventListener("click", () => { document.querySelector("#nutritionDate").value = ""; syncNutritionDateName(); void loadNutrition(); });
 
 const nutritionRefresh = AppViewRefresh.create({
   api,
@@ -755,6 +763,7 @@ function resetNutritionView() {
   document.querySelector("#nutritionProductUseDialog")?.close();
   nutritionProductForUse = null;
   document.querySelector("#nutritionDate").value = "";
+  syncNutritionDateName();
   nutritionWeekShown = null;
   for (const id of ["nutritionWeekBalance", "nutritionWeekStatus", "nutritionWeekMacros", "nutritionWeekDays", "nutritionWeekChart", "nutritionEntries", "nutritionTotals", "nutritionEnergy", "nutritionStatus", "nutritionProducts", "nutritionLookupResult", "nutritionProductStatus"]) document.getElementById(id)?.replaceChildren();
   document.querySelector("#nutritionLookupResult").hidden = true;

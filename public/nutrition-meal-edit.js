@@ -188,7 +188,7 @@ function nutritionMealSwapResult(row, food) {
   const prefix = NUTRITION_FOOD_ID.exec(String(food.id))?.[1];
   const origin = prefix ? NUTRITION_FOOD_ORIGINS[prefix] : nutritionDatabaseLabel(food) || "Eigenes Produkt";
   const name = [food.brand, food.name].filter(Boolean).join(" · ");
-  const facts = `pro ${nutritionNumber(food.basis_amount ?? 100)} ${food.basis_unit} · ${nutritionNumber(food.kcal)} kcal · KH ${nutritionNumber(food.carbs_g)} g · Protein ${nutritionNumber(food.protein_g)} g · Fett ${nutritionNumber(food.fat_g)} g`;
+  const facts = `pro ${nutritionNumber(food.basis_amount ?? 100)} ${food.basis_unit} · ${nutritionNumber(food.kcal)} kcal · Kohlenhydrate ${nutritionNumber(food.carbs_g)} g · Protein ${nutritionNumber(food.protein_g)} g · Fett ${nutritionNumber(food.fat_g)} g`;
   const button = h("button", { type: "button", className: "swap-result" }, h("strong", null, name), h("span", "origin", origin), h("small", null, facts));
   button.addEventListener("click", () => {
     row.swap = { key: prefix ? "food_id" : "product_id", id: food.id, name, origin };
