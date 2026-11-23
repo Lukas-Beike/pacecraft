@@ -443,9 +443,8 @@ class CoachAthleteRecordToolService:
         if name == "delete_skinfolds":
             read = service.remove({"date": day, "confirmed": True})
         else:
-            if arguments.get("replace") is not True and any(
-                item["date"] == day for item in service.read()["measurements"]
-            ):
+            # Any day, not only the newest ones the read lists (Gitar on #4076).
+            if arguments.get("replace") is not True and service.measured_on(day):
                 raise AppError(
                     409,
                     "Für diesen Tag gibt es schon eine Messung; sie zu ändern braucht "
