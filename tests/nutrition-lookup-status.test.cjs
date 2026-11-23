@@ -109,7 +109,7 @@ test("both sections start collapsed and name their total and their incomplete en
   context.renderNutritionProducts([OWN, FOOD]);
   const [favorites, all] = target.children;
   assert.deepEqual([favorites, all].map((section) => section.open), [false, false]);
-  assert.deepEqual([favorites, all].map((section) => textOf(section.children[0])), ["Favoriten (1)", "Alle Produkte (2) ⚠ 1"]);
+  assert.deepEqual([favorites, all].map((section) => textOf(section.children[0])), ["Favoriten (1)", "Alle Produkte (2) ⚠ 1 unvollständig"]);
   assert.equal(withClass(all.children[0], "nutrition-incomplete")[0].attributes["aria-label"], "1 unvollständig");
   assert.equal(withClass(favorites.children[0], "nutrition-incomplete").length, 0);
   assert.equal(all.children[1].children.length, 2);
@@ -226,10 +226,10 @@ test("deleting an own product archives it at once, only the database removal ask
 });
 
 test("re-checking an own product without an EAN names the EAN and the editor", async () => {
-  const error = Object.assign(new Error("server text"), { reason: "nutrition_product_barcode_missing" });
-  const { context, status } = actionContext({ "/api/nutrition/products/database/refresh": error });
+  const { context, calls, status } = actionContext({});
   const button = new FakeElement("button");
   await context.refreshNutritionProduct({ id: "own-1", name: "Whey", origin: "own" }, button);
+  assert.deepEqual(calls, []);
   assert.equal(status.textContent, "Für Aktualisieren wird eine EAN gebraucht. Unter Bearbeiten eintragen.");
   assert.equal(button.disabled, false);
 });

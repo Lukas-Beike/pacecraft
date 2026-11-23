@@ -973,6 +973,8 @@ async function refreshNutritionProduct(product, button) {
   const status = document.querySelector("#nutritionProductStatus");
   const generation = state.sessionGeneration;
   try {
+    // A product without an EAN has nothing to be re-checked against: no request goes out (#4037).
+    if (!nutritionIsDatabaseProduct(product) && !product.barcode) throw Object.assign(new Error("EAN fehlt"), { reason: "nutrition_product_barcode_missing" });
     const result = await api("/api/nutrition/products/database/refresh", { method: "POST", body: JSON.stringify({ id: product.id }) });
     if (generation !== state.sessionGeneration) return;
     await reloadNutritionProducts({ refresh: true });
@@ -1142,7 +1144,7 @@ function nutritionProductSection(key, title, products, searching) {
   section.addEventListener("toggle", () => { if (section.isConnected !== false) nutritionProductSectionsOpen[key] = section.open; });
   const incomplete = products.filter((product) => nutritionMissingFields(product).length).length;
   section.append(
-    h("summary", null, `${title} (${products.length})`, incomplete ? [" ", nutritionIncompleteMark(`${incomplete} unvollständig`, `⚠ ${incomplete}`)] : null),
+    h("summary", null, `${title} (${products.length})`, incomplete ? [" ", nutritionIncompleteMark(`${incomplete} unvollständig`, `⚠ ${incomplete} unvollständig`)] : null),
     h("div", "nutrition-list", products.map((product) => nutritionProductCard(product, true))));
   return section;
 }
@@ -1152,7 +1154,7 @@ function nutritionProductSection(key, title, products, searching) {
 function nutritionUsageCount(product) {
   if (!Number.isInteger(product.usage_count)) return null;
   const count = product.usage_count;
-  return h("span", { className: `nutrition-usage${count ? "" : " is-zero"}`, title: `${count}-mal erfasst` }, `${count}×`);
+  return h("span", { className: `nutrition-usage${count ? "" : " is-zero"}` }, `${count}-mal erfasst`);
 }
 
 // "14.11." for a day of this year, "14.11.2025" for an older one.
