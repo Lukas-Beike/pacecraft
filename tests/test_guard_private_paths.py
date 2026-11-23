@@ -169,6 +169,11 @@ class GuardPrivatePathsTests(unittest.TestCase):
             f"python scripts/prod_logs.py \\>&7z a -- out.7z --password-file {posix}",
             f"python scripts/prod_logs.py `>&7z a -- out.7z --password-file {posix}",
             f"python scripts/prod_logs.py '>'&7z a -- o.7z --password-file {posix}",
+            # A substitution in the run's segment, or a doubled escape before a newline.
+            f"python scripts/prod_logs.py --password-file {posix} $(cat -- --password-file {posix} )",
+            f"python scripts/prod_logs.py --password-file {posix} `cat -- --password-file {posix} `",
+            f"python scripts/prod_logs.py --password-file {posix} <(cat -- --password-file {posix} )",
+            f"cat x \\\\\npython scripts/prod_logs.py --password-file {posix}",
         ):
             with self.subTest(command=command):
                 self.assertEqual(run_hook(command), 2)

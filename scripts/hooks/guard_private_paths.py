@@ -93,7 +93,10 @@ SAFE_AFTER = re.compile(
 
 # An escaped separator (`\;` in Bash, `` `; `` in PowerShell) is part of a word,
 # not a split: the segments seen here would not be the shell's (#3940 review).
-ESCAPED_SEPARATOR = re.compile(r"[\\`][;|&]")
+ESCAPED_SEPARATOR = re.compile(r"[\\`][;|&]|[\\`]{2}\r?\n")
+# A substitution inside the run's own segment runs a command of its own, which
+# could carry a second `--password-file` value (#4075 gate).
+SUBSTITUTION = re.compile(r"\$\(|`|[<>]\(")
 # `2>&1` copies a stream; its `&` separates nothing. Only an unescaped `>` after a
 # blank or a stream number: `\>&7z` is a literal `>` and a real `&` (#4075 gate).
 STREAM_COPY = re.compile(r"(?<=[\s\d])>&(?=[0-9-])")
@@ -131,6 +134,7 @@ def secret_mention_allowed(command: str) -> bool:
             continue
         if (
             ESCAPED_SEPARATOR.search(command)
+            or SUBSTITUTION.search(segment)
             or not any(run.match(segment.strip()) for run in SECRET_RUN)
             or names_secrets(PASSWORD_FILE.sub(" ", segment))
             or not all(safe_before(item.strip()) for item in segments[:index])
