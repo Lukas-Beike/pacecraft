@@ -15,7 +15,8 @@ polls every 20 s in the same turn until the PR is merged or closed, a check
 fails or new feedback arrives, at most MINUTES (#2795): the host's PR watcher
 does not reliably wake on the merge itself. Feedback is a person's comment or
 review, a status bot's review that requests changes, or any unresolved review
-thread; Gitar's and SonarCloud's status comments are not (#3034). The develop
+thread; Gitar's and SonarCloud's status comments are not (#3034), nor a comment
+that only says "gitar review" (#4064). The develop
 check runs at arming, as the lane rule asks; develop moving during CI is accepted.
 Before arming it also refuses while a review thread is unresolved, disarming
 too, with or without --allow-behind; new feedback during --wait disarms as
@@ -92,11 +93,15 @@ STATUS_BOTS = {"gitar-bot", "sonarqubecloud"}
 
 def feedback(pr: dict[str, Any]) -> int:
     """Comments and reviews that ask for something: every person's, and a status
-    bot's review only when it requests changes. Threads are checked on their own."""
+    bot's review only when it requests changes. Threads are checked on their own.
+    A comment that only says "gitar review" asks Gitar, not the PR (#4064)."""
     return sum(
         1
         for item in [*(pr.get("comments") or []), *(pr.get("reviews") or [])]
-        if (item.get("author") or {}).get("login") not in STATUS_BOTS
+        if (
+            (item.get("author") or {}).get("login") not in STATUS_BOTS
+            and str(item.get("body") or "").strip().lower() != "gitar review"
+        )
         or item.get("state") == "CHANGES_REQUESTED"
     )
 
