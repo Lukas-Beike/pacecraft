@@ -467,6 +467,8 @@ const MODEL_PROVIDER_GROUPS = Object.freeze({ openai: "OpenAI", anthropic: "Clau
 
 // Pure: a Claude family names the model it resolves to; the rest keep their label.
 function modelOptionLabel(option) {
+  // A Claude family without a key cannot be chosen; the reason sits in the entry (#3936 M-03).
+  if (option.disabled && option.provider === "anthropic") return `${option.label} – Anthropic-Schlüssel fehlt`;
   return option.provider === "anthropic" && option.model ? `${option.label} (${option.model})` : option.label;
 }
 

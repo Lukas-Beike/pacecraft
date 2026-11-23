@@ -107,6 +107,7 @@ test("the Coach model list groups OpenAI and Claude and names the resolved Claud
   assert.equal(modelOptionLabel({ id: "gpt-6-luna", label: "GPT-6 Luna", provider: "openai" }), "GPT-6 Luna");
   assert.equal(modelOptionLabel({ id: "claude-opus", label: "Opus", provider: "anthropic", model: "claude-opus-5-5" }), "Opus (claude-opus-5-5)");
   assert.equal(modelOptionLabel({ id: "claude-haiku", label: "Haiku", provider: "anthropic", model: null }), "Haiku");
+  assert.equal(modelOptionLabel({ id: "claude-haiku", label: "Haiku", provider: "anthropic", model: "claude-haiku-5-5", disabled: true }), "Haiku – Anthropic-Schlüssel fehlt");
   const options = [
     { id: "claude-opus", label: "Opus", provider: "anthropic", model: "claude-opus-5-5", rejected: "claude-opus-5-6" },
     { id: "claude-sonnet", label: "Sonnet", provider: "anthropic", model: "claude-sonnet-5-5", rejected: null },
