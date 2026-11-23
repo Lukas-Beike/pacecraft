@@ -218,8 +218,11 @@ test("@responsive the page heading stays at one height between tabs on a wide sc
   for (const route of ["plan/overview", "plan/library", "plan/season", "more/app", "more/connections", "analysis/strength"]) {
     await page.evaluate((target) => AppRouter.navigate(target, { historyMode: "replace" }), route);
     const panel = await page.evaluate((target) => AppNavigation.routes[target], route);
-    await expect(page.locator(`#${panel}.active h2:visible`).first()).toBeVisible();
-    heights.push(await page.locator(`#${panel}.active h2:visible`).first().evaluate((heading) => {
+    // The Mehr pages share one heading beside the panels.
+    const scope = route.startsWith("more/") ? `#${panel}.active, .more-area > .section-heading` : `#${panel}.active`;
+    const title = page.locator(`:is(${scope}) h2:visible`).first();
+    await expect(title).toBeVisible();
+    heights.push(await title.evaluate((heading) => {
       const box = heading.getBoundingClientRect();
       let parents = "";
       for (let node = heading.parentElement; node && node.tagName !== "BODY" && parents.split(">").length < 6; node = node.parentElement) parents += `${node.tagName.toLowerCase()}#${node.id}.${String(node.className).split(" ")[0]}(${getComputedStyle(node).display},${Math.round(node.getBoundingClientRect().top + globalThis.scrollY)})>`;

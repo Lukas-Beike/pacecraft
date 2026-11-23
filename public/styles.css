@@ -29,6 +29,7 @@
   --subtle: #a8abb0;
   --line: rgba(255, 255, 255, .08);
   --line-strong: rgba(255, 255, 255, .2);
+  --control-border: var(--line-strong);
   --accent: #34cfa1;
   --on-accent: #04231a;
   --accent-bright: #4ddbb0;
@@ -162,6 +163,8 @@
   --subtle: #5c5f64;
   --line: rgba(0, 0, 0, .08);
   --line-strong: rgba(0, 0, 0, .22);
+  /* A control's outline is a non-text component: 3:1 against white and grey cards (WCAG 1.4.11). */
+  --control-border: #767a80;
   --accent: #08785f;
   --on-accent: #ffffff;
   --accent-bright: #076a54;
@@ -1453,7 +1456,7 @@ output.planned-move-status { display: block; }
   min-height: 44px;
   display: inline-flex;
   align-items: center;
-  border: 1px solid var(--line-strong);
+  border: 1px solid var(--control-border);
   border-radius: var(--radius-sm);
   padding: 10px 14px;
   color: var(--ink);
@@ -1464,11 +1467,12 @@ output.planned-move-status { display: block; }
   overflow-wrap: break-word;
   transition: background .16s ease, border-color .16s ease;
 }
-.secondary-button:hover { border-color: var(--line-strong); background: var(--surface-raised); }
+.secondary-button:hover { border-color: var(--control-border); background: var(--surface-raised); }
 .secondary-button:disabled, .secondary-button[aria-disabled="true"] { cursor: wait; opacity: .55; }
 .secondary-button.busy { animation: pulse-button 1.4s ease-in-out infinite; }
 @keyframes pulse-button { 50% { opacity: .65; } }
 .secondary-button.danger-button { border-color: var(--danger-border); color: var(--danger-ink); }
+:root[data-theme="light"] .secondary-button.danger-button { border-color: var(--danger-ink); }
 .secondary-button.danger-button:hover { border-color: var(--danger-border-strong); background: var(--danger-surface); }
 
 label { display: grid; min-width: 0; gap: 7px; color: var(--muted); font-size: .76rem; font-weight: 650; }
@@ -1596,7 +1600,8 @@ body:has(#profilePanel.active .dirty-indicator:not([hidden])) .toast { bottom: c
   #chatPanel .messages,
   #chatPanel .composer,
   #chatPanel .coach-action-review,
-  #chatPanel > .fine-print { width: min(100%, 760px); margin-right: auto; margin-left: auto; }
+  #chatPanel > .coach-adaptive-planning-notice,
+  #chatPanel > .fine-print { width: min(100%, 720px); margin-right: auto; margin-left: auto; }
   /* One Mehr navigation: the heading and the rail stand beside whichever Mehr page is shown. */
   .more-area:has(> .panel.active) { display: grid; grid-template-columns: minmax(190px, 220px) minmax(0, 1fr); align-items: start; align-content: start; gap: 0 24px; }
   .more-area > .section-heading { grid-column: 1 / -1; }
@@ -1967,7 +1972,7 @@ button:focus-visible, a:focus-visible, summary:focus-visible {
 
 
 
-.table-scroll { overflow-x: auto; }
+.table-scroll { overflow-x: auto; container-type: inline-size; }
 .race-predictions-table { width: 100%; margin-top: 12px; border-collapse: collapse; }
 .race-predictions-table th, .race-predictions-table td { padding: 12px 4px; border-bottom: 1px solid var(--line); }
 .race-predictions-table thead th { color: var(--muted); font-size: .8rem; font-weight: 500; text-align: left; }
@@ -1976,6 +1981,15 @@ button:focus-visible, a:focus-visible, summary:focus-visible {
 .race-predictions-table tbody tr:last-child > * { border-bottom: 0; }
 #cyclingPowerProfile .race-predictions-table td { text-align: right; font-variant-numeric: tabular-nums; }
 #cyclingPowerProfile .race-predictions-table thead th:not(:first-child) { text-align: right; }
+/* Where the three columns no longer fit side by side (large text), each row stacks its value and date under their names instead of scrolling the date out of view. */
+@container (max-width: 18rem) {
+  .race-predictions-table:has(td[data-label]) thead { display: none; }
+  .race-predictions-table:has(td[data-label]), .race-predictions-table:has(td[data-label]) tbody { display: block; }
+  .race-predictions-table:has(td[data-label]) tr { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px 8px; padding: 8px 0; border-bottom: 1px solid var(--line); }
+  .race-predictions-table:has(td[data-label]) tbody th { grid-column: 1 / -1; padding: 0; border: 0; }
+  .race-predictions-table:has(td[data-label]) td, #cyclingPowerProfile .race-predictions-table td { display: block; padding: 0; border: 0; text-align: left; }
+  .race-predictions-table td[data-label]::before { content: attr(data-label); display: block; color: var(--subtle); font-size: .72rem; }
+}
 .analysis-chart-card svg .analysis-series-bar { fill: var(--accent-bright); stroke: none; opacity: .8; }
 .analysis-chart-card svg .analysis-series-bar[data-color="1"] { fill: var(--chart-series-1); }
 .analysis-chart-card svg .analysis-series-bar[data-color="2"] { fill: var(--chart-series-2); }
@@ -2213,11 +2227,18 @@ button:focus-visible, a:focus-visible, summary:focus-visible {
   .analysis-chart-card > svg text { font-size: 13px; }
   /* Two cards share a row at equal height; a card alone in its row fills it (#3154). */
   :is(div, section).analysis-history-charts { display: flex; flex-wrap: wrap; }
-  :is(div, section).analysis-history-charts > * { flex: 1 1 calc(50% - 8px); min-width: 0; }
+  /* A chart is drawn 460 px wide and never scaled, so its text stays at CSS px: a card narrower than that takes the whole row. */
+  :is(div, section).analysis-history-charts > * { flex: 1 1 500px; min-width: 0; }
+  .analysis-chart-card svg { max-width: 460px; }
   :is(div, section).analysis-history-charts > :not(.analysis-chart-card), :is(div, section).analysis-history-charts > .analysis-chart-stack { flex-basis: 100%; }
-  .analysis-chart-card.analysis-chart-stack { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .analysis-chart-card.analysis-chart-stack { grid-template-columns: repeat(auto-fit, minmax(min(100%, 466px), 1fr)); }
   .analysis-chart-card.analysis-chart-stack > :not(.analysis-subchart), .analysis-chart-card.analysis-chart-stack > .analysis-subchart:nth-child(odd of .analysis-subchart):nth-last-child(1 of .analysis-subchart) { grid-column: 1 / -1; }
-  .profile-form .profile-section > :not(summary) { max-width: 40rem; }
+  .profile-form .profile-section > :not(summary) { max-width: 720px; }
+  /* #3981 G-11: forms and tool blocks keep a reading width; card lists use two columns. */
+  .more-area > .panel, .nutrition-tools, .nutrition-toolbar, #nutritionTellCoach, .energy-fit, .nutrition-week-table { max-width: 720px; }
+  .competition-list, .library-sport-cards, #nutritionEntries, #nutritionProducts { grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: start; }
+  .competition-list > :not(.competition-item), :is(#nutritionEntries, #nutritionProducts) > :not(.nutrition-card) { grid-column: 1 / -1; }
+  .analysis-period-controls { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(4.5rem, 1fr); max-width: 720px; }
 }
 }
 

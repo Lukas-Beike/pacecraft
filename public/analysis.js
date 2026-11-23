@@ -828,7 +828,7 @@ const CYCLING_POWER_PROFILE_DURATIONS = [[5, "5 Sekunden"], [15, "15 Sekunden"],
 
 // The date of a record opens its activity (#3826); a record without one keeps plain text.
 function recordDateCell(point, label) {
-  const cell = h("td");
+  const cell = h("td", { dataset: { label: "Datum" } });
   if (!point) return cell;
   if (!point.activity_id) { cell.append(dateLabel(point.date)); return cell; }
   const open = h("button", { type: "button", className: "link-button", "aria-label": `${label} vom ${dateLabel(point.date)} öffnen` }, dateLabel(point.date));
@@ -852,7 +852,7 @@ function cyclingPowerProfileTable(result) {
   const body = h("tbody");
   for (const [duration, label] of CYCLING_POWER_PROFILE_DURATIONS) {
     const point = cyclingPowerProfilePoint(result, duration);
-    const cell = h("td", { title: point?.source }, point && analysisValue(point.watts, "W"));
+    const cell = h("td", { title: point?.source, dataset: { label: "Leistung" } }, point && analysisValue(point.watts, "W"));
     // Indoor rides count for power, marked as such (#3826).
     if (point?.environment === "indoor") cell.append(recordSourceChip("Indoor"));
     if (!point) markValueMissing(cell);
@@ -1089,7 +1089,7 @@ function renderActivityRecords(result) {
     let values = 0;
     for (const [field, label] of ACTIVITY_RECORD_ROWS[sport]) {
       const record = records.find((item) => item.sport === sport && item.field === field && item.status === "ok");
-      const cell = h("td", { title: record?.source }, record && activityRecordValue(record));
+      const cell = h("td", { title: record?.source, dataset: { label: "Wert" } }, record && activityRecordValue(record));
       if (record) values += 1; else markValueMissing(cell, "–");
       body.append(h("tr", { dataset: { activityRecord: `${sport}:${field}` } }, h("th", { scope: "row" }, label), cell, recordDateCell(record, label)));
     }
@@ -1122,7 +1122,7 @@ function renderRunningBestEfforts(result) {
   for (const [meters, label] of RUNNING_BEST_DISTANCES) {
     const own = points.find((item) => item.distance_meters === meters && item.seconds > 0);
     const point = own || records.find((item) => item.distance_meters === meters && item.seconds > 0);
-    const cell = h("td", { title: point?.source }, point && AppFormat.clock(point.seconds));
+    const cell = h("td", { title: point?.source, dataset: { label: "Zeit" } }, point && AppFormat.clock(point.seconds));
     if (point && !own) cell.append(recordSourceChip(point.label));
     if (point) values += 1; else markValueMissing(cell, "–");
     // Garmin's personal record names no activity; its date stays plain text.
