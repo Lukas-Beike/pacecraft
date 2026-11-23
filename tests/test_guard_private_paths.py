@@ -138,6 +138,57 @@ class GuardPrivatePathsTests(unittest.TestCase):
         ):
             with self.subTest(command=command):
                 self.assertEqual(run_hook(command), 2)
+        # #3940: an earlier segment that could put other code behind the vetted
+        # name (directory, interpreter options, a function or alias, the file
+        # itself) blocks the run, for every allowed script.
+        runs = [
+            "python scripts/prod_diagnostics.py", "python scripts/prod_guards.py",
+            "python scripts/prod_logs.py", "node scripts/ui_walk.mjs",
+            "node scripts/ui_explore.mjs", "node scripts/post_release_actions.mjs",
+        ]  # fmt: skip
+        before = [
+            "cd ../other", "Set-Location C:\\x", "pushd x", "sl x",
+            "export NODE_OPTIONS=--require=./x.js", "$env:NODE_OPTIONS='--import ./x.mjs'",
+            "PYTHONPATH=x", "export PYTHONSTARTUP=x.py", "set PYTHONPATH=x",
+            "node() { cat $4; }", "function python { cat $args }", "alias node=cat",
+            "Set-Alias node Get-Content", "cp x.mjs scripts/ui_walk.mjs",
+            "git checkout other -- scripts", "cat x > scripts/prod_guards.py",
+            "git status && cd x",
+            # An escaped separator joins both into one command that reads the file.
+            "cat a\\", "cat a`", "git status\\",
+        ]  # fmt: skip
+        # #4075 review: a segment that runs alongside the run (a pipe or `&`
+        # after it) could rewrite the script while it starts.
+        after = [
+            "| cp x.mjs scripts/ui_walk.mjs", "| head > scripts/prod_guards.py",
+            "& cp x.py scripts/prod_logs.py", "| tee scripts/ui_explore.mjs",
+            "| head -n $(cp x scripts/ui_walk.mjs)", "| Select-Object -First 1 | sh",
+        ]  # fmt: skip
+        # #4075 gate: an escaped `>` before `&` is no stream copy; the `&` splits.
+        for command in (
+            f"python scripts/prod_logs.py \\>&7z a -- out.7z --password-file {posix}",
+            f"python scripts/prod_logs.py `>&7z a -- out.7z --password-file {posix}",
+            f"python scripts/prod_logs.py '>'&7z a -- o.7z --password-file {posix}",
+            # A substitution in the run's segment, or a doubled escape before a newline.
+            f"python scripts/prod_logs.py --password-file {posix} $(cat -- --password-file {posix} )",
+            f"python scripts/prod_logs.py --password-file {posix} `cat -- --password-file {posix} `",
+            f"python scripts/prod_logs.py --password-file {posix} <(cat -- --password-file {posix} )",
+            f'python scripts/prod_logs.py --password-file "{secret}" (Get-Content -- --password-file "{secret}" )',
+            f'python scripts/prod_logs.py --password-file "{secret}" @(gc --password-file "{secret}" )',
+            f"cat x \\\\\npython scripts/prod_logs.py --password-file {posix}",
+        ):
+            with self.subTest(command=command):
+                self.assertEqual(run_hook(command), 2)
+        for run in runs:
+            for last in after:
+                command = f'{run} --url u --password-file "{secret}" {last}'
+                with self.subTest(command=command):
+                    self.assertEqual(run_hook(command), 2)
+        for run in runs:
+            for first in before:
+                command = f'{first}; {run} --url u --password-file "{secret}"'
+                with self.subTest(command=command):
+                    self.assertEqual(run_hook(command), 2)
         for command in (
             f'python scripts/prod_diagnostics.py --url u --password-file "{secret}"',
             f"python scripts/prod_logs.py --url u --password-file={posix} --since x",
@@ -147,6 +198,12 @@ class GuardPrivatePathsTests(unittest.TestCase):
             f"Get-Content p.json | node .\\scripts\\ui_explore.mjs --url u --password-file={posix} --plan -",
             f'& node scripts/post_release_actions.mjs --url u --password-file "{secret}"',
             f'git status && node scripts/post_release_actions.mjs --password-file "{secret}" --url u',
+            f"cat p.json | node scripts/ui_explore.mjs --url u --password-file={posix} --plan -",
+            # A later segment cannot change what already ran.
+            f'node scripts/ui_walk.mjs --password-file "{secret}" --url u; cd x',
+            # A reader of its output may run alongside (#4075 review).
+            f'python scripts/prod_guards.py --url u --password-file "{secret}" 2>&1 | Select-Object -Last 5',
+            f"node scripts/ui_walk.mjs --password-file {posix} --url u | tail -3 && cd x",
             f'py.exe -3 scripts/prod_guards.py --url u --password-file "{secret}"',
             f'python3.14.exe -I scripts/prod_logs.py --password-file "{secret}"',
             f'python scripts/prod_diagnostics.py --url u \\\n  --password-file "{secret}"',

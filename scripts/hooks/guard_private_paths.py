@@ -70,17 +70,76 @@ PASSWORD_FILE = re.compile(
 )
 
 
+# What may come before such a run in the same command (#3940): nothing that could
+# change the directory, the interpreter's options, a function or alias named like
+# it, or the script itself. An allowlist: a status read, or one literal file read
+# into a pipe; everything else before the run blocks it.
+SAFE_BEFORE = tuple(
+    re.compile(pattern, re.IGNORECASE)
+    for pattern in (
+        r"git\s+status(?:\s+(?:-s|--short))?",
+        r"(?:get-content|cat|type)\s+[\w./\\:-]+",
+    )
+)
+# What a pipe may feed the run's output into (#4075 review): a segment joined by
+# `|` runs alongside the run, so only a reader without a redirection,
+# substitution or expansion; a single `&` (background) after the run blocks it.
+SAFE_AFTER = re.compile(
+    r"(?:select-object|select|head|tail|sort|out-null|out-host|more|grep|findstr"
+    r"|select-string|sls)(?:\s+[\w\s.,:=/\\\"'*-]*)?",
+    re.IGNORECASE,
+)
+
+
+# An escaped separator (`\;` in Bash, `` `; `` in PowerShell) is part of a word,
+# not a split: the segments seen here would not be the shell's (#3940 review).
+ESCAPED_SEPARATOR = re.compile(r"[\\`][;|&]|[\\`]{2}\r?\n")
+# A substitution inside the run's own segment runs a command of its own, which
+# could carry a second `--password-file` value (#4075 gate): Bash `$(…)`, `<(…)`,
+# backticks, and PowerShell's `(…)`, `$(…)` and `@(…)`; any parenthesis blocks.
+SUBSTITUTION = re.compile(r"[`(]")
+# `2>&1` copies a stream; its `&` separates nothing. Only an unescaped `>` after a
+# blank or a stream number: `\>&7z` is a literal `>` and a real `&` (#4075 gate).
+STREAM_COPY = re.compile(r"(?<=[\s\d])>&(?=[0-9-])")
+
+
 def names_secrets(text: str) -> bool:
     return bool(SECRETS.search(DOT_SEGMENT.sub("", QUOTES.sub("", text))))
 
 
+def safe_before(segment: str) -> bool:
+    """An empty segment or one of the SAFE_BEFORE shapes."""
+    return not segment or any(shape.fullmatch(segment) for shape in SAFE_BEFORE)
+
+
+def alongside_safe(segments: list[str], separators: list[str], index: int) -> bool:
+    """Whether every segment that runs alongside segment ``index`` (joined after
+    it by `|` or `&`) is a SAFE_AFTER reader; a sequential separator ends them."""
+    for after, separator in zip(segments[index + 1 :], separators[index:]):
+        if separator not in ("|", "&"):
+            return True
+        if separator == "&" or not SAFE_AFTER.fullmatch(after.strip()):
+            return False
+    return True
+
+
 def secret_mention_allowed(command: str) -> bool:
-    """True when every secret-folder path is a prod script's --password-file value."""
-    for segment in SEGMENTS.split(CONTINUATION.sub(" ", command)):
+    """True when every secret-folder path is a prod script's --password-file value,
+    only SAFE_BEFORE segments come before that script's run and only SAFE_AFTER
+    readers run alongside it."""
+    text = STREAM_COPY.sub(">", CONTINUATION.sub(" ", command))
+    pieces = re.split(f"({SEGMENTS.pattern})", text)
+    segments, separators = pieces[0::2], pieces[1::2]
+    for index, segment in enumerate(segments):
         if not names_secrets(segment):
             continue
-        if not any(run.match(segment.strip()) for run in SECRET_RUN) or names_secrets(
-            PASSWORD_FILE.sub(" ", segment)
+        if (
+            ESCAPED_SEPARATOR.search(command)
+            or SUBSTITUTION.search(segment)
+            or not any(run.match(segment.strip()) for run in SECRET_RUN)
+            or names_secrets(PASSWORD_FILE.sub(" ", segment))
+            or not all(safe_before(item.strip()) for item in segments[:index])
+            or not alongside_safe(segments, separators, index)
         ):
             return False
     return True
