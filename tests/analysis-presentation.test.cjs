@@ -237,7 +237,7 @@ test("body overview: the newest own body fat with its source, weight with its so
   const reads = { skinfolds: { measurements: [{ date: "2026-11-10", body_fat_pct: 13.9 }] } };
   const { renderBodyAnalysis, bodyFoldFat } = bodyOverviewHarness(root, reads);
   const series = (provider, source, points) => ({ source_provider: provider, source, points: points.map(([date, value]) => ({ date, value })) });
-  const body = (fat) => ({ preferred_providers: { weight_kg: "garmin" }, windows: { "12w": { start: "2026-10-01", end: "2026-11-17", metrics: {
+  const body = (fat) => ({ preferred_providers: { weight_kg: "garmin", body_fat_pct: "garmin" }, windows: { "12w": { start: "2026-10-01", end: "2026-11-17", metrics: {
     weight_kg: [series("garmin", "Garmin Connect", [["2026-11-16", 80]])],
     body_fat_pct: [series("garmin", "Garmin Connect", [["2026-11-17", 22]]), series(null, "Lokal", fat)],
   } } } });
@@ -277,10 +277,16 @@ test("body overview: the newest own body fat with its source, weight with its so
   shown = rows([["2026-11-10", 15]]);
   assert.equal(textOf(shown[1].children[0]), "KörperfettEingetragen (Hautfalten) · 2026-11-10");
   assert.equal(textOf(shown[1].children[1]), "13.9 %");
-  // Without any own value the row shows a dash (the profile's 18.5 % is not KFA), and no lean mass.
+  // Without any own value the row shows the device value in use with its source (#3930), never the profile's 18.5 %,
+  // and no lean mass is derived from it.
   reads.skinfolds = { measurements: [] };
   shown = rows([]);
-  assert.equal(textOf(shown[1].children[1]), "\u2014");
+  assert.equal(textOf(shown[1].children[0]), "KörperfettGarmin Connect · 2026-11-17");
+  assert.equal(textOf(shown[1].children[1]), "22 %");
+  // Without a device value either the row keeps the dash.
+  const none = { preferred_providers: { weight_kg: "garmin" }, windows: { "12w": { start: "2026-10-01", end: "2026-11-17", metrics: { weight_kg: [series("garmin", "Garmin Connect", [["2026-11-16", 80]])], body_fat_pct: [] } } } };
+  renderBodyAnalysis(none);
+  assert.equal(textOf(root.children[0].children[0].children[1].children[1].children[1]), "\u2014");
   // Weight, body fat and the energy goal (#3547), no lean mass.
   assert.equal(shown.length, 3);
   assert.equal(textOf(shown[2].children[0]), "Energieziel");
@@ -450,7 +456,7 @@ test("Verlauf's deficit card: hero, goal marker, boxes and text agree, measured 
   assert.equal(energyDeficitCard({ rows, deficit: null }), null);
 });
 
-const ENERGY_CARD_FUNCTIONS = ["ENERGY_INSUFFICIENT", "ENERGY_STEP_SOURCES", "ENERGY_PARTS", "ENERGY_LEARNED", "energyRowParts", "FIT_SOURCE_NAMES", "energyFitSigned", "energyKcalRange", "energyKcalSpan", "energyKcal", "energyNeatInputs", "energyBodyText", "energyBasisText", "energyBiasText", "energyInfoId", "ENERGY_DAY_NOTE", "energyInfoButton", "energyStandNote", "energyTefNote", "energyInfo", "energySplitValue", "energyStrengthNote", "energyPartText", "energySplitBar", "energySourceLine", "energyGuardNotes", "energyUsage"];
+const ENERGY_CARD_FUNCTIONS = ["ENERGY_INSUFFICIENT", "ENERGY_STEP_SOURCES", "ENERGY_PARTS", "ENERGY_LEARNED", "energyRowParts", "FIT_SOURCE_NAMES", "energyFitSigned", "energyKcalRange", "energyKcalSpan", "energyKcal", "energyNeatInputs", "energyBodyText", "energyInfoItems", "energyBiasText", "energyInfoId", "ENERGY_DAY_NOTE", "energyInfoButton", "energyStandNote", "energyTefNote", "energyInfo", "energySplitValue", "energyStrengthNote", "energyPartText", "energySplitBar", "energySourceLine", "energyGuardNotes", "energyUsage"];
 const ENERGY_CARD_GLOBALS = (h) => ({
   bindAnalysisPopover: (button, info) => { button.dataset.popoverTarget = info.id; },
   h, formatWhole: (v) => String(v), dateLabel: (v) => v, analysisValue: (v, unit) => `${v} ${unit}`, AppFormat: require("../public/format.js"),
@@ -458,7 +464,7 @@ const ENERGY_CARD_GLOBALS = (h) => ({
 
 test("the diary's usage card draws the outlined source's parts, its day total and the info behind the small i (#3252, #3703)", () => {
   const { h } = extractFunctions("components.js", ["h", "SVG_NS", "svgNode"], { document: fakeDocument() });
-  const { energyUsage, energyBasisText, energyDeficitCard } = extractFunctions("analysis.js", [...ENERGY_CARD_FUNCTIONS, ...DEFICIT_CARD_FUNCTIONS], ENERGY_CARD_GLOBALS(h));
+  const { energyUsage, energyInfoItems, energyDeficitCard } = extractFunctions("analysis.js", [...ENERGY_CARD_FUNCTIONS, ...DEFICIT_CARD_FUNCTIONS], ENERGY_CARD_GLOBALS(h));
   const split = { resting_kcal: 1839, neat_kcal: 250, sport_kcal: 350, tef_kcal: 250 };
   const read = {
     end: "2026-11-14", windows: ["2026-11-07", "2026-11-14"], best: "katch_mcardle", outlined: "katch_mcardle", day_partial: true,
@@ -475,11 +481,11 @@ test("the diary's usage card draws the outlined source's parts, its day total an
   const card = energyUsage(read);
   // #3252: how the values come about sits behind the small "i", beside the heading.
   const [title, info, tooltip] = card.children[0].children;
-  assert.equal(textOf(title), "Verbrauch heute · bis jetzt");
+  assert.equal(textOf(title), "Verbrauch heute (Stand jetzt)");
   assert.equal(textOf(info), "i");
   assert.equal(info.dataset.popoverTarget, tooltip.id);
   assert.match(textOf(tooltip), /Ruhe aus deinen Daten ist ein Rest/);
-  assert.match(textOf(tooltip), /Offene Kalorien zieht das Gegessene/);
+  assert.match(textOf(tooltip), /Offene Kalorien = Tag gesamt − Gegessenes/);
   assert.doesNotMatch(textOf(tooltip), /Basis/);
   // #3478: a band shows as the estimate with its low–high span below, spoken as "zwischen … und … kcal".
   const span = (value, low, high) => `${value}${low}–${high}zwischen ${low} und ${high} kcal`;
@@ -514,6 +520,7 @@ test("the diary's usage card draws the outlined source's parts, its day total an
     const empty = energyUsage({ ...read, outlined });
     assert.deepEqual(empty.children.map(textOf).slice(1), ["Noch keine Quelle"]);
   }
+  const energyBasisText = (value) => energyInfoItems(value).map(([, text]) => text).join(" · ");
   const note = energyBasisText(read);
   assert.match(note, /24 von 28 Tagen vollständig .* KFA 15 % \(Hautfalten vom 2026-11-04\), fettfreie Masse 68 kg/);
   assert.match(note, /Bänder nominal 95 %, ohne Fehler beim Erfassen des Essens/, "#3187 item 6");
@@ -522,9 +529,11 @@ test("the diary's usage card draws the outlined source's parts, its day total an
   // #3255, #3252: NEAT's inputs join the basis behind the one "i", never a line under the card.
   const neat = { days: 27, steps_per_day: 14200, session_steps_per_day: 3100, floors_per_day: 9.5, step_length_m: 0.78, step_length_source: "height" };
   const withNeat = { ...read, basis: { ...read.basis, neat } };
-  assert.doesNotMatch(energyBasisText(withNeat), /Schritten/, "the basis text itself carries no NEAT inputs");
+  assert.deepEqual(plain(energyInfoItems(read).map(([what]) => what)), ["Was", "Daten", "Quelle", "Unsicherheit"], "a short list, no activity line without NEAT's inputs");
+  assert.deepEqual(plain(energyInfoItems(withNeat).map(([what]) => what)), ["Was", "Daten", "Quelle", "Aktivität", "Unsicherheit"]);
   const [, neatButton, neatInfo] = energyUsage(withNeat).children[0].children;
-  assert.match(textOf(neatInfo), /Ruhe aus deinen Daten ist ein Rest .* · Schritte & Treppen aus 14200 Schritten\/Tag, davon 3100 in Einheiten abgezogen, Schrittlänge 0.78 m \(aus Körpergröße\), 9.5 Etagen ohne Einheiten$/);
+  assert.match(textOf(neatInfo), /Aktivität: Schritte & Treppen aus 14200 Schritten\/Tag, davon 3100 in Einheiten abgezogen, Schrittlänge 0.78 m \(aus Körpergröße\), 9.5 Etagen ohne Einheiten/);
+  assert.equal(neatInfo.children[0].className, "energy-info-list", "the explanation is a list");
   assert.equal(neatButton.dataset.popoverTarget, neatInfo.id);
   // A kcal value is never negative, so a band wider than its value starts at 0.
   const wide = { ...read, rows: [{ ...read.rows[0], total_kcal: 120, total_band_kcal: 300 }] };
@@ -577,7 +586,7 @@ test("the usage card names each part, its note and what has no data yet, with th
   const device = { source: "device", label: "Garmin Connect", split: split(1745, 610, 765, null) };
   const synced = usage(device, { wellness: { as_of: "12:18", behind: false } });
   assert.equal(lines(synced)[1], "Schritte & Treppen610");
-  assert.match(info(synced), / · Schritte & Treppen nach dem letzten Garmin-Abruf, Stand 12:18$/);
+  assert.match(info(synced), /Aktivität: Schritte & Treppen nach dem letzten Garmin-Abruf, Stand 12:18/);
   const waiting = usage({ ...device, pending_parts: ["neat"] }, { wellness: { as_of: "12:18", behind: true } });
   assert.equal(lines(waiting)[1], "Schritte & Treppennoch keine Daten");
   assert.match(info(waiting), /Stand 12:18, Garmin hängt hinterher/);
@@ -992,7 +1001,8 @@ test("the watch-upload sentence appears from 24 hours on and never without a kno
 
 test("a body fat fallback names its source in the info (#3362)", () => {
   const { h } = extractFunctions("components.js", ["h", "SVG_NS", "svgNode"], { document: fakeDocument() });
-  const { energyBasisText } = extractFunctions("analysis.js", ENERGY_CARD_FUNCTIONS, ENERGY_CARD_GLOBALS(h));
+  const { energyInfoItems } = extractFunctions("analysis.js", ENERGY_CARD_FUNCTIONS, ENERGY_CARD_GLOBALS(h));
+  const energyBasisText = (value) => energyInfoItems(value).map(([, text]) => text).join(" · ");
   const read = {
     rows: [{ source: "katch_mcardle" }], basis: { complete_days: 30, days: 30 }, flagged: null, skinfold_missing: null,
     body: { source: "profile", label: "Profil", date: null, body_fat_pct: 18.5, lean_mass_kg: 61 },
@@ -1143,7 +1153,9 @@ test("one merged body series names each day's source in the overview and the tab
   assert.equal(bodyOverviewReading("weight_kg", garmin, preferred).note, "Garmin Connect · 2026-11-17");
   // KFA reads only the athlete's own days, also out of the merged series.
   assert.equal(bodyOverviewReading("body_fat_pct", entered, preferred).value, 79.5);
-  assert.equal(bodyOverviewReading("body_fat_pct", garmin, preferred).text, "—");
+  // Without an own day the device value in use is shown with its source (#3930).
+  const device = bodyOverviewReading("body_fat_pct", garmin, preferred);
+  assert.deepEqual([device.value, device.note, device.device], [80, "Garmin Connect · 2026-11-17", true]);
   // #3569: a profile body fat is the athlete's own skinfold and says so.
   const fold = merged([{ date: "2026-11-16", value: 14, source_label: "Garmin" }, { date: "2026-11-17", value: 13.5, source_label: "Hautfalten" }]);
   assert.equal(JSON.stringify(bodyOverviewReading("body_fat_pct", fold, preferred)), JSON.stringify({ value: 13.5, note: "Eingetragen (Hautfalten) · 2026-11-17" }));

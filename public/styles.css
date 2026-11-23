@@ -314,6 +314,7 @@ h2 {
 .icon-button.busy { animation: spin 1s linear infinite; }
 .settings-app-version { margin: 0; color: var(--subtle); font-size: .72rem; }
 .device-sync-stale { color: var(--ink); font-weight: 650; }
+.energy-info-list { display: grid; gap: 6px; margin: 0; padding: 0; list-style: none; }
 .release-changelog { display: grid; gap: 6px; color: var(--muted); font-size: .78rem; }
 .release-changelog summary { box-sizing: border-box; min-height: 44px; padding-block: 14px; color: var(--subtle); cursor: pointer; }
 .release-changelog h4 { margin: 6px 0 0; color: var(--ink); font-size: .78rem; }
