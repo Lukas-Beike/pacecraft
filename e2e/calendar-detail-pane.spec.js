@@ -383,6 +383,9 @@ test("@responsive Verschieben moves a planned unit to a tapped day and Rückgän
     await page.evaluate((day) => { globalThis.movedTo = day; }, posts.at(-1).date);
     await route.fulfill({ json: { status: "local", local_id: "11111111-1111-4111-8111-111111111111", change: { id: "c-move", after_hash: "h-move" } } });
   });
+  // A day an appointment blocks is marked with its name and cannot be tapped (#4060).
+  const blockedDay = await page.evaluate((day) => addDateKey(day, 4), days.today);
+  await page.route("**/api/planned-units/*/blocked-days*", (route) => route.fulfill({ json: { blocked: { [blockedDay]: ["Reise"] } } }));
   await page.route("**/api/change-history/undo", async (route) => {
     undos.push(JSON.parse(route.request().postData()));
     await page.evaluate((day) => { globalThis.movedTo = day; }, days.next);
@@ -405,6 +408,14 @@ test("@responsive Verschieben moves a planned unit to a tapped day and Rückgän
   const strip = pane.getByRole("group", { name: "Neuer Tag" });
   await expect(strip.locator(".planned-move-day[data-day]")).toHaveCount(7);
   await expect(strip.locator(`.planned-move-day[data-day="${days.next}"]`)).toBeDisabled();
+  const blocked = strip.locator(`.planned-move-day[data-day="${blockedDay}"]`);
+  await expect(blocked).toBeDisabled();
+  await expect(blocked).toHaveAttribute("title", "Belegt: Reise");
+  await expect(blocked).toHaveAttribute("aria-label", /belegt: Reise$/);
+  // Closing and opening the strip again marks it once, not twice.
+  await pane.getByRole("button", { name: "Verschieben" }).click();
+  await pane.getByRole("button", { name: "Verschieben" }).click();
+  await expect(blocked).toHaveAttribute("aria-label", /^(?:(?!belegt).)*, belegt: Reise$/);
   // The date picker ends with the last day the calendar shows, so a moved unit stays visible.
   await expect(strip.locator(".planned-move-picker")).toHaveAttribute("max", await page.evaluate(() => plannedLastDateKey));
   for (const tile of await strip.locator(".planned-move-day").all()) expect((await tile.boundingBox()).height).toBeGreaterThanOrEqual(44);

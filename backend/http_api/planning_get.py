@@ -19,17 +19,58 @@ class PlanningGetRoutes:
         public_plan_state_service: Callable[[], PublicPlanStateService],
         public_weather_state_service: Callable[[], PublicWeatherStateService],
         library_page_service: Callable[[], LibraryPageService],
+        planned_unit_service: Callable[[], Any] | None = None,
     ) -> None:
+        self._planned_unit_service = planned_unit_service
         self._public_plan_state_service = public_plan_state_service
         self._public_weather_state_service = public_weather_state_service
         self._library_page_service = library_page_service
 
     def routes(self) -> list[Route]:
-        return [
+        routes = [
             Route("GET", "/api/plan", Access.SESSION, self._plan),
             Route("GET", "/api/weather", Access.SESSION, self._weather),
             Route("GET", "/api/library", Access.SESSION, self._library),
         ]
+        if self._planned_unit_service is not None:
+            routes.append(
+                Route(
+                    "GET",
+                    "/api/planned-units/{id}/blocked-days",
+                    Access.SESSION,
+                    self._blocked_days,
+                )
+            )
+        return routes
+
+    def _blocked_days(self, handler: Any, request: RouteRequest) -> None:
+        """Name the days a move of one planned unit would be refused. A read; nothing is written.
+
+        Request: path `{id}`, the local unit id; query `dates`, up to 31 days as
+        `YYYY-MM-DD` separated by commas.
+
+        Response: 200 `{"blocked": {"YYYY-MM-DD": [name, ...]}}`: per day the names of
+        the calendar entries in the way (an appointment with a marker, an overlapping
+        entry, a competition); days that are free, past or the unit's own are left out.
+
+        Errors: 400 "Ungültige lokale Planungs-ID." for an id that is no UUID; 404
+        "Einheit nicht gefunden." or "Lokale Planung nicht gefunden." for an unknown,
+        archived or deleted unit.
+        """
+        dates = [
+            day.strip()
+            for day in request.query.get("dates", [""])[0].split(",")
+            if day.strip()
+        ]
+        assert self._planned_unit_service is not None
+        handler.send_json(
+            200,
+            {
+                "blocked": self._planned_unit_service().blocked_days(
+                    request.params["id"], dates
+                )
+            },
+        )
 
     def _plan(self, handler: Any, request: RouteRequest) -> None:
         """Planning projection.

@@ -1443,6 +1443,7 @@ function plannedUnitActions(entry, dateKey, todayKey) {
   toggle.addEventListener("click", () => {
     days.hidden = !days.hidden;
     toggle.setAttribute("aria-expanded", String(!days.hidden));
+    if (!days.hidden) void markBlockedDays(days, entry);
   });
   const move = async (target) => {
     if (!target || target === dateKey || (plannedLastDateKey && target > plannedLastDateKey)) return;
@@ -1456,7 +1457,7 @@ function plannedUnitActions(entry, dateKey, todayKey) {
       await globalThis.load?.();
       announcePlanChange(`Verschoben auf ${MOVE_DAY_FORMAT.format(dateFromKey(target))}`);
     } catch (error) {
-      buttons.forEach((item) => { item.disabled = item.dataset.day === dateKey; });
+      buttons.forEach((item) => { item.disabled = item.dataset.day === dateKey || item.classList.contains("is-blocked"); });
       status.textContent = error.message;
     }
   };
@@ -1503,6 +1504,33 @@ function plannedArchiveControls(entry, dateKey) {
   archive.textContent = "Archivieren";
   archive.classList.remove("danger-button");
   return [archive, note];
+}
+
+// The strip asks the server which of its days a move would be refused for and marks them with what is in the
+// way, so no day is offered that fails after the tap (#4060). A failed read leaves the strip as it was.
+async function markBlockedDays(days, entry) {
+  const buttons = [...days.querySelectorAll("button[data-day]")];
+  if (!entry.local_id || !buttons.length) return;
+  try {
+    const dates = buttons.map((button) => button.dataset.day).join(",");
+    const { blocked } = await api(`/api/planned-units/${encodeURIComponent(entry.local_id)}/blocked-days?dates=${dates}`);
+    for (const button of buttons) {
+      // Every read starts from the day's own label, so a reopened strip never stacks marks or keeps a freed day blocked.
+      button.dataset.baseLabel ??= button.getAttribute("aria-label") || "";
+      const names = blocked?.[button.dataset.day];
+      if (names?.length) {
+        button.disabled = true;
+        button.classList.add("is-blocked");
+        button.title = `Belegt: ${names.join(", ")}`;
+        button.setAttribute("aria-label", `${button.dataset.baseLabel}, belegt: ${names.join(", ")}`);
+      } else if (button.classList.contains("is-blocked")) {
+        button.disabled = false;
+        button.classList.remove("is-blocked");
+        button.removeAttribute("title");
+        button.setAttribute("aria-label", button.dataset.baseLabel);
+      }
+    }
+  } catch { /* the move itself still answers with its message */ }
 }
 
 // The next seven days from today and "…" for a later date, inside the shown calendar (#2194, #3028).
