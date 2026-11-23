@@ -91,6 +91,8 @@ class _RestoreService:
     def restore_in_transaction(self, db, *args, deferred_plans=None):
         self.calls.append(args)
         self.deferred.append(deferred_plans)
+        if deferred_plans is not None:
+            deferred_plans.add("plan-1")
         db.execute(
             "INSERT INTO undo_effects(entity_type, entity_id) VALUES (?, ?)",
             (self.entity_type, self.entity_id),
@@ -583,8 +585,8 @@ class HistoryUndoServiceTests(unittest.TestCase):
             self.service.apply_many(db, [{"id": _CHANGE_ID, "after_hash": after_hash}])
 
         # The restore collects into one set instead of following, and the plan owner follows after it.
-        self.assertEqual([set()], units.deferred)
-        self.assertEqual([units.deferred[0]], plans.bounds)
+        self.assertEqual([{"plan-1"}], units.deferred)
+        self.assertEqual([{"plan-1"}], plans.bounds)
 
     def test_a_single_undo_lets_the_unit_restore_follow_at_once(self):
         current_projection, _ = self._insert_history("planned_unit")

@@ -144,7 +144,8 @@ class HistoryUndoService:
             )
             for change in reversed(changes)
         ]
-        self._training_plan_service.update_bounds(db, deferred_plans)
+        if deferred_plans:
+            self._training_plan_service.update_bounds(db, deferred_plans)
         return undone
 
     def _apply_one(
