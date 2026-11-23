@@ -43,6 +43,29 @@ test("a step fails on an empty chart or panel and passes on a drawn one", async 
   expect(refused.why).toMatch(/opening control/);
 });
 
+test("an optional step's skip names what the page showed instead of its element", async ({ page }) => {
+  const { runStep, STEPS } = await import(pathToFileURL(path.join(__dirname, "..", "scripts", "ui_walk.mjs")).href);
+  // The week review step skipped on a phone walk without saying why (2.2.23): the card is gone, failed, or loads.
+  const { saw } = STEPS.find((step) => step.name === "Kalender: Wochenrückblick");
+  const step = { name: "x", covers: "test", ready: ".week-review-tile", kind: "numbers", optional: true, saw };
+  const week = (card) => `<section class="planned-week">${card}</section>`;
+  const cases = {
+    "card missing": week(""),
+    "plan line instead": week('<p class="planned-week-totals">3 von 4 erledigt</p>'),
+    "nicht verfügbar": week('<section class="week-review" data-failed="true"><p class="empty">Wochenrückblick gerade nicht verfügbar</p></section>'),
+    "still loading": week('<section class="week-review"><p class="loading-state">Wochenrückblick wird geladen…</p></section>'),
+  };
+  for (const [label, html] of Object.entries(cases)) {
+    await page.setContent(html);
+    expect(await runStep(page, step, 300), label).toMatchObject({ status: "skip", why: `none of 1 has it (${label})` });
+  }
+  // A step without `saw` keeps its plain reason, and a shown tile still passes.
+  await page.setContent(cases["card missing"]);
+  expect(await runStep(page, { ...step, saw: undefined }, 300)).toMatchObject({ status: "skip", why: "none of 1 has it" });
+  await page.setContent(week('<section class="week-review"><div class="week-review-tile">8 Einheiten</div></section>'));
+  expect((await runStep(page, step, 300)).status).toBe("ok");
+});
+
 test("a step waits until the app's data load ends before it checks the view", async ({ page }) => {
   const { runStep } = await import(pathToFileURL(path.join(__dirname, "..", "scripts", "ui_walk.mjs")).href);
   // 2.1.25: right after a restart a reload re-rendered the calendar while the first step checked it.
