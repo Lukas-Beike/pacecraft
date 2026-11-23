@@ -83,6 +83,14 @@ def rest_answer(argv, gitar, compare):
     return None
 
 
+def answer(argv, out):
+    """A read's answer: `out` as JSON (text as it is), or the dropped connection."""
+    if out == DOWN:
+        return subprocess.CompletedProcess(argv, 1, "", DOWN)
+    text = out if isinstance(out, str) else json.dumps(out)
+    return subprocess.CompletedProcess(argv, 0, text, "")
+
+
 def merge_answer(argv, auto_error):
     """A `pr merge` answer: `auto_error` fails every --auto call, or a list answers
     one --auto call each in order ("" succeeds, #3432)."""
@@ -116,10 +124,7 @@ def run(
     def fake(argv, **_kwargs):
         calls.append(argv[1:])
         if argv[1:3] == ["pr", "view"]:
-            state = views.pop(0)
-            if state == DOWN:
-                return subprocess.CompletedProcess(argv, 1, "", DOWN)
-            return subprocess.CompletedProcess(argv, 0, json.dumps(state), "")
+            return answer(argv, views.pop(0))
         if tuple(argv[1:3]) in fixed:
             return subprocess.CompletedProcess(argv, *fixed[tuple(argv[1:3])])
         if argv[1:3] == ["api", "graphql"]:
@@ -129,10 +134,8 @@ def run(
             files = "\n".join([*(f"f{n}" for n in range(150)), "scripts/pr_merge.py"])
             return subprocess.CompletedProcess(argv, 0, files, "")
         rest = rest_answer(argv, gitar, {"behind": behind, "files": list(moved)})
-        if rest == DOWN:
-            return subprocess.CompletedProcess(argv, 1, "", DOWN)
         if rest is not None:
-            return subprocess.CompletedProcess(argv, 0, rest, "")
+            return answer(argv, rest)
         return merge_answer(argv, auto_error)
 
     out, err = io.StringIO(), io.StringIO()

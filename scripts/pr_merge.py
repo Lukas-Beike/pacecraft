@@ -342,12 +342,14 @@ def wait(number: int, minutes: int, seen: int, rebased: str = "") -> int:
     rechecked = False
     failed = ""
     for poll in range(polls):
+        if poll:
+            time.sleep(60 / POLLS_PER_MINUTE)
         try:
             pr = view(number)
-            failed = ""
         except CliError as exc:
             failed = poll_failed(failed, exc)
-            pr = {}
+            continue
+        failed = ""
         if pr.get("state") == "MERGED":
             oid = (pr.get("mergeCommit") or {}).get("oid") or "?"
             print(f"PR #{number} merged: {oid[:10]}")
@@ -358,13 +360,11 @@ def wait(number: int, minutes: int, seen: int, rebased: str = "") -> int:
             print(f"PR #{number} {pr.get('state')}; failing: {failing}; read pr-state")
             return 1
         # An armed auto-merge would not wait for either (#2947); arming needed no thread.
-        if pr and (feedback(pr) > seen or thread_open(number)):
+        if feedback(pr) > seen or thread_open(number):
             refuse(number, pr, f"new feedback on PR #{number}; read pr-state")
             return 1
         # Once, after the first CI round finished: develop may have moved during it (#3872).
-        rechecked = rechecked or (bool(pr) and ci_round_rebase(number, pr, checks, rebased))
-        if poll < polls - 1:
-            time.sleep(60 / POLLS_PER_MINUTE)
+        rechecked = rechecked or ci_round_rebase(number, pr, checks, rebased)
     if failed:
         raise CliError(failed)
     print(f"PR #{number} still open after {minutes} min")
