@@ -1,11 +1,19 @@
 const { test, expect } = require("@playwright/test");
 
+// Playwright's messages for a request whose page went away (#3449).
+const GONE = /Response has been disposed|Target page, context or browser has been closed/;
+
 // The read is shaped here (the values come from the method tests); `shape` gets it and the diary day.
+// A read still in flight when its page goes away needs no answer (#4115, as #3449); any other error fails.
 async function shapeEnergy(page, shape) {
   await page.route("**/api/body/energy*", async (route) => {
-    const response = await route.fetch();
     const day = new URL(route.request().url()).searchParams.get("date");
-    await route.fulfill({ response, json: shape(await response.json(), day) });
+    try {
+      const response = await route.fetch();
+      await route.fulfill({ response, json: shape(await response.json(), day) });
+    } catch (error) {
+      if (!GONE.test(String(error))) throw error;
+    }
   });
 }
 
@@ -256,8 +264,6 @@ const fitScale = (days, ownDays, own, band) => ({
     { source: "device", label: "Garmin Connect", total_kcal: 3157 },
   ],
 });
-// Playwright's messages for a request whose page went away (#3449).
-const GONE = /Response has been disposed|Target page, context or browser has been closed/;
 for (const theme of ["light", "dark"]) {
   test(`@responsive the fit scale follows Verlauf's period without overlaps, and the diary card takes the outlined source (${theme})`, async ({ page }) => {
     await page.emulateMedia({ colorScheme: theme });
