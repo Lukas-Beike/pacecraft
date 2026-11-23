@@ -45,6 +45,32 @@ def prepare_structured_plan_replacement(
     return payload, expected_revision, workouts, plan_name, today_text, period
 
 
+def validate_period_order(period: dict[str, Any]) -> tuple[str, str]:
+    """A replaced period is two real dates, the first not after the second."""
+    try:
+        start = LocalDate.parse(period.get("start")).isoformat()
+        end = LocalDate.parse(period.get("end")).isoformat()
+    except (AttributeError, TypeError, ValueError) as exc:
+        raise AppError(
+            400, "Der Zeitraum ist ungültig.", reason="invalid_plan"
+        ) from exc
+    if start > end:
+        raise AppError(
+            400, "Der Zeitraum endet vor seinem Beginn.", reason="invalid_plan"
+        )
+    return start, end
+
+
+def validate_period_from_today(period: dict[str, Any], today: str) -> None:
+    """A replaced period also starts today or later: past units are not replaced."""
+    if validate_period_order(period)[0] < today:
+        raise AppError(
+            400,
+            "Der Zeitraum beginnt heute oder später.",
+            reason="invalid_plan",
+        )
+
+
 def validate_replacement_workouts(
     workouts: list[dict[str, Any]], today: str, period: dict[str, str]
 ) -> None:

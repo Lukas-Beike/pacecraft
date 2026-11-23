@@ -286,10 +286,11 @@ test("@responsive a plan's period is replaced in one change and Rückgängig tak
   await expect(dialog).toBeHidden();
   expect(posts.at(-1)).toEqual([expect.stringMatching(/\/replace$/), expect.objectContaining({ confirmed: true, replaced_ids: [expect.any(String)], workouts: [expect.objectContaining({ name: "E2E Neu", description: "- 10m 60%" })] })]);
 
-  // The replaced plan is archived once empty, so its receipt leads the plans.
-  const lead = page.locator("#library > .planned-move-status", { hasText: "Ersetzt: 1 → 1 Einheiten" });
-  await expect(lead.first()).toBeVisible();
-  await lead.first().getByRole("button", { name: "Rückgängig" }).click();
+  // The plan stays what it is: its card carries the receipt, and no second plan appears.
+  const lead = card.locator(":scope > .planned-move-status", { hasText: "Ersetzt: 1 → 1 Einheiten" });
+  await expect(lead).toBeVisible();
+  await expect(page.locator("#library .library-card h4", { hasText: "E2E Ersatzplan" })).toHaveCount(1);
+  await lead.getByRole("button", { name: "Rückgängig" }).click();
   expect(posts.at(-1)[0]).toMatch(/undo-batch$/);
   expect(posts.at(-1)[1].changes.length).toBeGreaterThan(1);
   await expect(page.locator("#library .planned-move-status", { hasText: "Zurückgenommen." }).first()).toBeVisible();

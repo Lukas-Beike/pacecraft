@@ -17,6 +17,7 @@ from backend.db.repositories import PlanningStateRepository, TrainingPlanReposit
 from backend.errors import AppError
 from backend.planning import library, plan_checks
 from backend.planning.plan_guard_service import PlanCheckError, PlanGuardService
+from backend.planning.replacement import validate_period_order
 from backend.planning.sport import planned_stored_sport
 
 # Fields a create or an edit takes; the day and time go with them.
@@ -175,6 +176,7 @@ class PlannedUnitEditService:
         replacement = self._replacement_service
         if replacement is None or not workouts:
             raise AppError(400, "Der Ersatz braucht mindestens eine neue Einheit.")
+        start, end = validate_period_order({"start": start, "end": end})
         guard = self._plan_guard()
         with self._database_manager.unit_of_work() as db:
             plan = TrainingPlanRepository().get(db, plan_id)
@@ -212,6 +214,7 @@ class PlannedUnitEditService:
                     "constraints": [],
                 },
                 selected_plan_id=plan_id,
+                keep_plan=True,
             )
             notes = guard.verify(before, accept or [], waived=_WAIVED)
         return {**result, "plan_check_notes": notes}

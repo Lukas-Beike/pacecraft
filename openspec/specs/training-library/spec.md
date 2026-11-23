@@ -863,7 +863,7 @@ The Bibliothek SHALL list the undated, non-archived workouts grouped by sport in
 
 #### Scenario: Replace a period of a plan
 - **WHEN** the athlete taps "Zeitraum ersetzen" on a plan card, picks the period, adds the new units with the unit editor and taps "Ersetzen"
-- **THEN** the dialog lists the plan's units of the period ("Wird archiviert") and the new ones before; `POST /api/training-plans/{id}/replace` runs the Coach's plan replacement as one transaction under the plan checks (it refuses a period whose units changed since the list was shown); the replaced units stay in the local history and one receipt "Rückgängig" takes the whole change back (`POST /api/change-history/undo-batch`); nothing is written remotely.
+- **THEN** the dialog lists the plan's units of the period ("Wird archiviert") and the new ones before; `POST /api/training-plans/{id}/replace` runs the Coach's plan replacement as one transaction under the plan checks, the new units joining the same plan (it refuses a period whose units changed since the list was shown, a period that begins before today or ends before its start); the replaced units stay in the local history and one receipt "Rückgängig" takes the whole change back (`POST /api/change-history/undo-batch`); nothing is written remotely.
 
 #### Scenario: Create, edit, restore and delete in the view
 - **WHEN** the athlete saves the editor of the Bibliothek, restores an archived entry or deletes a never-synced one
