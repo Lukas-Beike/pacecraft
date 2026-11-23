@@ -194,6 +194,8 @@ async function expectTouchTargets(page, view) {
 // starts once the active panel's place and size and the page height stayed unchanged for STABLE_MS.
 const STABLE_MS = 400;
 async function waitForStableLayout(page) {
+  // Each scan measures afresh: a key left by an earlier view must not count as stable time.
+  await page.evaluate(() => { delete globalThis.__contrastLayout; });
   await page.waitForFunction((stableMs) => {
     const panel = document.querySelector(".panel.active");
     if (!panel) return false;
