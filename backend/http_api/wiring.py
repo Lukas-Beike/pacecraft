@@ -461,6 +461,7 @@ def _read_routes(
             public.plan_state_service,
             public.weather_state_service,
             library_page_service,
+            ctx.planning.planned_unit,
         ),
         SyncGetRoutes(
             ctx.sync_job_queue.service,

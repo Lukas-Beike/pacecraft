@@ -136,6 +136,7 @@ handler's docstring. Regenerate it with
 | GET | `/api/plan` | Session | no | Planning projection. |
 | POST | `/api/planned-units` | Session + CSRF | after access | Plan a new unit on a day, from scratch or from a library entry, without a remote write. |
 | POST | `/api/planned-units/{id}/archive` | Session + CSRF | after access | Archive a planned unit out of the calendar; its receipt offers the undo. |
+| GET | `/api/planned-units/{id}/blocked-days` | Session | no | Name the days a move of one planned unit would be refused. A read; nothing is written. |
 | POST | `/api/planned-units/{id}/date` | Session + CSRF | after access | Move a planned unit to another day without a remote write. |
 | POST | `/api/planned-units/{id}/delete` | Session + CSRF | after access | Delete a planned unit from the calendar without a remote write (#3027). |
 | POST | `/api/planned-units/{id}/focus` | Session + CSRF | after access | Set or clear the focus of a planned unit without a remote write. |
@@ -1897,6 +1898,19 @@ Response: 200 `{"status", "local_id", "plan_check_notes", "change"}`.
 
 Errors: 409 `confirmation_required` without `confirmed: true`; as the
 update route for the hash.
+
+### `GET /api/planned-units/{id}/blocked-days`
+
+Request: path `{id}`, the local unit id; query `dates`, up to 31 days as
+`YYYY-MM-DD` separated by commas.
+
+Response: 200 `{"blocked": {"YYYY-MM-DD": [name, ...]}}`: per day the names of
+the calendar entries in the way (an appointment with a marker, an overlapping
+entry, a competition); days that are free, past or the unit's own are left out.
+
+Errors: 400 "Ungültige lokale Planungs-ID." for an id that is no UUID; 404
+"Einheit nicht gefunden." or "Lokale Planung nicht gefunden." for an unknown,
+archived or deleted unit.
 
 ### `POST /api/planned-units/{id}/date`
 

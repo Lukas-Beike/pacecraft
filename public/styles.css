@@ -1009,6 +1009,7 @@ output.planned-move-status { display: block; }
 .planned-move-day { display: grid; min-width: 44px; min-height: 44px; place-items: center; padding: 4px 6px; border: 1px solid var(--line-strong); border-radius: var(--radius-sm); color: var(--ink); background: var(--surface-input); font-size: .72rem; line-height: 1.2; }
 .planned-move-day b { font-size: .9rem; }
 .planned-move-day:disabled { opacity: .45; }
+.planned-move-day.is-blocked { border-style: dashed; text-decoration: line-through; }
 .planned-move-picker:not(.is-shown) { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
 .planned-week-sync { display: flex; padding: 6px 0 2px; }
 .planned-week-sync .planned-sync-button { position: relative; display: inline-flex; min-height: 32px; padding: 2px 12px; border-radius: 10px; font-size: .72rem; line-height: 1.2; }
