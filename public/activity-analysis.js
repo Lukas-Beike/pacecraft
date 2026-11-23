@@ -229,7 +229,11 @@
 
   // Strength leads with the total time, the moving time follows (#2317).
   function sessionTimes(activity, metrics) {
-    const times = [["Bewegungszeit", duration(metrics.moving_duration_s ?? metrics.duration_s)], ["Gesamtzeit", duration(metrics.elapsed_duration_s)]];
+    const moving = duration(metrics.moving_duration_s ?? metrics.duration_s);
+    const total = duration(metrics.elapsed_duration_s);
+    // Two times that read the same are one time (#3932 K-04).
+    if (moving && moving === total) return [["Zeit", moving]];
+    const times = [["Bewegungszeit", moving], ["Gesamtzeit", total]];
     return activity?.sport === "strength" ? times.reverse() : times;
   }
 
