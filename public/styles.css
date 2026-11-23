@@ -1114,7 +1114,10 @@ output.planned-move-status { display: block; }
 }
 /* Wide screens: the week on the left, the open card's body as the detail pane on the right. */
 @media (min-width: 1100px) {
-  .planned-calendar { --planned-week-width: 460px; position: relative; grid-template-columns: minmax(0, var(--planned-week-width)); align-content: start; }
+  .planned-calendar { --planned-week-width: 460px; position: relative; grid-template-columns: minmax(0, var(--planned-week-width)) minmax(0, 1fr); column-gap: 0; align-content: start; }
+  /* Notices span the whole calendar area; the week or month stays in the left column beside the detail pane. */
+  .planned-calendar > :not(.planned-week, .planned-month) { grid-column: 1 / -1; }
+  .planned-calendar > :is(.planned-week, .planned-month) { grid-column: 1; }
   .planned-card:has(> .planned-entry[open]) { border: 2px solid var(--accent-bright); background: var(--accent-soft); }
   .planned-entry[open] .planned-session-header { background: var(--transparent); }
   .planned-entry[open] > .planned-entry-details { position: absolute; top: 0; right: 0; left: calc(var(--planned-week-width) + 24px); gap: 16px; padding: 24px 28px; border: 1px solid var(--line); border-top: 4px solid var(--session-color); border-radius: var(--radius-lg); background: var(--surface); box-shadow: var(--shadow-soft); }
@@ -2235,7 +2238,8 @@ button:focus-visible, a:focus-visible, summary:focus-visible {
   .analysis-chart-card.analysis-chart-stack > :not(.analysis-subchart), .analysis-chart-card.analysis-chart-stack > .analysis-subchart:nth-child(odd of .analysis-subchart):nth-last-child(1 of .analysis-subchart) { grid-column: 1 / -1; }
   .profile-form .profile-section > :not(summary) { max-width: 720px; }
   /* #3981 G-11: forms and tool blocks keep a reading width; card lists use two columns. */
-  .more-area > .panel, .nutrition-tools, .nutrition-toolbar, #nutritionTellCoach, .energy-fit, .nutrition-week-table { max-width: 720px; }
+  #chatPanel > .coach-adaptive-planning-notice { margin-top: 16px; }
+  .more-area > .panel, .nutrition-tools, .nutrition-toolbar, #nutritionTellCoach, .energy-fit, .nutrition-week-table, [data-body-overview] { max-width: 720px; }
   .competition-list, .library-sport-cards, #nutritionEntries, #nutritionProducts { grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: start; }
   .competition-list > :not(.competition-item), :is(#nutritionEntries, #nutritionProducts) > :not(.nutrition-card) { grid-column: 1 / -1; }
   .analysis-period-controls { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(4.5rem, 1fr); max-width: 720px; }
