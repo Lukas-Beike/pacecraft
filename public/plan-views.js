@@ -1521,12 +1521,20 @@ async function markBlockedDays(days, entry) {
     const dates = buttons.map((button) => button.dataset.day).join(",");
     const { blocked } = await api(`/api/planned-units/${encodeURIComponent(entry.local_id)}/blocked-days?dates=${dates}`);
     for (const button of buttons) {
+      // Every read starts from the day's own label, so a reopened strip never stacks marks or keeps a freed day blocked.
+      button.dataset.baseLabel ??= button.getAttribute("aria-label") || "";
       const names = blocked?.[button.dataset.day];
-      if (!names?.length) continue;
-      button.disabled = true;
-      button.classList.add("is-blocked");
-      button.title = `Belegt: ${names.join(", ")}`;
-      button.setAttribute("aria-label", `${button.getAttribute("aria-label")}, belegt: ${names.join(", ")}`);
+      if (names?.length) {
+        button.disabled = true;
+        button.classList.add("is-blocked");
+        button.title = `Belegt: ${names.join(", ")}`;
+        button.setAttribute("aria-label", `${button.dataset.baseLabel}, belegt: ${names.join(", ")}`);
+      } else if (button.classList.contains("is-blocked")) {
+        button.disabled = false;
+        button.classList.remove("is-blocked");
+        button.removeAttribute("title");
+        button.setAttribute("aria-label", button.dataset.baseLabel);
+      }
     }
   } catch { /* the move itself still answers with its message */ }
 }

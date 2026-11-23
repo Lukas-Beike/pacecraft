@@ -412,6 +412,10 @@ test("@responsive Verschieben moves a planned unit to a tapped day and Rückgän
   await expect(blocked).toBeDisabled();
   await expect(blocked).toHaveAttribute("title", "Belegt: Reise");
   await expect(blocked).toHaveAttribute("aria-label", /belegt: Reise$/);
+  // Closing and opening the strip again marks it once, not twice.
+  await pane.getByRole("button", { name: "Verschieben" }).click();
+  await pane.getByRole("button", { name: "Verschieben" }).click();
+  await expect(blocked).toHaveAttribute("aria-label", /^(?:(?!belegt).)*, belegt: Reise$/);
   // The date picker ends with the last day the calendar shows, so a moved unit stays visible.
   await expect(strip.locator(".planned-move-picker")).toHaveAttribute("max", await page.evaluate(() => plannedLastDateKey));
   for (const tile of await strip.locator(".planned-move-day").all()) expect((await tile.boundingBox()).height).toBeGreaterThanOrEqual(44);
