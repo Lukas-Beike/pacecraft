@@ -69,17 +69,17 @@ def coach_effect_label(item: dict[str, Any]) -> str:
             if result.get("partial")
             else "Daten aktualisiert"
         )
-    count = len(
-        result.get("library_entry_ids")
-        or result.get("templates")
-        or result.get("changes")
-        or []
+    # A rule applied to earlier sessions or a product clean-up names its
+    # ``count`` of records (#3957).
+    count = max(
+        len(
+            result.get("library_entry_ids")
+            or result.get("templates")
+            or result.get("changes")
+            or []
+        ),
+        result.get("count", 0),
     )
-    if item.get("tool") == "set_equipment_rule" and isinstance(
-        result.get("count"), int
-    ):
-        # A rule applied to earlier sessions names how many it gave the item.
-        count = result["count"]
     return f"{label} ({count})" if count else label
 
 
