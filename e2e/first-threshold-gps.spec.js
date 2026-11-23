@@ -10,13 +10,11 @@ async function openMore(page, segment) {
 }
 
 test("saving a measured first threshold stores the bpm, shows its percent and leaves nothing to save", async ({ page }) => {
+  // #4080: the save reaches this spec's own fixture server, so a background reload
+  // after it brings back the stored value instead of an unsaved one.
   const puts = [];
-  await page.route("**/api/profile", async (route) => {
-    if (route.request().method() !== "PUT") return route.continue();
-    const body = JSON.parse(route.request().postData() || "{}");
-    puts.push(body);
-    const profile = await page.evaluate(() => ({ ...state.profileBaseline }));
-    await route.fulfill({ json: { ...profile, ...body, first_threshold_origin: "measured" } });
+  page.on("request", (request) => {
+    if (request.method() === "PUT" && new URL(request.url()).pathname === "/api/profile") puts.push(request.postDataJSON());
   });
   await openMore(page, "profile");
   const form = page.locator("#profileForm");
@@ -27,21 +25,30 @@ test("saving a measured first threshold stores the bpm, shows its percent and le
   await expect(form.locator('[name="first_threshold_on"]')).toHaveCount(0);
   await expect(form.locator('[name="first_threshold_pct"]')).toHaveCount(0);
 
-  await form.locator('[name="first_threshold_hr"]').fill("150");
-  await form.getByRole("button", { name: "Profil speichern" }).click();
+  const original = await page.evaluate(() => state.profileBaseline.first_threshold_hr ?? "");
+  try {
+    await form.locator('[name="first_threshold_hr"]').fill("150");
+    await form.getByRole("button", { name: "Profil speichern" }).click();
 
-  await expect(page.locator("#toast")).toContainText("Profil gespeichert");
-  await expect(page.locator("#toast")).not.toContainText("unvollständig");
-  expect(puts[0]).toMatchObject({ first_threshold_hr: "150" });
-  const baseline = await page.evaluate(() => state.profileBaseline);
-  expect(baseline.first_threshold_hr).toBe("150");
+    await expect(page.locator("#toast")).toContainText("Profil gespeichert");
+    await expect(page.locator("#toast")).not.toContainText("unvollständig");
+    expect(puts[0]).toMatchObject({ first_threshold_hr: "150" });
+    const baseline = await page.evaluate(() => state.profileBaseline);
+    expect(baseline.first_threshold_hr).toBe("150");
+    // Stored on the server as entered, with a measured origin.
+    const stored = await (await page.request.get("/api/profile")).json();
+    expect(stored.profile).toMatchObject({ first_threshold_hr: "150", first_threshold_origin: "measured" });
 
-  // Nothing left to save: the bar is gone.
-  await expect(form.locator(".save-bar")).toBeHidden();
-  await expect(page.locator("#profileDirtyIndicator")).toBeHidden();
-  await page.waitForTimeout(500);
-  expect(puts.filter((body) => "first_threshold_hr" in body)).toHaveLength(1);
-  await expect(page.locator("#toast")).not.toContainText("unvollständig");
+    // Nothing left to save: the bar is gone.
+    await expect(form.locator(".save-bar")).toBeHidden();
+    await expect(page.locator("#profileDirtyIndicator")).toBeHidden();
+    await page.waitForTimeout(500);
+    expect(puts.filter((body) => "first_threshold_hr" in body)).toHaveLength(1);
+    await expect(page.locator("#toast")).not.toContainText("unvollständig");
+  } finally {
+    // Restore the fixture's threshold for the later tests, also after a failure.
+    if (puts[0]) await page.evaluate((body) => api("/api/profile", { method: "PUT", body: JSON.stringify(body) }), { ...puts[0], first_threshold_hr: original });
+  }
 });
 
 async function openPrivacy(page) {
