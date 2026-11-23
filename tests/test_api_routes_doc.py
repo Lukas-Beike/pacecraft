@@ -126,8 +126,9 @@ class ApiRoutesDocTests(unittest.TestCase):
             if line.startswith("| ") and not line.startswith(("| Domain", "| ---"))
         ]
         named_tools = set()
-        counts = dict.fromkeys(PARITY_VALUES, 0)
         for _, action, ui, coach, _, parity, gap in rows:
+            # #4092: what the hand-kept counts line held, without one shared line.
+            self.assertIn(parity, PARITY_VALUES, action)
             # A parenthesis names the tool's action or field, not a tool.
             outside = " ".join(part.split(")")[-1] for part in coach.split("("))
             row_tools = set(re.findall(r"`([a-z_]+)`", outside))
@@ -140,13 +141,11 @@ class ApiRoutesDocTests(unittest.TestCase):
                 self.assertEqual(parity, expected[sides], action)
             issues = re.fullmatch(r"#\d+(, #\d+)*", gap)
             self.assertEqual(bool(issues), parity in GAPS, action)
-            counts[parity] += 1
         outside = document.split("## Outside the matrix\n\n")[1].split("\n\n")[0]
         mechanics = set(re.findall(r"`([a-z_]+)`", outside))
         self.assertLessEqual(mechanics, tools)
         self.assertEqual(sorted(tools - named_tools - mechanics), [])
-        stated = ", ".join(f"{value} {count}" for value, count in counts.items())
-        self.assertIn(f"Counts: {stated}.", document)
+        self.assertNotIn("\nCounts:", document)
 
 
 def write_document(path: Path = DOC) -> None:

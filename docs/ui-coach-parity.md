@@ -19,10 +19,9 @@ case on both sides, so the guards match.
 
 `tests/test_api_routes_doc.py` keeps this file honest: every Coach tool in
 `COACH_DIALOGUE_TOOLS` and every athlete write route appears here, every named
-tool and route exists, the parity value matches the two columns, each gap names
-its issue and the counts below match the table.
-
-Counts: both 71, UI only 0, Coach only 10, neither 0, UI by rule 13.
+tool and route exists, every parity value is one of the five above and matches
+the two columns, and each gap names its issue. No hand-kept count: every PR that
+added a row conflicted on it (#4092).
 
 ## Matrix
 
