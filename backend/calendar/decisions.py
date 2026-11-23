@@ -49,7 +49,9 @@ class ExternalCalendarDecisionService:
                 "WHERE start_local = ?",
                 (start_local[:_MAX_START_LENGTH],),
             ).fetchall()
-        uids = sorted({row["uid"] for row in rows if str(row["name"])[:200] == name})
+        # The name as the Coach reads it: cut to 200 characters.
+        shown = {(row["uid"], str(row["name"])[:200]) for row in rows}
+        uids = sorted({uid for uid, shown_name in shown if shown_name == name})
         if len(uids) != 1:
             raise AppError(404, "Termin nicht gefunden.")
         result = self.decide(uids[0], None if series else start_local, impact)
