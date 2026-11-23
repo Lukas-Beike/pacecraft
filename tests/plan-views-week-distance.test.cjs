@@ -40,6 +40,8 @@ test("a planned week load is one value of the whole week or none", () => {
   assert.deepEqual({ ...partial }, { value: "–", note: "1 Einheit ohne Belastung" });
   assert.equal(calendarWeekLoad([{ training_load: 40 }, { training_load: 35 }], { all: true }).value, "75");
   assert.equal(calendarWeekLoad([{ training_load: null }], { all: true }), null);
+  // The header rounds the week's load to whole points, as the week review does (#4061).
+  assert.equal(calendarWeekLoad([{ training_load: 40.4 }, { training_load: 35.4 }]).value, "76");
 });
 
 test("week durations always use hours and minutes", () => {

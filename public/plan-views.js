@@ -421,7 +421,8 @@ function calendarWeekLoad(items, { all = false } = {}) {
   const missing = items.length - known.length;
   if (all && missing) return { value: "–", note: `${countLabel(missing, "Einheit", "Einheiten")} ohne Belastung` };
   return {
-    value: calendarMetricNumber(known.reduce((sum, item) => sum + Math.max(0, Number(item.training_load)), 0)),
+    // Whole points, as the week review shows the week's load (#4061).
+    value: AppFormat.number(known.reduce((sum, item) => sum + Math.max(0, Number(item.training_load)), 0), { digits: 0 }),
     note: missing ? `${countLabel(missing, "Einheit", "Einheiten")} ohne Belastung` : null,
   };
 }

@@ -25,7 +25,7 @@ The review SHALL report the plan as completed, missed and still open units with 
 
 #### Scenario: Plan and load
 - **WHEN** a week had 4 planned units, 3 completed and 1 missed, and 5 sessions
-- **THEN** `plan` reports `completed` 3, `missed` 1, `open` 0, the missed unit with its day and name and `duration_share` from planned and completed time. `load` reports `duration_s`, `sessions` and `training_load` for this and the previous week and the intensity `shares`.
+- **THEN** `plan` reports `completed` 3, `missed` 1, `open` 0, the missed unit with its day and name and `duration_share` from planned and completed time. `load` reports `duration_s` (the time a session is shown with: moving time, else elapsed time, strength elapsed first; the calendar week header sums the same), `sessions` and `training_load` (whole points, as the header rounds it) for this and the previous week and the intensity `shares`.
 
 #### Scenario: Recovery against the personal range
 - **WHEN** the week has nights with sleep, HRV and resting heart rate of the preferred source
