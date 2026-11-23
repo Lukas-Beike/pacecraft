@@ -33,6 +33,8 @@ test("saving a measured first threshold stores the bpm, shows its percent and le
     await expect(page.locator("#toast")).toContainText("Profil gespeichert");
     await expect(page.locator("#toast")).not.toContainText("unvollständig");
     expect(puts[0]).toMatchObject({ first_threshold_hr: "150" });
+    // A reload started before the save may still land; the one after it reads the stored value.
+    await page.waitForFunction(() => !state.loadPromise && !state.pendingLoads.size && !state.deferredLoad);
     const baseline = await page.evaluate(() => state.profileBaseline);
     expect(baseline.first_threshold_hr).toBe("150");
     // Stored on the server as entered, with a measured origin.
