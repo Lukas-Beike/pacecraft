@@ -245,7 +245,14 @@ async function remeasureStraddling(page, view, theme, nodes) {
     await page.locator(entry.target).first().evaluate((node) => node.scrollIntoView({ block: "center" }));
     const again = await new AxeBuilder({ page }).withRules(["color-contrast"]).include(entry.target).analyze();
     failures.push(...again.violations.flatMap((violation) => violation.nodes.map((node) => contrastText(view, theme, node))));
-    open.push(...undecidedNodes(again.incomplete));
+    // What lies over a node that stays undecided is the first thing to read in the failure.
+    const stack = again.incomplete.length ? await page.locator(entry.target).first().evaluate((node) => {
+      const box = node.getBoundingClientRect();
+      const names = document.elementsFromPoint(box.left + box.width / 2, box.top + Math.min(box.height / 2, 10)).slice(0, 4)
+        .map((over) => over.tagName.toLowerCase() + (over.id ? "#" + over.id : "") + (over.className ? "." + String(over.className).trim().split(" ")[0] : ""));
+      return names.join(" < ") + " at " + Math.round(box.top) + "-" + Math.round(box.bottom) + " of " + innerHeight;
+    }) : "";
+    open.push(...undecidedNodes(again.incomplete).map((node) => ({ ...node, by: node.by || stack })));
   }
   await page.evaluate(() => window.scrollTo(0, 0));
   return { open, failures };
