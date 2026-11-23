@@ -149,7 +149,7 @@ test("structured complaints show one line per area with days and severity", () =
 });
 
 test("the calendar day names area, side and severity before the athlete's words", () => {
-  const { plannedDayNotes } = extractFunctions("plan-views.js", ["COMPLAINT_AREA_LABELS", "COMPLAINT_SIDE_LABELS", "complaintLabel", "infectionHintText", "infectionHintDismissed", "infectionHintReceipts", "infectionHintNote", "NO_COMPLAINT_ANSWERS", "reportsComplaint", "plannedDayNotes"], {
+  const { plannedDayNotes } = extractFunctions("plan-views.js", ["COMPLAINT_AREA_LABELS", "COMPLAINT_SIDE_LABELS", "complaintLabel", "plannedPauseDecorate", "infectionHintText", "infectionHintDismissed", "infectionHintReceipts", "infectionHintNote", "NO_COMPLAINT_ANSWERS", "reportsComplaint", "plannedDayNotes"], {
     document: fakeDocument(), plannedDayNoteSpecs: () => [],
   });
   const note = (checkin) => textOf(plannedDayNotes({ checkin }, [], "2026-11-17"));

@@ -246,6 +246,7 @@
   Each morning the adaptive preview proposes at most one stage forward when the check-in of the day reports no pain or illness and a normal body feel (soreness up to 5 of 10), the overnight HRV (RMSSD) is not below the lower quartile of the athlete's own earlier nights by more than half the interquartile range (the margin of the infection hint, #3920) (the personal recovery baseline: 42 days, at least 14 earlier nights, same measurement context) and the resting heart rate is at most 5 bpm above the median of those nights.
   A poor sign holds the stage; a new pain or illness complaint steps back one stage (an illness report starts a new pause forecast instead).
   If the Garmin night is missing or has too few earlier nights, the check-in alone decides; without today's check-in the stage holds.
+  A pause day in the calendar names the day the pause runs to ("Trainingspause bis …": its consecutive pause days or the approved illness pause) and offers "Mit Coach besprechen" for the way back (#3932).
   Evidence is shown per source (local check-in, Garmin).
   The preview also replaces drafts of today and tomorrow that exceed the stage (easy, at most 60 minutes), as local drafts only; nothing is written to Intervals.icu.
   A stage change applies only with the preview approval and is stored on the applied adjustment (no separate state).
