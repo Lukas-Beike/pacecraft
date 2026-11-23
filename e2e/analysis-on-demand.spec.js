@@ -251,7 +251,7 @@ test("@responsive equipment records load only on the equipment route and stay ca
   await expect.poll(() => reportCounts()[TRAINING_RECORDS]).toBe(1);
 
   const layout = await page.evaluate(() => {
-    const nav = document.querySelector("#settingsPanel > .more-segment-nav").getBoundingClientRect();
+    const nav = document.querySelector(".more-area > .more-segment-nav").getBoundingClientRect();
     const panel = document.querySelector('[data-more-segment-panel="equipment"]').getBoundingClientRect();
     return { desktop: innerWidth >= 1100, nav: { right: nav.right, top: nav.top, width: nav.width }, panel: { left: panel.left, top: panel.top, width: panel.width }, overflow: document.documentElement.scrollWidth > innerWidth };
   });

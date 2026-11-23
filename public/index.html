@@ -210,7 +210,7 @@
         </section>
       </section>
 
-      <section id="profilePanel" class="panel" aria-label="Profil">
+      <div class="more-area">
         <div class="section-heading">
           <div><h2>Mehr</h2></div>
         </div>
@@ -222,6 +222,7 @@
           <a href="#more/app" data-more-segment="app">App</a>
           <a href="#more/operations" data-more-segment="operations">Betrieb &amp; Diagnose</a>
         </nav>
+      <section id="profilePanel" class="panel" aria-label="Profil">
         <form id="profileForm" class="profile-form">
           <details class="profile-section collapsible-section">
             <summary class="collapsible-summary"><span class="collapsible-summary-title">Person</span><span id="profileSummary" class="collapsible-summary-meta">Noch nicht ausgefüllt</span></summary>
@@ -298,17 +299,6 @@
       </section>
 
       <section id="settingsPanel" class="panel" aria-label="Systemeinstellungen">
-        <div class="section-heading">
-          <div><h2>Mehr</h2></div>
-        </div>
-        <nav class="more-segment-nav" aria-label="Mehr-Bereiche">
-          <a href="#more/profile" data-more-segment="profile">Profil</a>
-          <a href="#more/connections" data-more-segment="connections" aria-current="page">Anbindungen</a>
-          <a href="#more/equipment" data-more-segment="equipment">Ausrüstung und Wartung</a>
-          <a href="#more/coach" data-more-segment="coach">Coach &amp; Modell</a>
-          <a href="#more/app" data-more-segment="app">App</a>
-          <a href="#more/operations" data-more-segment="operations">Betrieb &amp; Diagnose</a>
-        </nav>
         <section class="settings-section" data-more-segment-panel="equipment" hidden>
           <details id="profileEquipmentNote" class="settings-section collapsible-section" hidden>
             <summary class="collapsible-summary"><span class="collapsible-summary-title">Ausrüstungstext aus dem Profil</span></summary>
@@ -697,6 +687,7 @@
           <p class="settings-app-version">Version <span id="settingsAppVersion">wird geladen…</span></p>
         </section>
       </section>
+      </div>
     </main>
 
     <nav class="bottom-nav" aria-label="Hauptnavigation">

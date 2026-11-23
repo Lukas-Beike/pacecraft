@@ -83,9 +83,9 @@ test("@responsive a closed profile section opens when it holds the invalid value
 test("@responsive Mehr keeps its title and shows the active area and fits all six items without scrolling", async ({ page }) => {
   for (const segment of ["profile", "connections", "operations"]) {
     await openMore(page, segment);
-    const panel = page.locator(".panel.active");
-    await expect(panel.getByRole("heading", { level: 2 })).toHaveText("Mehr");
-    const nav = panel.locator(".more-segment-nav");
+    const area = page.locator(".more-area");
+    await expect(area.getByRole("heading", { level: 2 })).toHaveText("Mehr");
+    const nav = area.locator(":scope > .more-segment-nav");
     const active = nav.locator("a.active");
     await expect(active).toHaveCount(1);
     const colors = await active.evaluate((node) => ({ color: getComputedStyle(node).color, background: getComputedStyle(node).backgroundColor }));

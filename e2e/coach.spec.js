@@ -241,7 +241,7 @@ test.describe("critical browser states", { tag: "@responsive" }, () => {
     await expect(page.locator("#chatPanel")).toHaveClass(/active/);
     await expect(page).toHaveURL(/#coach$/);
 
-    const settingsNav = page.locator("#settingsPanel .more-segment-nav");
+    const settingsNav = page.locator(".more-area > .more-segment-nav");
     await page.getByRole("link", { name: "Mehr", exact: true }).click();
     await expect(page).toHaveURL(/#more$/);
     await expect(page.locator("#profilePanel")).toHaveClass(/active/);
@@ -251,7 +251,7 @@ test.describe("critical browser states", { tag: "@responsive" }, () => {
     await page.getByRole("link", { name: "Mehr", exact: true }).focus();
     await page.keyboard.press("Enter");
     await expect(page).toHaveURL(/#more$/);
-    await page.locator("#profilePanel .more-segment-nav").getByRole("link", { name: "Coach & Modell", exact: true }).click();
+    await page.locator(".more-area > .more-segment-nav").getByRole("link", { name: "Coach & Modell", exact: true }).click();
     await expect(page).toHaveURL(/#more\/coach$/);
     await expect(page.locator('[data-more-segment-panel="coach"]')).toHaveCount(4);
     await expect(page.locator('[data-more-segment-panel="coach"]').first()).toBeVisible();

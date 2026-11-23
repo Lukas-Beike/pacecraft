@@ -124,7 +124,7 @@ test("@responsive Coach links are underlined, keep their contrast in both themes
 test("appearance choice updates the theme and survives reload on this device", { tag: "@responsive" }, async ({ page }) => {
   await ready(page);
   await page.getByRole("link", { name: "Mehr", exact: true }).click();
-  await page.locator("#profilePanel .more-segment-nav").getByRole("link", { name: "App", exact: true }).click();
+  await page.locator(".more-area > .more-segment-nav").getByRole("link", { name: "App", exact: true }).click();
   await page.locator("#appearanceSelect").getByRole("radio", { name: "Hell", exact: true }).check();
   await expect(page.locator("html")).toHaveAttribute("data-theme", "light");
   await expect.poll(() => page.locator('meta[name="theme-color"]').getAttribute("content")).toBe("#f4f5f6");
