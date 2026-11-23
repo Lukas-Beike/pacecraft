@@ -905,7 +905,7 @@ def main(argv: list[str] | None = None) -> int:
         parser.error("--section prints sections; it runs no checks or results")
     try:
         previous = read_result(args.compare)
-        session = Session(app_url(args.url, args.url_file) or "", args.ca_file)
+        session = Session(app_url(args.url, args.url_file), args.ca_file)
         health = session.get_json("/api/health")
         healthy = isinstance(health, dict) and health.get("status") == "ok"
         print(f"{'ok' if healthy else 'FAIL'} health")

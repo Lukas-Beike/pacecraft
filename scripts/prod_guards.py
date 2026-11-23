@@ -75,7 +75,7 @@ def main(argv: list[str] | None = None) -> int:
         return 2
     results: list[tuple[bool, str]] = []
     try:
-        url = app_url(args.url, args.url_file) or ""
+        url = app_url(args.url, args.url_file)
         anonymous = Session(url, args.ca_file)
         code = anonymous.status("GET", "/api/diagnostics")
         results.append((code == 401, f"no session -> {code} (expected 401)"))

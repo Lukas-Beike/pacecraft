@@ -73,12 +73,12 @@ def base_url(text: str) -> str:
     return f"{parts.scheme}://{parts.netloc}"
 
 
-def app_url(url: str | None, url_file: str | None) -> str | None:
+def app_url(url: str | None, url_file: str | None) -> str:
     """The app address from --url, or from --url-file's one line in the scratchpad
     (#4125): a file keeps the address out of the command, which no substitution may
     bring in. The address is never printed."""
     if url_file is None:
-        return url
+        return url or ""
     try:
         lines = scratch_path(url_file).read_text(encoding="utf-8").strip().splitlines()
     except OSError as exc:

@@ -152,7 +152,7 @@ def load(args: argparse.Namespace) -> list[dict[str, Any] | str]:
         except OSError:
             raise ProdError("cannot read the log file") from None
         return list(text.splitlines())
-    session = Session(app_url(args.url, args.url_file) or "", args.ca_file)
+    session = Session(app_url(args.url, args.url_file), args.ca_file)
     session.login(args.password_file)
     try:
         data = session.get_json("/api/logs?limit=500")

@@ -1078,14 +1078,22 @@ class ProdChecksTests(unittest.TestCase):
         url_file = Path(self.tmp.name) / "app-url.txt"
         url_file.write_text(f"  {self.url}\n", encoding="utf-8")
         secret = ("--password-file", str(self.secret))
-        for module, extra in ((prod_guards, ()), (prod_diagnostics, ()), (prod_logs, ())):
+        for module, extra in (
+            (prod_guards, ()),
+            (prod_diagnostics, ()),
+            (prod_logs, ()),
+        ):
             with self.subTest(module=module.__name__):
-                code, text = self.run_main(module, "--url-file", str(url_file), *secret, *extra)
+                code, text = self.run_main(
+                    module, "--url-file", str(url_file), *secret, *extra
+                )
                 self.assertIn(code, (0, 1), text)
                 self.assertNotIn(self.url, text)
         for content, why in (("", "one URL"), (f"{self.url}\n{self.url}\n", "one URL")):
             url_file.write_text(content, encoding="utf-8")
-            code, text = self.run_main(prod_guards, "--url-file", str(url_file), *secret)
+            code, text = self.run_main(
+                prod_guards, "--url-file", str(url_file), *secret
+            )
             self.assertEqual(code, 2)
             self.assertIn(why, text)
             self.assertNotIn(self.url, text)
@@ -1093,7 +1101,11 @@ class ProdChecksTests(unittest.TestCase):
         with self.assertRaises(prod_client.ProdError):
             prod_client.app_url(None, str(Path(prod_client.ROOT) / "app-url.txt"))
         for module in (prod_guards, prod_diagnostics, prod_logs):
-            with self.subTest(module=module.__name__), self.assertRaises(SystemExit), redirect_stderr(io.StringIO()):
+            with (
+                self.subTest(module=module.__name__),
+                self.assertRaises(SystemExit),
+                redirect_stderr(io.StringIO()),
+            ):
                 module.main(["--url", self.url, "--url-file", str(url_file), *secret])
 
     def test_check_secret_reads_only_the_file(self):
