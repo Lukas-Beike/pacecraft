@@ -264,7 +264,7 @@ test("@responsive a plan's period is replaced in one change and Rückgängig tak
     const plan = (state.data.plans || []).find((item) => item.name === "E2E Ersatzplan");
     const made = await api("/api/library", { method: "POST", body: JSON.stringify({ name: "E2E Alt", description: "- 10m 60%", sport: "Ride", duration_minutes: 10, target: "POWER" }) });
     const today = timezoneDateKey(state.data.profile.timezone, new Date());
-    await api(`/api/library/${made.local_id}/schedule`, { method: "POST", body: JSON.stringify({ date: addDateKey(planWeekStart(today), 7), plan_id: plan.id }) });
+    await api(`/api/library/${made.local_id}/schedule`, { method: "POST", body: JSON.stringify({ date: addDateKey(planWeekStart(today), 9), plan_id: plan.id }) });
     await globalThis.load();
   });
 
