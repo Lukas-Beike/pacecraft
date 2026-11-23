@@ -230,6 +230,22 @@ class LibraryPlanServiceTests(unittest.TestCase):
             self.service.blocked_days(str(uuid.uuid4()), [])
         self.assertEqual(404, caught.exception.status)
 
+    def test_an_open_appointment_in_the_way_gives_the_refusal_its_reason(self):
+        local_id = str(uuid.uuid4())
+        self.add_template(local_id, self.template())
+        for open_flag, reason in ((True, "calendar_event_open"), (False, None)):
+            self.calendar.results = {
+                "2026-09-22": [
+                    {"name": "Zahnarzt", "date": "2026-09-22", "open": open_flag}
+                ]
+            }
+            with self.subTest(open=open_flag), self.assertRaises(AppError) as raised:
+                self.service.apply(
+                    [{"library_workout_id": local_id, "date": "2026-09-22"}]
+                )
+            self.assertEqual(raised.exception.status, 409)
+            self.assertEqual(raised.exception.reason, reason)
+
     def test_multiple_different_templates_on_same_date_are_allowed(self):
         ids = [str(uuid.uuid4()), str(uuid.uuid4())]
         for index, local_id in enumerate(ids):

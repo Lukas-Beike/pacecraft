@@ -1616,7 +1616,8 @@ function plannedUnitActions(entry, dateKey, todayKey) {
       announcePlanChange(`Verschoben auf ${MOVE_DAY_FORMAT.format(dateFromKey(target))}`);
     } catch (error) {
       buttons.forEach((item) => { item.disabled = item.dataset.day === dateKey || item.classList.contains("is-blocked"); });
-      status.textContent = error.message;
+      const classify = plannedClassifyAction(error, target);
+      status.replaceChildren(error.message, ...(classify ? [" ", classify] : []));
     }
   };
   const receipt = plannedMoveReceipts.get(key);
@@ -2341,6 +2342,17 @@ function undecidedPlannedEvents() {
   const events = Array.isArray(state.data?.external_calendar?.events) ? state.data.external_calendar.events : [];
   return events.filter((event) => event?.uid && plannedEventImpact(event) === "open"
     && String(event.start_local || "").slice(0, 10) <= lastKey && String(event.end_local || event.start_local || "") > `${todayKey}T00:00:00`);
+}
+
+// A refusal because an appointment still waits for its classification offers the sheet of that day's
+// appointment; the redraw after the decision frees the day (#3932 K-01).
+function plannedClassifyAction(error, dayKey) {
+  if (error.reason !== "calendar_event_open") return null;
+  const open = undecidedPlannedEvents().find((event) => String(event.start_local || "").slice(0, 10) === dayKey);
+  if (!open) return null;
+  const button = h("button", { type: "button", className: "secondary-button" }, "Termin einordnen");
+  button.addEventListener("click", () => openPlannedEventSheet(open));
+  return button;
 }
 
 function undecidedPlannedCount() {
@@ -3237,7 +3249,8 @@ function libraryActions(workout) {
       announcePlanChange(text);
     } catch (error) {
       buttons.forEach((item) => { item.disabled = false; });
-      status.textContent = error.message;
+      const classify = plannedClassifyAction(error, day);
+      status.replaceChildren(error.message, ...(classify ? [" ", classify] : []));
       libraryOpenStrips.add(id);
       if (error.reason === "illness_hard") { blockedDay = day; again.hidden = false; }
     }

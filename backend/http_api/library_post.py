@@ -203,7 +203,9 @@ class LibraryPostRoutes:
         for another body; 400 for an id that is no UUID or a date that is no
         JJJJ-MM-TT date; 404 "Bibliothekseinheit nicht gefunden." or
         "Trainingsplan nicht gefunden."; 409 "Planung wegen bestehender
-        Kalendereinheiten nicht möglich: …" for a day the calendar rules out; 409
+        Kalendereinheiten nicht möglich: …" for a day the calendar rules out (reason
+        `calendar_event_open` when an appointment that still waits for its
+        classification is in the way); 409
         `plan_not_available` for an archived plan; 409 `illness_hard` for a hard or
         long unit within days of a reported illness (resend with
         `accept_plan_findings`).

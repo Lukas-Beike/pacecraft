@@ -1391,7 +1391,9 @@ Errors: 400 "Die Anfrage muss ein Objekt sein." or "Unbekannte Felder: …"
 for another body; 400 for an id that is no UUID or a date that is no
 JJJJ-MM-TT date; 404 "Bibliothekseinheit nicht gefunden." or
 "Trainingsplan nicht gefunden."; 409 "Planung wegen bestehender
-Kalendereinheiten nicht möglich: …" for a day the calendar rules out; 409
+Kalendereinheiten nicht möglich: …" for a day the calendar rules out (reason
+`calendar_event_open` when an appointment that still waits for its
+classification is in the way); 409
 `plan_not_available` for an archived plan; 409 `illness_hard` for a hard or
 long unit within days of a reported illness (resend with
 `accept_plan_findings`).
@@ -1992,9 +1994,11 @@ Errors: 400 "Ungültige lokale Planungs-ID." for an id that is no UUID; 404
 missing or outdated `expected_payload_hash`; 400 "Das Planungsdatum muss das
 Format JJJJ-MM-TT haben."; 400 "Eine Einheit in der Vergangenheit wird nicht
 geplant." for a day before today; 409 `plan_date_conflict` when an external
-calendar marker rules out the day; 409 "Die lokale Einheit kann wegen einer
-bestehenden Kalendereinheit nicht verschoben werden." for an overlapping
-calendar entry.
+calendar marker rules out the day; 409 "Die lokale Einheit kann wegen „…“ nicht
+verschoben werden." (or "… wegen einer bestehenden Kalendereinheit …" when
+no entry has a name) for an overlapping calendar entry, with the reason
+`calendar_event_open` when one of them is an appointment that still waits for
+its classification.
 
 ### `POST /api/planned-units/{id}/delete`
 

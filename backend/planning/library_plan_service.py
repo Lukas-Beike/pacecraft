@@ -18,6 +18,7 @@ from backend.errors import (
     INVALID_PLANNING_DATE_ERROR,
     AppError,
 )
+from backend.planning.conflicts import open_event_reason
 from backend.planning.repository import parse_payload
 from backend.planning.sport import planned_stored_sport
 
@@ -204,6 +205,7 @@ class WorkoutLibraryPlanService:
         raise AppError(
             409,
             f"Planung wegen bestehender Kalendereinheiten nicht möglich: {descriptions}.{suffix}",
+            reason=open_event_reason(conflicts),
         )
 
     @staticmethod

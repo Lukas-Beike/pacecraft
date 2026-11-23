@@ -933,6 +933,27 @@ class PlannedUnitServiceTests(unittest.TestCase):
                 self.assertEqual(caught.exception.message, message)
                 self.assertEqual(self.events, [])
 
+    def test_a_refused_move_names_the_appointment_and_marks_an_open_one(self):
+        self.service.create(self.workout())
+        self.calendar_conflicts.results = [
+            {"name": "Zahnarzt", "source": "external_calendar", "open": True}
+        ]
+        with self.assertRaises(AppError) as caught:
+            self.service.update(str(self.id), {"date": "2026-09-23"})
+
+        self.assertEqual(caught.exception.status, 409)
+        self.assertEqual(
+            caught.exception.message,
+            "Die lokale Einheit kann wegen „Zahnarzt“ nicht verschoben werden.",
+        )
+        self.assertEqual(caught.exception.reason, "calendar_event_open")
+        self.calendar_conflicts.results = [
+            {"name": "Zahnarzt", "source": "external_calendar", "open": False}
+        ]
+        with self.assertRaises(AppError) as caught:
+            self.service.update(str(self.id), {"date": "2026-09-23"})
+        self.assertIsNone(caught.exception.reason)
+
     def test_date_conflict_is_preserved_and_skip_flag_bypasses_conflict_service(self):
         self.service.create(self.workout())
         self.calendar_conflicts.results = [{"kind": "local_library"}]

@@ -53,3 +53,27 @@ test("@responsive Einplanen and Löschen work in the library card and Rückgäng
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBeTruthy();
   await page.unrouteAll({ behavior: "ignoreErrors" });
 });
+
+// #3932 K-01: a refusal because of an appointment that still waits for its classification offers the sheet.
+test("@responsive Einplanen refused for an unclassified appointment offers Termin einordnen", async ({ page, request }) => {
+  expect((await request.get("/api/fixture/demo")).ok()).toBeTruthy();
+  await page.goto("/#plan/library");
+  await page.waitForFunction(() => state.initialStateLoaded);
+  await page.locator("#library details.library-sport").first().evaluate((section) => { section.open = true; });
+  const card = page.locator("#library .library-card").first();
+  const day = await page.evaluate(() => {
+    const target = addDateKey(timezoneDateKey(state.data?.profile?.timezone, new Date()), 2);
+    state.data.external_calendar = { ...state.data.external_calendar, events: [{ uid: "open-1", name: "Zahnarzt", start_local: `${target}T09:00:00`, end_local: `${target}T11:00:00`, impact: "open" }] };
+    return target;
+  });
+  await page.route("**/api/library/*/blocked-days*", (route) => route.fulfill({ json: { blocked: {} } }));
+  await page.route("**/api/library/*/schedule", (route) => route.fulfill({ status: 409, json: { error: "Planung wegen bestehender Kalendereinheiten nicht möglich: Zahnarzt.", reason: "calendar_event_open" } }));
+  await card.getByRole("button", { name: "Einplanen" }).click();
+  await card.locator(`.planned-move-days button[data-day="${day}"]`).click();
+  const status = card.locator(":scope > .planned-move-status");
+  await expect(status).toContainText("Zahnarzt");
+  await status.getByRole("button", { name: "Termin einordnen" }).click();
+  await expect(page.locator(".planned-event-sheet")).toBeVisible();
+  await expect(page.locator(".planned-event-sheet h3")).toHaveText("Zahnarzt");
+  await page.unrouteAll({ behavior: "ignoreErrors" });
+});
