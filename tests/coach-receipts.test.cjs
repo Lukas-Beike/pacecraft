@@ -30,6 +30,8 @@ test("a full resync that already runs reads as running, not as a new request", (
   assert.equal(title({ ok: true, status: "already_running", operation_id: "op-1" }), "Datenabruf läuft bereits");
   assert.equal(title({ ok: true, status: "started", operation_id: "op-2" }), "Datenabruf beauftragt");
   assert.equal(title({ ok: true, status: "completed" }), "Daten aktualisiert");
+  const running = context.commandReceipt({ tool: "start_provider_refresh", result: { ok: true, status: "already_running" } });
+  assert.equal(running.message, "Der laufende Abruf läuft weiter; nichts wurde neu gestartet.");
 });
 
 test("a repaired planning attempt shows the successful result without a red card", () => {

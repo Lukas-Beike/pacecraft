@@ -962,6 +962,7 @@ function commandReceiptTitle(entry, result, failed, queued) {
 
 function commandReceiptMessage(result, failed, queued) {
   if (failed) return result.error || "Die Aktion konnte nicht ausgeführt werden.";
+  if (result.status === "already_running") return "Der laufende Abruf läuft weiter; nichts wurde neu gestartet.";
   return queued ? "Der Auftrag wird im Hintergrund bearbeitet; das Ergebnis steht noch aus." : "Der lokale Beleg liegt vor.";
 }
 
