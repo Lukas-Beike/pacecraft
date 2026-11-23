@@ -76,9 +76,12 @@ test("@responsive the reminder link opens the form, an earlier day is chosen by 
   await expect(page).toHaveURL(/#plan\/overview$/);
   const [yesterday, tomorrow] = await page.evaluate(() => [addDateKey(todayIso(), -1), addDateKey(todayIso(), 1)]);
   const day = dialog.locator("input[name=checkin_date]");
+  const save = dialog.getByRole("button", { name: "Speichern" });
   await day.fill(yesterday);
+  // The chosen day's read replaces the fields: the form is typed into once it is back.
+  await expect(save).toBeEnabled();
   await dialog.getByLabel("Stress (0–10)").fill("6");
-  await dialog.getByRole("button", { name: "Speichern" }).click();
+  await save.click();
   await expect(page.locator("#toast")).toContainText("gespeichert");
   await expect(dialog).toHaveCount(0);
   const stored = await page.evaluate((date) => api(`/api/checkins?date=${date}`), yesterday);
@@ -86,7 +89,7 @@ test("@responsive the reminder link opens the form, an earlier day is chosen by 
   await page.locator(".planned-day.is-today [data-checkin] button").click();
   await day.fill(tomorrow);
   await dialog.getByLabel("Stress (0–10)").fill("2");
-  await dialog.getByRole("button", { name: "Speichern" }).click();
+  await save.click();
   // The field's own limit stops the form, so nothing is sent for a future day.
   expect(await day.evaluate((input) => input.validity.rangeOverflow)).toBe(true);
   await expect(dialog).toBeVisible();
