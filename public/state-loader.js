@@ -11,6 +11,7 @@ function render(data, { reloadRoute = true } = {}) {
   renderMessages(data.messages, firstRender);
   renderPlanned(data.training_calendar || data.planned || []);
   renderLibrary(data.library || []);
+  renderPlans();
   renderProfile(data.profile);
   renderCompetitions(data.competitions);
   renderGarmin(data.garmin);

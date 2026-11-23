@@ -215,7 +215,7 @@ test("@responsive the page heading stays at one height between tabs on a wide sc
   // The status strip is no part of this measure and may join at any moment (due equipment once the browser is idle).
   await page.evaluate(() => document.querySelector("#statusStrip").style.setProperty("display", "none", "important"));
   const heights = [];
-  for (const route of ["plan/overview", "plan/library", "plan/season", "more/app", "more/connections", "analysis/strength"]) {
+  for (const route of ["plan/overview", "plan/library", "plan/plans", "plan/season", "more/app", "more/connections", "analysis/strength"]) {
     await page.evaluate((target) => AppRouter.navigate(target, { historyMode: "replace" }), route);
     const panel = await page.evaluate((target) => AppNavigation.routes[target], route);
     // The Mehr pages share one heading beside the panels.
