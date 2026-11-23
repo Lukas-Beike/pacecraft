@@ -2378,7 +2378,7 @@ function deficitText(card, deviceLabel) {
 // Without logged meals, the intake from weight and activity (#3604): an estimate, never "gegessen"
 // as logged, with its span and the last logged window it was calibrated on, or why there is none.
 const ESTIMATE_MISSING = {
-  calibration: "keine erfassten 4 Wochen in den letzten 12",
+  calibration: "in den letzten 12 Wochen keine 4 Wochen mit genug erfassten Tagen und Wiegungen",
   calibration_age: "letzte Erfassung zu lange her",
   weight_change: "Gewicht seitdem zu stark verändert",
   activity_change: "Training seitdem zu stark verändert",
@@ -2501,7 +2501,8 @@ function energyFitSpan(scale) {
 // The verdict names the own value and the server's one outlined source with its distance in this
 // period (athlete decision, #3613); certain only by the 12-week rule (#3187).
 function energyFitVerdict(read, scale, sources) {
-  if (scale.own_kcal == null) return h("p", { className: "energy-fit-verdict" }, "Für einen Vergleich fehlen noch genug vollständig erfasste Tage und Wiegungen.");
+  // The sentence stands only where nothing is drawn; beside a drawn scale it would contradict it (#3930).
+  if (scale.own_kcal == null) return sources.length ? null : h("p", { className: "energy-fit-verdict" }, "Für einen Vergleich fehlen noch genug vollständig erfasste Tage und Wiegungen.");
   const parts = [`${energyFitSpan(scale)} verbrauchst du rund `, h("b", null, `${formatWhole(scale.own_kcal)} kcal am Tag`), "."];
   const named = sources.find((item) => item.source === read.outlined);
   if (named) {
@@ -2593,7 +2594,9 @@ function energyFitLegend(sources) {
 }
 
 function energyFitNoteText(scale, key) {
-  return `kcal pro Tag, Ø ${verlaufPeriod(key).label}. Grünes Band: so genau kennt die App deinen echten Verbrauch – liegt eine Quelle darin, trifft sie. ${scale.weeks_with_data} von ${scale.weeks} Wochen mit Daten.`;
+  // The green band belongs to the own value: without one it is not drawn and not explained (#3930).
+  const band = scale.own_kcal == null ? "" : " Grünes Band: so genau kennt die App deinen echten Verbrauch – liegt eine Quelle darin, trifft sie.";
+  return `kcal pro Tag, Ø ${verlaufPeriod(key).label}.${band} ${scale.weeks_with_data} von ${scale.weeks} Wochen mit Daten.`;
 }
 
 function energyFitScale(read, key) {
@@ -2601,7 +2604,8 @@ function energyFitScale(read, key) {
   const card = h("section", { className: "analysis-chart-card energy-fit", dataset: { energyFit: key } }, verlaufHead("Welche Quelle trifft dein Gewicht?", verlaufPeriod(key).label));
   if (!scale) return card;
   const sources = energyFitSources(scale);
-  card.append(energyFitVerdict(read, scale, sources));
+  const verdict = energyFitVerdict(read, scale, sources);
+  if (verdict) card.append(verdict);
   if (sources.length || scale.own_kcal != null) {
     const domain = energyFitDomain(scale, sources);
     const rows = sources.map((item) => energyFitSourceRow(domain, scale, item));
