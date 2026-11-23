@@ -32,6 +32,7 @@ generated from the `covers` declarations; regenerate it with
 | `calculate_food_nutrition` | `success` | `test_food_database_read_tools_calculate_without_writing` |
 | `cancel_coach_request` | `success` | `test_clarification_and_cancellation_preserve_athlete_data` |
 | `clarify_coach_request` | `success` | `test_clarification_and_cancellation_preserve_athlete_data` |
+| `classify_calendar_event` | `success` | `test_the_coach_classifies_a_calendar_event_like_einordnen` |
 | `commit_training_plan` | `success` | `test_requested_draft_commit_and_metadata_lifecycle` |
 | `confirm_activity_session` | `success` | `test_session_tools_correct_the_bundle_and_leave_a_change_receipt` |
 | `delete_activity_feedback` | `success` | `test_daily_feedback_and_activity_feedback_are_separate_from_profile` |
@@ -40,6 +41,7 @@ generated from the `covers` declarations; regenerate it with
 | `delete_competition` | `success` | `test_competition_lifecycle_syncs_only_after_explicit_followup` |
 | `delete_nutrition_entry` | `success` | `test_nutrition_entries_can_be_saved_read_and_deleted` |
 | `delete_nutrition_template` | `success` | `test_saved_meals_run_through_authorized_coach_and_receipts` |
+| `delete_skinfolds` | `success` | `test_the_coach_records_skinfolds_with_the_dialogs_garmin_write` |
 | `delete_zones` | `success` | `test_the_coach_saves_and_adopts_zones_like_the_zone_editor` |
 | `fill_nutrition_product_gaps` | `success` | `test_incomplete_products_are_listed_and_filled_by_authorized_coach_turn` |
 | `get_activity_details` | `success` | `test_read_tools_return_seeded_objects_without_mutating_them` |
@@ -77,6 +79,7 @@ generated from the `covers` declarations; regenerate it with
 | `save_nutrition_entry` | `success` | `test_nutrition_entries_can_be_saved_read_and_deleted` |
 | `save_nutrition_product` | `success` | `test_confirmed_product_is_saved_locally_through_authorized_coach_receipt` |
 | `save_nutrition_template` | `success` | `test_saved_meals_run_through_authorized_coach_and_receipts` |
+| `save_skinfolds` | `success` | `test_the_coach_records_skinfolds_with_the_dialogs_garmin_write` |
 | `save_zones` | `adopt_first_threshold`, `adopt_lt2`, `save` | `test_the_coach_saves_and_adopts_zones_like_the_zone_editor` |
 | `search_web_for_product_values` | `success` | `test_web_search_returns_cited_values_and_degrades_to_unavailable` |
 | `set_equipment_rule` | `apply`, `preview`, `set` | `test_training_records_and_equipment_tools_use_confirmed_local_state` |

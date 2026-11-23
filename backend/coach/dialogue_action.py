@@ -55,6 +55,8 @@ LOCAL_BROAD_SCOPES = frozenset(
         "local_body",
         # Zonen & Schwellen (#3956).
         "local_zones",
+        # Kalender's "Einordnen" of external events (#3959).
+        "local_calendar",
     }
 )
 

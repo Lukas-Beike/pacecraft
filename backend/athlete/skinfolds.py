@@ -281,6 +281,13 @@ class SkinfoldService:
         ]
         return measurements_from_rows(rows, birth_year_of(self._profile_json(db)))
 
+    def measured_on(self, value: Any) -> bool:
+        """Whether the day ``value`` (YYYY-MM-DD) holds a measurement, at any age."""
+        day = self._day(value)
+        with self._database_manager.reader() as db:
+            found = self.skinfold_on(db, day)
+        return found is not None and found.measured_on == day
+
     def skinfold_on(self, db: Any, day: date) -> SkinfoldMeasurement | None:
         """The latest complete measurement on or before ``day``, or None."""
         found = self.measurements_on(db, day)

@@ -523,6 +523,10 @@ The Coach SHALL record the athlete's weight and body fat as Körper entries thro
 - **WHEN** the call would replace (`replace: true`) or remove a day's entry
 - **THEN** the write gate needs the athlete's confirmed request to change or delete in `body`; a save without `replace` on such a day is refused (`body_entry_exists`).
 
+#### Scenario: Skinfolds through the Coach
+- **WHEN** the athlete states a 3-site skinfold measurement of a day or asks to remove one (#3959)
+- **THEN** `save_skinfolds` and `delete_skinfolds` save or remove it through the skinfold service with the dialog's validation, a day's existing measurement changes only with `replace: true` (a delete in `body`), the day's Garmin Connect body composition follows after the turn commits and nothing goes to Wahoo; skinfolds keep no change history, so such a turn has no turn undo.
+
 #### Scenario: Undo
 - **WHEN** the turn is undone
 - **THEN** each day is put back as it was (the previous value, or no entry), the day is left pending for Garmin's next refresh and, for a weight, the Wahoo profile weight is left pending for Wahoo's next refresh; the undo itself writes to no provider.

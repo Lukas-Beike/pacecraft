@@ -83,7 +83,7 @@ Detailed contract: an event is training-relevant only with a non-empty descripti
 Evidence: `backend/calendar/markers.py:has_marker`, `backend/calendar/ical_mapping.py:calendar_event_constraints`, `backend/calendar/local.py:local_calendar_events`; `tests/test_calendar_markers.py:test_variants_match`, `tests/test_calendar_markers.py:test_bare_or_other_marker_does_not_match`, `tests/test_calendar_external.py:test_training_relevance_filter_keeps_no_training_blockers`, `tests/test_calendar_external.py:test_training_relevance_filter_keeps_title_only_no_intensity_markers`, `tests/test_provider_calendar.py:test_timing_default_relevance_and_description_markers`, `tests/test_provider_calendar.py:test_training_markers_are_contains_matched_in_title_and_description`, `tests/test_server_weather_calendar.py:test_non_relevant_external_events_are_stored_but_not_in_canonical_calendar_or_coach`.
 
 ### Requirement: Athlete decision per event
-The system SHALL let the athlete set the training impact of a stored external event (`block`, `short`, `easy` or `none`) for one occurrence or for every occurrence of its UID, keep decisions apart from the feed rows so a refresh keeps them, and SHALL apply an occurrence decision over a series decision over the markers, replacing the marker flags. Decisions SHALL store no event text and come only from the explicit route.
+The system SHALL let the athlete set the training impact of a stored external event (`block`, `short`, `easy` or `none`) for one occurrence or for every occurrence of its UID, keep decisions apart from the feed rows so a refresh keeps them, and SHALL apply an occurrence decision over a series decision over the markers, replacing the marker flags. Decisions SHALL store no event text and come only from the explicit route or the Coach on the athlete's own request.
 
 #### Scenario: Feed refresh after a decision
 - **WHEN** the sync replaces every stored event and a decided UID and start come back
@@ -92,6 +92,10 @@ The system SHALL let the athlete set the training impact of a stored external ev
 #### Scenario: Series decision
 - **WHEN** the athlete decides for every occurrence
 - **THEN** the single-occurrence decisions of that UID are replaced and the adaptive preview is recalculated.
+
+#### Scenario: Decision through the Coach
+- **WHEN** the athlete asks the Coach to classify an event (#3959)
+- **THEN** `classify_calendar_event` names it by the start and name the Coach read (never by its UID; none or several matches are refused) and stores the decision as the route does, under scope `local_calendar`.
 
 Detailed contract: `block` sets `no_training` without ordinary relevance like its marker, `short` `short_only`, `easy` `no_intensity`, `none` clears all and the relevance; title markers yield too. Event reads carry `impact` (`open` without decision or marker), `decision_scope` and `recurring`; the status carries `undecided_upcoming`, the `open` events from today through 14 days ahead. `POST /api/external-calendar/decisions` (contract in `docs/api-routes.md`); `impact` `null` removes the decision, and a series removal removes the occurrence decisions too. A feed refresh drops single-occurrence decisions whose start lies before today. Decisions are in the export and the local data purge.
 

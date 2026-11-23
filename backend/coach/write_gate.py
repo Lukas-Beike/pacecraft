@@ -672,8 +672,9 @@ def _removes_records(tool_name: str, arguments: Mapping[str, Any] | None) -> boo
     if not isinstance(arguments, Mapping):
         return False
     # Replacing a day's entered weight or body fat removes the old value (#3640).
-    # So does replacing a measured or entered threshold (#3956).
-    if tool_name in {"save_body_entry", "save_zones"}:
+    # So does replacing a measured or entered threshold (#3956) or a day's
+    # skinfold measurement (#3959).
+    if tool_name in {"save_body_entry", "save_zones", "save_skinfolds"}:
         return arguments.get("replace") is True
     # Archiving, forgetting or cleaning up products removes them (#3958).
     if tool_name == "manage_nutrition_products":

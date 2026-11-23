@@ -51,6 +51,7 @@ ATHLETE_SESSION_CORRECTIONS = (
     "activity-ingestion-and-storage/Athlete session corrections"
 )
 AP9 = "athlete-profile-and-checkins/AP9"
+BODY_ENTRIES = "athlete-profile-and-checkins/Coach body entries"
 CA1 = "coach-tool-authority/CA1"
 CA2 = "coach-tool-authority/CA2"
 CA4 = "coach-tool-authority/CA4"
@@ -333,7 +334,7 @@ TOOL_SPECS: tuple[ToolSpec, ...] = (
         domain=BODY,
         done="Körperwert gespeichert",
         action="Körperwert speichern",
-        requirements=("athlete-profile-and-checkins/Coach body entries",),
+        requirements=(BODY_ENTRIES,),
     ),
     ToolSpec(
         "delete_body_entry",
@@ -342,7 +343,24 @@ TOOL_SPECS: tuple[ToolSpec, ...] = (
         done="Körperwert entfernt",
         action="Körperwert entfernen",
         deletes=True,
-        requirements=("athlete-profile-and-checkins/Coach body entries", CA4),
+        requirements=(BODY_ENTRIES, CA4),
+    ),
+    ToolSpec(
+        "save_skinfolds",
+        ATHLETE_RECORDS,
+        domain=BODY,
+        done="Hautfalten gespeichert",
+        action="Hautfalten speichern",
+        requirements=(BODY_ENTRIES,),
+    ),
+    ToolSpec(
+        "delete_skinfolds",
+        ATHLETE_RECORDS,
+        domain=BODY,
+        done="Hautfalten entfernt",
+        action="Hautfalten entfernen",
+        deletes=True,
+        requirements=(BODY_ENTRIES, CA4),
     ),
     ToolSpec(
         "save_zones",
@@ -362,6 +380,14 @@ TOOL_SPECS: tuple[ToolSpec, ...] = (
         action="Zonen entfernen",
         deletes=True,
         requirements=("athlete-profile-and-checkins/Coach zone changes", CA4),
+    ),
+    ToolSpec(
+        "classify_calendar_event",
+        PLANNING_ACTIONS,
+        domain=PLANNING,
+        done="Termin eingeordnet",
+        action="Termin einordnen",
+        requirements=("external-calendars/Athlete decision per event", CA2),
     ),
     ToolSpec(
         "save_equipment",

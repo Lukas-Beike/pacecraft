@@ -21,7 +21,7 @@ case on both sides, so the guards match.
 tool and route exists, the parity value matches the two columns, each gap names
 its issue and the counts below match the table.
 
-Counts: both 67, UI only 9, Coach only 10, neither 0, UI by rule 8.
+Counts: both 69, UI only 7, Coach only 10, neither 0, UI by rule 8.
 
 ## Matrix
 
@@ -97,10 +97,10 @@ Counts: both 67, UI only 9, Coach only 10, neither 0, UI by rule 8.
 | Body | Save or change weight | Körper `PUT /api/body/weight` | `save_body_entry` (`weight`) | receipt; writes Garmin and Wahoo | both | |
 | Body | Save or change body fat | Körper `PUT /api/body/body-fat` | `save_body_entry` (`body_fat`) | receipt; writes Garmin | both | |
 | Body | Remove weight or body fat | Körper `PUT /api/body/weight/remove`, `PUT /api/body/body-fat/remove` | `delete_body_entry` | confirmation | both | |
-| Body | Save or remove a skinfold measurement | Körper `PUT /api/body/skinfolds`, `PUT /api/body/skinfolds/remove` | — | confirmation | UI only | #3959 |
+| Body | Save or remove a skinfold measurement | Körper `PUT /api/body/skinfolds`, `PUT /api/body/skinfolds/remove` | `save_skinfolds`, `delete_skinfolds` | receipt; writes Garmin; delete confirmation | both | |
 | Check-ins | Enter or correct the daily check-in | — | `save_checkin` | receipt, undo | Coach only | #3953 |
 | Check-ins | Report illness or wellness from the infection hint | Kalender day `POST /api/infection-hint/ill`, `POST /api/infection-hint/well` | `save_checkin` | receipt, undo | both | |
-| Calendar | Classify an external calendar event | Kalender "Einordnen" `POST /api/external-calendar/decisions` | — | — | UI only | #3959 |
+| Calendar | Classify an external calendar event | Kalender "Einordnen" `POST /api/external-calendar/decisions` | `classify_calendar_event` | receipt | both | |
 | Syncs | Refresh calendars, Garmin, Wahoo and weather | Sync buttons `POST /api/external-calendar/sync`, `POST /api/garmin/sync`, `POST /api/wahoo/sync`, `POST /api/weather/sync`, `POST /api/analysis/refresh`, `POST /api/nutrition/refresh` | `start_provider_refresh` | — | both | |
 | Syncs | Read sync state and job results | Status strip `GET /api/sync/status`, `GET /api/sync/jobs/{id}` | `get_sync_job` | — | both | |
 | Syncs | Send planned units to Intervals.icu or Garmin | Kalender week sync `POST /api/sync/jobs` (`plan_push`) | `start_intervals_plan_sync`, `push_strength_to_garmin` (`push`) | named sync | both | |
