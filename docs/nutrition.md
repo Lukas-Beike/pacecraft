@@ -65,7 +65,7 @@ Every body fat value saved in the profile during the last 180 days (the change h
 Garmin's body fat values are copies of the app's and count only on a day without an app value.
 Both rows name the source under their name, for example "KFA: Hautfalten", "KFA: Lokal" or "KFA: Garmin Connect", and the Coach reads it with the values.
 Without any of them, both rows name the reason instead of "–" ("Körperfett fehlt", "Hautfalten älter als 90 Tage", "Geburtsjahr fehlt", "Gewicht fehlt" or "Hautfalten prüfen"), and tapping it opens the body fat dialog, the weight dialog or the profile.
-The Körperwerte KFA row shows only the athlete's own values (#3336, #3402).
+The Körperwerte KFA row shows the athlete's own newest value, else the device value in use with its source and date, "—" when there is none, and never the profile's body fat (#3336, #3402, #3930).
 The "i" is the same small info icon as in Analyse.
 The Coach reads the same values with their sources.
 
