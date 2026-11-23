@@ -71,12 +71,14 @@ test("each profile section summarises itself in one line", () => {
     training_preferences_running: "Trail",
     timezone: "Europe/Berlin",
     weather_location: "Münster",
+    sleep_target_hours: "8",
+    coaching_style: "Direkt",
   });
   assert.deepEqual(summaries, {
-    profileSummary: "Ada · Radfahren, Laufen",
+    profileSummary: "Ada · Radfahren, Laufen · Europe/Berlin · Münster",
     profileGoalsSummary: "8 h · Ironman 70.3 im September",
     profileTrainingSummary: "Polarisiert · 2 Präferenzen",
-    profileSourcesSummary: "Europe/Berlin · Münster",
+    profileSourcesSummary: "Schlafziel 8 h · Direkt",
   });
 });
 

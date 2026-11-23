@@ -195,3 +195,18 @@ test("@responsive the Intervals.icu card sends the competitions once per press a
   await page.waitForLoadState("networkidle");
   await page.unrouteAll({ behavior: "ignoreErrors" });
 });
+
+test("@responsive a stored equipment text shows read-only under Ausrüstung und Wartung and no field offers it (#3936 M-04)", async ({ page }) => {
+  await openMore(page, "profile");
+  await expect(page.locator('#profileForm [name="equipment"]')).toHaveCount(0);
+  await expect(page.locator('#profileForm [name="timezone"]')).toHaveCount(1);
+  await expect(page.locator("#profileForm details").first().locator('[name="weather_location"]')).toHaveCount(1);
+  await page.evaluate(() => renderProfileEquipmentNote("Rad, Smarttrainer, Gym"));
+  await openMore(page, "equipment");
+  const note = page.locator("#profileEquipmentNote");
+  await expect(note).toBeVisible();
+  await note.locator("summary").click();
+  await expect(page.locator("#profileEquipmentText")).toHaveText("Rad, Smarttrainer, Gym");
+  await page.evaluate(() => renderProfileEquipmentNote(""));
+  await expect(note).toBeHidden();
+});
