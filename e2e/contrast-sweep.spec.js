@@ -68,7 +68,7 @@ async function finishAnimations(page) {
 async function flattenPageGlow(page) {
   await page.evaluate(() => {
     const sheet = new CSSStyleSheet();
-    sheet.replaceSync("body { background-image: none !important; } .save-bar, .bottom-nav { position: static !important; }");
+    sheet.replaceSync("body { background-image: none !important; } .save-bar, .bottom-nav { position: static !important; } .bottom-nav { transform: none !important; margin-inline: auto; }");
     document.adoptedStyleSheets = [...document.adoptedStyleSheets, sheet];
   });
 }
