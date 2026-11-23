@@ -48,7 +48,7 @@ function nutritionTemplateCard(template) {
   return h("article", { className: "nutrition-card", dataset: { templateId: template.id } },
     h("h3", null, template.name),
     h("p", null, `${nutritionNumber(template.kcal)} kcal · KH ${nutritionNumber(template.carbs_g, "g")} g · Protein ${nutritionNumber(template.protein_g, "g")} g · Fett ${nutritionNumber(template.fat_g, "g")} g`),
-    h("div", "coach-action-card-actions", log, edit, remove));
+    h("div", "nutrition-template-actions", log, edit, remove));
 }
 
 // After a change: the list and the diary read again, the receipt names what happened.

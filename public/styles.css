@@ -1819,6 +1819,8 @@ button:focus-visible, a:focus-visible, summary:focus-visible {
 .plan-replace-row > button { min-width: 44px; padding: 0; }
 .library-toolbar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; justify-content: space-between; margin-bottom: 12px; }
 .nutrition-template-form { max-height: 80dvh; overflow-y: auto; }
+.nutrition-template-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.nutrition-template-actions button { flex: 0 0 auto; }
 .edit-row { display: grid; gap: 8px; padding: 12px; border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--surface); }
 .edit-row.is-removed { opacity: .6; }
 .edit-row.is-removed strong { text-decoration: line-through; }
