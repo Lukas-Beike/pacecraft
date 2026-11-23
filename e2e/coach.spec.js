@@ -190,7 +190,7 @@ test.describe("critical browser states", { tag: "@responsive" }, () => {
   test("login, main views, dialog and profile form state", async ({ page }, testInfo) => {
     const browserErrors = installBrowserGuards(page);
     // Without a connected source the calendar is one empty state (#3936 G-13); the week needs one.
-    await page.route("**/api/bootstrap*", async (route) => {
+    await page.route(/\/api\/(bootstrap|performance)(\?|$)/, async (route) => {
       const response = await route.fetch();
       const body = await response.json();
       if (body.garmin) body.garmin = { ...body.garmin, configured: true };

@@ -3013,10 +3013,15 @@ function appendPlannedWeatherHint(root, { firstWeekKey, todayKey, days, planning
   if (!upcomingDays.some((dateKey) => plannedWeatherLabel(plannedDayWeather(planningContextByDate.get(dateKey) || {}, dateKey)))) root.append(plannedWeatherHint());
 }
 
-// Nothing planned or done and no source connected: one empty state with the next step instead of seven
-// empty days under a week switch, filter and paging (#3936 G-13).
+// Nothing planned or done, no appointment, no competition and no source connected: one empty state with the
+// next step instead of seven empty days under a week switch, filter and paging (#3936 G-13).
+function plannedSourceConnected() {
+  return Boolean(state.data?.garmin?.configured || state.data?.wahoo?.connected);
+}
+
 function plannedNoSourceState(entries) {
-  if (entries.length || state.data?.garmin?.configured || state.data?.wahoo?.connected) return null;
+  const external = state.data?.external_calendar?.events;
+  if (entries.length || plannedSourceConnected() || (Array.isArray(external) && external.length) || state.data?.competitions?.length) return null;
   return createEmptyState("Noch keine Aktivitäten", "Verbinde Garmin oder Wahoo, dann erscheinen deine Einheiten hier.", h("a", { className: "secondary-button", href: "#more/connections" }, "Datenquelle verbinden"));
 }
 
@@ -3040,7 +3045,7 @@ function renderPlanned(trainingCalendar) {
   plannedLastDateKey = lastDateKey;
   keepPlannedSelection(todayKey, lastDateKey);
   dropDeleteReceiptsOutsideWeek();
-  const snapshot = JSON.stringify([calendar, todayKey, selectedWeekKey, calendarView, calendarSport, selectedDayKey, state.data?.daily_planning_context, state.data?.planning_compliance, state.data?.competitions, state.data?.weather, (state.data?.external_calendar?.events || []).map((event) => [event?.uid, event?.start_local, event?.impact, event?.name]), state.data?.external_calendar?.undecided_upcoming, ...replanSnapshot()]);
+  const snapshot = JSON.stringify([calendar, todayKey, selectedWeekKey, calendarView, calendarSport, selectedDayKey, plannedSourceConnected(), state.data?.daily_planning_context, state.data?.planning_compliance, state.data?.competitions, state.data?.weather, (state.data?.external_calendar?.events || []).map((event) => [event?.uid, event?.start_local, event?.impact, event?.name]), state.data?.external_calendar?.undecided_upcoming, ...replanSnapshot()]);
   if (snapshot === plannedRenderSnapshot && root.childElementCount) {
     if (state.plannedTodayFocusPending) requestAnimationFrame(() => focusPlannedToday());
     refreshWeekReview(root);

@@ -123,11 +123,17 @@ test("@responsive an empty calendar without a source is one empty state with the
   await waitForSettledState(page);
   const connected = await page.evaluate(() => Boolean(AppState.state.data?.garmin?.configured || AppState.state.data?.wahoo?.connected));
   test.skip(connected, "the fixture has a source");
-  await page.evaluate(() => { AppState.state.data.training_calendar = []; plannedRenderSnapshot = null; renderPlanned(AppState.state.data.training_calendar); });
+  await page.evaluate(() => { AppState.state.data.training_calendar = []; renderPlanned(AppState.state.data.training_calendar); });
   const card = page.locator("#plannedCalendar .empty-state");
   await expect(card).toContainText("Noch keine Aktivitäten");
   await expect(card.getByRole("link", { name: "Datenquelle verbinden" })).toHaveAttribute("href", "#more/connections");
   await expect(page.locator(".planned-sport-filter, .planned-view-switch, .planned-week")).toHaveCount(0);
-  await page.evaluate(() => { AppState.state.data.garmin = { ...AppState.state.data.garmin, configured: true }; plannedRenderSnapshot = null; renderPlanned([]); });
+  // An appointment of the shared calendar keeps the week.
+  await page.evaluate(() => { AppState.state.data.external_calendar = { ...AppState.state.data.external_calendar, events: [{ uid: "g13", name: "Termin", start_local: `${localDateKey(new Date())}T09:00:00`, impact: "none" }] }; renderPlanned([]); });
+  await expect(page.locator(".planned-week")).toHaveCount(1);
+  await page.evaluate(() => { AppState.state.data.external_calendar = { ...AppState.state.data.external_calendar, events: [] }; renderPlanned([]); });
+  await expect(card).toContainText("Noch keine Aktivitäten");
+  // Connecting a source changes the card without a new entry.
+  await page.evaluate(() => { AppState.state.data.garmin = { ...AppState.state.data.garmin, configured: true }; renderPlanned([]); });
   await expect(page.locator(".planned-week")).toHaveCount(1);
 });
