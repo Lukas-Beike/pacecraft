@@ -135,6 +135,11 @@ handler's docstring. Regenerate it with
 | POST | `/api/nutrition/products/refresh-all` | Session + CSRF | after access | Re-check every product in the background; gaps fill, known values stay. |
 | POST | `/api/nutrition/refresh` | Session + CSRF | after access | Run a targeted nutrition refresh. |
 | GET | `/api/nutrition/session-fuelling` | Session | no | Drinking and carbohydrates for a long planned run or ride (#2804). |
+| GET | `/api/nutrition/templates` | Session | no | The saved meals, each for one portion. |
+| POST | `/api/nutrition/templates` | Session + CSRF | after access | Create or change a saved meal, with the server's nutrient values. |
+| POST | `/api/nutrition/templates/delete` | Session + CSRF | after access | Delete a saved meal; logged diary entries stay as they are. |
+| POST | `/api/nutrition/templates/from-entry` | Session + CSRF | after access | Keep a logged meal as a saved meal. |
+| POST | `/api/nutrition/templates/log` | Session + CSRF | after access | Log a saved meal on a day, for a number of portions. |
 | GET | `/api/nutrition/week` | Session | no | Nutrition week summary of the closed days before today. |
 | POST | `/api/nutrition/yazio/check` | Session + CSRF | after access | Explicitly check Yazio authentication; the result is kept in memory. |
 | GET | `/api/nutrition/yazio/status` | Session | no | Last local Yazio authentication check, without contacting Yazio. |
@@ -1911,6 +1916,69 @@ Errors: 400 `invalid_session_fuelling` "Ungültige Angaben für die
 Verpflegungsempfehlung." for a missing or invalid query value; 404
 `session_not_found` "Einheit nicht gefunden." for an unknown, hidden or
 deleted `session_id`.
+
+### `GET /api/nutrition/templates`
+
+Request: no query, no body.
+
+Response: 200 `{"templates"}`; each template has `id`, `name`,
+`description`, `meal_type`, `kcal`, `carbs_g`, `protein_g`, `fat_g`,
+`source`, `nutrition_basis` and `updated_at`.
+
+Errors: none beyond the common ones.
+
+### `POST /api/nutrition/templates`
+
+Request: JSON body of the Coach tool `save_nutrition_template`: `name` (1 to 120
+characters, unique), optional `id` (changes that saved meal), `description`,
+`meal_type` and either `components` (1 to 20 items as in `POST
+/api/nutrition/entry`, calculated by the server) or `food_ingredients`, or
+the values `kcal`, `carbs_g`, `protein_g`, `fat_g`. A saved meal never
+changes diary entries already logged.
+
+Response: 200 `{"ok": true, "template", "change"}`; `change` is the undo
+reference of the saved meal.
+
+Errors: 400 "Mahlzeitname muss 1 bis 120 Zeichen enthalten."; 409 "Dieser
+Mahlzeitname ist bereits vergeben. Lies die Vorlage und ändere sie
+gezielt."; 400 "Maximal 200 gespeicherte Mahlzeiten sind möglich."; 404
+"Gespeicherte Mahlzeit nicht gefunden." for an unknown `id`; the component
+errors of `POST /api/nutrition/entry`.
+
+### `POST /api/nutrition/templates/delete`
+
+Request: JSON body `{"id": string, "confirmed": true}`.
+
+Response: 200 `{"ok": true, "deleted_id", "change"}`.
+
+Errors: 409 "Das Löschen muss bestätigt werden." without `confirmed: true`;
+404 "Gespeicherte Mahlzeit nicht gefunden.".
+
+### `POST /api/nutrition/templates/from-entry`
+
+Request: JSON body `{"id": string, "name": string}`; `id` is the diary
+entry, `name` the saved meal's name (1 to 120 characters, unique). The
+entry's values and basis are copied as stored for one portion; a meal in a
+session slot becomes a snack.
+
+Response: 200 `{"ok": true, "template", "change"}`.
+
+Errors: 404 "Ernährungseintrag nicht gefunden." for an unknown entry; the
+name errors of `POST /api/nutrition/templates`.
+
+### `POST /api/nutrition/templates/log`
+
+Request: JSON body `{"id": string, "portions": number, "meal_date": string,
+"meal_time": string, "meal_type": string, "volume_ml": number}`; `portions`
+is above 0 up to 20 (default 1), the other fields are optional and as in
+`POST /api/nutrition/entry`. The values are the saved meal's, scaled by the
+server.
+
+Response: 200 `{"ok": true, "entry", "change"}`.
+
+Errors: 404 "Gespeicherte Mahlzeit nicht gefunden."; 400 "Ungültige
+Portionsanzahl." or "Portionsanzahl muss größer als 0 und höchstens 20
+sein."; the date, time and type errors of `POST /api/nutrition/entry`.
 
 ### `GET /api/nutrition/week`
 

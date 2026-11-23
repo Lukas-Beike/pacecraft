@@ -51,10 +51,10 @@ test("a diary card marks an estimated meal and its button flips the flag", async
   const flagged = ctx.nutritionCard({ ...meal, estimate_uncertain: true }, false);
   assert.match(textOf(flagged.children[0]), /Menge geschätzt/);
   const buttons = (card) => card.children.filter((child) => child.tagName === "BUTTON").map(textOf);
-  assert.deepEqual(buttons(flagged), ["Markierung entfernen", "Löschen"]);
+  assert.deepEqual(buttons(flagged), ["Markierung entfernen", "Als Mahlzeit speichern", "Löschen"]);
   const plain = ctx.nutritionCard(meal, false);
   assert.doesNotMatch(textOf(plain.children[0]), /geschätzt/);
-  assert.deepEqual(buttons(plain), ["Als geschätzt markieren", "Löschen"]);
+  assert.deepEqual(buttons(plain), ["Als geschätzt markieren", "Als Mahlzeit speichern", "Löschen"]);
   // The pencil in the head opens the meal's components; a template has none.
   const pencil = plain.children[0].children[1];
   assert.equal(pencil.attributes["aria-label"], "Mahlzeit bearbeiten: Pizza");

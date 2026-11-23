@@ -281,7 +281,7 @@ function nutritionEstimateChip(item) {
   return [" ", chip];
 }
 
-// A logged meal's ingredients, its estimate mark and its removal.
+// A logged meal's ingredients, its estimate mark, "Als Mahlzeit speichern" and its removal.
 function nutritionEntryActions(item) {
   const estimate = h("button", { type: "button", className: "secondary-button" }, item.estimate_uncertain ? "Markierung entfernen" : "Als geschätzt markieren");
   estimate.addEventListener("click", () => void markNutritionEstimate(item));
@@ -291,7 +291,9 @@ function nutritionEntryActions(item) {
     remove.disabled = true;
     try { await deleteNutritionEntry(item); } finally { remove.disabled = false; }
   });
-  return [nutritionComponentDetails(item), estimate, remove].filter(Boolean);
+  const keep = h("button", { type: "button", className: "secondary-button" }, "Als Mahlzeit speichern");
+  keep.addEventListener("click", () => openNutritionTemplateFromEntry(item));
+  return [nutritionComponentDetails(item), estimate, keep, remove].filter(Boolean);
 }
 
 function nutritionExpenditureDate(value) {

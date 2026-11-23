@@ -82,6 +82,19 @@ The system SHALL update or delete the identified local meal, preserve omitted co
 
 Evidence: `backend/http_api/nutrition.py::NutritionPutRoutes.routes`, `backend/nutrition/diary.py::NutritionDiaryService.correct_meal`, `backend/nutrition/diary.py::NutritionDiaryService.delete_meal`, `backend/nutrition/diary.py::NutritionDiaryService.add_product_to_meal`; `tests/test_nutrition_api_and_sync.py::NutritionHttpApiTests.test_put_entry_route_is_removed`, `tests/test_nutrition_history.py::NutritionHistoryTests.test_undo_of_an_added_product_restores_the_previous_meal`, `tests/test_nutrition.py::NutritionRepositoryAndServiceTests.test_correct_meal_preserves_omitted_fields_and_marks_old_and_new_days_pending`, `tests/test_nutrition.py::NutritionRepositoryAndServiceTests.test_correct_meal_rejects_empty_invalid_or_missing_target`, `tests/test_nutrition.py::NutritionRepositoryAndServiceTests.test_deleting_last_synced_entry_keeps_empty_date_pending`. Shared history/undo authorization is owned by the history and Coach contracts.
 
+### Requirement: Saved meals and composed meals are managed in the UI
+The system SHALL let the athlete in Ernährung › Produkte list the saved meals, log one for a number of portions on a day, rename it, delete it, compose a meal of several foods with amounts and keep or log it, and save a diary meal as a saved meal, each through the use cases of the Coach tools, with the server calculating every value and a receipt with undo.
+
+#### Scenario: Saved meal routes
+- **WHEN** the athlete lists, creates, renames, deletes or logs a saved meal, or saves a diary meal as one
+- **THEN** `GET /api/nutrition/templates`, `POST /api/nutrition/templates`, `POST /api/nutrition/templates/delete` (`confirmed: true`), `POST /api/nutrition/templates/log` and `POST /api/nutrition/templates/from-entry` answer; the client sends names, amounts, ids, day, time and type, never nutrient values, a saved meal change never changes logged entries, and the response carries the undo reference
+
+#### Scenario: Composed meal
+- **WHEN** the athlete composes a meal from foods and amounts
+- **THEN** it is logged with `POST /api/nutrition/entry` (`components`) or kept with `POST /api/nutrition/templates` (`components`), calculated by the server
+
+Evidence: `backend/http_api/nutrition.py::NutritionPostRoutes._save_template`, `backend/nutrition/meal_library.py::NutritionMealLibraryService.save_template_from_meal`, `public/nutrition-templates.js`; `tests/test_nutrition_composition.py::NutritionCompositionTests::test_saved_meal_routes_keep_log_and_delete_with_the_server_values`.
+
 ### Requirement: A logged meal's components are edited directly
 The system SHALL let the athlete remove a component of a logged meal, change its amount, or swap it for another database food or saved product, addressed by position. The server SHALL scale the stored snapshot or calculate from the food or product ID and the amount; a client SHALL send no nutrient values. The meal keeps its name and source, becomes a composite, gets a change-history record and has its date marked pending; templates stay unchanged.
 
