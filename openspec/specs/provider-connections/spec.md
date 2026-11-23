@@ -543,7 +543,7 @@ The Coach SHALL run a connection check and start a Garmin or Wahoo full resync t
 
 #### Scenario: Full resync
 - **WHEN** the athlete's own message names Garmin or Wahoo and asks for a full resync
-- **THEN** `start_provider_refresh` with `full_resync: true` starts the background resync the route starts (a run in progress is returned instead), under the named provider's refresh scope; any other provider is refused. As for a named refresh, the Coach's reading of the athlete's wording is the gate (orchestrator decision on #3960); the route's typed confirmation has no Coach counterpart.
+- **THEN** `start_provider_refresh` with `full_resync: true` starts the background resync the route starts (a run in progress is returned instead), under the named provider's refresh scope; any other provider is refused. The write gate enforces the request (#3960): the athlete's own message must name that provider together with a resync word (resync, vollständig, komplett, full), not negated and not an information question; a plain "aktualisiere Garmin", another provider's name or a turn not started by the athlete is refused with `full_resync_not_requested`.
 
 Evidence: `backend/coach/sync_tools.py:CoachSyncToolService._check_connection`, `backend/coach/sync_tools.py:CoachSyncToolService._start_full_resync`; `tests/test_coach_tool_coverage.py:test_the_coach_checks_connections_and_starts_a_full_resync`.
 

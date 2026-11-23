@@ -1420,6 +1420,53 @@ class GarminTierTests(unittest.TestCase):
                 self.assertFalse(decision.allowed)
                 self.assertEqual("remote_garmin_not_requested", decision.reason)
 
+    def test_a_full_resync_needs_the_athletes_own_words_for_that_provider(self):
+        # #3960: the server, not the model's argument, decides the full resync.
+        def resync(provider):
+            return {"full_resync": True, "_request": {"target": provider}}
+
+        for text, provider in (
+            ("Mach einen vollständigen Garmin-Resync", "garmin"),
+            ("Bitte Wahoo komplett neu synchronisieren", "wahoo"),
+            ("Kannst du einen Full Resync von Garmin starten?", "garmin"),
+        ):
+            with self.subTest(text=text):
+                decision = _check(
+                    "start_provider_refresh", text, arguments=resync(provider)
+                )
+                self.assertTrue(decision.allowed, decision)
+        for text, provider in (
+            ("Aktualisiere Garmin", "garmin"),
+            ("Mach einen vollständigen Wahoo-Resync", "garmin"),
+            ("Keinen vollständigen Garmin-Resync bitte", "garmin"),
+            ("Was macht ein vollständiger Garmin-Resync?", "garmin"),
+            ("Mach einen vollständigen Resync", "garmin"),
+        ):
+            with self.subTest(text=text):
+                decision = _check(
+                    "start_provider_refresh", text, arguments=resync(provider)
+                )
+                self.assertEqual(
+                    (False, "full_resync_not_requested"),
+                    (decision.allowed, decision.reason),
+                )
+        # An unattended turn starts neither a full resync nor a connection check;
+        # a plain refresh stays ungated.
+        unattended = _authority("Mach einen vollständigen Garmin-Resync", message_id=0)
+        for tool, arguments in (
+            ("start_provider_refresh", resync("garmin")),
+            ("check_provider_connection", {"provider": "garmin"}),
+        ):
+            with self.subTest(tool=tool):
+                decision = gate.check_write(tool, unattended, arguments=arguments)
+                self.assertFalse(decision.allowed, decision)
+        refresh = {"_request": {"target": "garmin"}}
+        self.assertTrue(
+            _check(
+                "start_provider_refresh", "Aktualisiere Garmin", arguments=refresh
+            ).allowed
+        )
+
     def test_a_yes_grants_it_only_after_a_garmin_offer(self):
         offer = "Soll ich die Krafteinheit an deine Garmin-Uhr senden?"
         self.assertTrue(

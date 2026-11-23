@@ -339,6 +339,25 @@ def _provider_parts(text: str, verbs: re.Pattern[str]) -> frozenset[str]:
     return frozenset(found)
 
 
+# A full resync is named with its own word, so "aktualisiere Garmin" asks for
+# a refresh only (#3960).
+_RESYNC_WORDS = _compile(_words("resync,vollständig,komplett,full"))
+
+
+def full_resync_requests(text: str) -> frozenset[str]:
+    """The providers whose full resync the athlete's own text asks for (#3960).
+
+    A part must name the provider and a resync word; a negated part, or an
+    information question, asks nothing.
+    """
+    found: set[str] = set()
+    for _index, part in _request_parts(text):
+        if _negates(part) or not _RESYNC_WORDS.search(_loose(part)):
+            continue
+        found.update(str(match.lastgroup) for match in _PROVIDER_TARGETS.finditer(part))
+    return frozenset(found)
+
+
 def requested_providers(text: str) -> frozenset[str]:
     """The providers the athlete's own text asks to send workouts to."""
     return _provider_parts(text, _PUSH_VERBS)
@@ -501,6 +520,9 @@ class TurnAuthority:
     provider_requests: frozenset[str] = frozenset()
     # The athlete's own text asks to remove workouts from Garmin; a yes never does.
     garmin_removal_requested: bool = False
+    # The providers whose full resync the athlete's own text asks for; a yes
+    # never does (#3960).
+    resync_requests: frozenset[str] = frozenset()
 
 
 def build_turn_authority(
@@ -521,9 +543,11 @@ def build_turn_authority(
     if accepts_offer:
         providers |= _offered_providers(previous_assistant_text)
     garmin_removal = garmin_removal_requested(current_text)
+    resyncs = full_resync_requests(current_text)
     message_ids = {current_message_id}
     origin_text = ""
     if pending_origin is not None:
+        resyncs |= full_resync_requests(pending_origin.origin_text)
         remote = remote or remote_requested(pending_origin.origin_text)
         providers |= requested_providers(pending_origin.origin_text)
         garmin_removal = garmin_removal or garmin_removal_requested(
@@ -538,6 +562,7 @@ def build_turn_authority(
         origin_text=origin_text,
         provider_requests=providers,
         garmin_removal_requested=garmin_removal,
+        resync_requests=resyncs,
     )
 
 
@@ -849,6 +874,25 @@ def illness_override_confirmed(
     ).illness_override
 
 
+def _check_provider_job(
+    tool_name: str, authority: TurnAuthority, arguments: Mapping[str, Any] | None
+) -> GateDecision:
+    """Ungated tools, except the provider contacts the athlete must start (#3960).
+
+    A full resync runs only when the athlete's own text names that provider
+    and asks for it; a connection check only in a turn the athlete started.
+    """
+    args = arguments if isinstance(arguments, Mapping) else {}
+    if tool_name == "check_provider_connection" and not authority.athlete_started:
+        return GateDecision(False, None, "no_athlete_message")
+    if tool_name == "start_provider_refresh" and args.get("full_resync") is True:
+        request = args.get("_request")
+        target = request.get("target") if isinstance(request, Mapping) else None
+        if not authority.athlete_started or target not in authority.resync_requests:
+            return GateDecision(False, None, "full_resync_not_requested")
+    return GateDecision(True, None, "ok")
+
+
 def _check_garmin_write(
     tool_name: str,
     authority: TurnAuthority,
@@ -935,7 +979,7 @@ def check_write(
     produced a blocking ``illness_hard`` finding (``illness_override_confirmed``).
     """
     if tool_name in UNGATED_TOOLS:
-        return GateDecision(True, None, "ok")
+        return _check_provider_job(tool_name, authority, arguments)
     domain = TOOL_DOMAIN.get(tool_name)
     if domain is None:
         return GateDecision(False, None, "unknown_tool")

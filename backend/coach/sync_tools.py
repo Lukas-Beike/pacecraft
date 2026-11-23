@@ -16,10 +16,13 @@ from backend.sync.conflict_commands import SyncConflictCommandService
 from backend.sync.plan_commands import PlanPushCommandService
 from backend.sync.plan_repair import PlanRepairManifestService
 from backend.sync.plan_selection import StructuredPlanSyncService
+from backend.sync.provider_registry import DEFAULT_PROVIDER_REGISTRY
 from backend.sync.queue import SyncJobQueueService
 
-# The providers Anbindungen offers a full resync for.
-_FULL_RESYNC_PROVIDERS = frozenset({ProviderId.GARMIN.value, ProviderId.WAHOO.value})
+# The providers Anbindungen offers a full resync for, as its routes do.
+_FULL_RESYNC_PROVIDERS = frozenset(
+    str(provider) for _path, provider in DEFAULT_PROVIDER_REGISTRY.full_resync_routes()
+)
 
 
 class CoachSyncToolService:
