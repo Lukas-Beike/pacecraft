@@ -65,8 +65,8 @@ generated from the `covers` declarations; regenerate it with
 | `read_profile` | `success` | `test_permanent_profile_acceptance_reads_and_preserves_existing_facts` |
 | `read_training_records` | `success` | `test_training_records_and_equipment_tools_use_confirmed_local_state` |
 | `read_training_state` | `success` | `test_read_tools_return_seeded_objects_without_mutating_them` |
-| `rename_activity_route` | `success` | `test_session_tools_correct_the_bundle_and_leave_a_change_receipt` |
 | `refresh_nutrition_products` | `all`, `one` | `test_the_coach_manages_products_like_produkte` |
+| `rename_activity_route` | `success` | `test_session_tools_correct_the_bundle_and_leave_a_change_receipt` |
 | `replace_training_plan` | `success` | `test_replacement_changes_only_requested_period` |
 | `resolve_training_sync_conflict` | `adopt_remote`, `keep_local`, `retry_push`, `retry_read` | `test_conflict_choices_and_failed_job_retries` |
 | `save_activity_feedback` | `success` | `test_daily_feedback_and_activity_feedback_are_separate_from_profile` |

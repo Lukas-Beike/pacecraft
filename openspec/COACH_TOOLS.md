@@ -65,8 +65,8 @@ and repair details remain with the provider capabilities.
 | `read_profile` | canonical_and_dialogue / read | read | CoachReadToolService | `athlete-profile-and-checkins / AP1 Normalized durable profile and athlete-local dates`; `athlete-profile-and-checkins / AP2 Partial profile edits and optimistic Coach conflicts` | `test_permanent_profile_acceptance_reads_and_preserves_existing_facts` |
 | `read_training_records` | canonical_and_dialogue / read | read | CoachReadToolService | `athlete-profile-and-checkins / AP8 Versioned local equipment records`; `athlete-profile-and-checkins / AP9 Explicit equipment assignments and honest usage`; `athlete-profile-and-checkins / AP10 Maintenance events without invented material diagnosis` | `test_training_records_and_equipment_tools_use_confirmed_local_state` |
 | `read_training_state` | canonical_and_dialogue / read | read | CoachReadToolService | `training-library / TL6 Bounded library browsing and revision-bound plan enumeration` | `test_read_tools_return_seeded_objects_without_mutating_them` |
-| `rename_activity_route` | canonical_and_dialogue / local_write | profile | CoachAthleteRecordToolService | `activity-analysis-and-feedback / Recognised routes of outdoor sessions`; `coach-tool-authority / CA2 Athlete-message provenance and exact effect scope` | `test_session_tools_correct_the_bundle_and_leave_a_change_receipt` |
 | `refresh_nutrition_products` | canonical_and_dialogue / local_write | nutrition | CoachAthleteRecordToolService | `food-catalog-and-meal-library / Coach product management` | `test_the_coach_manages_products_like_produkte` |
+| `rename_activity_route` | canonical_and_dialogue / local_write | profile | CoachAthleteRecordToolService | `activity-analysis-and-feedback / Recognised routes of outdoor sessions`; `coach-tool-authority / CA2 Athlete-message provenance and exact effect scope` | `test_session_tools_correct_the_bundle_and_leave_a_change_receipt` |
 | `replace_training_plan` | canonical_and_dialogue / local_write | planning | CoachPlanningChangeToolService | `training-plans-and-adaptation / TP6 Inclusive bounded local plan replacement`; `coach-tool-authority / CA4 Domain-confirmed destructive and bulk effects` | `test_replacement_changes_only_requested_period` |
 | `resolve_training_sync_conflict` | canonical_and_dialogue / conditional_remote_write | remote_intervals | CoachSyncToolService | `training-library / TL10 Exact explicit sync selection and complete repair manifests`; `coach-tool-authority / CA5 Named remote synchronization and explicit proposals` | `test_conflict_choices_and_failed_job_retries` |
 | `save_activity_feedback` | canonical_and_dialogue / local_write | checkin | CoachAthleteRecordToolService | `athlete-profile-and-checkins / AP7 Exact completed-activity feedback` | `test_daily_feedback_and_activity_feedback_are_separate_from_profile` |
@@ -625,15 +625,6 @@ effect `read`.
 - `cursor` (string)
 - `limit` (integer; ≥1; ≤366)
 
-### `rename_activity_route`
-
-effect `local_write`; gate domain `profile`; receipt „Strecke umbenannt“; proposal card „Strecke umbenennen“; not fully tracked (no turn undo).
-
-- `payload` (object)
-- `payload.route_id`* (string; ≥1 chars)
-- `payload.name`* (string; ≥1 chars; ≤60 chars)
-- `_request`* (the envelope above)
-
 ### `refresh_nutrition_products`
 
 effect `local_write`; gate domain `nutrition`; may call the food database; receipt „Produkte aktualisiert“; proposal card „Produkte aktualisieren“; not fully tracked (no turn undo).
@@ -641,6 +632,15 @@ effect `local_write`; gate domain `nutrition`; may call the food database; recei
 - `payload` (object)
 - `payload.id` (string)
 - `payload.all` (boolean)
+- `_request`* (the envelope above)
+
+### `rename_activity_route`
+
+effect `local_write`; gate domain `profile`; receipt „Strecke umbenannt“; proposal card „Strecke umbenennen“; not fully tracked (no turn undo).
+
+- `payload` (object)
+- `payload.route_id`* (string; ≥1 chars)
+- `payload.name`* (string; ≥1 chars; ≤60 chars)
 - `_request`* (the envelope above)
 
 ### `replace_training_plan`

@@ -73,24 +73,27 @@ class CoachAthleteRecordToolService:
         equipment: Any = None,
         session_corrections: Any = None,
         body_entries: Callable[[str], BodyEntryService] | None = None,
-        zones: Callable[[], Any] | None = None,
-        first_threshold: Callable[[], Any] | None = None,
+        athlete: Any = None,
         second_threshold: Callable[[], Any] | None = None,
         step_test: Callable[[str], Any] | None = None,
         activity_routes: Callable[[], Any] | None = None,
-        product_cleanup: Callable[[], Any] | None = None,
-        product_refresh: Any = None,
+        nutrition_services: Any = None,
     ) -> None:
-        # Zonen & Schwellen's services and the step-test read of one session.
-        self._zones = zones
-        self._first_threshold = first_threshold
+        # Zonen & Schwellen's services (from the athlete services) and the
+        # step-test read of one session.
+        self._zones = None if athlete is None else athlete.zones
+        self._first_threshold = None if athlete is None else athlete.first_threshold
         self._second_threshold = second_threshold
         self._step_test = step_test
         # The recognised routes, renamed as the session details do (#3957).
         self._activity_routes = activity_routes
         # Produkte's clean-up and its background re-check of every product.
-        self._product_cleanup = product_cleanup
-        self._product_refresh = product_refresh
+        self._product_cleanup = (
+            None if nutrition_services is None else nutrition_services.product_cleanup
+        )
+        self._product_refresh = (
+            None if nutrition_services is None else nutrition_services.product_refresh
+        )
         # The Körper entry service of "weight" or "body_fat" (#3640).
         self._body_entries = body_entries
         self._checkins = checkins

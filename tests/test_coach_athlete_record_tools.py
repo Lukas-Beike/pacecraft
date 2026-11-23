@@ -172,7 +172,7 @@ class CoachAthleteRecordToolServiceTests(unittest.TestCase):
         zones, first, second = Mock(), Mock(), Mock()
         service = CoachAthleteRecordToolService(
             Mock(), Mock(), Mock(),
-            zones=lambda: zones, first_threshold=lambda: first,
+            athlete=Mock(zones=lambda: zones, first_threshold=lambda: first),
             second_threshold=lambda: second, step_test=Mock(),
         )  # fmt: skip
         for name, arguments, operation, scope, status in (
@@ -302,7 +302,7 @@ class CoachAthleteRecordToolServiceTests(unittest.TestCase):
         cleanup, refresh = Mock(), Mock()
         service = CoachAthleteRecordToolService(
             Mock(), Mock(), Mock(), self.nutrition, self.nutrition,
-            product_cleanup=lambda: cleanup, product_refresh=refresh,
+            nutrition_services=Mock(product_cleanup=lambda: cleanup, product_refresh=refresh),
         )  # fmt: skip
         for name, payload, operation, scope, status in (
             ("manage_nutrition_products", {"action": "archive", "id": "p"}, "save_nutrition_entry", "local_nutrition", 403),
