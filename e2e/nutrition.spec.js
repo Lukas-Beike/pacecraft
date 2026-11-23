@@ -177,8 +177,8 @@ test("@responsive products show their use count, most used first, and a new one 
   await expect(dialog).toBeVisible();
   await page.locator("#nutritionProductUseCancel").click();
   const cards = await openProductSection(page, "all");
-  await expect(cards.filter({ hasText: productName }).first().locator(".nutrition-usage")).toHaveText("1×");
-  await expect(cards.filter({ hasText: unused }).locator(".nutrition-usage")).toHaveText("0×");
+  await expect(cards.filter({ hasText: productName }).first().locator(".nutrition-usage")).toHaveText("1-mal erfasst");
+  await expect(cards.filter({ hasText: unused }).locator(".nutrition-usage")).toHaveText("0-mal erfasst");
   // The counts never rise down the list, and the logged product comes first.
   const counts = (await cards.locator(".nutrition-usage").allTextContents()).map((text) => Number.parseInt(text, 10));
   expect(counts).toEqual([...counts].sort((a, b) => b - a));
@@ -309,7 +309,7 @@ test("@responsive the product list has sections, markers and the same four actio
   const favoritesSummary = productSection(page, "favorites").locator("summary");
   const allSummary = productSection(page, "all").locator("summary");
   await expect(favoritesSummary).toHaveText("Favoriten (1)");
-  await expect(allSummary).toHaveText("Alle Produkte (4) ⚠ 2");
+  await expect(allSummary).toHaveText("Alle Produkte (4) ⚠ 2 unvollständig");
   await expect(allSummary.getByRole("img", { name: "2 unvollständig" })).toBeVisible();
   await expect(favoritesSummary.getByRole("img")).toHaveCount(0);
   await expect(productSection(page, "favorites")).not.toHaveAttribute("open", "");
@@ -333,7 +333,7 @@ test("@responsive the product list has sections, markers and the same four actio
 
   // A database entry can be marked as a favorite.
   await oat.getByRole("button", { name: /Als Favorit markieren/ }).click();
-  await expect(favoritesSummary).toHaveText("Favoriten (2) ⚠ 1");
+  await expect(favoritesSummary).toHaveText("Favoriten (2) ⚠ 1 unvollständig");
   expect(requests.favorite).toEqual([{ id: "off:4006381333931", favorite: true }]);
 
   // Its editor shows name, brand, EAN and basis read only and sends only nutrient values.
@@ -347,14 +347,14 @@ test("@responsive the product list has sections, markers and the same four actio
   await editor.getByRole("button", { name: "Nährwerte speichern" }).click();
   await expect(page.locator("#nutritionProductStatus")).toContainText("Nährwerte von „Haferdrink“ gespeichert.");
   expect(requests.put).toEqual([{ id: "off:4006381333931", kcal: 46, carbs_g: 6.7, protein_g: 1, fat_g: 1.5, sugar_g: 3.5, fiber_g: 0, salt_g: 0.1, confirmed: true }]);
-  await expect(allSummary).toHaveText("Alle Produkte (4) ⚠ 1");
+  await expect(allSummary).toHaveText("Alle Produkte (4) ⚠ 1 unvollständig");
   await expect(oat.getByRole("img")).toHaveCount(0);
 
-  // An own product without an EAN cannot be re-checked; the editor takes the EAN.
+  // An own product without an EAN cannot be re-checked: no request goes out; the editor takes the EAN.
   const musli = cards.filter({ hasText: "Müsli" });
   await musli.getByRole("button", { name: "Aktualisieren" }).click();
   await expect(page.locator("#nutritionProductStatus")).toHaveText("Für Aktualisieren wird eine EAN gebraucht. Unter Bearbeiten eintragen.");
-  expect(requests.refresh).toEqual([{ id: "own-musli" }]);
+  expect(requests.refresh).toEqual([]);
   await musli.getByRole("button", { name: "Bearbeiten" }).click();
   await expect(editor.locator('[name="barcode"]')).toBeEnabled();
   await expect(editor.locator('[name="name"]')).toBeEnabled();
