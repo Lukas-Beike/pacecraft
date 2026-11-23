@@ -17,10 +17,14 @@ test("@responsive Einplanen and Löschen work in the library card and Rückgäng
   const actions = card.locator(":scope > .planned-activity-actions");
   await expect(actions.getByRole("button")).toHaveText(["Bearbeiten", "Einplanen", "Löschen"]);
 
-  // Einplanen opens the calendar's day strip; one tap plans the entry locally.
+  // Einplanen opens the calendar's day strip, which marks a day an entry blocks (#4060); one tap plans the entry locally.
+  const blockedDay = await page.evaluate(() => addDateKey(timezoneDateKey(state.data?.profile?.timezone, new Date()), 3));
+  await page.route("**/api/library/*/blocked-days*", (route) => route.fulfill({ json: { blocked: { [blockedDay]: ["Reise"] } } }));
   await actions.getByRole("button", { name: "Einplanen" }).click();
   const days = card.locator(".planned-move-days");
   await expect(days).toBeVisible();
+  await expect(days.locator(`button[data-day="${blockedDay}"]`)).toBeDisabled();
+  await expect(days.locator(`button[data-day="${blockedDay}"]`)).toHaveAttribute("title", "Belegt: Reise");
   await expect(days.getByRole("button", { name: "Anderes Datum" })).toBeVisible();
   // #3980: a background reload redraws the library; an open day strip stays open.
   await page.evaluate(() => renderLibrary(state.data.library));

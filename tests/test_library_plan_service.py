@@ -211,6 +211,25 @@ class LibraryPlanServiceTests(unittest.TestCase):
         )
         self.assertEqual(self.state()[0], [])
 
+    def test_blocked_days_name_the_entries_planning_would_be_refused_for(self):
+        # #4060: the day strip asks the planning's own calendar rules.
+        local_id = str(uuid.uuid4())
+        self.add_template(local_id, self.template())
+        self.calendar.results = {
+            "2026-09-22": [{"name": "Reise"}, {"name": "Zahnarzt"}, {"name": "Reise"}]
+        }
+        blocked = self.service.blocked_days(
+            local_id.upper(), ["2026-09-21", "2026-09-22", "kein Datum", None]
+        )
+        self.assertEqual({"2026-09-22": ["Reise", "Zahnarzt"]}, blocked)
+        self.assertEqual({}, self.service.blocked_days(local_id, "2026-09-22"))
+        with self.assertRaises(AppError) as caught:
+            self.service.blocked_days("kein UUID", [])
+        self.assertEqual(400, caught.exception.status)
+        with self.assertRaises(AppError) as caught:
+            self.service.blocked_days(str(uuid.uuid4()), [])
+        self.assertEqual(404, caught.exception.status)
+
     def test_multiple_different_templates_on_same_date_are_allowed(self):
         ids = [str(uuid.uuid4()), str(uuid.uuid4())]
         for index, local_id in enumerate(ids):
