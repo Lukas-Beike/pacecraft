@@ -23,6 +23,8 @@ GREEN = {
     "conclusion": "SUCCESS",
 }
 RED = {**GREEN, "conclusion": "FAILURE"}
+# A read that fails as a dropped connection does (#4059): in `views` or `gitar`.
+DOWN = "error connecting to api.github.com"
 PIN = ["--squash", "--match-head-commit", "feedc0de"]
 
 
@@ -73,6 +75,8 @@ def rest_answer(argv, gitar, compare):
         return None
     if "/check-runs" in argv[2]:
         state = next_count(gitar) if isinstance(gitar, list) else gitar
+        if state == DOWN:
+            return DOWN
         return json.dumps({"check_runs": gitar_runs(state)})
     if "/compare/feedc0de...develop" in argv[2]:
         return json.dumps(compare)
@@ -112,7 +116,10 @@ def run(
     def fake(argv, **_kwargs):
         calls.append(argv[1:])
         if argv[1:3] == ["pr", "view"]:
-            return subprocess.CompletedProcess(argv, 0, json.dumps(views.pop(0)), "")
+            state = views.pop(0)
+            if state == DOWN:
+                return subprocess.CompletedProcess(argv, 1, "", DOWN)
+            return subprocess.CompletedProcess(argv, 0, json.dumps(state), "")
         if tuple(argv[1:3]) in fixed:
             return subprocess.CompletedProcess(argv, *fixed[tuple(argv[1:3])])
         if argv[1:3] == ["api", "graphql"]:
@@ -122,6 +129,8 @@ def run(
             files = "\n".join([*(f"f{n}" for n in range(150)), "scripts/pr_merge.py"])
             return subprocess.CompletedProcess(argv, 0, files, "")
         rest = rest_answer(argv, gitar, {"behind": behind, "files": list(moved)})
+        if rest == DOWN:
+            return subprocess.CompletedProcess(argv, 1, "", DOWN)
         if rest is not None:
             return subprocess.CompletedProcess(argv, 0, rest, "")
         return merge_answer(argv, auto_error)
@@ -190,6 +199,17 @@ class PrMergeTests(unittest.TestCase):
         code, out, writes, _ = run(self, 7, "--wait", "1", gitar="in_progress")
         self.assertEqual((code, writes), (3, []))
         self.assertIn("Gitar has not reviewed feedc0de yet", out)
+        # #4059: a dropped connection while waiting is read again; one that lasts
+        # to the end of the wait exits 2 and names it.
+        code, out, writes, _ = run(
+            self, 7, "--wait", "5", views=[view(), view("MERGED")],
+            gitar=[DOWN, DOWN, "success"],
+        )  # fmt: skip
+        self.assertEqual((code, writes), (0, [["pr", "merge", "7", "--auto", *PIN]]))
+        self.assertEqual(out.count("a read failed, polling on"), 1)
+        code, out, writes, _ = run(self, 7, "--wait", "1", gitar=DOWN)
+        self.assertEqual((code, writes), (2, []))
+        self.assertRegex(out, f"error: gh .* failed: {DOWN}")
 
     def test_the_other_gates_run_after_the_gitar_wait(self):
         # #3310 review: Gitar posts its threads when it finishes, and a freeze or
@@ -350,6 +370,15 @@ class PrMergeTests(unittest.TestCase):
         code, out, _, sleeps = run(self, 7, "--wait", 5, views=views)
         self.assertEqual((code, sleeps), (0, 2))
         self.assertIn("merged: 0123456789", out)
+        # #4059: a dropped connection in one poll ends no wait, and nothing is
+        # disarmed; one in the last poll exits 2 and names it.
+        views = [view(), DOWN, DOWN, view("MERGED")]
+        code, out, writes, _ = run(self, 7, "--wait", 5, views=views)
+        self.assertEqual((code, writes[1:]), (0, []))
+        self.assertIn("merged: 0123456789", out)
+        code, out, writes, _ = run(self, 7, "--wait", 1, views=[view(), *[DOWN] * 4])
+        self.assertEqual((code, writes[1:]), (2, []))
+        self.assertRegex(out, f"error: gh .* failed: {DOWN}")
 
     def test_wait_stops_on_close_failure_feedback_or_timeout(self):
         late = view(reviews=[{"body": "finding"}])
