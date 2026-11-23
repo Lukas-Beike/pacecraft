@@ -114,12 +114,13 @@ export async function refusedClick(target) {
   return refusedLabel(control.label) || DENIED.test(control.label) ? "refused: denied label" : "";
 }
 
-async function step(page, item, shot) {
-  if ("go" in item) {
+// One runner per step kind; each returns the step's result.
+const RUN = {
+  async go(page, item) {
     const view = await rendered(page, item.go, new Map());
     return view.capped ? { status: "fail", why: "not ready within 15 s" } : { status: "ok", ms: view.ms };
-  }
-  if ("click" in item) {
+  },
+  async click(page, item) {
     const target = page.locator(item.click).filter({ visible: true }).nth(item.nth ?? 0);
     await target.waitFor({ state: "visible", timeout: 3000 });
     // The element checked is the element clicked, even if the view re-renders in between.
@@ -130,25 +131,28 @@ async function step(page, item, shot) {
     await page.waitForFunction(settled, null, { timeout: SETTLE_MS, polling: 100 }).catch(() => null);
     await page.waitForTimeout(300);
     return { status: "ok" };
-  }
-  if ("scroll" in item) {
+  },
+  async scroll(page, item) {
     if (typeof item.scroll === "number") await page.evaluate((y) => [document.scrollingElement, document.querySelector(".panel.active")].forEach((el) => el?.scrollBy(0, y)), item.scroll);
     else await page.locator(item.scroll).first().scrollIntoViewIfNeeded({ timeout: 3000 });
     return { status: "ok" };
-  }
-  if ("shot" in item) {
+  },
+  async shot(page, item, shot) {
     await shot(item.shot, Boolean(item.full));
     return { status: "ok" };
-  }
-  if ("wait" in item) {
+  },
+  async wait(page, item) {
     if (typeof item.wait === "number") await page.waitForTimeout(item.wait);
     else await page.locator(item.wait).filter({ visible: true }).first().waitFor({ state: "visible", timeout: SETTLE_MS });
     return { status: "ok" };
-  }
-  const text = await page.locator(item.text).evaluateAll((nodes) => nodes.filter((node) => node.checkVisibility()).map((node) => node.innerText).join("\n-----\n"));
-  const cap = item.max ?? TEXT_CAP;
-  return { status: text.trim() ? "ok" : "fail", text: text.slice(0, cap), truncated: text.length > cap || undefined, why: text.trim() ? undefined : "no visible text" };
-}
+  },
+  async text(page, item) {
+    const text = await page.locator(item.text).evaluateAll((nodes) => nodes.filter((node) => node.checkVisibility()).map((node) => node.innerText).join("\n-----\n"));
+    const cap = item.max ?? TEXT_CAP;
+    if (!text.trim()) return { status: "fail", text: "", why: "no visible text" };
+    return { status: "ok", text: text.slice(0, cap), truncated: text.length > cap || undefined };
+  },
+};
 
 // Runs every step; a failed step is recorded and the next one runs.
 export async function runPlan(page, steps, shot = async () => null) {
@@ -156,7 +160,7 @@ export async function runPlan(page, steps, shot = async () => null) {
   for (const item of steps) {
     const kind = Object.keys(item).find((key) => own(STEPS, key));
     try {
-      results.push({ step: `${kind} ${item[kind]}`, ...(await step(page, item, shot)) });
+      results.push({ step: `${kind} ${item[kind]}`, ...(await RUN[kind](page, item, shot)) });
     } catch (error) {
       if (error.code === "EEXIST") throw error;
       results.push({ step: `${kind} ${item[kind]}`, status: "fail", why: error.name === "TimeoutError" ? "control missing" : error.message.split("\n")[0] });
