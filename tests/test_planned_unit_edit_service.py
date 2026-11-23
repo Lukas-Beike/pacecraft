@@ -25,7 +25,10 @@ from backend.planning.calendar_service import CalendarConflictService
 from backend.planning.library import library_payload_hash
 from backend.planning.library_service import WorkoutLibraryService
 from backend.planning.plan_guard_service import PlanCheckError, PlanGuardService
-from backend.planning.planned_unit_edit_service import PlannedUnitEditService
+from backend.planning.planned_unit_edit_service import (
+    UNIT_FIELDS,
+    PlannedUnitEditService,
+)
 from backend.planning.planned_unit_service import PlannedUnitService
 from backend.planning.replacement_service import (
     StructuredTrainingPlanReplacementService,
@@ -118,7 +121,7 @@ class PlannedUnitEditServiceTests(unittest.TestCase):
             lambda: NOW,
             lambda: str(uuid.UUID(int=500 + next(ids))),
         )
-        change_service = changes.StructuredTrainingChangeService(
+        self.change_service = change_service = changes.StructuredTrainingChangeService(
             self.manager,
             changes.StructuredTrainingChangeValidator(
                 PlanningStateRepository(), conflicts
@@ -148,55 +151,28 @@ class PlannedUnitEditServiceTests(unittest.TestCase):
                 for row in db.execute(f"SELECT local_id, payload FROM {table}")
             ]
 
-    def test_create_from_scratch_saves_the_unit_with_its_library_entry(self) -> None:
-        result = self.service.create(dict(STEADY))
-
-        self.assertEqual("local", result["status"])
-        (_, unit, _raw), (_, template, _) = (
-            self.rows("planned_units")[0],
-            self.rows("workout_library")[0],
-        )
-        self.assertEqual(
-            ("2026-09-22", "Grundlage 60", "manual", "manual"),
-            (unit["date"], unit["name"], unit["source"], template["source"]),
-        )
-        self.assertEqual(template["id"], unit["template_id"])
-        self.assertFalse(template.get("date"))
-        # The athlete's edit waives the rules written for the Coach, and nothing else.
-        self.assertEqual(
-            [([], plan_checks.REQUIRED_CODES)],
-            self.guard.verified,
-        )
-        self.assertEqual("load_spike", result["plan_check_notes"][0]["code"])
-
-    def test_create_from_a_library_entry_reuses_it(self) -> None:
+    def unit(self, fields, plan_id=None):
+        """A unit as the change batch stores it, with its library entry, for the tests that edit or replace one."""
         template = self.library.create_template(
-            {"name": "Vorlage", "description": "- 30m 60%", "sport": "Ride"}
+            {k: v for k, v in fields.items() if k not in {"date", "starts_at_local"}},
+            "manual",
         )
-        self.service.create({"date": "2026-09-23", "template_id": template["id"]})
-
-        self.assertEqual(1, len(self.rows("workout_library")))
-        self.assertEqual(
-            template["id"], self.rows("planned_units")[0][1]["template_id"]
-        )
-
-    def test_create_refuses_missing_fields_and_a_blocking_check(self) -> None:
-        with self.assertRaises(AppError) as raised:
-            self.service.create({"date": "2026-09-22", "name": "x"})
-        self.assertEqual(400, raised.exception.status)
-
-        self.guard.refuse = [{"code": "illness_hard", "message": "m"}]
-        with self.assertRaises(PlanCheckError):
-            self.service.create(dict(STEADY))
-        # The refused write left neither the unit nor its library entry behind.
-        self.assertEqual([], self.rows("planned_units"))
-        self.assertEqual([], self.rows("workout_library"))
-
-        self.service.create(dict(STEADY), accept=["illness_hard"])
-        self.assertEqual(1, len(self.rows("planned_units")))
+        change = {
+            "action": "create",
+            **{k: fields[k] for k in UNIT_FIELDS if k in fields},
+            "template_id": template["id"],
+            "target": fields.get("target") or "AUTO",
+            "rationale": "Vom Athleten angelegt",
+            **({"plan_id": plan_id} if plan_id else {}),
+        }
+        with self.manager.unit_of_work():
+            result = self.change_service.apply(
+                {"changes": [change]}, authorized_plan_id=plan_id, source="manual"
+            )
+        return result["changes"][0]
 
     def test_update_needs_the_current_hash_and_changes_the_content(self) -> None:
-        self.service.create(dict(STEADY))
+        self.unit(dict(STEADY))
         local_id, _, raw = self.rows("planned_units")[0]
 
         with self.assertRaises(AppError) as raised:
@@ -206,16 +182,35 @@ class PlannedUnitEditServiceTests(unittest.TestCase):
             self.service.update(local_id, {"name": "Neu"}, "0" * 64)
         self.assertEqual("payload_hash_conflict", raised.exception.reason)
 
-        self.service.update(
+        result = self.service.update(
             local_id,
             {"name": "Neu", "description": "- 45m 60%", "duration_minutes": 45},
             library_payload_hash(raw),
         )
         unit = self.rows("planned_units")[0][1]
         self.assertEqual(("Neu", 45 * 60), (unit["name"], unit["planned_duration_s"]))
+        # The athlete's edit waives the rules written for the Coach, and nothing else.
+        self.assertEqual([([], plan_checks.REQUIRED_CODES)], self.guard.verified)
+        self.assertEqual("load_spike", result["plan_check_notes"][0]["code"])
+
+    def test_update_under_a_blocking_check_needs_the_second_tap(self) -> None:
+        self.unit(dict(STEADY))
+        local_id, _, raw = self.rows("planned_units")[0]
+        edit = {"name": "Neu"}
+
+        self.guard.refuse = [{"code": "illness_hard", "message": "m"}]
+        with self.assertRaises(PlanCheckError):
+            self.service.update(local_id, edit, library_payload_hash(raw))
+        # The refused write left the unit as it was.
+        self.assertEqual(STEADY["name"], self.rows("planned_units")[0][1]["name"])
+
+        self.service.update(
+            local_id, edit, library_payload_hash(raw), accept=["illness_hard"]
+        )
+        self.assertEqual("Neu", self.rows("planned_units")[0][1]["name"])
 
     def test_archive_hides_the_unit_and_needs_the_hash(self) -> None:
-        self.service.create(dict(STEADY))
+        self.unit(dict(STEADY))
         local_id, _, raw = self.rows("planned_units")[0]
 
         with self.assertRaises(AppError):
@@ -228,8 +223,8 @@ class PlannedUnitEditServiceTests(unittest.TestCase):
         plan_id = self.plan_service.create(
             {"name": "Aufbau", "start_date": "2026-09-21", "end_date": "2026-10-04"}
         )["plan_id"]
-        first = self.service.create({**STEADY, "date": "2026-09-22"}, plan_id=plan_id)
-        second = self.service.create({**STEADY, "date": "2026-09-24"}, plan_id=plan_id)
+        first = self.unit({**STEADY, "date": "2026-09-22"}, plan_id=plan_id)
+        second = self.unit({**STEADY, "date": "2026-09-24"}, plan_id=plan_id)
         listed = [first["local_id"], second["local_id"]]
         new = {
             **STEADY,
@@ -272,9 +267,19 @@ class PlannedUnitEditServiceTests(unittest.TestCase):
         plan_id = self.plan_service.create(
             {"name": "Aufbau", "start_date": "2026-09-21", "end_date": "2026-10-04"}
         )["plan_id"]
-        unit = self.service.create({**STEADY, "date": "2026-09-22"}, plan_id=plan_id)
+        unit = self.unit({**STEADY, "date": "2026-09-22"}, plan_id=plan_id)
         new = {**STEADY, "name": "Neu", "date": "2026-09-23"}
 
+        # A new unit without its minimum fields is refused before anything is archived.
+        with self.assertRaises(AppError) as raised:
+            self.service.replace_period(
+                plan_id,
+                "2026-09-21",
+                "2026-09-27",
+                [unit["local_id"]],
+                [{"date": "2026-09-23", "name": "x"}],
+            )
+        self.assertEqual(400, raised.exception.status)
         for start, end in (
             ("2026-09-01", "2026-09-27"),
             ("2026-09-27", "2026-09-21"),
