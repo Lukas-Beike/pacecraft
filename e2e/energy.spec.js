@@ -161,7 +161,7 @@ test("@responsive a diary card marks a meal as estimated and clears the mark", a
   await card.getByRole("button", { name: "Als geschätzt markieren" }).click();
   await expect(card.locator("h3")).toContainText("Menge geschätzt");
   await expect(card).toContainText("950 kcal");
-  await card.getByRole("button", { name: "Nicht geschätzt" }).click();
+  await card.getByRole("button", { name: "Markierung entfernen" }).click();
   await expect(card.locator("h3")).not.toContainText("Menge geschätzt");
   await expect(card.getByRole("button", { name: "Als geschätzt markieren" })).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBeTruthy();
