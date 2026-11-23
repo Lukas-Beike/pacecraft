@@ -326,7 +326,9 @@ class AdaptiveReplanApplyService:
         today: Callable[[], date],
         now: Callable[[], str],
         calendar_conflict_service: Any | None = None,
+        follow_plans: Callable[[Any, set[str]], None] = lambda _db, _ids: None,
     ):
+        self._follow_plans = follow_plans
         self._database_manager = database_manager
         self._adjustment_repository = adjustment_repository
         self._revision_service = revision_service
@@ -377,6 +379,8 @@ class AdaptiveReplanApplyService:
             updated_checkins = 0
             if updated:
                 self._revision_service.bump(db)
+                # A replan can archive a unit: the plans of the changed units follow their days (#4144).
+                self._follow_plans(db, self._plan_ids(db, applicable_changes))
             if active_illness_pause:
                 updated_checkins = self._fill_illness_checkin(
                     db, active_illness_pause, today
@@ -408,6 +412,19 @@ class AdaptiveReplanApplyService:
             "stale": stale,
             "illness_pause": illness_pause,
         }
+
+    @staticmethod
+    def _plan_ids(db: Any, changes: list[dict[str, Any]]) -> set[str]:
+        """The plans the changed units belong to; a replan never changes a unit's plan."""
+        plan_ids: set[str] = set()
+        for change in changes:
+            row = planning_store.planned_unit_row(
+                db, str(change.get("library_workout_id") or "")
+            )
+            unit = parse_payload(row["payload"]) if row else None
+            if plan_id := str((unit or {}).get("plan_id") or "").strip():
+                plan_ids.add(plan_id)
+        return plan_ids
 
     def _calendar_changes(
         self, changes: list[dict[str, Any]]

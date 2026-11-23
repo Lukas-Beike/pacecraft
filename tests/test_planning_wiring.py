@@ -113,6 +113,10 @@ class PlanningDataBuilderTests(unittest.TestCase):
             self.ctx.planning_workflows.calendar_conflict_service.return_value,
             args[5],
         )
+        # The plans of the units a replan changes follow their days through the plan owner (#4144).
+        with patch.object(planning_wiring, "TrainingPlanService") as plans:
+            args[6]("db", {"plan"})
+        plans.return_value.update_bounds.assert_called_once_with("db", {"plan"})
 
     def test_workout_library_arguments(self) -> None:
         with patch.object(planning_wiring, "WorkoutLibraryService") as service:
