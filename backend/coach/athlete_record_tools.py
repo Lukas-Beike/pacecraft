@@ -57,6 +57,18 @@ _ZONE_FIELDS = (
 _LT2_FIELDS = ("sport", "source", "value", "shown", "confirm_deviation", "activity_id")
 # Produkte's card and list actions, through the routes' use cases (#3958).
 _PRODUCT_TOOLS = frozenset({"manage_nutrition_products", "refresh_nutrition_products"})
+_NUTRITION_TOOLS = frozenset(
+    {
+        "save_nutrition_template",
+        "save_nutrition_product",
+        "fill_nutrition_product_gaps",
+        "delete_nutrition_template",
+        "log_nutrition_template",
+        "save_nutrition_entry",
+        "update_nutrition_entry",
+        "delete_nutrition_entry",
+    }
+)
 
 
 class CoachAthleteRecordToolService:
@@ -107,27 +119,24 @@ class CoachAthleteRecordToolService:
     def execute(
         self, name: str, arguments: dict[str, Any], intent: dict[str, Any]
     ) -> dict[str, Any] | None:
-        if name in _EQUIPMENT_TOOLS:
-            return self._execute_equipment(name, arguments, intent)
-        if name in _SESSION_TOOLS:
-            return self._execute_session(name, arguments, intent)
-        if name in _BODY_TOOLS:
-            return self._execute_body(name, arguments, intent)
-        if name in _ZONE_TOOLS:
-            return self._execute_zones(name, arguments, intent)
-        if name in _PRODUCT_TOOLS:
-            return self._execute_products(name, arguments, intent)
-        if name in {
-            "save_nutrition_template",
-            "save_nutrition_product",
-            "fill_nutrition_product_gaps",
-            "delete_nutrition_template",
-            "log_nutrition_template",
-            "save_nutrition_entry",
-            "update_nutrition_entry",
-            "delete_nutrition_entry",
-        }:
-            return self._execute_nutrition(name, arguments, intent)
+        # Each group of tools has its own handler.
+        handler = next(
+            (
+                handler
+                for tools, handler in (
+                    (_EQUIPMENT_TOOLS, self._execute_equipment),
+                    (_SESSION_TOOLS, self._execute_session),
+                    (_BODY_TOOLS, self._execute_body),
+                    (_ZONE_TOOLS, self._execute_zones),
+                    (_PRODUCT_TOOLS, self._execute_products),
+                    (_NUTRITION_TOOLS, self._execute_nutrition),
+                )
+                if name in tools
+            ),
+            None,
+        )
+        if handler is not None:
+            return handler(name, arguments, intent)
         if name == "save_checkin":
             self._authorize(
                 intent,
@@ -543,20 +552,7 @@ class CoachAthleteRecordToolService:
         payload = structured_action_payload(arguments)
         product_id = str(payload.get("id") or "")
         if name == "refresh_nutrition_products":
-            if payload.get("all") is True:
-                if self._product_refresh is None:
-                    raise AppError(
-                        503, "Die Produktaktualisierung ist nicht verfügbar."
-                    )
-                # The background run of "Alle aktualisieren"; one at a time.
-                # Starting it changes nothing yet: no receipt for the turn.
-                run = self._product_refresh.start()
-                return {"ok": True, "status": "unchanged", "run": run}
-            refreshed = library.refresh_database_food(product_id)
-            if NOTHING_FILLED_NOTICE in str(refreshed.get("notice") or ""):
-                # An own product with nothing left to fill shows no receipt.
-                return {**refreshed, "status": "unchanged"}
-            return refreshed
+            return self._refresh_products(library, payload, product_id)
         action, catalog = payload.get("action"), library.product_catalog
         if action == "favorite":
             product = catalog.set_favorite(product_id, payload.get("favorite"))
@@ -575,6 +571,23 @@ class CoachAthleteRecordToolService:
         raise AppError(
             400, "Unbekannte Produktaktion.", reason="tool_arguments_invalid"
         )
+
+    def _refresh_products(
+        self, library: Any, payload: dict[str, Any], product_id: str
+    ) -> dict[str, Any]:
+        """Re-check one product online, or start "Alle aktualisieren"."""
+        if payload.get("all") is True:
+            if self._product_refresh is None:
+                raise AppError(503, "Die Produktaktualisierung ist nicht verfügbar.")
+            # The background run, one at a time; starting it changes nothing
+            # yet, so the turn shows no receipt.
+            return {"ok": True, "status": "unchanged",
+                    "run": self._product_refresh.start()}  # fmt: skip
+        refreshed = library.refresh_database_food(product_id)
+        if NOTHING_FILLED_NOTICE in str(refreshed.get("notice") or ""):
+            # An own product with nothing left to fill shows no receipt.
+            return {**refreshed, "status": "unchanged"}
+        return refreshed
 
     @staticmethod
     def _authorize(intent: dict[str, Any], operation: str, message: str) -> None:
