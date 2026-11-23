@@ -31,7 +31,7 @@ and repair details remain with the provider capabilities.
 | `assign_activity_equipment` | canonical_and_dialogue / local_write | profile | CoachAthleteRecordToolService | `athlete-profile-and-checkins / AP9 Explicit equipment assignments and honest usage`; `coach-tool-authority / CA2 Athlete-message provenance and exact effect scope` | `test_training_records_and_equipment_tools_use_confirmed_local_state` |
 | `calculate_food_nutrition` | canonical_and_dialogue / read | read | CoachReadToolService | `coach-tool-authority / CA1 Complete owned tool capability catalog`; `coach-tool-authority / CA2 Athlete-message provenance and exact effect scope` | `test_food_database_read_tools_calculate_without_writing` |
 | `cancel_coach_request` | dialogue_only / control | ungated | CoachStructuredToolExecutionService | `coach-conversation / CC6 Persisted clarification and conversational continuation`; `coach-tool-authority / CA8 Bounded execution and cancellation boundaries` | `test_clarification_and_cancellation_preserve_athlete_data` |
-| `check_provider_connection` | canonical_and_dialogue / read | read | CoachSyncToolService | `provider-connections / Coach connection checks and full resync` | `test_the_coach_checks_connections_and_starts_a_full_resync` |
+| `check_provider_connection` | canonical_and_dialogue / provider_read_job | ungated | CoachSyncToolService | `provider-connections / Coach connection checks and full resync` | `test_the_coach_checks_connections_and_starts_a_full_resync` |
 | `clarify_coach_request` | dialogue_only / control | ungated | CoachClarificationService | `coach-conversation / CC6 Persisted clarification and conversational continuation`; `coach-tool-authority / CA8 Bounded execution and cancellation boundaries` | `test_clarification_and_cancellation_preserve_athlete_data` |
 | `classify_calendar_event` | canonical_and_dialogue / local_write | planning | CoachPlanningActionToolService | `external-calendars / Athlete decision per event`; `coach-tool-authority / CA2 Athlete-message provenance and exact effect scope` | `test_the_coach_classifies_a_calendar_event_like_einordnen` |
 | `commit_training_plan` | canonical_and_dialogue / local_write | planning | CoachPlanArtifactToolService | `training-plans-and-adaptation / TP2 Atomic revision-checked plan commit`; `coach-tool-authority / CA4 Domain-confirmed destructive and bulk effects` | `test_requested_draft_commit_and_metadata_lifecycle` |
@@ -315,9 +315,10 @@ effect `control`; not fully tracked (no turn undo).
 
 ### `check_provider_connection`
 
-effect `read`.
+effect `provider_read_job`; receipt „Verbindung geprüft“; proposal card „Verbindung prüfen“; not fully tracked (no turn undo).
 
 - `provider` (string; one of `"intervals"`, `"garmin"`, `"wahoo"`, `"openai"`, `"anthropic"`, `"weather"`, `"yazio"`)
+- `_request`* (the envelope above)
 
 ### `clarify_coach_request`
 

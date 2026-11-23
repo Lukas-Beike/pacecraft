@@ -1730,11 +1730,21 @@ class CoachToolCoverageTests(DialogueHarness, unittest.TestCase):
             ) as resynced,
         ):  # fmt: skip
             before = self.athlete_state()
-            status = self.run_tool("check_provider_connection", {"provider": "wahoo"})
+            status = self.run_tool(
+                "check_provider_connection",
+                {"provider": "wahoo"},
+                [],
+                message="Funktioniert die Wahoo-Verbindung?",
+            )
             self.assertEqual(
                 ("wahoo", "success"), (status["provider"], status["status"])
             )
             self.assertEqual("wahoo", checked.call_args.args[1])
+            # It contacts the provider: a read-only turn the athlete did not
+            # start is not offered it.
+            self.assertNotIn(
+                "check_provider_connection", server.STRUCTURED_READ_ONLY_TOOLS
+            )
             self.assertEqual(before, self.athlete_state())
             started = self.run_tool(
                 "start_provider_refresh",

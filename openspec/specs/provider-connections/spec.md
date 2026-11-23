@@ -539,11 +539,11 @@ The Coach SHALL run a connection check and start a Garmin or Wahoo full resync t
 
 #### Scenario: Connection check
 - **WHEN** the athlete asks the Coach whether a connection works
-- **THEN** `check_provider_connection` runs that provider's read-only check (or the Yazio check) outside the turn's write transaction and returns its status, never a credential.
+- **THEN** `check_provider_connection` runs that provider's read-only check (or the Yazio check) outside the turn's write transaction and returns its status, never a credential; it contacts the provider, so only a turn started by the athlete's own message offers it.
 
 #### Scenario: Full resync
 - **WHEN** the athlete's own message names Garmin or Wahoo and asks for a full resync
-- **THEN** `start_provider_refresh` with `full_resync: true` starts the background resync the route starts (a run in progress is returned instead), under the named provider's refresh scope; any other provider is refused.
+- **THEN** `start_provider_refresh` with `full_resync: true` starts the background resync the route starts (a run in progress is returned instead), under the named provider's refresh scope; any other provider is refused. As for a named refresh, the Coach's reading of the athlete's wording is the gate (orchestrator decision on #3960); the route's typed confirmation has no Coach counterpart.
 
 Evidence: `backend/coach/sync_tools.py:CoachSyncToolService._check_connection`, `backend/coach/sync_tools.py:CoachSyncToolService._start_full_resync`; `tests/test_coach_tool_coverage.py:test_the_coach_checks_connections_and_starts_a_full_resync`.
 

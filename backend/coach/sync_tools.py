@@ -69,7 +69,7 @@ class CoachSyncToolService:
         if name == "push_strength_to_garmin":
             return self._push_strength_to_garmin(arguments, intent, sync_job_ids)
         if name == "check_provider_connection":
-            return self._check_connection(arguments)
+            return self._check_connection(arguments, intent)
         if name == "get_sync_job":
             job_id = str(arguments.get("job_id") or "").strip()
             if job_id not in sync_job_ids:
@@ -173,8 +173,14 @@ class CoachSyncToolService:
         result = self._full_resync.start(provider, self._operation_id())
         return {"ok": True, **result}
 
-    def _check_connection(self, arguments: dict[str, Any]) -> dict[str, Any]:
+    def _check_connection(
+        self, arguments: dict[str, Any], intent: dict[str, Any]
+    ) -> dict[str, Any]:
         """One read-only connection check of Anbindungen (#3960)."""
+        if "check_provider_connection" not in authorized_operations(intent):
+            raise AppError(
+                403, STRUCTURED_AUTHORIZATION_ERROR, reason="intent_scope_denied"
+            )
         provider = str(arguments.get("provider") or "")
         if provider == "yazio" and self._yazio_check is not None:
             return {"ok": True, "provider": provider, **self._yazio_check()}
