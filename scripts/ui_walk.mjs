@@ -139,7 +139,8 @@ export function requestKey(method, url, appOrigin) {
   return `${method} ${parsed.origin === appOrigin ? "" : parsed.origin}${parsed.pathname}`;
 }
 
-// A view is loaded once its active panel shows no visible loading marker and no
+// A view is loaded once its active panel shows no visible loading marker or
+// "… wird geladen…" line (some views load behind a text line, #3969) and no
 // request started for it has been open for QUIET_MS (the event stream stays open
 // by design). Network idle never came on the Coach view since 2.1.6 (#2581).
 export async function rendered(page, route, open) {
@@ -159,7 +160,7 @@ export async function rendered(page, route, open) {
   while (Date.now() - started < READY_CAP_MS) {
     const busy = await page.evaluate(() => {
       const panel = document.querySelector(".panel.active");
-      return !panel || [...panel.querySelectorAll(".loading-state, [aria-busy='true'], .skeleton")].some((node) => node.checkVisibility());
+      return !panel || [...panel.querySelectorAll(".loading-state, [aria-busy='true'], .skeleton")].some((node) => node.checkVisibility()) || /wird geladen…/.test(panel.innerText);
     }).catch(() => true);
     if (busy || pending().length) quietSince = null;
     else if (quietSince === null) quietSince = Date.now();

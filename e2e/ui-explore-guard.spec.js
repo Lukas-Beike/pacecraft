@@ -17,13 +17,23 @@ const PAGE = `<main>
   <button id="confirm" type="button" aria-label="Bestätigen">✓</button>
   <details><summary>Einstellungen werden geladen</summary><p>x</p></details>
   <p id="body">42 km</p>
-</main>`;
+  <section class="panel active"><p id="load">Ernährung wird geladen…</p><p id="long">${"x".repeat(5000)}</p></section>
+</main>
+<script>
+  // A route renders at once, but its data line loads behind a text for 1.5 s (#3969).
+  addEventListener("hashchange", () => {
+    document.dispatchEvent(new Event("app:route-rendered"));
+    setTimeout(() => { document.getElementById("load").textContent = "1200 kcal"; }, 1500);
+  });
+</script>`;
 
 async function testPage(explorer, browser, baseURL, options = {}) {
   const { context, aborted } = await explorer.exploreContext(browser, { url: baseURL, viewport: "phone", ...options });
   const page = await context.newPage();
   // The test page itself is served here; every other request falls through to the explorer's guard.
-  await page.route("**/explore-test", (route) => route.fulfill({ contentType: "text/html; charset=utf-8", body: `<!doctype html><html><head></head><body>${PAGE}</body></html>` }));
+  // The app's own style rule: no <style> element is applied (#3969).
+  const headers = { "content-security-policy": "style-src 'self'" };
+  await page.route("**/explore-test", (route) => route.fulfill({ contentType: "text/html; charset=utf-8", headers, body: `<!doctype html><html><head></head><body>${PAGE}</body></html>` }));
   await page.goto("/explore-test");
   return { context, aborted, page };
 }
@@ -51,6 +61,22 @@ test("a write from a plan step is aborted and fails the run; denied controls are
   await context.close();
 });
 
+test("go waits out a loading text line; wait and a longer text read are steps (#3969)", async ({ browser, baseURL }) => {
+  const explorer = await load();
+  const { context, page } = await testPage(explorer, browser, baseURL);
+  const plan = explorer.parsePlan({ steps: [{ go: "day" }, { text: "#load" }, { wait: 200 }, { wait: "#body" }, { wait: "#absent" }, { text: "#long" }, { text: "#long", max: 6000 }] });
+  const steps = await explorer.runPlan(page, plan.steps);
+  expect(steps[0]).toMatchObject({ status: "ok" });
+  expect(steps[0].ms).toBeGreaterThanOrEqual(1400);
+  expect(steps[1]).toMatchObject({ status: "ok", text: "1200 kcal" });
+  expect(steps.slice(2, 5).map((item) => item.status)).toEqual(["ok", "ok", "fail"]);
+  expect(steps[5]).toMatchObject({ truncated: true });
+  expect(steps[5].text).toHaveLength(4000);
+  expect(steps[6].text).toHaveLength(5000);
+  expect(steps[6].truncated).toBeUndefined();
+  await context.close();
+});
+
 test("a plan's text zoom scales the root font size", async ({ browser, baseURL }) => {
   const explorer = await load();
   for (const [textZoom, size] of [[100, "16px"], [150, "24px"]]) {
@@ -62,7 +88,7 @@ test("a plan's text zoom scales the root font size", async ({ browser, baseURL }
 
 test("a plan names exactly one known action per step", async () => {
   const { parsePlan } = await load();
-  const bad = [{}, { steps: [] }, { steps: [{ click: "a", go: "plan" }] }, { steps: [{ type: "x" }] }, { steps: [{ go: "https://x" }] }, { steps: [{ shot: "../x" }] }, { steps: [{ text: "p" }], viewports: ["tv"] }, { steps: [{ text: "p" }], textZoom: 300 }, { steps: [{ shot: "a", nth: 1 }] },
+  const bad = [{}, { steps: [] }, { steps: [{ click: "a", go: "plan" }] }, { steps: [{ type: "x" }] }, { steps: [{ go: "https://x" }] }, { steps: [{ shot: "../x" }] }, { steps: [{ text: "p" }], viewports: ["tv"] }, { steps: [{ text: "p" }], textZoom: 300 }, { steps: [{ shot: "a", nth: 1 }] }, { steps: [{ wait: 50 }] }, { steps: [{ wait: 20000 }] }, { steps: [{ text: "p", max: 60000 }] },
     // A repeated name or viewport would overwrite a file; inherited keys are not actions.
     { steps: [{ shot: "a" }, { shot: "a" }] }, { steps: [{ text: "p" }], viewports: ["phone", "phone"] }, { steps: [{ toString: "x" }] }, { steps: [{ click: "a", constructor: 1 }] }, { steps: [{ text: "p" }], viewports: ["toString"] }, { steps: [JSON.parse('{"__proto__": 1}')] }];
   for (const plan of bad) expect(() => parsePlan(plan), JSON.stringify(plan)).toThrow(/^plan: /);

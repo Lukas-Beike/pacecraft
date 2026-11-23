@@ -5,7 +5,8 @@
 //
 // Plan: {"viewports": ["phone", "desktop"], "colorScheme": "light|dark", "textZoom": 100-200,
 // "steps": [{"go": "analysis/running"}, {"click": "<css>", "nth": 0}, {"scroll": "<css>" | pixels},
-// {"shot": "<name>", "full": false}, {"text": "<css>"}]}. A period or filter switch is a click.
+// {"shot": "<name>", "full": false}, {"text": "<css>", "max": 4000}, {"wait": ms | "<css>"}]}.
+// A period or filter switch is a click; "go" also waits out a "… wird geladen…" line.
 // Logs in and out like ui_walk.mjs. Every request other than GET or HEAD is aborted, except the
 // login and logout; service workers are blocked. A click on a form's submit control or on a
 // control whose label saves, sends, syncs, deletes or confirms is refused. Writes the screenshots
@@ -35,9 +36,17 @@ const STEPS = {
   scroll: (value) => named(value) || Number.isInteger(value),
   shot: (value) => typeof value === "string" && LABEL.test(value),
   text: named,
+  // Milliseconds, or a CSS selector that must become visible (#3969).
+  wait: (value) => named(value) || (Number.isInteger(value) && value >= 100 && value <= SETTLE_MS),
 };
-const STEP_OPTIONS = { click: { nth: (value) => Number.isInteger(value) && value >= 0 }, shot: { full: (value) => typeof value === "boolean" } };
+const STEP_OPTIONS = {
+  click: { nth: (value) => Number.isInteger(value) && value >= 0 },
+  shot: { full: (value) => typeof value === "boolean" },
+  text: { max: (value) => Number.isInteger(value) && value > 0 && value <= TEXT_MAX },
+};
+// A text step keeps TEXT_CAP characters unless its "max" asks for up to TEXT_MAX.
 const TEXT_CAP = 4000;
+const TEXT_MAX = 50000;
 const SETTLE_MS = 15000;
 
 // Aborts every request except GET, HEAD (not the whole-data reads) and the app's own login and logout;
@@ -60,10 +69,9 @@ export async function exploreContext(browser, { url, viewport, colorScheme = "li
   const context = await browser.newContext({ baseURL: url, viewport: WIDTHS[viewport], colorScheme, serviceWorkers: "block" });
   if (textZoom !== 100) {
     await context.addInitScript((zoom) => {
-      // The init script runs before the document has a root element.
-      const style = document.createElement("style");
-      style.textContent = `html { font-size: ${zoom}% !important; }`;
-      document.addEventListener("DOMContentLoaded", () => document.head.append(style), { once: true });
+      // The init script runs before the document has a root element. An inline style, not a
+      // <style> element: the app's CSP (style-src 'self') blocks the element (#3969).
+      document.addEventListener("DOMContentLoaded", () => document.documentElement.style.setProperty("font-size", `${zoom}%`, "important"), { once: true });
     }, textZoom);
   }
   return { context, aborted: await guardRequests(context, new URL(url).origin) };
@@ -132,8 +140,14 @@ async function step(page, item, shot) {
     await shot(item.shot, Boolean(item.full));
     return { status: "ok" };
   }
+  if ("wait" in item) {
+    if (typeof item.wait === "number") await page.waitForTimeout(item.wait);
+    else await page.locator(item.wait).filter({ visible: true }).first().waitFor({ state: "visible", timeout: SETTLE_MS });
+    return { status: "ok" };
+  }
   const text = await page.locator(item.text).evaluateAll((nodes) => nodes.filter((node) => node.checkVisibility()).map((node) => node.innerText).join("\n-----\n"));
-  return { status: text.trim() ? "ok" : "fail", text: text.slice(0, TEXT_CAP), why: text.trim() ? undefined : "no visible text" };
+  const cap = item.max ?? TEXT_CAP;
+  return { status: text.trim() ? "ok" : "fail", text: text.slice(0, cap), truncated: text.length > cap || undefined, why: text.trim() ? undefined : "no visible text" };
 }
 
 // Runs every step; a failed step is recorded and the next one runs.
