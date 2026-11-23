@@ -333,7 +333,9 @@ def matching_word(command: str) -> str | None:
     # Globs, variables and short names in the arguments of programs that never
     # run an argument cannot reach the script (#3759); any other command is
     # read word by word as before.
-    if only_inert_programs(raw):
+    # Only for ASCII text: NFKC makes fullwidth quotes real ones and PowerShell
+    # closes on further quote marks, so the words could differ (#3982 review).
+    if command.isascii() and only_inert_programs(raw):
         return None
     return reaching_word(text, raw)
 
@@ -390,6 +392,8 @@ SED_PRINT = re.compile(
     r"(?:^|(?<=[\s;&|(]))sed[ \t]+-n[ \t]+'\d+(?:,\d+)?p'(?=[\s;&|)]|$)"
 )
 SED_LINES = "\x00sed"
+# A literal file name only: a glob could expand to an option (#3982 review).
+SED_FILE = re.compile(r"[a-z0-9_./-]+")
 # Shell tokens: a quoted run, a separator, blanks, plain characters; a lone
 # quote never closes.
 # Tokens after each quoted run became `@`, which no program name holds, so a
@@ -405,7 +409,7 @@ def inert(words: list[str]) -> bool:
     name, after = words[0], words[1:2]
     if name == SED_LINES:
         return all(
-            PLAIN_WORD.fullmatch(word) and not word.startswith("-")
+            SED_FILE.fullmatch(word) and not word.startswith("-")
             for word in words[1:]
         )
     if not PROGRAM.fullmatch(name):

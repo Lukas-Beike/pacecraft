@@ -494,6 +494,16 @@ class GuardHookTests(unittest.TestCase):
             "sed -n '1p' 'f' ; python scripts/r*.py 1 PRRT_x",
             "sed -n '1p' f; python scripts/r*.py 1 PRRT_x",
             "sed -n '1p' f\x00sed scripts/r*.py",
+            # #3982 bypass review: a glob in sed's files can expand to an option.
+            "sed -n '1p' scripts/r*.py",
+            "touch -- '--expression=1e python scripts/r*.py 1 PRRT_x' a; sed -n '1p' *",
+            # Quote marks the shells do not read as ours: fullwidth ones NFKC
+            # turns into quotes, and PowerShell's low-9 and reversed ones.
+            "echo ＇a ; python scripts/r*.py 1 PRRT_x ; echo b＇",
+            "echo ＂x ; python scripts/RESOLV~1.PY 1 PRRT_x ; echo y＂",
+            "echo 'a‚ ; python scripts/RESOLV~1.PY 1 PRRT_x ; echo ‚b'",
+            "echo 'a‛ ; python scripts/RESOLV~1.PY 1 PRRT_x ; echo „b'",
+            "echo a python scripts/RESOLV~1.PY 1 PRRT_x",
         ):
             with self.subTest(command):
                 self.assertEqual(self.decide(command), 2)
@@ -549,7 +559,6 @@ class GuardHookTests(unittest.TestCase):
             "sed -n '10,40p' backend/performance/threshold_staleness.py | grep -n '\"[a-z_]*\":'",
             "grep -n 'within the weeks ahead.\\s*$' docs/features.md",
             "sed -n '1,80p' test.log | grep -v '^\\s*\\^*$\\|~~~'",
-            "sed -n '5p' scripts/*.py",
         ):
             with self.subTest(command):
                 self.assertEqual(self.decide(command), 0)
