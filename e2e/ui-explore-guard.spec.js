@@ -17,7 +17,8 @@ const PAGE = `<main>
   <button id="confirm" type="button" aria-label="Bestätigen">✓</button>
   <details><summary>Einstellungen werden geladen</summary><p>x</p></details>
   <p id="body">42 km</p>
-  <section class="panel active"><p id="load">Ernährung wird geladen…</p><p id="long">${"x".repeat(5000)}</p></section>
+  <section class="panel active"><p id="load">Ernährung wird geladen…</p><p id="long">${"x".repeat(5000)}</p>
+    <button type="button" disabled>Antwort wird geladen…</button></section>
 </main>
 <script>
   // A route renders at once, but its data line loads behind a text for 1.5 s (#3969).
@@ -64,16 +65,26 @@ test("a write from a plan step is aborted and fails the run; denied controls are
 test("go waits out a loading text line; wait and a longer text read are steps (#3969)", async ({ browser, baseURL }) => {
   const explorer = await load();
   const { context, page } = await testPage(explorer, browser, baseURL);
-  const plan = explorer.parsePlan({ steps: [{ go: "day" }, { text: "#load" }, { wait: 200 }, { wait: "#body" }, { wait: "#absent" }, { text: "#long" }, { text: "#long", max: 6000 }] });
+  const plan = explorer.parsePlan({ steps: [{ go: "day" }, { text: "#load" }, { wait: 200 }, { wait: "#body" }, { text: "#long" }, { text: "#long", max: 6000 }] });
   const steps = await explorer.runPlan(page, plan.steps);
+  // Ready once the line loaded; the button's own "wird geladen…" label is no loading line.
   expect(steps[0]).toMatchObject({ status: "ok" });
   expect(steps[0].ms).toBeGreaterThanOrEqual(1400);
+  expect(steps[0].ms).toBeLessThan(10000);
   expect(steps[1]).toMatchObject({ status: "ok", text: "1200 kcal" });
-  expect(steps.slice(2, 5).map((item) => item.status)).toEqual(["ok", "ok", "fail"]);
-  expect(steps[5]).toMatchObject({ truncated: true });
-  expect(steps[5].text).toHaveLength(4000);
-  expect(steps[6].text).toHaveLength(5000);
-  expect(steps[6].truncated).toBeUndefined();
+  expect(steps.slice(2, 4).map((item) => item.status)).toEqual(["ok", "ok"]);
+  expect(steps[4]).toMatchObject({ truncated: true });
+  expect(steps[4].text).toHaveLength(4000);
+  expect(steps[5].text).toHaveLength(5000);
+  expect(steps[5].truncated).toBeUndefined();
+  await context.close();
+});
+
+test("a wait for a control that never shows fails the step (#3969)", async ({ browser, baseURL }) => {
+  const explorer = await load();
+  const { context, page } = await testPage(explorer, browser, baseURL);
+  const steps = await explorer.runPlan(page, explorer.parsePlan({ steps: [{ wait: "#absent" }] }).steps);
+  expect(steps).toEqual([{ step: "wait #absent", status: "fail", why: "control missing" }]);
   await context.close();
 });
 

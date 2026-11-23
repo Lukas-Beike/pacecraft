@@ -37,7 +37,7 @@ const STEPS = {
   shot: (value) => typeof value === "string" && LABEL.test(value),
   text: named,
   // Milliseconds, or a CSS selector that must become visible (#3969).
-  wait: (value) => named(value) || (Number.isInteger(value) && value >= 100 && value <= SETTLE_MS),
+  wait: (value) => named(value) || (Number.isInteger(value) && value >= 100 && value <= WAIT_MAX),
 };
 const STEP_OPTIONS = {
   click: { nth: (value) => Number.isInteger(value) && value >= 0 },
@@ -48,6 +48,7 @@ const STEP_OPTIONS = {
 const TEXT_CAP = 4000;
 const TEXT_MAX = 50000;
 const SETTLE_MS = 15000;
+const WAIT_MAX = 15000;
 
 // Aborts every request except GET, HEAD (not the whole-data reads) and the app's own login and logout;
 // returns the aborted ones' list.
