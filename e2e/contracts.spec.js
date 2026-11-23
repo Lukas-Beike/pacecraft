@@ -534,9 +534,14 @@ test("fresh service worker keeps the current shell available offline", async ({ 
 });
 
 test("plan overview deep link focuses and reveals today after loading", { tag: "@responsive" }, async ({ page }) => {
+  // Without a connected source the calendar is one empty state (#3936 G-13); the week needs one.
+  const bootstrap = fixture.get("/api/bootstrap");
+  const garmin = bootstrap.garmin;
+  bootstrap.garmin = { ...garmin, configured: true };
   await page.goto("/#plan/overview");
   await expect(page.locator("#appShell")).toBeVisible();
   await expect.poll(() => page.evaluate(() => state.loadPromise === null && state.loadedAreas.has("plan"))).toBe(true);
+  bootstrap.garmin = garmin;
   const today = page.locator(".planned-day.is-today");
   await expect(today).toHaveCount(1);
   await expect(today).toBeInViewport();

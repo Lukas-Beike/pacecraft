@@ -116,3 +116,18 @@ test("@responsive a failed equipment read offers a retry", async ({ page }) => {
   await expect(gear.locator(".equipment-tabs")).toBeVisible();
   await expect(gear.locator(".error-state")).toHaveCount(0);
 });
+
+test("@responsive an empty calendar without a source is one empty state with the next step (#3936 G-13)", async ({ page }) => {
+  await page.goto("/#plan/overview");
+  await expect(page.locator("#appShell")).toBeVisible();
+  await waitForSettledState(page);
+  const connected = await page.evaluate(() => Boolean(AppState.state.data?.garmin?.configured || AppState.state.data?.wahoo?.connected));
+  test.skip(connected, "the fixture has a source");
+  await page.evaluate(() => { AppState.state.data.training_calendar = []; plannedRenderSnapshot = null; renderPlanned(AppState.state.data.training_calendar); });
+  const card = page.locator("#plannedCalendar .empty-state");
+  await expect(card).toContainText("Noch keine Aktivitäten");
+  await expect(card.getByRole("link", { name: "Datenquelle verbinden" })).toHaveAttribute("href", "#more/connections");
+  await expect(page.locator(".planned-sport-filter, .planned-view-switch, .planned-week")).toHaveCount(0);
+  await page.evaluate(() => { AppState.state.data.garmin = { ...AppState.state.data.garmin, configured: true }; plannedRenderSnapshot = null; renderPlanned([]); });
+  await expect(page.locator(".planned-week")).toHaveCount(1);
+});

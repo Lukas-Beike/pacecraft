@@ -3013,6 +3013,13 @@ function appendPlannedWeatherHint(root, { firstWeekKey, todayKey, days, planning
   if (!upcomingDays.some((dateKey) => plannedWeatherLabel(plannedDayWeather(planningContextByDate.get(dateKey) || {}, dateKey)))) root.append(plannedWeatherHint());
 }
 
+// Nothing planned or done and no source connected: one empty state with the next step instead of seven
+// empty days under a week switch, filter and paging (#3936 G-13).
+function plannedNoSourceState(entries) {
+  if (entries.length || state.data?.garmin?.configured || state.data?.wahoo?.connected) return null;
+  return createEmptyState("Noch keine Aktivitäten", "Verbinde Garmin oder Wahoo, dann erscheinen deine Einheiten hier.", h("a", { className: "secondary-button", href: "#more/connections" }, "Datenquelle verbinden"));
+}
+
 function renderPlanned(trainingCalendar) {
   const root = $("#plannedCalendar");
   if (!root) return;
@@ -3074,6 +3081,8 @@ function renderPlanned(trainingCalendar) {
   });
 
   appendPlannedWeatherHint(root, { firstWeekKey, todayKey, days: (pastWeeks + futureWeeks + 1) * 7, planningContextByDate });
+  const noSource = plannedNoSourceState(entries);
+  if (noSource) { root.append(noSource); return; }
   const view = {
     calendarEventsByDate: plannedEventsByDate(todayKey),
     leftoversByWeek: plannedLeftoversByWeek(trainingCalendar, currentWeekKey, lastWeekKey),
