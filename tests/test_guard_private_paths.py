@@ -173,6 +173,8 @@ class GuardPrivatePathsTests(unittest.TestCase):
             f"python scripts/prod_logs.py --password-file {posix} $(cat -- --password-file {posix} )",
             f"python scripts/prod_logs.py --password-file {posix} `cat -- --password-file {posix} `",
             f"python scripts/prod_logs.py --password-file {posix} <(cat -- --password-file {posix} )",
+            f'python scripts/prod_logs.py --password-file "{secret}" (Get-Content -- --password-file "{secret}" )',
+            f'python scripts/prod_logs.py --password-file "{secret}" @(gc --password-file "{secret}" )',
             f"cat x \\\\\npython scripts/prod_logs.py --password-file {posix}",
         ):
             with self.subTest(command=command):
