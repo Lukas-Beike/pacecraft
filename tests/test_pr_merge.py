@@ -414,6 +414,9 @@ class PrMergeTests(unittest.TestCase):
         status = [
             {"author": {"login": "gitar-bot"}, "body": "Reviewing your code"},
             {"author": {"login": "sonarqubecloud"}, "body": "Quality Gate passed"},
+            # #4064: the command that asks Gitar for a review asks nothing here.
+            {"author": {"login": "athlete"}, "body": "gitar review"},
+            {"author": {"login": "lane"}, "body": " Gitar Review\n"},
         ]
         bots = view(
             comments=status, reviews=[{"author": {"login": "gitar-bot"}}], **armed
@@ -428,12 +431,19 @@ class PrMergeTests(unittest.TestCase):
         person = view(
             comments=[{"author": {"login": "athlete"}, "body": "wait"}], **armed
         )
+        more_than_trigger = view(
+            comments=[
+                {"author": {"login": "athlete"}, "body": "gitar review, then fix"}
+            ],
+            **armed,
+        )
         blocking = view(
             reviews=[{"author": {"login": "gitar-bot"}, "state": "CHANGES_REQUESTED"}],
             **armed,
         )
         for views, threads, more in (
             ([view(), person], 0, False),
+            ([view(), more_than_trigger], 0, False),
             ([view(), blocking], 0, False),
             ([view(), view(**armed)], [0, 1], False),  # arming check, then the poll
         ):
