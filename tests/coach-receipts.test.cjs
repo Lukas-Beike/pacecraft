@@ -23,6 +23,15 @@ test("a Coach change to equipment makes the status strip read it again, a failed
   assert.equal(invalidated.length, 1, "#2809");
 });
 
+test("a full resync that already runs reads as running, not as a new request", () => {
+  const context = extractFunctions("coach.js", RECEIPT_TOOLS, { state: {}, toast() {} });
+  const title = (result) => context.commandReceipt({ tool: "start_provider_refresh", result }).title;
+  // #3960: a second start returns the run in progress and starts nothing.
+  assert.equal(title({ ok: true, status: "already_running", operation_id: "op-1" }), "Datenabruf läuft bereits");
+  assert.equal(title({ ok: true, status: "started", operation_id: "op-2" }), "Datenabruf beauftragt");
+  assert.equal(title({ ok: true, status: "completed" }), "Daten aktualisiert");
+});
+
 test("a repaired planning attempt shows the successful result without a red card", () => {
   const cards = render([
     { tool: "apply_training_patch", resolved: true, result: { ok: false, reason: "request_scope" } },

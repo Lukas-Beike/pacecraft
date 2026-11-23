@@ -47,6 +47,15 @@ def coach_failure_lines(
     return "\n".join(lines)
 
 
+# How a provider refresh ended; a full resync that already runs started
+# nothing new (#3960).
+_REFRESH_LABELS = {
+    ("completed", False): "Daten aktualisiert",
+    ("completed", True): "Daten teilweise aktualisiert",
+    ("already_running", False): "Datenabruf läuft bereits",
+}
+
+
 def coach_effect_label(item: dict[str, Any]) -> str:
     result = item.get("result") or {}
     if result.get("status") == "approval_required":
@@ -60,14 +69,9 @@ def coach_effect_label(item: dict[str, Any]) -> str:
     }:
         return "Lokale Änderung zurückgenommen"
     label = OPERATION_LABELS.get(str(item.get("tool") or ""), "Lokale Aktion")
-    if (
-        item.get("tool") == "start_provider_refresh"
-        and result.get("status") == "completed"
-    ):
-        label = (
-            "Daten teilweise aktualisiert"
-            if result.get("partial")
-            else "Daten aktualisiert"
+    if item.get("tool") == "start_provider_refresh":
+        label = _REFRESH_LABELS.get(
+            (str(result.get("status") or ""), bool(result.get("partial"))), label
         )
     # A rule applied to earlier sessions or a product clean-up names its
     # ``count`` of records (#3957).

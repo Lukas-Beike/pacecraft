@@ -954,6 +954,8 @@ function syncJobReceipt(job) {
 function commandReceiptTitle(entry, result, failed, queued) {
   if (failed) return "Coach-Aktion fehlgeschlagen";
   if (entry.tool === "start_provider_refresh" && result.status === "completed") return "Daten aktualisiert";
+  // A full resync that already runs started nothing new (#3960).
+  if (entry.tool === "start_provider_refresh" && result.status === "already_running") return "Datenabruf läuft bereits";
   if (COACH_RECEIPT_LABELS[entry.tool]) return COACH_RECEIPT_LABELS[entry.tool];
   return queued ? "Synchronisierung beauftragt" : "Informationen geladen";
 }
