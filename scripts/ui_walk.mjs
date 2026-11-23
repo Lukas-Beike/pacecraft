@@ -310,7 +310,7 @@ export const STEPS = [
   // The plan choice shows only with an active training plan (#4054).
   { view: "plan", name: "Bibliothek: Einplanen, Trainingsplan", covers: "#4054 Einplanen plan choice", pre: [tab("plan", "library")], opens: ["#library details.library-sport > summary", '#library .library-card .planned-activity-actions .secondary-button[aria-expanded="false"]'], ready: "#library .library-card .library-plan-field:not([hidden]) select", kind: "text", optional: true, post: [tab("plan", "overview")] },
   // Read-only: the walk checks that the Pläne tab shows "+ Plan" and its list, it opens no form (#3950, #4133).
-  { view: "plan", name: "Pläne: Plan anlegen", covers: "#4133 Pläne tab", since: "2.2.23", pre: [tab("plan", "plans")], ready: "#plans .library-toolbar .secondary-button", kind: "text", post: [tab("plan", "overview")] },
+  { view: "plan", name: "Pläne: Plan anlegen", covers: "#4133 Pläne tab", since: "2.2.24", pre: [tab("plan", "plans")], ready: "#plans .library-toolbar .secondary-button", kind: "text", post: [tab("plan", "overview")] },
   // Only a unit with a Garmin copy offers "Aus Garmin entfernen" and the fixture sends nothing to Garmin, so the step is optional; it is never pressed (#4022).
   { view: "plan", name: "Kalender: Aus Garmin entfernen", covers: "#4022 Garmin removal", each: PLANNED, ...LATER, ready: ".planned-entry[open] .planned-garmin-remove", kind: "text", optional: true },
   // Only a competition with a sync conflict shows its choices and the fixture holds none, so the step is optional; neither is pressed (#4021).
