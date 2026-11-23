@@ -80,7 +80,8 @@ def app_url(url: str | None, url_file: str | None) -> str:
     if url_file is None:
         return url or ""
     try:
-        lines = scratch_path(url_file).read_text(encoding="utf-8").strip().splitlines()
+        # utf-8-sig: a byte-order mark (PowerShell's Out-File) is dropped, as in Node.
+        lines = scratch_path(url_file).read_text(encoding="utf-8-sig").strip().splitlines()
     except (OSError, UnicodeDecodeError) as exc:
         raise ProdError("cannot read --url-file") from exc
     if len(lines) != 1 or not lines[0].strip():

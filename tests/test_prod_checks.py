@@ -1097,6 +1097,9 @@ class ProdChecksTests(unittest.TestCase):
             self.assertEqual(code, 2)
             self.assertIn(why, text)
             self.assertNotIn(self.url, text)
+        # A byte-order mark is dropped, as in the Node scripts (Gitar on #4127).
+        url_file.write_text(f"﻿{self.url}\r\n", encoding="utf-8")
+        self.assertEqual(prod_client.app_url(None, str(url_file)), self.url)
         # A file that is no UTF-8 text fails like any unreadable one.
         url_file.write_bytes(self.url.encode("utf-16"))
         code, text = self.run_main(prod_guards, "--url-file", str(url_file), *secret)
