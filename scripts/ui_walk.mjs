@@ -101,7 +101,15 @@ export function baseUrl(text) {
 export function appUrl(values) {
   if (Boolean(values.url) === Boolean(values["url-file"])) throw new Error("give exactly one of --url and --url-file");
   if (values.url) return baseUrl(values.url);
-  const lines = fs.readFileSync(scratchPath(values["url-file"]), "utf8").trim().split(/\r?\n/);
+  const file = scratchPath(values["url-file"]);
+  let text;
+  try {
+    text = fs.readFileSync(file, "utf8");
+  } catch {
+    // A fixed message: the callers map an fs error to their own wording (secret, out-dir).
+    throw new Error("cannot read --url-file");
+  }
+  const lines = text.trim().split(/\r?\n/);
   if (lines.length !== 1 || !lines[0].trim()) throw new Error("--url-file must hold one URL");
   return baseUrl(lines[0].trim());
 }

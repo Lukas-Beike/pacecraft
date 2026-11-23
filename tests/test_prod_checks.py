@@ -1097,6 +1097,10 @@ class ProdChecksTests(unittest.TestCase):
             self.assertEqual(code, 2)
             self.assertIn(why, text)
             self.assertNotIn(self.url, text)
+        # A file that is no UTF-8 text fails like any unreadable one.
+        url_file.write_bytes(self.url.encode("utf-16"))
+        code, text = self.run_main(prod_guards, "--url-file", str(url_file), *secret)
+        self.assertEqual((code, "cannot read --url-file" in text), (2, True))
         # A file outside the scratchpad is refused; --url and --url-file exclude each other.
         with self.assertRaises(prod_client.ProdError):
             prod_client.app_url(None, str(Path(prod_client.ROOT) / "app-url.txt"))

@@ -81,7 +81,7 @@ def app_url(url: str | None, url_file: str | None) -> str:
         return url or ""
     try:
         lines = scratch_path(url_file).read_text(encoding="utf-8").strip().splitlines()
-    except OSError as exc:
+    except (OSError, UnicodeDecodeError) as exc:
         raise ProdError("cannot read --url-file") from exc
     if len(lines) != 1 or not lines[0].strip():
         raise ProdError("--url-file must hold one URL")

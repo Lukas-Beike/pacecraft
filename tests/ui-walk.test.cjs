@@ -72,6 +72,7 @@ test("ui walk keeps files in the temp directory and needs an http(s) address", a
       assert.throws(() => walk.appUrl({ "url-file": file }), (error) => /one URL/.test(error.message) && !error.message.includes(address));
     }
     assert.throws(() => walk.appUrl({ "url-file": path.join(__dirname, "..", "app-url.txt") }), /system temp directory/);
+    assert.throws(() => walk.appUrl({ "url-file": path.join(dir, "missing.txt") }), (error) => error.message === "cannot read --url-file" && !error.syscall);
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }
