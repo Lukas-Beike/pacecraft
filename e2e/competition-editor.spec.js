@@ -51,7 +51,7 @@ test("@responsive an upcoming competition is added, edited and deleted at once w
   await openSeason(page);
   const date = inDays(30);
   await addCompetition(page, { name: "E2E Stadtlauf", date, time: "09:30", sport: "Laufen", priority: "A", distance: "10", duration: "45:00" });
-  await expect(page.locator("#toast")).toContainText("Wettkampf gespeichert.");
+  await expect(page.locator("#competitionReceipt")).toContainText("Wettkampf gespeichert.");
   const created = card(page, "E2E Stadtlauf");
   await expect(created).toHaveCount(1);
   await expect(created.locator("summary")).toContainText("Laufen · 10,0 km · Priorität A");
@@ -84,11 +84,11 @@ test("@responsive an upcoming competition is added, edited and deleted at once w
   await removeFromDialog(page);
   await expect(dialog).toBeHidden();
   await expect(card(page, "E2E Stadtlauf")).toHaveCount(0);
-  await expect(page.locator("#toast")).toContainText("Wettkampf gelöscht.");
+  await expect(page.locator("#competitionReceipt")).toContainText("Wettkampf gelöscht.");
 
   // The receipt takes the deletion back.
-  await page.locator("#toast .message-undo").click();
-  await expect(page.locator("#toast")).toContainText("Zurückgenommen.");
+  await page.locator("#competitionReceipt .message-undo").click();
+  await expect(page.locator("#competitionReceipt")).toContainText("Zurückgenommen.");
   await expect(card(page, "E2E Stadtlauf 10 km")).toHaveCount(1);
   await card(page, "E2E Stadtlauf 10 km").getByRole("button", { name: "Wettkampf bearbeiten" }).click();
   await removeFromDialog(page);

@@ -3455,9 +3455,12 @@ function fillCompetitionDialog(competition) {
   for (const button of $("#competitionDialog").querySelectorAll("button")) button.disabled = false;
 }
 
-// The receipt stays in the toast with "Rückgängig" a little longer than a plain message.
+// The receipt is one line above the competition list, with "Rückgängig" while the change can be taken back (#3934 G-04).
 function showCompetitionReceipt(text, change) {
-  toast(text);
+  const line = $("#competitionReceipt");
+  if (!line) return;
+  line.hidden = false;
+  line.replaceChildren(`${text} `);
   if (!change?.id) return;
   const undo = h("button", { type: "button", className: "message-undo" }, "Rückgängig");
   undo.addEventListener("click", async () => {
@@ -3465,15 +3468,13 @@ function showCompetitionReceipt(text, change) {
     try {
       await api("/api/change-history/undo", { method: "POST", body: JSON.stringify({ change_id: change.id, expected_current_hash: change.after_hash }) });
       await load("/api/bootstrap?local=1", ["profile"]);
-      toast("Zurückgenommen.");
+      line.replaceChildren("Zurückgenommen.");
     } catch (error) {
       undo.disabled = false;
-      toast(error.message, true);
+      line.replaceChildren(`${error.message} `, undo);
     }
   });
-  $("#toast")?.append(undo);
-  clearTimeout(toast.timer);
-  toast.timer = setTimeout(hideToast, 10000);
+  line.append(undo);
 }
 
 async function sendCompetition(path, payload, button, status, receipt) {
