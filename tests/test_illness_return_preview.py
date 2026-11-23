@@ -253,6 +253,34 @@ class IllnessReturnPreviewTests(unittest.TestCase):
         self.assertEqual(2, self.service.enforced_return_stage())
         self.assertIsNotNone(self.service.latest_illness_pause())
 
+    def test_stage_zero_archives_only_inside_the_return_horizon(self) -> None:
+        # A session far ahead, flagged for weather, is eased as usual (Gitar, #3919).
+        from backend.planning import adaptive_preview_service
+
+        draft = self.draft("endurance", "2026-10-01", name="Grundlage")
+        state = {
+            "stage_zero_rest": False,
+            "illness_active": False,
+            "no_training": False,
+            "return_stage": 0,
+            "return_limited": False,
+            "calendar_limited": False,
+            "calendar_limit": None,
+            "weather_reason": "Hitze",
+            "limited": False,
+            "available_minutes": None,
+            "no_intensity_limited": False,
+        }
+        far = adaptive_preview_service._replacement(draft, "Hitze", state, 45)
+        self.assertFalse(far.get("archived"))
+        near = adaptive_preview_service._replacement(
+            draft,
+            "Hitze",
+            {**state, "return_limited": True, "stage_zero_rest": True},
+            45,
+        )
+        self.assertTrue(near["archived"])
+
     def test_unapplied_preview_does_not_move_the_stage(self) -> None:
         self.service.preview()
 

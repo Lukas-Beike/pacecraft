@@ -11,7 +11,12 @@ from backend.activities.hr_cap import (
     SOURCES,
     cap_table_text,
 )
-from backend.athlete.checkins import COMPLAINT_AREAS, COMPLAINT_SIDES, MAX_COMPLAINTS
+from backend.athlete.checkins import (
+    COMPLAINT_AREAS,
+    COMPLAINT_SIDES,
+    MAX_COMPLAINTS,
+    SYMPTOM_LABELS,
+)
 from backend.athlete.profile import BODY_FIELDS, COACH_READ_ONLY_FIELDS
 from backend.canonical.vocabulary import Sport
 from backend.db.repositories import NUTRIENT_COLUMNS
@@ -908,6 +913,12 @@ def build_structured_tool_schemas(
                                 },
                             },
                             "description": "Pain or niggles the athlete named in this message, one per body area and side (none for a midline area), severity 0-10 as stated; keep the words in pain. Never infer an area, side or severity the athlete did not give. A supplied list replaces the day's complaints; [] removes them. Omission keeps them.",
+                        },
+                        "symptoms": {
+                            "type": "array",
+                            "uniqueItems": True,
+                            "items": {"type": "string", "enum": list(SYMPTOM_LABELS)},
+                            "description": "Named in this message; [] clears.",
                         },
                         **{
                             field: {"type": "string", "maxLength": limit}

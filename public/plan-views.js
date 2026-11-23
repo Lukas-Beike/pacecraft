@@ -576,6 +576,8 @@ function plannedDayNotes(dayContext, competitions, dateKey, hasSession = false) 
 // both are answers for today, so a failed request shows its message.
 const infectionHintDismissed = new Set();
 const infectionHintReceipts = new Map();
+// The symptoms of the illness answer: ids as in `SYMPTOM_LABELS` in backend/athlete/checkins.py.
+const INFECTION_SYMPTOMS = Object.freeze([["schnupfen", "Schnupfen"], ["halsschmerzen", "Halsschmerzen"], ["husten", "Husten"], ["kopfschmerzen", "Kopfschmerzen"], ["fieber", "Fieber"], ["gliederschmerzen", "Gliederschmerzen"], ["muedigkeit", "Müdigkeit/Abgeschlagenheit"], ["brust_atemnot", "Druck auf der Brust/Atemnot"], ["magen_darm", "Magen-Darm"]]);
 
 // A "keine"/"nein" answer reports no complaint, as `reports_complaint` in backend/athlete/checkins.py.
 const NO_COMPLAINT_ANSWERS = new Set(["", "-", "keine", "kein", "nein", "nichts", "gesund", "none", "no", "n/a"]);
@@ -595,11 +597,14 @@ function infectionHintNote(hint, dateKey, ill) {
   const note = h("div", { className: "planned-day-context planned-day-health", dataset: { infectionHint: "" } }, h("p", null, text));
   const well = h("button", { type: "button", className: "secondary-button" }, "Mir geht's gut");
   const sick = h("button", { type: "button" }, "Ich bin krank");
-  const busy = (value) => { for (const button of [well, sick]) button.disabled = value; };
-  const answer = async (path, done) => {
+  const confirm = h("button", { type: "button" }, "Bestätigen");
+  const inputs = INFECTION_SYMPTOMS.map(([id]) => h("input", { type: "checkbox", value: id }));
+  const buttons = [well, sick, confirm, ...inputs];
+  const busy = (value) => { for (const button of buttons) button.disabled = value; };
+  const answer = async (path, done, extra = {}) => {
     busy(true);
     try {
-      await done(await api(path, { method: "POST", body: JSON.stringify({ date: dateKey }) }));
+      await done(await api(path, { method: "POST", body: JSON.stringify({ date: dateKey, ...extra }) }));
     } catch (error) {
       busy(false);
       if (!isSessionEndedError(error)) status.replaceChildren(error.message);
@@ -610,14 +615,21 @@ function infectionHintNote(hint, dateKey, ill) {
     note.remove();
     announcePlanChange("Infekt-Hinweis für heute ausgeblendet");
   }));
-  sick.addEventListener("click", () => answer("/api/infection-hint/ill", async (result) => {
+  confirm.addEventListener("click", () => answer("/api/infection-hint/ill", async (result) => {
     const receipt = { text: "Krankheit für heute gespeichert.", change: result.change };
     infectionHintReceipts.set(dateKey, receipt);
     showReceipt(receipt);
     await globalThis.load?.();
-  }));
+  }, { symptoms: inputs.filter((input) => input.checked).map((input) => input.value) }));
+  const actions = h("div", "coach-action-card-actions infection-hint-actions", well, sick);
+  // "Ich bin krank" expands the card into the symptom chips; "Bestätigen" saves the illness with them.
+  sick.addEventListener("click", () => {
+    const chips = INFECTION_SYMPTOMS.map(([, label], index) => h("label", "chip", inputs[index], h("span", null, label)));
+    actions.replaceChildren(h("div", "chip-group", ...chips), confirm);
+    inputs[0].focus();
+  });
   // Once today reports illness the question is answered; the receipt keeps its undo.
-  if (!ill) note.append(h("div", "coach-action-card-actions infection-hint-actions", well, sick));
+  if (!ill) note.append(actions);
   if (status.textContent || !ill) note.append(status);
   return note;
 }

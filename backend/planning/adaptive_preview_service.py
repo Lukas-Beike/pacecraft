@@ -106,6 +106,10 @@ def _approve_existing_pause(
     )
     if same_pause:
         illness_pause.update(start_date=start, end_date=end, approved=True)
+        illness_pause["symptoms_reported"] = bool(
+            previous_pause.get("symptoms_reported")
+            or illness_pause["symptoms_reported"]
+        )
         illness_pause["status"] = "approved"
     return illness_pause
 
@@ -232,7 +236,12 @@ def _change_state(
         calendar_limited,
         no_training,
     ) = _calendar_limits(draft, calendar_events, duration)
+    return_limited, stage_zero_rest = _return_limited(
+        draft, draft_date, today_date, return_stage
+    )
     return {
+        # Stage 0 rests only inside the return horizon (Gitar, #3919).
+        "stage_zero_rest": stage_zero_rest,
         "illness_active": bool(
             illness_pause
             and not illness_pause.get("approved")
@@ -258,22 +267,24 @@ def _change_state(
         "no_intensity_limited": no_intensity_limited,
         "no_training": no_training,
         "calendar_limited": calendar_limited,
-        "return_limited": _return_limited(draft, draft_date, today_date, return_stage),
+        "return_limited": return_limited,
         "return_stage": return_stage,
     }
 
 
 def _return_limited(
     draft: dict[str, Any], draft_date: str, today_date: date, stage: int | None
-) -> bool:
-    """A session above the return stage inside the stage horizon."""
+) -> tuple[bool, bool]:
+    """A session above the return stage inside the stage horizon, and whether
+    that limit is the rest of stage 0."""
     if stage is None:
-        return False
+        return False, False
     last = today_date + timedelta(days=illness_return.RETURN_HORIZON_DAYS - 1)
-    return (
+    limited = (
         draft_date <= last.isoformat()
         and plan_checks.session_level(draft) > illness_return.STAGE_MAX_LEVEL[stage]
     )
+    return limited, limited and stage == 0
 
 
 def _without_focus(replacement: dict[str, Any]) -> dict[str, Any]:
@@ -299,7 +310,7 @@ def _replacement(
     ]
     if state["illness_active"]:
         replacement = adaptive.illness_pause_replacement(draft, reason)
-    elif state["no_training"]:
+    elif state["no_training"] or state["stage_zero_rest"]:
         replacement = {
             **draft,
             "archived": True,
@@ -567,7 +578,10 @@ class AdaptiveReplanPreviewService:
         """The running return after an approved pause, from stored approvals only."""
         pause = self.latest_illness_pause()
         return illness_return.current_state(
-            pause[1] if pause else None, self.latest_illness_return(), self._today()
+            pause[1] if pause else None,
+            self.latest_illness_return(),
+            self._today(),
+            self._checkin_service.list(30) if pause else (),
         )
 
     def enforced_return_stage(self) -> int | None:
@@ -582,7 +596,9 @@ class AdaptiveReplanPreviewService:
         if state is None or illness_return.enforced_stage(state) is None:
             return None
         overnight = self._overnight() if self._overnight else {}
-        decision = illness_return.decide(state, today, feedback, overnight)
+        decision = illness_return.decide(
+            state, today, feedback, overnight, self._checkin_service.list(30)
+        )
         after = illness_return.state_after(state, decision, today)
         stage = decision["stage"]
         return {

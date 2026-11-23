@@ -136,7 +136,7 @@ test("the infection hint names only each unusual value and its usual range, and 
 function hintNote({ fail = null } = {}) {
   const calls = [];
   const announced = [];
-  const helpers = extractFunctions("plan-views.js", ["calendarMetricNumber", "infectionHintText", "infectionHintDismissed", "infectionHintReceipts", "infectionHintNote", "plannedMoveUndo"], {
+  const helpers = extractFunctions("plan-views.js", ["calendarMetricNumber", "infectionHintText", "infectionHintDismissed", "infectionHintReceipts", "INFECTION_SYMPTOMS", "infectionHintNote", "plannedMoveUndo"], {
     document: fakeDocument(),
     AppFormat: { number: (value, { digits }) => value.toFixed(digits).replace(".", ",") },
     api: async (path, options) => {
@@ -183,11 +183,35 @@ test("'Mir geht's gut' hides the hint for that day only", async () => {
   assert.notEqual(infectionHintNote(hint, "2026-11-22", false), null);
 });
 
+const symptomInputs = (note) => note.descendants().filter((node) => node.tag === "input");
+
+test("'Ich bin krank' expands the card into nine symptom chips and 'Bestätigen' without saving yet", async () => {
+  const { infectionHintNote, hint, calls } = hintNote();
+  const note = infectionHintNote(hint, "2026-11-21", false);
+  await buttons(note)[1].fire("click");
+  assert.deepEqual(calls, []);
+  assert.deepEqual(symptomInputs(note).map((input) => input.value), ["schnupfen", "halsschmerzen", "husten", "kopfschmerzen", "fieber", "gliederschmerzen", "muedigkeit", "brust_atemnot", "magen_darm"]);
+  assert.equal(textOf(note.children[1]), "SchnupfenHalsschmerzenHustenKopfschmerzenFieberGliederschmerzenMüdigkeit/AbgeschlagenheitDruck auf der Brust/AtemnotMagen-DarmBestätigen");
+  assert.deepEqual(buttons(note).map((button) => textOf(button)), ["Bestätigen"]);
+});
+
+test("'Bestätigen' saves the selected symptoms, and none selected saves an empty list", async () => {
+  for (const [picked, expected] of [[[1, 4], ["halsschmerzen", "fieber"]], [[], []]]) {
+    const { infectionHintNote, hint, calls } = hintNote();
+    const note = infectionHintNote(hint, "2026-11-21", false);
+    await buttons(note)[1].fire("click");
+    for (const index of picked) symptomInputs(note)[index].checked = true;
+    await buttons(note)[0].fire("click");
+    assert.deepEqual(calls, [["/api/infection-hint/ill", "POST", JSON.stringify({ date: "2026-11-21", symptoms: expected })], ["load"]]);
+  }
+});
+
 test("'Ich bin krank' shows the receipt with undo, and undo takes it back", async () => {
   const { infectionHintNote, hint, calls } = hintNote();
   const note = infectionHintNote(hint, "2026-11-21", false);
   await buttons(note)[1].fire("click");
-  assert.deepEqual(calls, [["/api/infection-hint/ill", "POST", "{\"date\":\"2026-11-21\"}"], ["load"]]);
+  await buttons(note)[0].fire("click");
+  assert.deepEqual(calls, [["/api/infection-hint/ill", "POST", "{\"date\":\"2026-11-21\",\"symptoms\":[]}"], ["load"]]);
   // After the reload the day reports illness: the receipt and its undo stay.
   const ill = infectionHintNote(hint, "2026-11-21", true);
   const [undo] = buttons(ill);
@@ -203,7 +227,8 @@ test("offline, an answer is not queued: the note stays and shows the network mes
   const note = infectionHintNote(hint, "2026-11-21", false);
   const [well, sick] = buttons(note);
   await sick.fire("click");
-  assert.deepEqual(calls, [["/api/infection-hint/ill", "POST", "{\"date\":\"2026-11-21\"}"]]);
+  await buttons(note)[0].fire("click");
+  assert.deepEqual(calls, [["/api/infection-hint/ill", "POST", "{\"date\":\"2026-11-21\",\"symptoms\":[]}"]]);
   assert.equal(textOf(note.children[2]), "Keine Verbindung zum Server.");
   assert.equal(well.disabled || sick.disabled, false);
   await well.fire("click");

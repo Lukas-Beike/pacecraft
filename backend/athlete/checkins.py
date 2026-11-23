@@ -15,6 +15,20 @@ ENTITY_TYPE = "checkin"
 TAGS_KEY = "checkin_tags:"
 DAY_STATUS_KEY = "checkin_day_status:"
 COMPLAINTS_KEY = "checkin_complaints:"
+# The symptoms the athlete selected with the illness report (#3919).
+SYMPTOMS_KEY = "checkin_symptoms:"
+# Stable ids with their German labels; any selected symptom means rest only.
+SYMPTOM_LABELS = {
+    "schnupfen": "Schnupfen",
+    "halsschmerzen": "Halsschmerzen",
+    "husten": "Husten",
+    "kopfschmerzen": "Kopfschmerzen",
+    "fieber": "Fieber",
+    "gliederschmerzen": "Gliederschmerzen",
+    "muedigkeit": "Müdigkeit/Abgeschlagenheit",
+    "brust_atemnot": "Druck auf der Brust/Atemnot",
+    "magen_darm": "Magen-Darm",
+}
 # The day the athlete answered the infection hint (M14) with "Mir geht's gut"
 # (#3821); the hint stays hidden on that day only.
 INFECTION_HINT_DISMISSED_KEY = "infection_hint_dismissed"
@@ -58,6 +72,15 @@ def reports_complaint(text: Any) -> bool:
     """Whether a pain or illness answer reports a complaint, not "keine"/"nein"."""
     answer = str(text or "").strip().strip(".!,;:").strip().casefold()
     return answer not in NO_COMPLAINT
+
+
+def normalize_symptoms(value: Any) -> list[str]:
+    """The selected symptom ids, known ones only, once each, in list order."""
+    if not isinstance(value, list) or any(
+        not isinstance(item, str) or item not in SYMPTOM_LABELS for item in value
+    ):
+        raise AppError(400, "Symptome müssen aus der Liste bekannter Symptome stammen.")
+    return [key for key in SYMPTOM_LABELS if key in value]
 
 
 CHECKIN_TEXT_LIMITS = {
@@ -203,9 +226,8 @@ def recurring_complaints(
     ]
 
 
-def normalize_checkin(value: Any, *, today: date) -> dict[str, Any]:
-    if not isinstance(value, dict):
-        raise AppError(400, "Das lokale Feedback muss ein Objekt sein.")
+def _checkin_day(value: Mapping[str, Any], today: date) -> str:
+    """The check-in date, defaulting to today; a bad or future date is refused."""
     raw_date = str(value.get("checkin_date") or today.isoformat()).strip()
     try:
         checkin_date = date.fromisoformat(raw_date).isoformat()
@@ -213,7 +235,13 @@ def normalize_checkin(value: Any, *, today: date) -> dict[str, Any]:
         raise AppError(400, "Das Datum des lokalen Feedbacks ist ungültig.") from exc
     if checkin_date > today.isoformat():
         raise AppError(400, "Ein Tages-Check-in kann nicht in der Zukunft liegen.")
-    result: dict[str, Any] = {"checkin_date": checkin_date}
+    return checkin_date
+
+
+def normalize_checkin(value: Any, *, today: date) -> dict[str, Any]:
+    if not isinstance(value, dict):
+        raise AppError(400, "Das lokale Feedback muss ein Objekt sein.")
+    result: dict[str, Any] = {"checkin_date": _checkin_day(value, today)}
     if "day_status" in value:
         if value["day_status"] not in CHECKIN_DAY_STATUSES:
             raise AppError(
@@ -232,8 +260,12 @@ def normalize_checkin(value: Any, *, today: date) -> dict[str, Any]:
                 400, "Tags benötigen ausdrücklich bestätigte Ja-/Nein-Angaben."
             )
         result["tag_answers"] = dict(answers)
-    if "complaints" in value:
-        result["complaints"] = normalize_complaints(value["complaints"])
+    for field, normalize in (
+        ("complaints", normalize_complaints),
+        ("symptoms", normalize_symptoms),
+    ):
+        if field in value:
+            result[field] = normalize(value[field])
     for field in CHECKIN_SCORE_FIELDS:
         result[field] = bounded_score(value.get(field))
     result["available_minutes"] = bounded_minutes(value.get("available_minutes"))
@@ -270,6 +302,7 @@ class CheckinService:
             (TAGS_KEY, "tag_answers"),
             (DAY_STATUS_KEY, "day_status"),
             (COMPLAINTS_KEY, "complaints"),
+            (SYMPTOMS_KEY, "symptoms"),
         ):
             stored = db.execute(
                 "SELECT value FROM kv WHERE key=?", (key + row["checkin_date"],)
@@ -307,6 +340,9 @@ class CheckinService:
         if "complaints" in checkin:
             # An empty list removes the day's complaints.
             self._set_kv(db, COMPLAINTS_KEY + day, checkin["complaints"] or None)
+        if "symptoms" in checkin:
+            # An empty list removes the day's symptoms.
+            self._set_kv(db, SYMPTOMS_KEY + day, checkin["symptoms"] or None)
         after = self._stored(db, day)
         record = change_history.record_change(
             db, ENTITY_TYPE, day, "update" if before else "create", before, after
@@ -316,11 +352,17 @@ class CheckinService:
         return {field: record[field] for field in change_history.UNDO_REFERENCE_FIELDS}
 
     def add_illness_in_transaction(
-        self, db: Any, illness: str, marker: str = "", today: date | None = None
+        self,
+        db: Any,
+        illness: str,
+        marker: str = "",
+        today: date | None = None,
+        symptoms: Any = None,
     ) -> dict[str, str] | None:
         """Add an illness text and note marker to today's check-in, with history.
 
         Existing answers stay; the new text joins an existing illness text.
+        ``symptoms`` replaces the day's selected symptoms when given.
         Returns the undo reference, or None when nothing changed.
         """
         today = today or self._today()
@@ -336,22 +378,29 @@ class CheckinService:
         if marker and marker not in notes:
             notes = f"{notes} · {marker}".strip(" ·")
         checkin = normalize_checkin(
-            {**existing, "checkin_date": day, "illness": combined, "notes": notes},
+            {
+                **existing,
+                "checkin_date": day,
+                "illness": combined,
+                "notes": notes,
+                **({} if symptoms is None else {"symptoms": symptoms}),
+            },
             today=today,
         )
         return self._write(db, checkin)
 
-    def report_illness(self, day: Any) -> dict[str, Any]:
+    def report_illness(self, day: Any, symptoms: Any = None) -> dict[str, Any]:
         """Record illness for today from the answer "Ich bin krank" (#3821).
 
         The same check-in record a check-in or Coach turn writes, with its undo
         reference; planning then pauses as for any reported illness. ``day`` is
-        the day of the answered note; only today is written.
+        the day of the answered note; only today is written. ``symptoms`` is the
+        athlete's selection (ids of ``SYMPTOM_LABELS``), stored with the check-in.
         """
         today = self._answer_day(day)
         with self._manager.unit_of_work() as db:
             change = self.add_illness_in_transaction(
-                db, INFECTION_HINT_ILLNESS, today=today
+                db, INFECTION_HINT_ILLNESS, today=today, symptoms=symptoms
             )
         return self._saved(today.isoformat(), change)
 
@@ -429,6 +478,7 @@ class CheckinService:
             self._set_kv(db, DAY_STATUS_KEY + entity_id, None)
             self._set_kv(db, TAGS_KEY + entity_id, None)
             self._set_kv(db, COMPLAINTS_KEY + entity_id, None)
+            self._set_kv(db, SYMPTOMS_KEY + entity_id, None)
             return None
         restored = {
             **dict.fromkeys(CHECKIN_SCORE_FIELDS + ("available_minutes",)),
@@ -443,6 +493,7 @@ class CheckinService:
                 self._set_kv(db, key + entity_id, target[field])
         # Complaints the target day did not have are removed with the undo.
         self._set_kv(db, COMPLAINTS_KEY + entity_id, target.get("complaints") or None)
+        self._set_kv(db, SYMPTOMS_KEY + entity_id, target.get("symptoms") or None)
         return self._stored(db, entity_id)
 
     def save(self, value: Any) -> dict[str, Any]:

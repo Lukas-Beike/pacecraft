@@ -7,7 +7,8 @@ a normal body feel, the overnight HRV is not below the athlete's usual range by
 more than half its width (the M14 margin, #3920) and
 the resting heart rate is at most 5 bpm above the usual value. A poor sign holds
 the stage, a new complaint steps back one stage. A missing overnight value leaves
-the check-in alone to decide. A step is a previewed local proposal; the stage
+the check-in alone to decide. With a symptom selected (#3919) the return waits at
+stage 0, rest only, until two later check-ins have none. A step is a previewed local proposal; the stage
 state lives in the payload of the applied adjustment. No I/O.
 """
 
@@ -37,27 +38,47 @@ HISTORY_LIMIT: Final = 20
 CHECKIN_SOURCE: Final = "Check-in (lokal)"
 GARMIN_SOURCE: Final = provider_label(ProviderId.GARMIN, SourceView.DAILY_HEALTH)
 # Highest session level a stage allows: 0 easy, 1 moderate, 2 hard (normal plan).
-STAGE_MAX_LEVEL: Final = {1: 0, 2: 1, 3: 2}
+STAGE_MAX_LEVEL: Final = {0: -1, 1: 0, 2: 1, 3: 2}
+# Stage 0 (a symptom selected): rest only until this many later
+# check-ins have none (Ruuskanen et al. 2022 on rest after febrile illness).
+SYMPTOM_FREE_CHECKINS: Final = 2
 STAGE_LABELS: Final = {
+    0: "nur Ruhe",
     1: "nur lockere Einheiten",
     2: "lockere und moderate Einheiten",
     3: "normaler Plan",
 }
 
 
-def initial_state(pause: Mapping[str, Any]) -> dict[str, Any]:
-    """Stage 1 from the day after the pause window."""
+def initial_state(
+    pause: Mapping[str, Any], checkins: Sequence[Mapping[str, Any]] = ()
+) -> dict[str, Any]:
+    """Stage 1 from the day after the pause window; stage 0 (rest only) after a symptom.
+
+    A symptom counts when the pause approval carried one or a check-in from the
+    pause start on selected one.
+    """
     end = date.fromisoformat(str(pause["end_date"]))
-    return {
+    start = str(pause["start_date"])
+    state = {
         "pause_end": end.isoformat(),
         "stage": 1,
         "since": (end + timedelta(days=1)).isoformat(),
         "history": [],
     }
+    if pause.get("symptoms_reported") or any(
+        item.get("symptoms") and str(item.get("checkin_date") or "") >= start
+        for item in checkins
+    ):
+        state.update(stage=0, symptom_date=start)
+    return state
 
 
 def current_state(
-    pause: Mapping[str, Any] | None, stored: Mapping[str, Any] | None, today: date
+    pause: Mapping[str, Any] | None,
+    stored: Mapping[str, Any] | None,
+    today: date,
+    checkins: Sequence[Mapping[str, Any]] = (),
 ) -> dict[str, Any] | None:
     """The return state while one is running after an approved pause, else None."""
     if not pause or not pause.get("approved") or not pause.get("end_date"):
@@ -67,7 +88,7 @@ def current_state(
         return None
     if stored and stored.get("pause_end") == end.isoformat():
         return dict(stored)
-    return initial_state(pause)
+    return initial_state(pause, checkins)
 
 
 def enforced_stage(state: Mapping[str, Any] | None) -> int | None:
@@ -163,13 +184,69 @@ def _result(
     }
 
 
+def _free_checkins(
+    state: Mapping[str, Any], today: date, checkins: Sequence[Mapping[str, Any]]
+) -> int:
+    """Check-ins that report no symptom and no illness after the pause and after
+    the last day that had a symptom.
+
+    A later symptom restarts the count, so today's own check-in with one leaves
+    no free check-in after it; check-ins inside the pause window never count.
+    """
+    floor = max(
+        [
+            str(state.get("symptom_date") or ""),
+            str(state["pause_end"]),
+            *(
+                str(item.get("checkin_date") or "")
+                for item in checkins
+                if item.get("symptoms")
+            ),
+        ]
+    )
+    return sum(
+        floor < str(item.get("checkin_date") or "") <= today.isoformat()
+        and not item.get("symptoms")
+        and not reports_complaint(item.get("illness"))
+        for item in checkins
+    )
+
+
+def _blocked(
+    stage: int,
+    checkin: Mapping[str, Any],
+    complaint: bool,
+    evidence: Sequence[Mapping[str, Any]],
+) -> dict[str, Any] | None:
+    """A symptom or complaint today steps back, a poor sign holds; else None."""
+    if stage and checkin.get("symptoms"):
+        return _result("step_back", stage, 0, ["symptoms_reported"], evidence)
+    if complaint:
+        target = max(1, stage - 1) if stage else 0
+        return _result(
+            "step_back" if target < stage else "hold",
+            stage,
+            target,
+            ["complaint"],
+            evidence,
+        )
+    poor = [_POOR_REASONS[item["label"]] for item in evidence if item["ok"] is False]
+    return _result("hold", stage, stage, poor, evidence) if poor else None
+
+
 def decide(
     state: Mapping[str, Any],
     today: date,
     checkin: Mapping[str, Any] | None,
     overnight: Mapping[str, Any] | None,
+    checkins: Sequence[Mapping[str, Any]] = (),
 ) -> dict[str, Any]:
-    """Advance, hold or step back for this morning; never more than one stage."""
+    """Advance, hold or step back for this morning; never more than one stage.
+
+    A symptom today steps stage 1 or 2 back to stage 0. Stage 0 advances to
+    stage 1 only when the usual holds allow it and ``SYMPTOM_FREE_CHECKINS``
+    check-ins after the pause and the last symptom day are clean.
+    """
     stage = int(state["stage"])
     if not checkin or str(checkin.get("checkin_date") or "") != today.isoformat():
         return _result("hold", stage, stage, ["no_checkin"], [])
@@ -179,18 +256,17 @@ def decide(
         _hrv_sign(overnight.get("hrv")),
         _resting_hr_sign(overnight.get("resting_hr")),
     ]
-    if complaint:
-        target = max(1, stage - 1)
+    if blocked := _blocked(stage, checkin, complaint, evidence):
+        return blocked
+    if stage == 0:
+        clean = _free_checkins(state, today, checkins) >= SYMPTOM_FREE_CHECKINS
         return _result(
-            "step_back" if target < stage else "hold",
-            stage,
-            target,
-            ["complaint"],
+            "advance" if clean else "hold",
+            0,
+            int(clean),
+            [] if clean else ["symptoms_reported"],
             evidence,
         )
-    poor = [_POOR_REASONS[item["label"]] for item in evidence if item["ok"] is False]
-    if poor:
-        return _result("hold", stage, stage, poor, evidence)
     if stage >= LAST_STAGE:
         return _result("hold", stage, stage, ["complete"], evidence)
     if (today - date.fromisoformat(str(state["since"]))).days < MIN_STAGE_DAYS:

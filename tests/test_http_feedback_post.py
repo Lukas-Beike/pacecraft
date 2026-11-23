@@ -39,8 +39,22 @@ class FeedbackPostRoutesTests(unittest.TestCase):
             )
             self.assertTrue(dispatch_route(routes, handler, path, method="POST"))
             handler.send_json.assert_called_once_with(200, result)
-        service.report_illness.assert_called_once_with("2026-11-21")
+        service.report_illness.assert_called_once_with("2026-11-21", None)
         service.dismiss_infection_hint.assert_called_once_with("2026-11-21")
+
+    def test_illness_answer_passes_the_symptoms(self) -> None:
+        # #3919: the selected symptoms ride with the date.
+        service = Mock()
+        routes = FeedbackPostRoutes(checkin_service=lambda: service)
+        handler = SimpleNamespace(
+            read_json=Mock(return_value={"date": "2026-11-21", "symptoms": ["fieber"]}),
+            send_json=Mock(),
+        )
+
+        self.assertTrue(
+            dispatch_route(routes, handler, "/api/infection-hint/ill", method="POST")
+        )
+        service.report_illness.assert_called_once_with("2026-11-21", ["fieber"])
 
 
 class ActivityFeedbackPostRouteTests(unittest.TestCase):
