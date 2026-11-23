@@ -3397,9 +3397,8 @@ function equipmentForm(tab, item) {
   return form;
 }
 
+// Retiring acts at once and the receipt line offers "Rückgängig" (athlete decision, #3934 G-03).
 async function retireEquipment(item, button) {
-  const confirmed = await requestConfirmation(`${item.name} wird ausgemustert.`, { title: "Ausrüstung ausmustern?", danger: true, confirmLabel: "Ausmustern" });
-  if (!confirmed) return;
   button.disabled = true;
   const saved = Object.fromEntries(EQUIPMENT_SAVED_FIELDS.filter((key) => key in item).map((key) => [key, item[key]]));
   const ok = await saveEquipment({ ...saved, initial_distance_km: item.initial_distance_km ?? 0, initial_hours: item.initial_hours ?? 0, id: item.id, expected_revision: item.revision, status: "archived", confirmed: true }, "Ausgemustert. ");

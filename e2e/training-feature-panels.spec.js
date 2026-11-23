@@ -465,10 +465,8 @@ test("@responsive the athlete adds, edits and retires equipment without Garmin, 
   const renamed = runPanel.locator(":scope > .equipment-card").filter({ hasText: "Fixture Pegasus 41" });
   await expect(renamed.locator("summary strong")).toHaveText("Fixture Pegasus 41");
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
-  // Retiring asks first; the server needs the confirmation as well.
+  // Retiring acts at once; its receipt offers the undo.
   await renamed.getByRole("button", { name: "Ausmustern" }).click();
-  await expect(page.locator("#confirmationDialog")).toBeVisible();
-  await page.locator("#confirmationDialogAccept").click();
   await expect(receipt).toContainText("Ausgemustert.");
   await expect(runPanel.locator(":scope > .equipment-card").filter({ hasText: "Fixture Pegasus 41" })).toHaveCount(0);
   await expect(runPanel.locator(".equipment-archive")).toContainText("Fixture Pegasus 41");
