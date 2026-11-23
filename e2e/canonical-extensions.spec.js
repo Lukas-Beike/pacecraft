@@ -73,7 +73,7 @@ test("@responsive invalid local zones change nothing", async ({ page, request })
   await page.evaluate(() => loadZones());
   await page.locator('#zoneSportTabs [data-zone-sport="run"]').click();
   await page.locator('#zoneOverview [data-zone-box="heart_rate"] .zone-edit').click();
-  await page.getByLabel("Schwellenpuls (LSHF, bpm)").fill("170");
+  await page.getByLabel("Laktatschwellen-Herzfrequenz (LSHF, bpm)").fill("170");
   await page.getByLabel("Zonenobergrenzen (bpm)").fill("150, 140, 160");
   await section.getByRole("button", { name: "Lokal speichern" }).click();
   await expect(page.locator(".toast").filter({ hasText: "Die Zonen sind ungültig" })).toBeVisible();

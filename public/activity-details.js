@@ -46,7 +46,7 @@
     });
     tableWrap.append(table(["Zeit", label], rows, { caption: `${label} in ${unit}; fehlende Werte sind als Lücke markiert.` }));
     return h("section", "activity-series", h("h3", null, `${label} (${unit})`), svg,
-      h("p", "muted", `${Math.round(min * 10) / 10}–${Math.round(max * 10) / 10} ${unit} · ${Math.round(start / 60)}–${Math.round(points.at(-1)[0] / 60)} min · ${times.length - points.length} fehlende Messpunkte`),
+      h("p", "muted", `${AppFormat.number(min, { digits: 1 })}–${AppFormat.number(max, { digits: 1 })} ${unit} · ${Math.round(start / 60)}–${Math.round(points.at(-1)[0] / 60)} min · ${times.length - points.length} fehlende Messpunkte`),
       h("details", "activity-values", h("summary", null, `Alle ${points.length} Messwerte ansehen`), tableWrap));
   }
 
@@ -297,7 +297,7 @@
   function routeVisitDate(value) {
     const [year, month, day] = String(value || "").split("-");
     if (!day) return "–";
-    return year === String(new Date().getFullYear()) ? `${day}.${month}.` : `${day}.${month}.${year.slice(2)}`;
+    return year === String(new Date().getFullYear()) ? `${day}.${month}.` : `${day}.${month}.${year}`;
   }
 
   function routeVisitClock(seconds) {

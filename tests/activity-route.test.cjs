@@ -88,8 +88,8 @@ test("visits show as a pace chart and a paged table with the session marked", ()
   assert.equal(toggle.open, true);
   assert.equal(text(toggle.children[0]), "Alle 8 Besuche ansehen");
   const body = toggle.children[1].children[0].children[1];
-  assert.deepEqual(body.children[0].children.map(text), ["08.10.25", "40:00", "150", "6:40", "12"]);
-  assert.deepEqual(body.children[1].children.map(text), ["07.10.25", "40:01", "–", "6:40", "–"]);
+  assert.deepEqual(body.children[0].children.map(text), ["08.10.2025", "40:00", "150", "6:40", "12"]);
+  assert.deepEqual(body.children[1].children.map(text), ["07.10.2025", "40:01", "–", "6:40", "–"]);
   assert.equal(text(body.children[2].children[3]), "–");
   assert.equal(body.children[1].attributes["aria-current"], "true");
   assert.equal(body.children[0].attributes["aria-current"], undefined);

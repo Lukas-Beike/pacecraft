@@ -69,7 +69,7 @@ const GARMIN_KEY_LINES = Object.freeze({
   expiry_missing: "Ablaufdatum fehlt",
 });
 
-// Pure: Garmin chip. The Personal API key and the SDK login are two ways in; a
+// Pure: Garmin chip. The API key (Personal API) and the login (SDK) are two ways in; a
 // rejected or expired key, or a failed sync, is an error.
 function garminConnectionKind(garmin) {
   if (garmin?.available === false || !garmin?.configured) return "off";
@@ -87,10 +87,10 @@ function garminSourceLines(garmin, sdkConnected) {
   if (key?.configured) {
     const label = GARMIN_KEY_LINES[key.state] || "gespeichert";
     const until = key.state === "valid" && key.expires_on ? `${label} bis ${globalThis.AppFormat?.date?.(key.expires_on) ?? key.expires_on}` : label;
-    lines.push({ label: "Personal API", text: until });
-  } else lines.push({ label: "Personal API", text: "nicht eingerichtet" });
-  if (garmin?.sdk_skipped) lines.push({ label: "SDK-Login", text: "erneuern" });
-  else lines.push({ label: "SDK-Login", text: sdkConnected ? "aktiv" : "nicht eingerichtet" });
+    lines.push({ label: "API-Schlüssel", text: until });
+  } else lines.push({ label: "API-Schlüssel", text: "nicht eingerichtet" });
+  if (garmin?.sdk_skipped) lines.push({ label: "Garmin-Anmeldung", text: "erneuern" });
+  else lines.push({ label: "Garmin-Anmeldung", text: sdkConnected ? "aktiv" : "nicht eingerichtet" });
   return lines;
 }
 

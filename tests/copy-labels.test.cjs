@@ -55,6 +55,9 @@ test("the context preview shows readable values and keeps deeply nested provider
   // The profile's own keys and sports read in German (#3933).
   const profile = contextValueNode({ goals: "Marathon", training_background: "Lauf", availability: "Abends", sports: "Cycling, Running" });
   assert.deepEqual(profile.children.map((node) => node.textContent), ["Ziele", "Marathon", "Trainingshintergrund", "Lauf", "Verfügbarkeit", "Abends", "Sportarten", "Radfahren, Laufen"]);
+  // A competition row: no ids or sync flags, German keys, readable dates and categories (#3981).
+  const race = contextValueNode({ id: 7, local_id: "x", sync_dirty: 1, name: "Rennen", event_date: "2026-11-21", category: "RACE_A", sport: "Ride", starts_at_local: "2026-11-21T10:00" });
+  assert.deepEqual(race.children.map((node) => node.textContent), ["Name", "Rennen", "Datum", "21.11.2026", "Kategorie", "Wettkampf A", "Sportart", "Radfahren", "Beginn", "2026-11-21T10:00"]);
   assert.equal(contextValueNode("Langer Text", "content").tag, "pre");
   const longList = contextValueNode(Array.from({ length: 30 }, (_, index) => index));
   assert.equal(longList.children.length, 26);
@@ -83,8 +86,10 @@ test("release changes are grouped as Neu, Verbessert, Behoben and the rest, with
 });
 
 test("a library card shows its stored step lines in German words (#3933)", () => {
-  const { libraryDescriptionText } = extractFunctions("plan-views.js", ["LIBRARY_STEP_UNITS", "libraryStepLine", "libraryDescriptionText"]);
+  const { libraryDescriptionText } = extractFunctions("plan-views.js", ["LIBRARY_STEP_UNITS", "libraryStepLine", "LIBRARY_SECTION_NAMES", "libraryHeaderLine", "libraryDescriptionText"]);
   assert.equal(libraryDescriptionText("Locker\n- 20m 55%\n- 20m Z1 HR\n- 400mtr"), "Locker\n20 min · 55 %\n20 min · Z1 Herzfrequenz\n400 m");
+  // Section and repeat headers and watt targets, as the Intervals.icu workout text writes them.
+  assert.equal(libraryDescriptionText("Warmup\n- 10m 55-65%\nMain Set 5x\n- 5m 250W\n- 3m 55%\n3x\nWarmup | Cooldown"), "Einlaufen\n10 min · 55–65 %\nHauptteil · 5×\n5 min · 250 W\n3 min · 55 %\n3×\nEinlaufen und Auslaufen");
   assert.equal(libraryDescriptionText(""), "");
   assert.equal(libraryDescriptionText("- Locker einlaufen"), "- Locker einlaufen", "a prose bullet stays as written");
 });
@@ -108,7 +113,7 @@ test("the client source holds one word per thing", () => {
   const path = require("node:path");
   const dir = path.join(__dirname, "../public");
   const sources = fs.readdirSync(dir).filter((name) => /\.(js|html)$/.test(name)).map((name) => [name, fs.readFileSync(path.join(dir, name), "utf8")]);
-  const other = ["Ø Puls", "Pulszonen", "HF-Zone", "Ø Tempo", "Kadenz", "Power-Zonen", "Kurzzeitbelastung", "Langzeitbelastung", "Session-RPE-Last", "Athletenkontext", "Mit Coach lösen", "Mit Coach strukturieren", "Mit dem Coach", "Nicht gesetzt", "nicht konfiguriert", "Noch nicht getestet", "\"Krafttraining\"", ">Krafttraining<"];
+  const other = ["Ø Puls", "Pulszonen", "HF-Zone", "Ø Tempo", "Kadenz", "Power-Zonen", "Kurzzeitbelastung", "Langzeitbelastung", "Session-RPE-Last", "Athletenkontext", "Mit Coach lösen", "Mit Coach strukturieren", "Mit dem Coach", "Nicht gesetzt", "nicht konfiguriert", "Noch nicht getestet", "\"Krafttraining\"", ">Krafttraining<", "Trainingsbelastung", "Akute Belastung", "akute Belastung", "Training Effect", "Load-Focus", ">Thinking<", ": Thinking", ">Personal API<", "SDK-Login"];
   const found = sources.flatMap(([name, text]) => other.filter((word) => text.includes(word)).map((word) => `${name}: ${word}`));
   assert.deepEqual(found, []);
 });

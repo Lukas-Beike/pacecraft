@@ -112,7 +112,7 @@ $("#profileForm").addEventListener("invalid", (event) => {
 for (const button of document.querySelectorAll("[data-model-info]")) bindAnalysisPopover(button, document.getElementById(button.getAttribute("popovertarget")));
 for (const [task, label] of [["conversation", "Gespräch"], ["planning", "Planen & Analysieren"], ["nutrition", "Ernährung"]]) {
   $(taskSelectId(task, "Model")).addEventListener("change", (event) => saveSelectSetting(event, "model", "model", label));
-  $(taskSelectId(task, "ThinkingLevel")).addEventListener("change", (event) => saveSelectSetting(event, "thinking-level", "thinking_level", `${label}: Thinking`));
+  $(taskSelectId(task, "ThinkingLevel")).addEventListener("change", (event) => saveSelectSetting(event, "thinking-level", "thinking_level", `${label}: Denktiefe`));
 }
 $("#serviceTierSelect").addEventListener("change", (event) => saveSelectSetting(event, "service-tier", "service_tier", "Geschwindigkeit"));
 $("#zoneSettings").addEventListener("toggle", (event) => { if (event.currentTarget.open) void loadZones(); });

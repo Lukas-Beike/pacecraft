@@ -328,8 +328,13 @@ const CALENDAR_NAME_PREFIX = /^(.+?) [-–—] (\S.*)$/u;
 // The calendar shows a fixed range: one week back, four ahead (#3914).
 const CALENDAR_WEEKS = Object.freeze({ past: 1, future: 4 });
 
+// A provider that names a session after its type ("WeightTraining · 1:02:03") shows the German sport; the time is in the line below.
+const PROVIDER_TYPE_NAME = /^(Ride|VirtualRide|Run|Swim|Walk|Hike|WeightTraining)(?:\s*[·|-]\s*\d+(?::\d{2}){1,2})?$/;
+
 function calendarDisplayName(name, place = "") {
   const text = String(name || "").trim();
+  const typed = PROVIDER_TYPE_NAME.exec(text);
+  if (typed) return activitySportLabel({ type: typed[1] }) === "Andere" ? text : activitySportLabel({ type: typed[1] });
   const match = CALENDAR_NAME_PREFIX.exec(text);
   const city = String(place || "").split(",")[0].trim().toLocaleLowerCase("de");
   return match && city && match[1].trim().toLocaleLowerCase("de") === city ? match[2] : text;
@@ -1147,23 +1152,14 @@ function plannedWeatherHint() {
   return h("p", "planned-weather-hint", "Wetter fehlt: Im Profil ist kein Wetterort hinterlegt. ", link);
 }
 
-function plannedWeekSummary(weekKey, weekEndKey, weekEntries, compliance, todayKey) {
-  const plannedEntryCount = weekEntries.filter((entry) => !entry.is_completed_activity).length;
-  const plannedUnits = Number.isFinite(Number(compliance?.planned_units))
-    ? Number(compliance.planned_units)
-    : plannedEntryCount;
-  const completedUnits = Number.isFinite(Number(compliance?.completed_units))
-    ? Number(compliance.completed_units)
-    : 0;
-  const isPast = weekEndKey < todayKey;
-  const units = isPast || completedUnits > 0
-    ? `${plannedUnits} geplant · ${completedUnits} absolviert`
-    : `${plannedUnits} geplant`;
-  if (compliance?.basis !== "training_load" || compliance.planned_value == null) return units;
+// The plan line of a week: its load. The week heading already counts the units (#3981).
+function plannedWeekSummary(weekEndKey, compliance, todayKey) {
+  if (compliance?.basis !== "training_load" || compliance.planned_value == null) return "";
+  const completedUnits = Number(compliance.completed_units) || 0;
   // One load figure: the done part of the plan once a unit is done, else the plan (#3932 K-13).
   const planned = formatWhole(compliance.planned_value);
-  const load = isPast || completedUnits > 0 ? `${formatWhole(compliance.actual_value || 0)} von ${planned}` : planned;
-  return `${units} · Belastung ${load}`;
+  const load = weekEndKey < todayKey || completedUnits > 0 ? `${formatWhole(compliance.actual_value || 0)} von ${planned}` : planned;
+  return `Belastung ${load}`;
 }
 
 // The pace of a run is the stored average speed, as the Details show it, else distance over moving time (#3932 K-04).
@@ -1293,7 +1289,7 @@ function calendarWorkoutProfile(profile) {
   if (!total || !values.length) return null;
   const top = Math.max(...values, 1) * 1.1;
   const baseLabel = profile.source === "recorded" ? "Aufgezeichnetes Belastungsprofil" : "Geplantes Intervallprofil";
-  const label = profile.estimated ? `${baseLabel} (Zonen aus FTP oder Schwellenpuls)` : baseLabel;
+  const label = profile.estimated ? `${baseLabel} (Zonen aus FTP oder LSHF)` : baseLabel;
   const svg = svgNode("svg", { viewBox: "0 0 300 56", role: "img", "aria-label": label, class: "calendar-workout-profile", preserveAspectRatio: "none" });
   svg.append(svgNode("title", {}, `${label} · ${axis === "distance" ? "Distanzachse" : "Zeitachse"} · ${profile.unit || ""}`));
   svg.append(svgNode("line", { x1: 0, x2: 300, y1: 54, y2: 54, class: "calendar-profile-baseline" }));
@@ -1913,7 +1909,7 @@ function plannedFuellingRows(drink) {
 
 function plannedFuellingBlock(plan) {
   const rate = plan.sweat_rate;
-  const band = rate?.similar && Array.isArray(rate.temperature_c) ? ` bei ${rate.temperature_c[0]}–${rate.temperature_c[1]} °C` : "";
+  const band = rate?.similar && Array.isArray(rate.temperature_c) ? ` bei ${AppFormat.number(rate.temperature_c[0], { digits: 1 })}–${AppFormat.number(rate.temperature_c[1], { digits: 1 })} °C` : "";
   const sessions = AppFormat.plural(rate?.sessions, "Einheit", "Einheiten");
   const basis = rate ? `Schweißrate ${FUELLING_LITRES.format(rate.l_per_h)} l/h · ${sessions}${band}` : "Startwert ohne eigene Daten";
   const rows = (items) => h("div", "race-plan-rows", items.filter(Boolean).map(([label, value]) => h("div", null, h("span", null, label), h("strong", null, value))));
@@ -2179,7 +2175,7 @@ function renderPlannedEntry(entry, dateKey, todayKey, dayContext = {}, weekHasPl
   const focusForm = plannedFocusForm(entry, dateKey);
   if (focusForm) details.append(focusForm);
   // With the step list, the description keeps only its free text; the stored text is unchanged (#2447).
-  appendPlannedDescription(details, steps ? plannedDescriptionText(entry.description) : entry.description);
+  appendPlannedDescription(details, steps ? plannedDescriptionText(entry.description) : libraryDescriptionText(entry.description));
   card.append(cardSummary, details);
   return card;
 }
@@ -2725,8 +2721,9 @@ function plannedWeekClosing(view, weekEntries, weekHasPlan) {
   const planned = weekEntries.length - extra;
   let planLine = null;
   if (weekEntries.length) {
-    const summary = plannedWeekSummary(weekKey, addDateKey(weekKey, 6), weekEntries, weeklyCompliance.get(weekKey), todayKey);
-    planLine = h("p", "planned-week-totals", extra && planned ? `${summary} · +${extra} zusätzlich` : summary);
+    const summary = plannedWeekSummary(addDateKey(weekKey, 6), weeklyCompliance.get(weekKey), todayKey);
+    const text = [summary, extra && planned ? `+${extra} zusätzlich` : ""].filter(Boolean).join(" · ");
+    planLine = text ? h("p", "planned-week-totals", text) : null;
   }
   const currentWeekKey = planWeekStart(todayKey);
   if (weekKey > currentWeekKey || weekKey < addDateKey(currentWeekKey, -7 * WEEK_REVIEW_WEEKS_BACK)) return planLine;
@@ -2795,7 +2792,7 @@ function weekReviewRecoveryTiles(recovery) {
     const change = minutes ? weekReviewChange(`${sign}${weekReviewHours(minutes * 60)} ggü. Vorwoche`, minutes > 0) : null;
     tiles.push(weekReviewTile("Schlaf Ø", `${weekReviewHours(sleep.mean * 3600)} h`, change, sleep.source));
   }
-  for (const [key, label] of [["resting_hr", "Ruhepuls Ø"], ["hrv", "HRV Ø"]]) {
+  for (const [key, label] of [["resting_hr", "Ruheherzfrequenz Ø"], ["hrv", "HRV Ø"]]) {
     const item = recovery?.[key];
     if (item) tiles.push(weekReviewTile(label, `${AppFormat.number(item.mean, { digits: 0 })} ${item.unit}`, null, [WEEK_REVIEW_POSITIONS[item.position], item.source].filter(Boolean).join(" · ")));
   }
@@ -3417,14 +3414,30 @@ function libraryStepLine(line) {
   const words = text.split(/\s+/).filter(Boolean).map((word) => {
     const size = /^(\d+(?:[.,]\d+)?)(h|m|s|km|mtr)$/.exec(word);
     if (size) return `${size[1].replace(".", ",")} ${LIBRARY_STEP_UNITS[size[2]]}`;
-    if (/^\d+(?:[.,]\d+)?%$/.test(word)) return `${word.slice(0, -1).replace(".", ",")} %`;
+    const percent = /^(\d+(?:[.,]\d+)?)(?:-(\d+(?:[.,]\d+)?))?%$/.exec(word);
+    if (percent) return `${[percent[1], percent[2]].filter(Boolean).join("–").replaceAll(".", ",")} %`;
+    if (/^\d+W$/.test(word)) return `${word.slice(0, -1)} W`;
     return word === "HR" ? "Herzfrequenz" : word;
   });
   return words.length > 1 ? [words[0], words.slice(1).join(" ")].join(" · ") : words.join("");
 }
 
+// The section and repeat headers of the stored text ("Warmup", "Main Set 5x", "5x", "Warmup | Cooldown") in German.
+const LIBRARY_SECTION_NAMES = { warmup: "Einlaufen", "main set": "Hauptteil", cooldown: "Auslaufen" };
+
+function libraryHeaderLine(line) {
+  // A header ends with its repeat count ("Main Set 5x", "5x"); what stands before it is the section.
+  const last = line.trim().split(" ").at(-1);
+  if (/^\d{1,3}x$/i.test(last)) {
+    const section = line.trim().slice(0, -last.length).trim();
+    return [LIBRARY_SECTION_NAMES[section.toLowerCase()] || section, `${last.slice(0, -1)}×`].filter(Boolean).join(" · ");
+  }
+  const names = line.split("|").map((part) => LIBRARY_SECTION_NAMES[part.trim().toLowerCase()]);
+  return names.every(Boolean) ? names.join(" und ") : line;
+}
+
 function libraryDescriptionText(text) {
-  return String(text || "").split("\n").map((line) => (/^\s*-/.test(line) ? libraryStepLine(line) : line)).join("\n");
+  return String(text || "").split("\n").map((line) => (/^\s*-/.test(line) ? libraryStepLine(line) : libraryHeaderLine(line))).join("\n");
 }
 
 // `archivedFresh`: the archived list was just read; every other render of that view reads it again.
@@ -3557,7 +3570,7 @@ function racePlanWeather(weather) {
     return text ? [racePlanHeading("Wetter"), h("p", "race-plan-gap", text)] : [];
   }
   const place = [weather.name, weather.country].filter(Boolean).join(", ");
-  const number = (value) => RACE_PLAN_KM.format(Math.round(value));
+  const number = (value) => AppFormat.number(Math.round(value), { digits: 0 });
   const facts = [
     `${day.icon || ""} ${day.condition || ""}`.trim(),
     day.temperature_min != null && day.temperature_max != null ? `${number(day.temperature_min)}–${number(day.temperature_max)} °C` : null,

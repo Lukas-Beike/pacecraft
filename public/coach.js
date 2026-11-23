@@ -2104,6 +2104,7 @@ const CONTEXT_KEY_LABELS = {
   training_background: "Trainingshintergrund",
   availability: "Verfügbarkeit",
   sports: "Sportarten",
+  sport: "Sportart",
   typical_weekly_volume: "Typischer Wochenumfang",
   timezone: "Zeitzone",
   source: "Quelle",
@@ -2112,8 +2113,22 @@ const CONTEXT_KEY_LABELS = {
   value: "Wert",
   date: "Datum",
   updated_at: "Aktualisiert am",
+  event_date: "Datum",
+  starts_at_local: "Beginn",
+  sport_detail: "Sportart im Detail",
+  environment: "Umgebung",
+  priority: "Priorität",
+  category: "Kategorie",
+  distance: "Distanz",
+  target: "Ziel",
+  course_profile: "Streckenprofil",
+  location: "Ort",
+  notes: "Notizen",
+  description: "Beschreibung",
+  planned_duration_s: "Geplante Dauer (s)",
 };
-const CONTEXT_HIDDEN_KEYS = new Set(["field", "role"]);
+// Storage and sync bookkeeping is not what the Coach reads about the athlete.
+const CONTEXT_HIDDEN_KEYS = new Set(["field", "role", "id", "local_id", "external_id", "intervals_event_id", "sync_dirty", "sync_state", "sync_error", "sync_conflict", "baseline_hash", "last_synced_at", "created_at"]);
 
 function contextPreNode(text) {
   // Scrollable, so the keyboard reaches it; many of them share a page, so none is a landmark of its own.
@@ -2130,8 +2145,11 @@ function contextScalarText(key, value) {
   if (value === null || value === undefined || value === "") return "–";
   if (typeof value === "boolean") return value ? "Ja" : "Nein";
   if (typeof value === "number") return AppFormat.number(value, { digits: 2 }) ?? String(value);
-  if (typeof value === "string" && key.endsWith("_at")) return formatTime(value);
-  if (key === "sports") return profileSportsLabel(value);
+  if (typeof value === "string" && /_(?:at|local)$/.test(key)) return formatTime(value);
+  if (typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value)) return AppFormat.date(value) ?? value;
+  if (key === "sports" || key === "sport") return profileSportsLabel(value);
+  const race = /^RACE_([ABC])$/.exec(String(value));
+  if (race) return `Wettkampf ${race[1]}`;
   return String(value);
 }
 

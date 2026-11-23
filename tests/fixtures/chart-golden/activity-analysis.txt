@@ -191,7 +191,7 @@
           "Tempo"
       <div>
         <dt>
-          "Belastung"
+          "Garmin-Belastung"
         <dd>
           "142"
   <div>
@@ -322,7 +322,7 @@
             <th scope="col">
               "Pace"
             <th scope="col">
-              "Ø HF"
+              "Ø Herzfrequenz"
         <tbody>
           <tr>
             <th scope="row">

@@ -305,7 +305,7 @@ function weatherIconFor(item) {
 
 function weatherNumber(value, suffix = "") {
   const number = Number(value);
-  return Number.isFinite(number) ? `${Math.round(number)}${suffix}` : "–";
+  return Number.isFinite(number) ? `${AppFormat.number(Math.round(number), { digits: 0 })}${suffix}` : "–";
 }
 
 function weatherDirection(value) {
@@ -368,7 +368,7 @@ function populateProfileField(form, key, value) {
   field.value = value || "";
 }
 
-const PROFILE_SPORT_LABELS = { Cycling: "Radfahren", Running: "Laufen", Swimming: "Schwimmen", Strength: "Kraft", WeightTraining: "Kraft", Triathlon: "Triathlon", Other: "Andere" };
+const PROFILE_SPORT_LABELS = { Cycling: "Radfahren", Running: "Laufen", Swimming: "Schwimmen", Strength: "Kraft", WeightTraining: "Kraft", Ride: "Radfahren", VirtualRide: "Rad indoor", Run: "Laufen", Swim: "Schwimmen", Triathlon: "Triathlon", Other: "Andere" };
 
 function profileSportsLabel(sports) {
   return String(sports || "").split(",").map((item) => item.trim()).filter(Boolean)
@@ -756,7 +756,7 @@ function renderSettingsUsage(data) {
     usageRemainingRequests: optionalNumber(rateLimits.remaining_requests),
     usageRemainingTokens: optionalNumber(rateLimits.remaining_tokens),
     usageLastRequest: lastRequest && !Number.isNaN(lastRequest.getTime())
-      ? lastRequest.toLocaleString("de-DE", { dateStyle: "short", timeStyle: "short" })
+      ? lastRequest.toLocaleString("de-DE", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" })
       : "Heute noch keine",
     usageStatus: usage.status?.state === "error" ? usage.status.message || "Fehler bei letzter Anfrage" : "In Ordnung",
   };

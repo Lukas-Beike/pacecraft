@@ -18,13 +18,16 @@ function activitySportLabel(activity) {
 
 
 function garminPerformanceSources(garmin) {
-  return [garmin.has_vo2max ? "VO2max" : null, garmin.has_estimated_run_times ? "Laufprognosen" : null, garmin.has_max_hr ? "Max HF" : null, garmin.has_weight ? "Gewicht" : null].filter(Boolean);
+  return [garmin.has_vo2max ? "VO2max" : null, garmin.has_estimated_run_times ? "Laufprognosen" : null, garmin.has_max_hr ? "Max. Herzfrequenz" : null, garmin.has_weight ? "Gewicht" : null].filter(Boolean);
 }
+
+// Only a read that stopped early is worth a line; the windows it was split into are not.
+const GARMIN_PAGINATION_LABELS = { activities: "Aktivitäten", body_battery: "Body Battery", resting_hr: "Ruheherzfrequenz", sleep: "Schlaf", hrv: "HRV", weight: "Gewicht" };
 
 function garminPaginationDetail(garmin) {
   return Object.entries(garmin.pagination || {})
-    .filter(([, value]) => value && (Number(value.windows) > 1 || value.complete === false))
-    .map(([name, value]) => `${name}: ${value.records || 0} Datensätze in ${value.windows || 0} Zeitfenstern${value.complete === false ? " · unvollständig" : ""}`)
+    .filter(([, value]) => value?.complete === false)
+    .map(([name]) => `${GARMIN_PAGINATION_LABELS[name] || name}: unvollständig`)
     .join(" · ");
 }
 
@@ -52,7 +55,7 @@ function deviceSyncSentence(deviceSyncedAt, now = Date.now()) {
 function garminDetailText(garmin) {
   let sourceDetail = "Noch kein Garmin-Abruf durchgeführt.";
   if (garmin.last_sync_at) {
-    sourceDetail = `Letzter Abruf: ${formatTime(garmin.last_sync_at)} · ${garmin.activities || 0} Aktivitäten · Schlaf/HRV/Readiness ${[garmin.has_sleep, garmin.has_hrv, garmin.has_readiness].filter(Boolean).length}/3`;
+    sourceDetail = `Letzter Abruf: ${formatTime(garmin.last_sync_at)} · ${garmin.activities || 0} Aktivitäten · Schlaf/HRV/Trainingsbereitschaft ${[garmin.has_sleep, garmin.has_hrv, garmin.has_readiness].filter(Boolean).length}/3`;
   } else if (garmin.source === "fixture") {
     sourceDetail = "Testdatei ist konfiguriert; synchronisiere sie mit dem Button.";
   }
