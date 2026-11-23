@@ -3075,7 +3075,7 @@ function planCard(plan) {
     buttons.push(edit, archive);
     notes.push(archiveNote);
   }
-  const range = [plan.start_date, plan.end_date].filter(Boolean).map(dateLabel).join(" – ");
+  const range = [plan.start_date, plan.end_date].filter(Boolean).map((day) => dateLabel(day)).join(" – ");
   return h("article", "library-card",
     h("div", null, h("h4", null, plan.name), h("span", null, PLAN_STATUS_LABELS[plan.status] || plan.status)),
     h("p", null, [range, plan.goal].filter(Boolean).join("\n")),
