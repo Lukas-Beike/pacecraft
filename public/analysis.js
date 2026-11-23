@@ -2768,7 +2768,9 @@ async function renderTrainingRecords({ background = false } = {}) { // NOSONAR
       tab.setAttribute("role", "tab"); tabs.append(tab);
       const panel = h("div", { className: "equipment-tab-panel", id: `equipmentPanel-${key}`, "aria-labelledby": tab.id, tabIndex: 0, hidden: equipmentTab !== key });
       panel.setAttribute("role", "tabpanel");
-      panel.append(equipmentAddRow(key), equipmentRuleTable(key, equipment.rules, groups[key].items));
+      // The defaults choose among items, so they wait until there is one (#3936 G-13).
+      panel.append(equipmentAddRow(key));
+      if (groups[key].items.length) panel.append(equipmentRuleTable(key, equipment.rules, groups[key].items));
       for (const item of groups[key].items) panel.append(card(key)({ item, source: "local" }));
       for (const item of garminGroups[key]) panel.append(card(key)({ item, source: "provider" }));
       if (archivedGroups[key].length) panel.append(archive(key, archivedGroups[key]));
@@ -2870,7 +2872,13 @@ function renderAnalysisEmptyState(segment) {
     root.replaceChildren(...(empty ? [analysisEmptyCard(segment)] : []));
   }
   root.hidden = !empty;
+  document.querySelectorAll("#personalRecovery .analysis-trend-controls").forEach((controls) => { controls.hidden = analysisPeriodIdle(empty); });
   return empty;
+}
+
+// Without a connected source the period buttons have nothing to change, so they step aside (#3936 G-13).
+function analysisPeriodIdle(empty) {
+  return empty && !analysisDataSourceConnected();
 }
 
 function renderAnalysisSegmentsIfActive() {
@@ -2889,12 +2897,12 @@ function renderAnalysisSegments(route = state.route) {
   document.querySelectorAll("#dataPanel [data-analysis-sport]").forEach((part) => { part.hidden = part.dataset.analysisSport !== sport || !part.hasChildNodes(); });
   const endurance = document.getElementById("performanceEnduranceCharts");
   endurance.hidden = !load || !endurance.childElementCount;
-  document.getElementById("analysisLoadPeriod").hidden = segment !== "load";
+  document.getElementById("analysisLoadPeriod").hidden = segment !== "load" || analysisPeriodIdle(empty);
   document.getElementById("sessionPerformance").hidden = !load;
   document.getElementById("trainingZoneCharts").hidden = !load;
   document.getElementById("analysisLoadCharts").hidden = !load;
   document.getElementById("personalRecovery").hidden = segment !== "recovery";
-  document.getElementById("strengthPeriod").hidden = segment !== "strength";
+  document.getElementById("strengthPeriod").hidden = segment !== "strength" || analysisPeriodIdle(empty);
   document.getElementById("strengthAnalysis").hidden = segment !== "strength" || empty;
   document.querySelectorAll("[data-analysis-segment]").forEach((link) => {
     const active = link.dataset.analysisSegment === segment;

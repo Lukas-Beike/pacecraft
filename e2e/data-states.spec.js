@@ -32,6 +32,8 @@ test("@responsive an empty install shows one empty card with one action per anal
     await expect(card.locator("a, button")).toHaveCount(1);
     await expect(card.locator("a, button")).toHaveText(connected ? "Jetzt abgleichen" : "Anbindung einrichten");
     await expect(page.locator("#dataPanel")).not.toContainText("Keine Daten:");
+    // Without a connected source no period button stays above the empty card (#3936 G-13).
+    if (!connected) await expect(page.locator("#analysisLoadPeriod:visible, #strengthPeriod:visible, #personalRecovery .analysis-trend-controls:visible")).toHaveCount(0);
     await expect(card).not.toContainText("Intervals.icu");
     for (const id of ["sessionPerformance", "analysisLoadCharts", "trainingZoneCharts", "currentPerformance", "analysisHistoryCharts"]) {
       await expect(page.locator(`#${id}`)).toBeHidden();

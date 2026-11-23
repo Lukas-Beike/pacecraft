@@ -321,21 +321,6 @@ function discardUnsavedChanges() {
 }
 
 
-const SETUP_BANNER_DISMISSED_KEY = "intervalsCoachSetupBannerDismissed";
-
-
-function intervalsHintDismissed() {
-  // Session-only: dismissal must not persist beyond the browser session.
-  try { return sessionStorage.getItem(SETUP_BANNER_DISMISSED_KEY) === "1"; } catch { return false; }
-}
-
-
-function dismissIntervalsHint() {
-  try { sessionStorage.setItem(SETUP_BANNER_DISMISSED_KEY, "1"); } catch { }
-  updateStatusSources({ intervals_key: null });
-}
-
-
 function renderStatus(data) {
   const configured = data.configured;
   const openaiStatus = data.usage?.status || {};
@@ -346,9 +331,9 @@ function renderStatus(data) {
   const modelKeyMissing = (provider, action) => provider === "anthropic"
     ? { level: "critical", title: "Anthropic-API-Schlüssel fehlt", action: { ...action, connection: "anthropic" } }
     : { level: "critical", title: "OpenAI-API-Schlüssel (Server) fehlt", action: { ...action, connection: "openai" } };
-  // The OpenAI key is read from the server environment only. Intervals.icu only
-  // receives workouts, so its missing key is the slimmest line; more important
-  // notices replace it. The Mehr tab shows its problems on the cards themselves.
+  // The OpenAI key is read from the server environment only. Intervals.icu only receives workouts: its
+  // missing key is no notice (the first-run list in the Coach names the steps that matter, #3936 G-13).
+  // The Mehr tab shows its problems on the cards themselves.
   renderZoneSummary(data.threshold_warnings);
   updateStatusSources({
     loading: null,
@@ -356,12 +341,6 @@ function renderStatus(data) {
     openai: configured.coach ?? configured.openai ? null : modelKeyMissing(data.model?.provider, connections),
     coach_error: error && activePanel !== "settingsPanel" ? { level: "critical", title: "Coach benötigt Aufmerksamkeit", detail: error } : null,
     thresholds: thresholdStatusItem(data.threshold_warnings),
-    intervals_key: configured.intervals || intervalsHintDismissed() ? null : {
-      level: "info",
-      title: "Intervals.icu-API-Schlüssel fehlt",
-      action: { href: "#more/connections", label: "Jetzt einrichten", connection: providerIds().intervals },
-      dismiss: dismissIntervalsHint,
-    },
   });
   // Due equipment joins the strip once the browser is idle (#2809).
   globalThis.refreshEquipmentNotice?.();

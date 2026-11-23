@@ -2882,6 +2882,12 @@ function dropDeleteReceiptsOutsideWeek() {
   for (const [id, receipt] of plannedDeleteReceipts) if (planWeekStart(receipt.day) !== selectedWeekKey) plannedDeleteReceipts.delete(id);
 }
 
+// One hint when no upcoming day has a weather forecast.
+function appendPlannedWeatherHint(root, { firstWeekKey, todayKey, days, planningContextByDate }) {
+  const upcomingDays = Array.from({ length: days }, (_, offset) => addDateKey(firstWeekKey, offset)).filter((dateKey) => dateKey >= todayKey);
+  if (!upcomingDays.some((dateKey) => plannedWeatherLabel(plannedDayWeather(planningContextByDate.get(dateKey) || {}, dateKey)))) root.append(plannedWeatherHint());
+}
+
 function renderPlanned(trainingCalendar) {
   const root = $("#plannedCalendar");
   if (!root) return;
@@ -2943,9 +2949,7 @@ function renderPlanned(trainingCalendar) {
     }
   });
 
-  const upcomingDays = Array.from({ length: (pastWeeks + futureWeeks + 1) * 7 }, (_, offset) => addDateKey(firstWeekKey, offset))
-    .filter((dateKey) => dateKey >= todayKey);
-  if (!upcomingDays.some((dateKey) => plannedWeatherLabel(plannedDayWeather(planningContextByDate.get(dateKey) || {}, dateKey)))) root.append(plannedWeatherHint());
+  appendPlannedWeatherHint(root, { firstWeekKey, todayKey, days: (pastWeeks + futureWeeks + 1) * 7, planningContextByDate });
   const view = {
     calendarEventsByDate: plannedEventsByDate(todayKey),
     leftoversByWeek: plannedLeftoversByWeek(trainingCalendar, currentWeekKey, lastWeekKey),

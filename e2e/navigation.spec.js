@@ -212,6 +212,8 @@ test("@responsive the page heading stays at one height between tabs on a wide sc
   await page.goto("/#plan/overview");
   await expect(page.locator("#appShell")).toBeVisible();
   await expect.poll(() => page.evaluate(() => Boolean(state.data))).toBe(true);
+  // The status strip is no part of this measure and may join at any moment (due equipment once the browser is idle).
+  await page.evaluate(() => document.querySelector("#statusStrip").style.setProperty("display", "none", "important"));
   const heights = [];
   for (const route of ["plan/overview", "plan/library", "plan/season", "more/app", "more/connections", "analysis/strength"]) {
     await page.evaluate((target) => AppRouter.navigate(target, { historyMode: "replace" }), route);
