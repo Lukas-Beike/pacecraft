@@ -52,7 +52,8 @@ function rememberPlannedEntryState(root) {
   const wrapper = active?.closest?.(".planned-card");
   const card = active?.closest?.(".planned-entry[data-entry-key]") || wrapper?.querySelector(":scope > .planned-entry[data-entry-key]");
   if (!card || !root.contains(card)) return null;
-  const action = active.closest(".planned-card-actions") ? [...wrapper.querySelectorAll(".planned-card-actions button")].indexOf(active) : -1;
+  // By its stable key, not its position: a pick removes its exercise's chips (Gitar, #3981).
+  const action = active.closest(".planned-card-actions") ? active.dataset.action || "" : "";
   return { key: card.dataset.entryKey, name: active.matches("select") ? active.name : "", action };
 }
 
@@ -60,7 +61,8 @@ function restorePlannedEntryFocus(root, focused) {
   if (!focused) return;
   const card = [...root.querySelectorAll(".planned-entry[data-entry-key]")].find((node) => node.dataset.entryKey === focused.key);
   const target = focused.name ? card?.querySelector(`select[name="${focused.name}"]`) : null;
-  const action = focused.action >= 0 ? card?.parentElement.querySelectorAll(".planned-card-actions button")[focused.action] : null;
+  const buttons = focused.action ? [...(card?.parentElement.querySelectorAll(".planned-card-actions button") || [])] : [];
+  const action = buttons.find((node) => node.dataset.action === focused.action) || null;
   (target || action || card?.querySelector("summary"))?.focus({ preventScroll: true });
 }
 
@@ -1468,7 +1470,7 @@ function plannedConflict(entry, dateKey) {
   const labels = plannedConflictLabels(entry.conflicts);
   if (!labels.length) return null;
   const texts = plannedConflictTexts(entry.conflicts);
-  const button = h("button", { type: "button", className: "secondary-button planned-conflict-button" }, "Mit Coach besprechen");
+  const button = h("button", { type: "button", className: "secondary-button planned-conflict-button", dataset: { action: "conflict" } }, "Mit Coach besprechen");
   button.setAttribute("aria-label", "Mit Coach besprechen: Konflikt");
   button.addEventListener("click", () => {
     const session = [activitySportLabel(calendarSportType(entry)), plannedEntryDurationLabel(null, entry)].filter(Boolean).join(", ");
@@ -1490,7 +1492,9 @@ function plannedGarminBlocked(entry, dateKey, todayKey, actual) {
     return block;
   }
   if (reason !== "unmapped") {
-    block.append(h("span", null, plannedGarminBlockedText(entry)), plannedCoachButton("Mit Coach besprechen", `Strukturiere die Krafteinheit ${unit} für die Uhr: Übungen in Reihenfolge mit Sätzen, Wiederholungen, Last und Garmin-Übung. Frag nach, was fehlt.`, "secondary-button planned-conflict-button", null, "Kraftstruktur"));
+    const structure = plannedCoachButton("Mit Coach besprechen", `Strukturiere die Krafteinheit ${unit} für die Uhr: Übungen in Reihenfolge mit Sätzen, Wiederholungen, Last und Garmin-Übung. Frag nach, was fehlt.`, "secondary-button planned-conflict-button", null, "Kraftstruktur");
+    structure.dataset.action = "garmin-structure";
+    block.append(h("span", null, plannedGarminBlockedText(entry)), structure);
     return block;
   }
   const unmapped = Array.isArray(entry.push_unmapped) ? entry.push_unmapped : [];
@@ -1503,7 +1507,7 @@ function plannedGarminBlocked(entry, dateKey, todayKey, actual) {
 function plannedUnmappedExercise(entry, exercise, unit) {
   const row = h("span", "planned-garmin-exercise", h("span", null, `Keine Garmin-Übung: ${exercise.name}`));
   for (const suggestion of Array.isArray(exercise.suggestions) ? exercise.suggestions : []) {
-    const chip = h("button", { type: "button", className: "planned-suggestion-chip" }, suggestion);
+    const chip = h("button", { type: "button", className: "planned-suggestion-chip", dataset: { action: `garmin:${exercise.index}:${suggestion}` } }, suggestion);
     chip.addEventListener("click", async () => {
       // Not `disabled`: a disabled button drops keyboard focus while the pick is saved.
       if (chip.ariaDisabled === "true") return;
@@ -1519,7 +1523,9 @@ function plannedUnmappedExercise(entry, exercise, unit) {
     });
     row.append(chip);
   }
-  row.append(plannedCoachButton("Andere…", `Ordne in der Krafteinheit ${unit} der Übung „${exercise.name}“ die passende Garmin-Übung zu. Frag mich mit Vorschlägen aus dem Katalog.`));
+  const other = plannedCoachButton("Andere…", `Ordne in der Krafteinheit ${unit} der Übung „${exercise.name}“ die passende Garmin-Übung zu. Frag mich mit Vorschlägen aus dem Katalog.`);
+  other.dataset.action = `garmin-other:${exercise.index}`;
+  row.append(other);
   return row;
 }
 

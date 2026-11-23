@@ -1757,10 +1757,6 @@ button:focus-visible, a:focus-visible, summary:focus-visible {
 :root[data-theme="light"] .metric-grid small.metric-intervals { color: var(--intervals-ink); }
 :root[data-theme="light"] .metric-grid small.metric-manual { color: var(--manual-ink); }
 
-@media (min-width: 1100px) {
-}
-
-
 .chat-attachments { display: flex; flex-wrap: nowrap; align-items: center; gap: 6px; min-width: 0; grid-column: 1 / -1; overflow-x: auto; scrollbar-width: none; }
 .chat-attachments::-webkit-scrollbar { display: none; }
 .chat-attachment { display: inline-flex; flex: 0 0 auto; align-items: center; gap: 7px; max-width: min(100%, 280px); min-height: 44px; padding: 0 0 0 11px; border: 1px solid var(--line-strong); border-radius: 999px; color: var(--ink); background: var(--control-bg); font-size: .78rem; }
