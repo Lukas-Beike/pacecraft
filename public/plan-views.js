@@ -1476,7 +1476,8 @@ function plannedUnitActions(entry, dateKey, todayKey) {
   const edit = h("button", { type: "button", className: "secondary-button" }, "Bearbeiten");
   edit.addEventListener("click", () => openUnitEditor({ kind: "unit", entry, onSaved: plannedUnitSaved }));
   const [archive, archiveNote] = plannedArchiveControls(entry, dateKey);
-  return [h("div", "planned-activity-actions", edit, toggle, coach, archive, remove), confirm, archiveNote, days, status];
+  // The day strip opens right under "Verschieben", not below "Löschen" (#3932 K-11).
+  return [h("div", "planned-activity-actions", edit, h("div", "planned-move-group", toggle, days), coach, archive, remove), confirm, archiveNote, status];
 }
 
 // "Bearbeiten" and "Archivieren" (#3950): the unit editor over the Coach's change batch; the card shows the receipt
