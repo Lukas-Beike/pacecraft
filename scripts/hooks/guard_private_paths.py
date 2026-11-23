@@ -94,8 +94,9 @@ SAFE_AFTER = re.compile(
 # An escaped separator (`\;` in Bash, `` `; `` in PowerShell) is part of a word,
 # not a split: the segments seen here would not be the shell's (#3940 review).
 ESCAPED_SEPARATOR = re.compile(r"[\\`][;|&]")
-# `2>&1` copies a stream; its `&` separates nothing.
-STREAM_COPY = re.compile(r">&(?=[0-9-])")
+# `2>&1` copies a stream; its `&` separates nothing. Only an unescaped `>` after a
+# blank or a stream number: `\>&7z` is a literal `>` and a real `&` (#4075 gate).
+STREAM_COPY = re.compile(r"(?<=[\s\d])>&(?=[0-9-])")
 
 
 def names_secrets(text: str) -> bool:

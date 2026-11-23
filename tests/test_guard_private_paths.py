@@ -164,6 +164,14 @@ class GuardPrivatePathsTests(unittest.TestCase):
             "& cp x.py scripts/prod_logs.py", "| tee scripts/ui_explore.mjs",
             "| head -n $(cp x scripts/ui_walk.mjs)", "| Select-Object -First 1 | sh",
         ]  # fmt: skip
+        # #4075 gate: an escaped `>` before `&` is no stream copy; the `&` splits.
+        for command in (
+            f"python scripts/prod_logs.py \\>&7z a -- out.7z --password-file {posix}",
+            f"python scripts/prod_logs.py `>&7z a -- out.7z --password-file {posix}",
+            f"python scripts/prod_logs.py '>'&7z a -- o.7z --password-file {posix}",
+        ):
+            with self.subTest(command=command):
+                self.assertEqual(run_hook(command), 2)
         for run in runs:
             for last in after:
                 command = f'{run} --url u --password-file "{secret}" {last}'
