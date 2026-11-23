@@ -305,6 +305,7 @@ def build_coach_context(
                 activity_rows,
                 session_feedback=session_feedback,
                 lt1_session_records=lt1_session_records,
+                chest_strap_max_hr=ctx.performance.chest_strap_max_hr,
             ),
             nutrition_meal_library=ctx.nutrition.meal_library_service,
             zone_configurations=zone_configurations,

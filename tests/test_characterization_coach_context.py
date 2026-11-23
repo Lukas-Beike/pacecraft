@@ -358,6 +358,8 @@ class CurrentPerformanceProvenanceTests(unittest.TestCase):
                 "run_hr_caps",
                 "weight",
                 "first_thresholds",
+                "unsupported_by_recent_effort",
+                "recorded_max_hr_above",
             },
         )
 

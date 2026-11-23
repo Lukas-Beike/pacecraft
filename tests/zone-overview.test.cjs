@@ -2,7 +2,7 @@ const assert = require("node:assert/strict");
 const { test } = require("node:test");
 const { extractFunctions } = require("./frontend-harness.cjs");
 
-const NAMES = ["zoneMetricValue", "ZONE_METRIC_LABELS", "ZONE_SPORTS", "POWER_ZONE_NAMES", "zoneConfigurationFor", "zoneLimitsOf", "zoneLimitsText", "zoneLimitValue", "zoneValueText", "zoneRows", "zoneRange", "zoneSourceText", "zoneEditorValues", "defaultZoneItem", "OPEN_ZONE_LIMIT", "THRESHOLD_ORIGINS", "lt2Origin", "thresholdRows"];
+const NAMES = ["zoneMetricValue", "ZONE_METRIC_LABELS", "ZONE_SPORTS", "POWER_ZONE_NAMES", "zoneConfigurationFor", "zoneLimitsOf", "zoneLimitsText", "zoneLimitValue", "zoneValueText", "zoneRows", "zoneRange", "zoneSourceText", "zoneEditorValues", "defaultZoneItem", "OPEN_ZONE_LIMIT", "THRESHOLD_ORIGINS", "lt2Origin", "thresholdRows", "thresholdMainText", "thresholdEffortNote", "recordedMaxHrNote"];
 
 // Garmin's heart-rate zones carry no sport: the server names their key for every sport (#2262).
 const GARMIN_HR = { key: "garmin|heart_rate|||2026-11-09", source: "garmin", label: "Garmin", sport: null, metric: "heart_rate", environment: null, threshold: 163, maximum: 186, limits: [130, 145, 155, 166, 186], percent_limits: null };
@@ -85,6 +85,28 @@ test("pace zones read the percent of the threshold speed as paces", () => {
   assert.deepEqual(plain(zoneRows(pace, 240).map((row) => row.range)), ["langsamer als 5:00 · 80 %", "5:00–4:27 · 90 %", "4:27–4:00 · 100 %", "schneller als 4:00"]);
   // Without a threshold pace (swimming) the limits stay percents.
   assert.deepEqual(plain(zoneRows(pace, null).map((row) => row.range)), ["langsamer als 80 %", "80 %–90 %", "90 %–100 %", "schneller als 100 %"]);
+});
+
+test("a threshold no recorded effort supports gets one line, nothing otherwise (#3920 C5)", () => {
+  const { thresholdEffortNote } = zones();
+  const thresholds = { unsupported_by_recent_effort: {
+    ride: { threshold_w: 250, best_w: 241, duration_seconds: 1200, window_days: 90, date: "2026-09-10" },
+    run: { threshold_pace_seconds_per_km: 270, best_pace_seconds_per_km: 278, distance_meters: 5000, window_days: 90, date: "2026-09-11" },
+  } };
+  assert.equal(thresholdEffortNote("ride", thresholds), "20-min-Bestwert 241 W (90 T.) · Test empfohlen");
+  assert.equal(thresholdEffortNote("run", thresholds), "5-km-Bestwert 4:38 /km (90 T.) · Test empfohlen");
+  // No recorded 20-min or 5 km effort, or a supported value: the server names none.
+  assert.equal(thresholdEffortNote("ride", { unsupported_by_recent_effort: {} }), null);
+  assert.equal(thresholdEffortNote("run", { unsupported_by_recent_effort: { ride: thresholds.unsupported_by_recent_effort.ride } }), null);
+  assert.equal(thresholdEffortNote("ride", {}), null);
+  assert.equal(thresholdEffortNote("ride", undefined), null);
+});
+
+test("a chest-strap maximum above the stored one gets one line under the heart-rate zones (#3920 C6)", () => {
+  const { recordedMaxHrNote } = zones({ dateLabel: (day) => day.split("-").reverse().join(".") });
+  assert.equal(recordedMaxHrNote({ recorded_max_hr_above: { value: 191, date: "2026-09-14", stored_max_hr: 188, window_days: 365 } }), "Brustgurt 191 bpm am 14.09.2026");
+  assert.equal(recordedMaxHrNote({ recorded_max_hr_above: null }), null);
+  assert.equal(recordedMaxHrNote({}), null);
 });
 
 test("LT2 comes from the performance values, LT1 from the thresholds", () => {

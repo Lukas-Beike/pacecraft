@@ -61,9 +61,11 @@ class PublicPerformanceStateService:
             [], tuple[Sequence[Mapping[str, Any]], bool] | None
         ]
         | None = None,
+        chest_strap_max_hr: Callable[[date], tuple[float, str] | None] | None = None,
     ) -> None:
         self._garmin_payload_service = garmin_payload_service
         self._lt1_session_records = lt1_session_records
+        self._chest_strap_max_hr = chest_strap_max_hr
         # The all-time session read built off the request path (#2694, #2693).
         self._lt1_history_records = lt1_history_records
         self._profile_service = profile_service
@@ -201,6 +203,7 @@ class PublicPerformanceStateService:
             canonical=inputs,
             session_feedback=self._session_feedback,
             lt1_session_records=self._lt1_session_records,
+            chest_strap_max_hr=self._chest_strap_max_hr,
         )
         timezone = str(profile.get("timezone") or "UTC")
         performance = {

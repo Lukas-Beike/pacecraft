@@ -59,7 +59,12 @@ from backend.canonical.vocabulary import (
 )
 from backend.coach import tool_schemas
 from backend.coach.context import CoachStructuredContextService
-from backend.db import DatabaseManager, activity_detail_store, row_factory
+from backend.db import (
+    DatabaseManager,
+    activity_detail_store,
+    canonical_store,
+    row_factory,
+)
 from backend.db.activity_detail_store import (
     detail_sets_for,
     first_threshold_results,
@@ -499,6 +504,35 @@ class StoredEstimateTests(unittest.TestCase):
                 "without_result": 1,
             },
         )
+
+    def test_the_chest_strap_max_hr_ignores_optical_and_older_recordings(self) -> None:
+        # #3920 C6: the highest max HR of a chest-strap recording since the day,
+        # any sport; an optical recording and one before the window never count.
+        strap = HeartRateSource.CHEST_STRAP
+        for days_ago, bpm, source, sport in (
+            (10, 188.0, strap, "run"),
+            (20, 191.0, strap, "ride"),
+            (5, 199.0, HeartRateSource.OPTICAL, "run"),
+            (400, 195.0, strap, "run"),
+        ):
+            activity_id = add_run(self, days_ago, None, sport=sport, hr_source=source)
+            with self.manager.unit_of_work() as db:
+                db.execute(
+                    "UPDATE activity_records SET details = ? WHERE activity_id = ?",
+                    (json.dumps({"max_hr": bpm}), activity_id),
+                )
+
+        def read(since: date):
+            with self.manager.reader() as db:
+                return canonical_store.chest_strap_max_hr_row(
+                    db, since=since.isoformat(), low=20.0, high=250.0
+                )
+
+        row = read(TODAY - timedelta(days=365))
+        assert row is not None
+        self.assertEqual(row["max_hr"], 191.0)
+        self.assertEqual(row["local_date"], (TODAY - timedelta(days=20)).isoformat())
+        self.assertIsNone(read(TODAY - timedelta(days=2)))
 
     def test_quality_ranks_before_the_series_within_a_session(self) -> None:
         # Fable review of #3279: a method-3 `low` record must not beat a method-2
