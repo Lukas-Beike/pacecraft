@@ -3200,11 +3200,13 @@ function equipmentMaintenance(item) {
   const history = h("ul");
   for (const event of item.maintenance || []) history.append(h("li", null, `${dateLabel(event.date)} · ${event.notes || "Wartung erfasst"}`));
   const since = Number.isFinite(Number(usage.maintenance_distance_km ?? Number.NaN)) || Number.isFinite(Number(usage.maintenance_hours ?? Number.NaN));
+  const due = new Map([[true, "Wartung fällig"], [false, "Wartung nicht fällig"]]).get(usage.maintenance_due) || "Wartungsstand unklar";
+  // Due and "none recorded" are one fact, not two lines that read as a contradiction (#3936 M-06).
   return [
     since ? h("p", null, `Seit letzter Wartung: ${analysisValue(usage.maintenance_distance_km, "km")} · ${analysisValue(usage.maintenance_hours, "h")}`) : null,
-    h("p", null, new Map([[true, "Wartung fällig"], [false, "Wartung nicht fällig"]]).get(usage.maintenance_due) || "Wartungsstand unklar"),
+    h("p", null, history.childElementCount ? due : `${due} · noch keine Wartung erfasst`),
     usage.maintenance_coverage === "partial" ? h("p", "muted", "Nutzung unvollständig bekannt.") : null,
-    history.childElementCount ? history : h("p", "muted", "Keine Wartung erfasst."),
+    history.childElementCount ? history : null,
   ];
 }
 
@@ -3305,7 +3307,7 @@ function equipmentRuleTable(key, rules, items) {
     body.append(h("tr", { dataset: { ruleKind: kind } }, h("th", { scope: "row" }, label), h("td", null, select)));
   }
   return h("section", { className: "equipment-rules", "aria-label": "Standard-Ausrüstung" },
-    h("h4", null, "Standard"), h("table", "race-predictions-table", body), status);
+    h("h4", null, "Standard-Ausrüstung"), h("table", "race-predictions-table", body), status);
 }
 
 async function saveEquipmentRule(status, kind, select, rule) {

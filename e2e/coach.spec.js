@@ -257,8 +257,9 @@ test.describe("critical browser states", { tag: "@responsive" }, () => {
     await expect(page.locator('[data-more-segment-panel="coach"]').first()).toBeVisible();
     await expect(page.locator("#usageSummary")).toContainText("Anfragen");
     await page.locator("#usageSummary").click();
-    await expect(page.locator("#usageRequests")).toBeVisible();
-    await expect(page.locator("#usageTotalTokens")).toBeVisible();
+    // The header says requests and total tokens; the tiles carry the rest (#3936 M-07).
+    await expect(page.locator("#usageInputTokens")).toBeVisible();
+    await expect(page.locator("#usageOutputTokens")).toBeVisible();
     await expect(page.locator('[data-more-segment-panel="connections"]').first()).toBeHidden();
     await expect(settingsNav.getByRole("link", { name: "Daten & Datenschutz" })).toHaveCount(0);
     await settingsNav.getByRole("link", { name: "Betrieb & Diagnose", exact: true }).click();
