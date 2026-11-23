@@ -3589,12 +3589,15 @@ function competitionConflict(competition) {
     status.textContent = "";
     try {
       await api(`/api/competitions/${encodeURIComponent(competition.id)}/resolve`, { method: "POST", body: JSON.stringify({ strategy, ...(confirmed ? { confirmed: true } : {}) }) });
-      await globalThis.load?.();
-      announcePlanChange(strategy === "keep_local" ? "Lokal behalten" : "Von Intervals.icu übernommen");
     } catch (error) {
       buttons.forEach((button) => { button.disabled = false; });
       status.textContent = error.message;
+      // Settled elsewhere meanwhile: the card is stale, so the view reads the competition again.
+      if (error.status === 409) await globalThis.load?.().catch(() => {});
+      return;
     }
+    await globalThis.load?.();
+    announcePlanChange(strategy === "keep_local" ? "Lokal behalten" : "Von Intervals.icu übernommen");
   };
   const keep = h("button", { type: "button", className: "secondary-button" }, "Lokal behalten");
   const buttons = [keep];
