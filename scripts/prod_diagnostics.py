@@ -216,8 +216,8 @@ SECTION_FIELDS = {
     ),
     # Key paths of the sleep answers that match skin or temp, no values (#4017).
     "garmin_sleep_temperature_keys": re.compile(
-        r"collectors|date_range|from|to|none_found|get_sleep_data|get_sleep_daily"
-        r"|stored|dailySleepDTO\..*"
+        r"collectors\.(get_sleep_data|get_sleep_daily|stored)\.[A-Za-z0-9_.]+"
+        r"|none_found"
     ),
     # The Wahoo profile-weight write, counts only (#3559), and why the last push
     # ended as it did, an enum (#3677).
