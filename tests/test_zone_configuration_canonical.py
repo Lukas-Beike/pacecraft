@@ -414,7 +414,7 @@ class LocalZoneEditTests(unittest.TestCase):
 
     def test_an_unknown_origin_is_refused(self) -> None:
         with self.assertRaises(AppError):
-            self.service.save_adopted({**LOCAL_POWER, "threshold_origin": "garmin"})
+            self.service.save_adopted({**LOCAL_POWER, "threshold_origin": "lab_test"})
 
     def test_a_refused_zone_names_the_field_in_german_not_its_key(self) -> None:
         for payload, message in (

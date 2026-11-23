@@ -205,7 +205,7 @@ class SecondThresholdService:
         """The estimate an adoption checks, or Garmin's LT2 value as offered (#4135)."""
         if source != GARMIN_SOURCE:
             return self.estimates()[sport][source]
-        known = ((self._values().get("garmin") or {}).get(sport) or {}).get(value)
+        known = ((self._values().get(GARMIN_SOURCE) or {}).get(sport) or {}).get(value)
         return (
             {"status": "ok", field: known["value"]} if known else {"status": "unknown"}
         )

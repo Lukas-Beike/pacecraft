@@ -30,7 +30,7 @@ from backend.performance.garmin_canonical import read_garmin_thresholds
 # The dismissed offers' keys, a JSON list, newest last.
 DISMISSED_KEY: Final = "threshold_offer_dismissals"
 MAX_DISMISSED: Final = 200
-GARMIN_SOURCE: Final = "garmin"
+GARMIN_SOURCE: Final = ProviderId.GARMIN.value
 # The notice step per value (athlete decision F10): 2 bpm, 3 s/km, 5 W.
 MIN_CHANGE: Final = {"heart_rate": 2, "pace": 3, "power": 5}
 UNITS: Final = {"heart_rate": "bpm", "pace": "s/km", "power": "W"}
@@ -93,7 +93,7 @@ def threshold_values(
             "value": _shown(kind, number),
             "date": None if day is None else day.isoformat(),
         }
-    return {"in_effect": in_effect, "garmin": garmin}
+    return {"in_effect": in_effect, GARMIN_SOURCE: garmin}
 
 
 def open_offers(
@@ -124,7 +124,7 @@ def open_offers(
             basis,
         )
         for sport, value, source, number, basis in _lt2_candidates(
-            lt2_estimates, values.get("garmin") or {}
+            lt2_estimates, values.get(GARMIN_SOURCE) or {}
         )
     ]
     hidden = set(dismissed)

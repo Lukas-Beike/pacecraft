@@ -1840,7 +1840,7 @@ def build_structured_tool_schemas(
                         "critical_speed",
                         "critical_power",
                         "step_test",
-                        "garmin",
+                        ProviderId.GARMIN.value,
                     ],
                 },
                 "value": {"type": "string", "enum": ["heart_rate", "pace", "power"]},

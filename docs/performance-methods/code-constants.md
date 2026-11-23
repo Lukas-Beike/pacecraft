@@ -451,7 +451,6 @@ every named number the code fixes. A test fails when it is out of date.
 | `RECORDED_MAX_HR_DAYS` | `365` | `backend/performance/threshold_evidence.py` |  |
 | `DISMISSED_KEY` | `'threshold_offer_dismissals'` | `backend/performance/threshold_offers.py` | The dismissed offers' keys, a JSON list, newest last. |
 | `MAX_DISMISSED` | `200` | `backend/performance/threshold_offers.py` |  |
-| `GARMIN_SOURCE` | `'garmin'` | `backend/performance/threshold_offers.py` |  |
 | `MIN_CHANGE` | `{'heart_rate': 2, 'pace': 3, 'power': 5}` | `backend/performance/threshold_offers.py` | The notice step per value (athlete decision F10): 2 bpm, 3 s/km, 5 W. |
 | `UNITS` | `{'heart_rate': 'bpm', 'pace': 's/km', 'power': 'W'}` | `backend/performance/threshold_offers.py` |  |
 | `STALE_AFTER_DAYS` | `56` | `backend/performance/threshold_staleness.py` | Athlete decision 2026-11-07: eight weeks. |

@@ -93,7 +93,7 @@ PINNED: Final[dict[str, tuple[tuple[int, ...], str]]] = {
     ),
     "canonical.domain_records": (
         (28,),
-        "8fbcd9efb3a0d40baa131c8a657eb799f8192a16e07a90f6959275de7dbacfe5",
+        "0cf1411fa5addb6022e1575fec625a63566a490a6a5fae36f8312c15bc53519a",
     ),
     "canonical.local_time": (
         (12, 13, 21, 28, 8, 2),
