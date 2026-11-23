@@ -29,10 +29,10 @@ Copy this checklist into your response and tick it as you go:
   or its feature branch is ambiguous, stop and say so. Never use the primary
   checkout, and never rebase or push `develop`, `main`, or another protected
   branch.
-- `gh` must be authenticated. Never print credentials or tokens. A branch
-  that touches `.github/workflows/` also needs the token's `workflow` scope;
-  `python scripts/prepare_worktree.py` names a missing one and its fix
-  (`gh auth refresh -s workflow`, #3350).
+- `gh` must be authenticated. Never print credentials or tokens. Without the
+  `workflow` scope (`prepare_worktree.py` names it, #3350) push the branch without
+  its workflow commits; send the orchestrator (the user without one) each workflow
+  file in full, its sha256 and commit message; compare the pushed file's (#4044).
 - Setup prerequisite: the SonarQube CLI is installed and authenticated
   ([development](../../../docs/development.md#secret-checks-before-git-pushes));
   without it the pre-push hook refuses every push.
