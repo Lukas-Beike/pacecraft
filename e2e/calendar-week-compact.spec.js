@@ -14,7 +14,7 @@ test("@responsive compact calendar week shows one week, groups repeats and keeps
   // Both outlines are read on closed cards: an open card carries the accent border (#2994).
   const completed = page.locator(".planned-day.is-today .planned-entry.is-completed").first();
   await setEntryOpen(completed, false);
-  const completedBorder = await completed.evaluate((element) => getComputedStyle(element).borderTopStyle);
+  const completedBorder = await completed.evaluate((element) => getComputedStyle(element.parentElement).borderTopStyle);
   // Repeated extras share one row; the week summary is a fixed grid without dash-only load rows.
   await expect(page.locator(".planned-day.is-today .planned-group > summary .planned-session-title")).toHaveText("2× Trainingseinheit");
   for (const metrics of await page.locator(".planned-week-metrics").all()) {
@@ -31,28 +31,27 @@ test("@responsive compact calendar week shows one week, groups repeats and keeps
   await planned.scrollIntoViewIfNeeded();
   // #2985: on a Sunday this card is the default detail pane of the shown week.
   await setEntryOpen(planned, false);
-  expect([await planned.evaluate((element) => getComputedStyle(element).borderTopStyle), completedBorder]).toEqual(["dashed", "solid"]);
+  expect([await planned.evaluate((element) => getComputedStyle(element.parentElement).borderTopStyle), completedBorder]).toEqual(["dashed", "solid"]);
   await expect(planned.locator(".planned-entry-status")).toHaveCount(0);
   for (const row of await page.locator(".planned-entry > summary").all()) {
     if (!(await row.isVisible())) continue;
-    // A plain row stays compact, its 16 px zone bar included; a conflict adds one component with its 44 px action.
-    const limit = (await row.locator(".planned-conflict").count()) ? 200 : 130;
-    expect((await row.boundingBox()).height).toBeLessThan(limit);
+    // A row stays compact, its 16 px zone bar included; a conflict sits beside it, outside the summary.
+    expect((await row.boundingBox()).height).toBeLessThan(130);
   }
   // Conflicts: one component with one action, no marker or conflict pills, calendar text not link-coloured.
   await expect(page.locator(".planned-badge.is-conflict, .planned-badge.is-marker")).toHaveCount(0);
-  const conflict = planned.locator(".planned-conflict");
+  const conflict = planned.locator("xpath=..").locator(".planned-conflict");
   await expect(conflict).toContainText("Ein Termin an diesem Tag erlaubt kein Training");
   await expect(conflict.getByRole("button")).toHaveCount(1);
   await expect(conflict.getByRole("button")).toHaveText("Mit Coach besprechen");
   const result = await conflict.evaluate((element) => {
     let sent = null;
     const original = globalThis.askCoach;
-    const wasOpen = element.closest("details").open;
+    const wasOpen = element.closest(".planned-card").querySelector("details").open;
     globalThis.askCoach = (text) => { sent = text; };
     element.querySelector("button").click();
     globalThis.askCoach = original;
-    return { sent, toggled: element.closest("details").open !== wasOpen };
+    return { sent, toggled: element.closest(".planned-card").querySelector("details").open !== wasOpen };
   });
   // The message names the session by date, sport and duration only; the stored name never becomes Coach input.
   expect(result.sent).toMatch(/^Die geplante Einheit am .+ \(Laufen, 40 min\) kollidiert mit: Kein Training\. Schlage eine Anpassung vor\.$/);
@@ -109,7 +108,7 @@ test("@responsive opening a single calendar entry and a grouped row shows their 
     await group.evaluate((element) => {
       for (let node = element; node; node = node.parentElement) if (node.tagName === "DETAILS") node.open = true;
     });
-    const items = group.locator(".planned-group-items > .planned-entry");
+    const items = group.locator(".planned-group-items > .planned-card > .planned-entry");
     expect(await items.count()).toBeGreaterThan(1);
     await items.first().locator(":scope > summary").click();
     await expect(items.first().locator(".planned-entry-details")).toBeVisible();
@@ -152,7 +151,7 @@ test("the desktop detail pane starts at the top of the week for its top and bott
     // The pane sits beside the week, level with its top; the chosen unit stays highlighted on the left.
     await expect.poll(async () => Math.round((await pane.boundingBox()).y - (await week.boundingBox()).y)).toBe(0);
     expect((await pane.boundingBox()).x).toBeGreaterThan((await week.boundingBox()).x + (await week.boundingBox()).width);
-    expect(await card.evaluate((element) => getComputedStyle(element).borderTopStyle)).toBe("solid");
+    expect(await card.evaluate((element) => getComputedStyle(element.parentElement).borderTopStyle)).toBe("solid");
   }
   // Scrolled down, the pane stays in view near the window's top, but not below the week's end.
   await page.setViewportSize({ width: 1280, height: 600 });

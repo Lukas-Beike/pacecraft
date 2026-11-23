@@ -49,7 +49,7 @@ async function overview(page) {
     { id: "undated", name: "Ohne Datum", event_date: "2026-02-30", sport: "run", priority: "B" },
   ];
   await page.evaluate(async () => { await load("/api/bootstrap?local=1", ["profile"]); await AppRouter.navigate("plan/season"); });
-  await expect(page.locator("#competitionList > .competition-card")).toHaveCount(3);
+  await expect(page.locator("#competitionList > .competition-item > .competition-card")).toHaveCount(3);
   return { reads, writes, racePlans, setEvents(value) { events = value; }, fail(value) { fail = value; } };
 }
 
@@ -61,13 +61,13 @@ test("@responsive competition summaries, saved details and archive stay compact 
   await expect(root.locator(".competition-card[open]")).toHaveCount(0);
   const alpha = root.locator('[data-competition-id="a"]');
   const beta = root.locator('[data-competition-id="b"]');
-  await expect(root.locator("#competitionList > .competition-card").first()).toHaveAttribute("data-competition-id", "a");
+  await expect(root.locator("#competitionList > .competition-item > .competition-card").first()).toHaveAttribute("data-competition-id", "a");
   await expect(alpha.locator("summary")).toContainText("Swimrun · Sprintdistanz · Priorität A · Heute");
   await expect(beta.locator("summary")).toContainText("Distanz unbekannt");
   await alpha.locator("summary").click();
   await expect(alpha).toContainText("08:30");
   await expect(alpha).toContainText("1:00 h");
-  await expect(alpha).toContainText("Lokal geändert");
+  await expect(alpha.locator("xpath=..")).toContainText("Lokal geändert");
   await expect(alpha).toContainText("<img src=x onerror=alert(1)>");
   await expect(alpha.locator("img")).toHaveCount(0);
   const plan = alpha.locator(".race-plan");
@@ -132,7 +132,7 @@ test("@responsive past-only lists keep their archive and equal-date name order",
     { id: "a", name: "Alpha", event_date: "2020-01-02", priority: "A", sport: "run" },
   ]);
   await page.evaluate(async () => { await load("/api/bootstrap?local=1", ["profile"]); });
-  await expect(page.locator("#competitionList > .competition-card")).toHaveCount(0);
+  await expect(page.locator("#competitionList > .competition-item > .competition-card")).toHaveCount(0);
   const archive = page.locator(".competition-archive");
   await expect(archive).not.toHaveAttribute("open", "");
   await archive.locator(":scope > summary").click();

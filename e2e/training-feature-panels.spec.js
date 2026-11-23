@@ -249,7 +249,7 @@ test("@responsive recovery, power, training focus, season and calendar profiles 
   await expect(localGear).toContainText("noch keine Wartung erfasst");
 
   await page.evaluate(async () => { await AppRouter.navigate("more/profile", { historyMode: "replace" }); });
-  await expect(page.locator("#profilePanel").getByRole("heading", { name: "Mehr", exact: true })).toBeVisible();
+  await expect(page.locator(".more-area").getByRole("heading", { name: "Mehr", exact: true })).toBeVisible();
   await expect(page.locator("#equipmentItems")).toBeHidden();
   // #3914: the old Darstellung link opens the App tab: colour scheme and notifications, no calendar range.
   await page.goto("/#more/appearance");

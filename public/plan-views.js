@@ -40,7 +40,6 @@ function plannedWeekSyncSummary(done, ids, providerLabel) {
   return [...reached, ...blocked].join(" · ");
 }
 
-// Controls sit in the card summary; a click must not toggle the card.
 // Before a rebuild: remember which cards are open and which control has focus.
 function rememberPlannedEntryState(root) {
   openPlannedEntries = new Set([...root.querySelectorAll(".planned-entry[data-entry-key]")].filter((card) => card.open).map((card) => card.dataset.entryKey));
@@ -124,11 +123,6 @@ function plannedDescriptionText(text) {
   return String(text || "").split("\n").filter((line) => !step.test(line) && !repeat.test(line)).join("\n").trim();
 }
 
-function stopSummaryToggle(event) {
-  event.preventDefault();
-  event.stopPropagation();
-}
-
 // A request kind sends the prompt as that quick action, on the planning model (#2744); without a
 // planning key the button is off like the other planning entry points.
 function plannedCoachButton(label, prompt, className = "secondary-button planned-conflict-button", requestKind = null, purpose = null) {
@@ -136,7 +130,7 @@ function plannedCoachButton(label, prompt, className = "secondary-button planned
   // Several hand-over buttons of one card share the label; the name starts with it and says what each is for.
   if (purpose) button.setAttribute("aria-label", `${label}: ${purpose}`);
   button.disabled = Boolean(requestKind) && !coachConfigured(null, requestKind);
-  button.addEventListener("click", (event) => { stopSummaryToggle(event); void globalThis.askCoach?.(prompt, { requestKind }); });
+  button.addEventListener("click", () => { void globalThis.askCoach?.(prompt, { requestKind }); });
   return button;
 }
 
@@ -1472,10 +1466,7 @@ function plannedConflict(entry, dateKey) {
   const texts = plannedConflictTexts(entry.conflicts);
   const button = h("button", { type: "button", className: "secondary-button planned-conflict-button" }, "Mit Coach besprechen");
   button.setAttribute("aria-label", "Mit Coach besprechen: Konflikt");
-  button.addEventListener("click", (event) => {
-    // The button sits in the card summary; a click must not toggle the card.
-    event.preventDefault();
-    event.stopPropagation();
+  button.addEventListener("click", () => {
     const session = [activitySportLabel(calendarSportType(entry)), plannedEntryDurationLabel(null, entry)].filter(Boolean).join(", ");
     void globalThis.askCoach?.(`Die geplante Einheit am ${dateLabel(dateKey)} (${session}) kollidiert mit: ${labels.join(", ")}. Schlage eine Anpassung vor.`);
   });
@@ -1509,8 +1500,7 @@ function plannedUnmappedExercise(entry, exercise, unit) {
   const row = h("span", "planned-garmin-exercise", h("span", null, `Keine Garmin-Übung: ${exercise.name}`));
   for (const suggestion of Array.isArray(exercise.suggestions) ? exercise.suggestions : []) {
     const chip = h("button", { type: "button", className: "planned-suggestion-chip" }, suggestion);
-    chip.addEventListener("click", async (event) => {
-      stopSummaryToggle(event);
+    chip.addEventListener("click", async () => {
       chip.disabled = true;
       try {
         await api(`/api/planned-units/${encodeURIComponent(entry.local_id)}/garmin-exercise`, { method: "POST", body: JSON.stringify({ exercise_index: exercise.index, garmin_exercise: suggestion, expected_payload_hash: entry.payload_hash }) });
@@ -2195,9 +2185,7 @@ function renderPlannedEntry(entry, dateKey, todayKey, dayContext = {}, weekHasPl
       if (!slim) appendFocusChip(line, entry);
     }, slim),
     meta,
-    slim ? null : calendarWorkoutProfile(entry.workout_profile),
-    plannedConflict(entry, dateKey),
-    plannedGarminBlocked(entry, dateKey, todayKey, actual));
+    slim ? null : calendarWorkoutProfile(entry.workout_profile));
   const head = plannedDetailHead(entry, actual, title, dateKey, status, plannedDetailStatus(entry, dateKey, todayKey, restDayLabel, weekHasPlan), plannedDayWeather(dayContext, dateKey));
   const details = h("div", { className: "planned-entry-details", dataset: { dateKey } }, head);
   card.addEventListener("toggle", () => {
@@ -2212,7 +2200,9 @@ function renderPlannedEntry(entry, dateKey, todayKey, dayContext = {}, weekHasPl
   // With the step list, the description keeps only its free text; the stored text is unchanged (#2447).
   appendPlannedDescription(details, steps ? plannedDescriptionText(entry.description) : libraryDescriptionText(entry.description));
   card.append(cardSummary, details);
-  return card;
+  // The warning and its buttons sit beside the card's details, not in the summary (WCAG 4.1.2), so they stay shown while it is closed.
+  const actions = [plannedConflict(entry, dateKey), plannedGarminBlocked(entry, dateKey, todayKey, actual)].filter(Boolean);
+  return h("div", { className: `planned-card is-${status}`, dataset: { sport: card.dataset.sport } }, card, actions.length ? h("div", "planned-card-actions", actions) : null);
 }
 
 // Personal calendar events (#2620): a band of chips above the day's units. Event text is untrusted
@@ -2996,8 +2986,8 @@ function openDefaultPlannedEntry(week) {
   if (!wideCalendar?.matches || !week || shownPlannedEntry(week)) return;
   const todayKey = timezoneDateKey(state.data?.profile?.timezone, new Date());
   const upcoming = (cards) => cards.find((item) => item.closest(".planned-day").dataset.date >= todayKey) || cards.at(-1);
-  const single = upcoming([...week.querySelectorAll(".planned-day-content > .planned-entry")]);
-  const card = single || upcoming([...week.querySelectorAll(".planned-group-items > .planned-entry")]);
+  const single = upcoming([...week.querySelectorAll(".planned-day-content > .planned-card > .planned-entry")]);
+  const card = single || upcoming([...week.querySelectorAll(".planned-group-items > .planned-card > .planned-entry")]);
   if (!card) return;
   if (!single) card.closest(".planned-group").open = true;
   card.open = true;
@@ -3693,17 +3683,11 @@ function competitionCard(competition, todayKey, openIds) {
   const sport = competition.sport_detail || competitionSportLabel(competition.sport, competition.environment);
   const when = AppFormat.relativeDay(competition.event_date, todayKey);
   const edit = messageActionButton("edit", "Wettkampf bearbeiten");
-  edit.addEventListener("click", (event) => {
-    // The pencil sits in the summary: it must not open or close the card.
-    event.preventDefault();
-    event.stopPropagation();
-    openCompetitionDialog(competition);
-  });
+  edit.addEventListener("click", () => openCompetitionDialog(competition));
   const summary = h("summary", null,
     h("span", "competition-summary-main",
       h("strong", null, `${competitionDate(competition, todayKey) ? dateLabel(competition.event_date) : "Datum unbekannt"} · ${competition.name || "Wettkampf"}`),
-      h("span", "competition-summary-facts", [sport, competitionDistance(competition.distance), `Priorität ${competition.priority || "B"}`, when].filter(Boolean).join(" · "))),
-    edit);
+      h("span", "competition-summary-facts", [sport, competitionDistance(competition.distance), `Priorität ${competition.priority || "B"}`, when].filter(Boolean).join(" · "))));
   const source = h("small", "competition-sync-state", competition.external_id ? "Intervals.icu" : "Nicht an Intervals.icu gesendet");
   if (competition.sync_state === "local_override") source.textContent = "Lokal geändert";
   // A conflict names itself: the local and the Intervals.icu entry differ and nothing is overwritten (#3932 K-15).
@@ -3723,12 +3707,13 @@ function competitionCard(competition, todayKey, openIds) {
   const upcoming = competitionDate(competition, todayKey) && competition.event_date >= todayKey;
   const plan = upcoming ? h("section", "race-plan") : null;
   const card = h("details", { className: "competition-card", dataset: { competitionId: String(competition.id) }, open: openIds.has(String(competition.id)) || competition.sync_state === "conflict" },
-    summary, source, competition.sync_state === "conflict" ? competitionConflict(competition) : null, facts.length ? h("div", "competition-card-facts", facts) : null, plan);
+    summary, competition.sync_state === "conflict" ? competitionConflict(competition) : null, facts.length ? h("div", "competition-card-facts", facts) : null, plan);
   if (plan) {
     card.addEventListener("toggle", () => { if (card.open) loadRacePlan(plan, competition); });
     if (card.open) loadRacePlan(plan, competition);
   }
-  return card;
+  // The source and the pencil sit beside the details, not in the summary (WCAG 4.1.2), so they stay shown while it is closed.
+  return h("div", "competition-item", card, h("div", "competition-card-source", source, edit));
 }
 
 function renderCompetitions(competitions) {
