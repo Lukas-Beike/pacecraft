@@ -44,6 +44,8 @@ function plannedWeekSyncSummary(done, ids, providerLabel) {
 // Before a rebuild: remember which cards are open and which control has focus.
 function rememberPlannedEntryState(root) {
   openPlannedEntries = new Set([...root.querySelectorAll(".planned-entry[data-entry-key]")].filter((card) => card.open).map((card) => card.dataset.entryKey));
+  for (const key of plannedForceOpen) openPlannedEntries.add(key);
+  plannedForceOpen.clear();
   for (const key of plannedFocusStatuses.keys()) if (!openPlannedEntries.has(key)) plannedFocusStatuses.delete(key);
   for (const key of plannedMoveReceipts.keys()) if (!openPlannedEntries.has(key)) plannedMoveReceipts.delete(key);
   const active = document.activeElement;
@@ -769,6 +771,8 @@ function plannedEntryKey(entry, dateKey) {
 }
 
 let openPlannedEntries = new Set();
+// Cards the next rebuild opens although they are not shown yet: a unit just saved with its receipt (#3950).
+const plannedForceOpen = new Set();
 // Calendar cards whose "Details" are open, so a re-render keeps them open (#2258).
 const openActivityDetails = new Set();
 // One read of a session's detail document per calendar data, shared by the zone bar and "Details" (#2478).
@@ -1429,7 +1433,52 @@ function plannedUnitActions(entry, dateKey, todayKey) {
   const receipt = plannedMoveReceipts.get(key);
   if (receipt) status.append(receipt.text, ...(receipt.change?.id ? plannedMoveUndo(key, receipt, status) : []));
   const [remove, confirm] = plannedDeleteControls(entry, dateKey, key);
-  return [h("div", "planned-activity-actions", toggle, coach, remove), confirm, days, status];
+  const edit = h("button", { type: "button", className: "secondary-button" }, "Bearbeiten");
+  edit.addEventListener("click", () => openUnitEditor({ kind: "unit", entry, onSaved: (result, editor) => plannedUnitSaved(result, editor, true) }));
+  const [archive, archiveNote] = plannedArchiveControls(entry, dateKey);
+  return [h("div", "planned-activity-actions", edit, toggle, coach, archive, remove), confirm, archiveNote, days, status];
+}
+
+// "Bearbeiten", "+ Einheit hinzufügen" and "Archivieren" (#3950): the unit editor over the Coach's change batch;
+// the card shows the receipt with "Rückgängig" and the calendar jumps to the unit's day.
+async function plannedUnitSaved(result, editor, changed) {
+  const key = `local:${result.local_id}`;
+  const text = `${changed ? "Gespeichert" : "Angelegt"}: ${editor.name.trim()}`;
+  plannedMoveReceipts.set(key, { text, change: result.change, from: changed ? String(editor.entry.date).slice(0, 10) : editor.date });
+  plannedForceOpen.add(key);
+  showPlannedDay(editor.date);
+  await globalThis.load?.();
+  announcePlanChange(text);
+}
+
+function plannedAddButton(dateKey) {
+  const add = h("button", { type: "button", className: "secondary-button planned-add" }, "+ Einheit hinzufügen");
+  add.addEventListener("click", () => openUnitEditor({ kind: "unit", dateKey, onSaved: (result, editor) => plannedUnitSaved(result, editor, false) }));
+  return add;
+}
+
+// "Archivieren" takes the unit out of the calendar at once; the day's receipt offers "Rückgängig".
+function plannedArchiveControls(entry, dateKey) {
+  const name = entry.name || "Trainingseinheit";
+  const [archive, note] = inCardDelete(async () => {
+    let result;
+    try {
+      result = await api(`/api/planned-units/${encodeURIComponent(entry.local_id)}/archive`, { method: "POST", body: JSON.stringify({ confirmed: true, expected_payload_hash: entry.payload_hash }) });
+    } catch (error) {
+      // A changed unit reloads, so the card names the reason and the next try sends the current hash.
+      if (error.status === 409) {
+        plannedMoveReceipts.set(plannedEntryKey(entry, dateKey), { text: error.message });
+        await globalThis.load?.();
+      }
+      throw error;
+    }
+    plannedDeleteReceipts.set(String(entry.local_id), { day: dateKey, text: `Archiviert: ${name}`, change: result.change, from: dateKey });
+    await globalThis.load?.();
+    announcePlanChange(`Archiviert: ${name}`);
+  });
+  archive.textContent = "Archivieren";
+  archive.classList.remove("danger-button");
+  return [archive, note];
 }
 
 // The next seven days from today and "…" for a later date, inside the shown calendar (#2194, #3028).
@@ -2014,9 +2063,10 @@ function plannedEventBand(events) {
     const time = plannedEventTime(event);
     const chip = h("button", {
       type: "button", className: "planned-event-chip", dataset: { impact, uid: event.uid, start: event.start_local || "" },
-      "aria-label": [name, time, EVENT_IMPACT_LABELS.get(impact)].filter(Boolean).join(", "),
+      // The name starts with what the chip shows, in its order (WCAG 2.5.3).
+      "aria-label": [[time, name].filter(Boolean).join(" "), EVENT_IMPACT_LABELS.get(impact)].filter(Boolean).join(", "),
     }, impact === "open" ? h("span", { className: "planned-event-dot", "aria-hidden": "true" }) : null,
-    time ? h("small", null, time) : null, h("span", "planned-event-name", name));
+    time ? h("small", null, time) : null, time ? " " : null, h("span", "planned-event-name", name));
     chip.addEventListener("click", () => openPlannedEventSheet(event));
     band.append(chip);
   }
@@ -2133,10 +2183,11 @@ function renderUndecidedNavCount() {
     let badge = link.querySelector("b.nav-count");
     if (!badge) {
       badge = h("b", { className: "nav-count", "aria-hidden": "true" });
-      link.append(badge);
+      // The space keeps the visible text "Kalender 1" and so inside the name that starts with it (WCAG 2.5.3).
+      link.append(" ", badge);
     }
     badge.textContent = count ? String(count) : "";
-    link.setAttribute("aria-label", ["Kalender", ...parts].join(", "));
+    link.setAttribute("aria-label", [count ? `Kalender ${count}` : "Kalender", ...parts].join(", "));
   }
 }
 
@@ -2206,7 +2257,9 @@ function plannedDayHeading(weather, dateKey, todayKey) {
 
 function renderPlannedGroup(entries, dateKey, todayKey, dayContext, weekHasPlan) {
   const first = entries[0];
-  return h("details", { className: "planned-group", dataset: { sport: activitySportLabel(calendarSportType(first)) } },
+  // A group holding an open unit (one just saved) stays open.
+  const open = entries.some((entry) => openPlannedEntries.has(plannedEntryKey(entry, dateKey)));
+  return h("details", { className: "planned-group", open, dataset: { sport: activitySportLabel(calendarSportType(first)) } },
     h("summary", null, plannedSessionHeader(first, first, `${entries.length}× ${calendarDisplayName(first.name, state.data?.profile?.weather_location) || "Trainingseinheit"}`, () => {}, true)),
     h("div", "planned-group-items", entries.map((entry) => renderPlannedEntry(entry, dateKey, todayKey, dayContext, weekHasPlan))));
 }
@@ -2238,6 +2291,7 @@ function renderPlannedDay(view, dateKey, weekHasPlan) {
       ? renderPlannedGroup(group.entries, dateKey, todayKey, dayContext, weekHasPlan)
       : renderPlannedEntry(group.entries[0], dateKey, todayKey, dayContext, weekHasPlan));
   }
+  if (dateKey >= todayKey) content.append(plannedAddButton(dateKey));
   day.append(plannedDayDate(day, dateKey), content);
   return day;
 }
@@ -2343,7 +2397,10 @@ function plannedMonthDay(view, dateKey, monthKey) {
   const blocked = (view.calendarEventsByDate?.get(dateKey) || []).some((event) => event.impact === "block");
   button.classList.toggle("has-blocked-event", blocked);
   const units = entries.length ? countLabel(entries.length, "Einheit", "Einheiten") : "keine Einheit";
-  button.setAttribute("aria-label", `${DETAIL_DATE_FORMAT.format(dateFromKey(dateKey))}: ${units}${blocked ? ", Termin blockiert Training" : ""}`);
+  // The visible number and marks are decoration for the name, which the hidden text spells out (WCAG 2.5.3).
+  number.setAttribute("aria-hidden", "true");
+  marks.setAttribute("aria-hidden", "true");
+  button.append(h("span", "sr-only", `${DETAIL_DATE_FORMAT.format(dateFromKey(dateKey))}: ${units}${blocked ? ", Termin blockiert Training" : ""}`));
   button.addEventListener("click", () => {
     state.plannedTodayFocusPending = false;
     selectPlannedDay(dateKey);
@@ -2935,7 +2992,98 @@ function libraryActions(workout) {
   });
   const receipt = libraryReceipts.get(id);
   if (receipt) libraryReceiptLine(status, id, receipt);
-  return [h("div", "planned-activity-actions", toggle, remove), confirm, days, status];
+  const edit = h("button", { type: "button", className: "secondary-button" }, "Bearbeiten");
+  edit.addEventListener("click", () => openLibraryEditor(workout));
+  return [h("div", "planned-activity-actions", edit, toggle, remove), confirm, days, status];
+}
+
+// "+ Einheit" and "Bearbeiten" (#3951): the unit editor over the library use cases; the receipt offers "Rückgängig".
+let libraryView = "active";
+let libraryArchived = [];
+let libraryOpenId = "";
+
+function openLibraryEditor(workout = null) {
+  openUnitEditor({
+    kind: "library",
+    entry: workout,
+    onSaved: async (result) => {
+      const text = workout ? `Gespeichert: ${result.library_entry?.name || workout.name}` : `Angelegt: ${result.library_entry?.name}`;
+      libraryReceipts.clear();
+      libraryReceipts.set(String(result.local_id), { text, change: result.change });
+      libraryOpenId = String(result.local_id);
+      libraryView = "active";
+      await globalThis.load?.();
+      announcePlanChange(text);
+    },
+  });
+}
+
+async function loadArchivedLibrary() {
+  try {
+    libraryArchived = (await api("/api/library?archived=1")).workouts || [];
+  } catch (error) {
+    libraryArchived = [];
+    globalThis.toast?.(error.message, true);
+  }
+  renderLibrary(state.data?.library || [], true);
+}
+
+function libraryToolbar() {
+  const group = h("div", { className: "chip-group", role: "radiogroup", "aria-label": "Bibliothek" });
+  for (const [value, label] of [["active", "Aktiv"], ["archived", "Archiviert"]]) {
+    const input = h("input", { type: "radio", name: "libraryView", value, checked: libraryView === value });
+    input.addEventListener("change", () => {
+      libraryView = value;
+      renderLibrary(state.data?.library || []);
+      $("#library input[name=libraryView]:checked")?.focus();
+    });
+    group.append(h("label", "chip", input, h("span", null, label)));
+  }
+  const add = h("button", { type: "button", className: "secondary-button" }, "+ Einheit");
+  add.addEventListener("click", () => openLibraryEditor());
+  return h("div", "library-toolbar", group, add);
+}
+
+// An archived entry: "Wiederherstellen", and "Endgültig löschen" for one no provider holds. Both act at once and
+// leave a receipt with "Rückgängig" (#3951); the 30-day clean-up of #3141 is unchanged.
+function archivedLibraryCard(workout) {
+  const id = String(workout.id);
+  const name = workout.name || "Bibliotheks-Einheit";
+  const restore = h("button", { type: "button", className: "secondary-button" }, "Wiederherstellen");
+  const status = h("p", { className: "planned-move-status", role: "status" });
+  restore.addEventListener("click", async () => {
+    restore.disabled = true;
+    try {
+      const result = await api(`/api/library/${encodeURIComponent(id)}/restore`, { method: "POST", body: "{}" });
+      libraryReceipts.clear();
+      libraryReceipts.set(id, { text: `Wiederhergestellt: ${name}`, change: result.change });
+      libraryOpenId = id;
+      libraryView = "active";
+      await globalThis.load?.();
+      announcePlanChange(`Wiederhergestellt: ${name}`);
+    } catch (error) {
+      restore.disabled = false;
+      status.textContent = error.message;
+    }
+  });
+  const buttons = [restore];
+  const notes = [status];
+  if (!workout.external_id) {
+    const [remove, failure] = inCardDelete(async () => {
+      const result = await api(`/api/library/${encodeURIComponent(id)}/delete`, { method: "POST", body: JSON.stringify({ confirmed: true }) });
+      libraryReceipts.clear();
+      libraryReceipts.set(id, { text: `Endgültig gelöscht: ${name}`, change: result.change });
+      await loadArchivedLibrary();
+      announcePlanChange(`Endgültig gelöscht: ${name}`);
+    });
+    remove.textContent = "Endgültig löschen";
+    buttons.push(remove);
+    notes.push(failure);
+  }
+  return h("article", "library-card",
+    h("div", null, h("h4", null, name), h("span", null, workout.planned_duration_s ? AppFormat.duration(workout.planned_duration_s) : "")),
+    h("p", null, libraryDescriptionText(workout.description) || "Kein Workout-Text hinterlegt."),
+    h("div", "planned-activity-actions", ...buttons), ...notes);
 }
 
 function libraryReceiptLine(status, id, receipt) {
@@ -2963,18 +3111,25 @@ function libraryDescriptionText(text) {
   return String(text || "").split("\n").map((line) => (/^\s*-/.test(line) ? libraryStepLine(line) : line)).join("\n");
 }
 
-function renderLibrary(workouts) {
+// `archivedFresh`: the archived list was just read; every other render of that view reads it again.
+function renderLibrary(workouts, archivedFresh = false) {
   const root = $("#library");
   if (!root) return;
+  if (libraryView === "archived" && !archivedFresh) void loadArchivedLibrary();
   const openSports = new Set([...root.querySelectorAll("details.library-sport[open]")].map((section) => section.dataset.sport));
-  root.replaceChildren();
-  appendHistoryPageButton(root, "library");
+  root.replaceChildren(libraryToolbar());
+  const archivedView = libraryView === "archived";
+  if (!archivedView) appendHistoryPageButton(root, "library");
   const allWorkouts = Array.isArray(workouts) ? workouts : [];
-  const visible = allWorkouts.filter((workout) => !workout.archived && !workout.date);
+  const visible = archivedView ? libraryArchived : allWorkouts.filter((workout) => !workout.archived && !workout.date);
   // A deleted entry's card is gone, so its receipt leads the library.
   const shown = new Set(visible.map((workout) => String(workout.id)));
   for (const [id, receipt] of libraryReceipts) {
     if (!shown.has(id)) root.append(libraryReceiptLine(h("p", { className: "planned-move-status", role: "status" }), id, receipt));
+  }
+  if (archivedView) {
+    root.append(...visible.map(archivedLibraryCard));
+    return;
   }
   if (!visible.length) {
     root.append(h("p", "context-empty", "Noch keine Einheiten in der Bibliothek. Der Coach legt hier Einheiten ab, wenn du sie planst."));
@@ -2998,7 +3153,7 @@ function renderLibrary(workouts) {
           h("p", null, libraryDescriptionText(workout.description) || "Kein Workout-Text hinterlegt."),
           libraryWahooRow(workout),
           ...libraryActions(workout)))));
-      section.open = openSports.has(sport);
+      section.open = openSports.has(sport) || sportWorkouts.some((workout) => String(workout.id) === libraryOpenId);
       root.append(section);
     });
 }
@@ -3063,13 +3218,16 @@ function racePlanPacing(pacing) {
   if (pacing.status !== "ready") return RACE_PLAN_UNAVAILABLE[pacing.reason] ? [racePlanHeading("Tempo"), h("p", "race-plan-gap", RACE_PLAN_UNAVAILABLE[pacing.reason])] : [];
   const ride = pacing.method === "power_variation";
   const badge = [ride ? "± 5 % Leistung" : "gleiche Anstrengung", pacing.profile_rejected ? "Streckenprofil nicht erkannt" : null].filter(Boolean).join(" · ");
+  const columns = ride ? ["Abschnitt", "Steigung", "Leistung"] : ["Abschnitt", "Steigung", "Tempo", "Zeit"];
   const rows = pacing.sections.map((section) => {
     const grade = racePlanSigned(section.grade_pct);
     const span = `km ${RACE_PLAN_KM.format(section.from_km)}–${RACE_PLAN_KM.format(section.to_km)}`;
-    if (ride) return [span, grade, section.power_w == null ? racePlanSigned(section.power_pct, "±") : `${section.power_w} W`];
-    return [span, grade, `${AppFormat.clock(section.pace_s_per_km)}/km`, AppFormat.clock(section.time_s)];
+    const cells = ride
+      ? [span, grade, section.power_w == null ? racePlanSigned(section.power_pct, "±") : `${section.power_w} W`]
+      : [span, grade, `${AppFormat.clock(section.pace_s_per_km)}/km`, AppFormat.clock(section.time_s)];
+    // The column name rides on each cell: a narrow row shows it above the value.
+    return cells.map((value, index) => h("td", { dataset: { label: columns[index] } }, value));
   });
-  const columns = ride ? ["Abschnitt", "Steigung", "Leistung"] : ["Abschnitt", "Steigung", "Tempo", "Zeit"];
   return [racePlanHeading("Tempo", badge), table(columns, rows, { className: "race-plan-table" })];
 }
 
@@ -3263,13 +3421,6 @@ function competitionSportChoice(competition) {
   return COMPETITION_SPORT_OPTIONS[competition.sport] || null;
 }
 
-function showCompetitionDialogStep(step) {
-  const confirming = step === "confirm";
-  $("#competitionDialogForm").hidden = confirming;
-  $("#competitionDialogConfirm").hidden = !confirming;
-  $("#competitionDialog").setAttribute("aria-labelledby", confirming ? "competitionDialogConfirmTitle" : "competitionDialogTitle");
-}
-
 function fillCompetitionDialog(competition) {
   const form = $("#competitionDialogForm");
   const stored = competition || {};
@@ -3301,9 +3452,7 @@ function fillCompetitionDialog(competition) {
   $("#competitionDialogResult").replaceChildren(...(result ? [competitionFact("Ergebnis", result)] : []));
   $("#competitionDialogRemove").hidden = !competition;
   $("#competitionDialogStatus").textContent = "";
-  $("#competitionDialogConfirmStatus").textContent = "";
   for (const button of $("#competitionDialog").querySelectorAll("button")) button.disabled = false;
-  showCompetitionDialogStep("form");
 }
 
 // The receipt stays in the toast with "Rückgängig" a little longer than a plain message.
@@ -3379,14 +3528,9 @@ function bindCompetitionDialog() {
     void sendCompetition("/api/competitions", payload, $("#competitionDialogSave"), status, () => "Wettkampf gespeichert.");
   });
   $("#competitionDialogCancel").addEventListener("click", () => $("#competitionDialog").close());
+  // "Löschen" acts at once and the receipt offers the undo (athlete decision, #3934 G-03).
   $("#competitionDialogRemove").addEventListener("click", () => {
-    const { name, event_date: day } = competitionEdit.competition;
-    $("#competitionDialogConfirmText").textContent = `„${name || "Wettkampf"}“ am ${dateLabel(day)} wird gelöscht. Bei Intervals.icu verschwindet er erst mit dem nächsten Sync, den du anstößt.`;
-    showCompetitionDialogStep("confirm");
-  });
-  $("#competitionDialogConfirmCancel").addEventListener("click", () => showCompetitionDialogStep("form"));
-  $("#competitionDialogConfirmRemove").addEventListener("click", () => {
-    void sendCompetition("/api/competitions/remove", { id: competitionEdit.competition.id, confirmed: true }, $("#competitionDialogConfirmRemove"), $("#competitionDialogConfirmStatus"),
+    void sendCompetition("/api/competitions/remove", { id: competitionEdit.competition.id, confirmed: true }, $("#competitionDialogRemove"), $("#competitionDialogStatus"),
       (result) => (result.remote_sync_pending ? "Wettkampf gelöscht. Bei Intervals.icu verschwindet er mit dem nächsten Sync." : "Wettkampf gelöscht."));
   });
 }

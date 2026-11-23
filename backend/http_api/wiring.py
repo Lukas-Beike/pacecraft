@@ -98,6 +98,7 @@ from backend.performance.canonical_inputs import (
 from backend.performance.season_inputs import SeasonSource
 from backend.planning import season as planning_season
 from backend.planning.compact_activities import ActivitySummarySource
+from backend.planning.planned_unit_edit_service import PlannedUnitEditService
 from backend.planning.race_plan import read_race_plan
 from backend.planning.race_results import with_race_results
 from backend.runtime import events as runtime_events
@@ -561,6 +562,12 @@ def _athlete_write_routes(
             ctx.planning.planned_unit,
             ctx.database,
             ctx.planning_workflows.structured_training_change_service,
+            lambda: PlannedUnitEditService(
+                ctx.database(),
+                ctx.planning_workflows.structured_training_change_service,
+                ctx.planning.workout_library,
+                ctx.plan_guard.plan_guard_service,
+            ),
         ),
         LibraryPostRoutes(
             ctx.planning.workout_library,

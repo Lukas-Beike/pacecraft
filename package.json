@@ -8,7 +8,7 @@
   },
   "devDependencies": {
     "@axe-core/playwright": "4.14.0",
-    "@fission-ai/openspec": "2.1.0",
+    "@fission-ai/openspec": "2.1.1",
     "@playwright/test": "1.65.1",
     "eslint": "10.15.0",
     "eslint-plugin-sonarjs": "4.2.2",

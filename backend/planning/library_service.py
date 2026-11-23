@@ -288,8 +288,11 @@ class WorkoutLibraryService:
             db, "workout_library", local_id, "create", None, entry
         )
 
-    def create_template(self, workout: Any) -> dict[str, Any]:
-        """Create a reusable local template, explicitly separate from the plan."""
+    def create_template(self, workout: Any, source: str = "coach") -> dict[str, Any]:
+        """Create a reusable local template, explicitly separate from the plan.
+
+        ``source`` names who wrote it: the Coach, or the athlete ("manual").
+        """
         if not isinstance(workout, dict) or workout.get("date"):
             raise AppError(
                 400, "Eine Bibliotheksvorlage darf kein Planungsdatum enthalten."
@@ -327,7 +330,7 @@ class WorkoutLibraryService:
                     if workout.get("test_protocol")
                     else {}
                 ),
-                "source": "coach",
+                "source": source,
             }
         )
 

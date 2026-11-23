@@ -242,7 +242,7 @@ const PROVIDER_FRESHNESS_STATUS = {
   syncing: "Wird aktualisiert",
   error: "Fehler",
   never_loaded: "Noch nie geladen",
-  not_configured: "Nicht konfiguriert",
+  not_configured: "Nicht eingerichtet",
 };
 
 

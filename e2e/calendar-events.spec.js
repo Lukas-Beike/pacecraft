@@ -51,7 +51,7 @@ test("@responsive personal events show as a band and take a decision per event o
   await expect(page.locator(`.planned-day[data-date="${days.day}"] .planned-day-calendar`)).toHaveCount(0);
   const open = chips.filter({ hasText: "Elternabend" });
   await expect(open).toHaveAttribute("data-impact", "open");
-  await expect(open).toHaveAccessibleName(/Elternabend .*19:00–21:00, Offen/);
+  await expect(open).toHaveAccessibleName(/19:00–21:00 Elternabend.*Offen/);
 
   const posts = [];
   await page.route("**/api/external-calendar/decisions", async (route) => {
@@ -204,7 +204,7 @@ test("@responsive the notice walks through undecided events of the next 14 days 
     expect(new Set(offsets).size).toBe(1);
     await page.evaluate(() => { document.documentElement.style.fontSize = ""; });
   }
-  await expect(nav).toHaveAccessibleName(`Kalender, 2 neue Termine bis ${until}`);
+  await expect(nav).toHaveAccessibleName(`Kalender 2, 2 neue Termine bis ${until}`);
 
   const posts = [];
   await page.route("**/api/external-calendar/decisions", async (route) => {

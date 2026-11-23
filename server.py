@@ -238,7 +238,7 @@ DATA_DIR = Path(os.environ.get("DATA_DIR", ROOT / "data"))
 DB_PATH = DATA_DIR / "intervals-coach.db"
 LOG_PATH = DATA_DIR / "intervals-coach.log"
 APP_NAME = "Pacecraft · AI Coach"
-APP_VERSION = "2.2.17"
+APP_VERSION = "2.2.18"
 MAX_BODY_BYTES = 1_000_000
 COACH_CONVERSATION_GATE = CoachConversationGate()
 
@@ -451,6 +451,7 @@ PERFORMANCE = build_performance(
 )
 APP.performance = PERFORMANCE
 PLAN_GUARD = build_plan_guard(APP)
+APP.plan_guard = PLAN_GUARD
 ACTIVITY_READS = build_activity_reads(
     APP,
     session_activities=CanonicalTableReader().session_activities,

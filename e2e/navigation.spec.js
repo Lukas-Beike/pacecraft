@@ -170,10 +170,60 @@ test("@responsive Betrieb & Diagnose lists the release changes from the image as
   const earlier = changelog.locator(":scope > details", { has: page.locator(":scope > summary", { hasText: "Frühere Versionen (1)" }) });
   await earlier.locator(":scope > summary").click();
   await expect(earlier.locator(":scope > details > summary")).toHaveText(["Version 2.1.14"]);
+  // Every summary of the changelog is a 44 px target on the phone (#3935).
+  if (page.viewportSize().width <= 480) {
+    const heights = await changelog.locator("summary").evaluateAll((nodes) => nodes.map((node) => Math.round(node.getBoundingClientRect().height)));
+    expect(Math.min(...heights)).toBeGreaterThanOrEqual(44);
+  }
   await expect(changelog.getByText("analysis: pace zones")).toBeHidden();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   served = false;
   await page.reload();
   await expect(page.locator("#settingsAppVersion")).toHaveText(/^v\d+\.\d+\.\d+/);
   await expect(page.locator(".release-changelog")).toHaveCount(0);
+});
+
+// #3935 X-04: the first Tab stop skips the navigation; the link must not reach the hash router.
+test("@responsive the skip link moves the focus to the content and keeps the route", async ({ page }) => {
+  await page.route("**/api/state/events*", (route) => route.abort());
+  await page.goto("/#nutrition/diary");
+  await expect(page.locator("#appShell")).toBeVisible();
+  await expect.poll(() => page.evaluate(() => Boolean(state.data))).toBe(true);
+  // It leads the tab order: no focusable element comes before it.
+  const first = await page.evaluate(() => {
+    const tabbable = [...document.querySelectorAll("a[href], button:not([disabled]), input:not([disabled]), select, textarea, summary, [tabindex]:not([tabindex='-1'])")].filter((element) => element.getClientRects().length);
+    return `${tabbable[0]?.tagName}.${tabbable[0]?.className}`;
+  });
+  expect(first, "first tab stop").toBe("A.skip-link");
+  const link = page.getByRole("link", { name: "Zum Inhalt springen" });
+  await link.focus();
+  await expect(link).toBeFocused();
+  await expect(link).toBeInViewport();
+  await page.keyboard.press("Enter");
+  await expect(page.locator("#main")).toBeFocused();
+  expect(new URL(page.url()).hash).toBe("#nutrition/diary");
+});
+
+// #3935 G-11: the page heading does not move when a short view replaces a long one.
+test("@responsive the page heading stays at one height between tabs on a wide screen", async ({ page, request }) => {
+  test.skip(page.viewportSize().width < 1100, "the desktop grid");
+  expect((await request.get("/api/fixture/demo")).ok()).toBeTruthy();
+  await page.route("**/api/state/events*", (route) => route.abort());
+  await page.goto("/#plan/overview");
+  await expect(page.locator("#appShell")).toBeVisible();
+  await expect.poll(() => page.evaluate(() => Boolean(state.data))).toBe(true);
+  const heights = [];
+  for (const route of ["plan/overview", "plan/library", "plan/season", "more/app", "more/connections", "analysis/strength"]) {
+    await page.evaluate((target) => AppRouter.navigate(target, { historyMode: "replace" }), route);
+    const panel = await page.evaluate((target) => AppNavigation.routes[target], route);
+    await expect(page.locator(`#${panel}.active h2:visible`).first()).toBeVisible();
+    heights.push(await page.locator(`#${panel}.active h2:visible`).first().evaluate((heading) => {
+      const box = heading.getBoundingClientRect();
+      let parents = "";
+      for (let node = heading.parentElement; node && node.tagName !== "BODY" && parents.split(">").length < 6; node = node.parentElement) parents += `${node.tagName.toLowerCase()}#${node.id}.${String(node.className).split(" ")[0]}(${getComputedStyle(node).display},${Math.round(node.getBoundingClientRect().top + globalThis.scrollY)})>`;
+      return Math.round(box.top + globalThis.scrollY) + (parents && box.top + globalThis.scrollY > 200 ? ` [${parents}]` : "");
+    }));
+  }
+  // The tabs differ by a few px of their own heading margin; before the fix a short view sat 110 to 240 px lower.
+  expect(Math.max(...heights.map((top) => parseInt(top, 10))) - Math.min(...heights.map((top) => parseInt(top, 10))), `heading tops ${heights.join(", ")}`).toBeLessThanOrEqual(12);
 });

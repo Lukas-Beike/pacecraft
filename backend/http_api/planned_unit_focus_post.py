@@ -9,6 +9,8 @@ from backend import change_history
 from backend.canonical.planning_fields import FOCUS_ONLY_KEYS
 from backend.errors import AppError
 from backend.http_api.route_table import Access, Route, RouteRequest
+from backend.planning import plan_checks
+from backend.planning.plan_guard_service import PlanCheckError
 
 
 class PlannedUnitFocusPostRoutes:
@@ -19,13 +21,28 @@ class PlannedUnitFocusPostRoutes:
         planned_unit_service: Callable[[], Any],
         database_manager: Callable[[], Any],
         training_changes: Callable[[], Any] | None = None,
+        unit_edit: Callable[[], Any] | None = None,
     ):
         self._planned_unit_service = planned_unit_service
         self._database_manager = database_manager
         self._training_changes = training_changes
+        self._unit_edit = unit_edit
 
     def routes(self) -> list[Route]:
         return [
+            Route("POST", "/api/planned-units", Access.SESSION_CSRF, self._create),
+            Route(
+                "POST",
+                "/api/planned-units/{id}/update",
+                Access.SESSION_CSRF,
+                self._update,
+            ),
+            Route(
+                "POST",
+                "/api/planned-units/{id}/archive",
+                Access.SESSION_CSRF,
+                self._archive,
+            ),
             Route(
                 "POST",
                 "/api/planned-units/{id}/focus",
@@ -51,6 +68,126 @@ class PlannedUnitFocusPostRoutes:
                 self._delete,
             ),
         ]
+
+    def _create(self, handler: Any, _request: RouteRequest) -> None:
+        """Plan a new unit on a day, from scratch or from a library entry, without a remote write.
+
+        Request: JSON body with `date` (not before today), `starts_at_local`,
+        `sport`, `environment`, `name`, `description`, `duration_minutes`,
+        `target`, `session_focus`, `strength_intensity`, `strength_structure`,
+        `hr_cap`, `template_id` (the library entry it comes from; without it the
+        unit's entry is saved to the library too), `plan_id` (an active training
+        plan to join) and `accept_plan_findings` (the codes of blocking plan
+        checks the athlete accepts, e.g. `illness_hard`). It runs the Coach's
+        change batch with the same checks; the next explicit sync exports it.
+
+        Response: 200 `{"status": "local", "local_id", "plan_check_notes",
+        "change"}`; `change` is the undo reference of the unit.
+
+        Errors: 400 for a missing field, a bad date or duration or workout text
+        whose steps miss the duration; 409 `plan_date_conflict` for a day the
+        calendar rules out; 409 `illness_hard` for a hard or long unit within
+        days of a reported illness (resend with `accept_plan_findings`); 409
+        `plan_not_available` for an archived plan.
+        """
+        payload = _read_object(handler)
+        plan_id = payload.get("plan_id")
+        accept = payload.get("accept_plan_findings")
+        fields = {
+            key: value
+            for key, value in payload.items()
+            if key not in {"plan_id", "accept_plan_findings"}
+        }
+        edit = self._unit_edit
+        assert edit is not None
+        self._send_unit_change(
+            handler,
+            lambda: edit().create(
+                fields,
+                plan_id=plan_id if isinstance(plan_id, str) else None,
+                accept=accept if isinstance(accept, list) else None,
+            ),
+        )
+
+    def _update(self, handler: Any, request: RouteRequest) -> None:
+        """Change a unit's content or day without a remote write.
+
+        Request: path `{id}`; JSON body with the fields of the create route (a
+        missing field keeps its stored value), `expected_payload_hash` (the unit's
+        hash from the read the form came from) and `accept_plan_findings`.
+
+        Response: 200 `{"status": "local", "local_id", "plan_check_notes",
+        "change"}`. The unit's provider copies are replaced by the next sync.
+
+        Errors: as the create route; 409 `planning_revision_conflict` for a
+        missing hash; 409 `payload_hash_conflict` for an outdated hash or an
+        unknown id.
+        """
+        payload = _read_object(handler)
+        accept = payload.get("accept_plan_findings")
+        fields = {
+            key: value
+            for key, value in payload.items()
+            if key not in {"expected_payload_hash", "accept_plan_findings"}
+        }
+        edit = self._unit_edit
+        assert edit is not None
+        self._send_unit_change(
+            handler,
+            lambda: edit().update(
+                request.params["id"],
+                fields,
+                payload.get("expected_payload_hash"),
+                accept=accept if isinstance(accept, list) else None,
+            ),
+        )
+
+    def _archive(self, handler: Any, request: RouteRequest) -> None:
+        """Archive a planned unit out of the calendar; its receipt offers the undo.
+
+        Request: path `{id}`; JSON body `{"confirmed": true, "expected_payload_hash":
+        string}`. A copy at a provider goes with the next explicit sync.
+
+        Response: 200 `{"status", "local_id", "plan_check_notes", "change"}`.
+
+        Errors: 409 `confirmation_required` without `confirmed: true`; as the
+        update route for the hash.
+        """
+        payload = _read_object(handler)
+        if payload.get("confirmed") is not True:
+            raise AppError(
+                409,
+                "Das Archivieren muss bestätigt werden.",
+                reason="confirmation_required",
+            )
+        edit = self._unit_edit
+        assert edit is not None
+        self._send_unit_change(
+            handler,
+            lambda: edit().set_archived(
+                request.params["id"], True, payload.get("expected_payload_hash")
+            ),
+        )
+
+    @staticmethod
+    def _send_unit_change(handler: Any, apply: Callable[[], dict[str, Any]]) -> None:
+        try:
+            with change_history.collect_changes() as changes:
+                result = apply()
+        except PlanCheckError as error:
+            # Only the health rule blocks the athlete's own edit; a second tap with
+            # `accept_plan_findings: ["illness_hard"]` saves it.
+            if {item["code"] for item in error.findings} != set(
+                plan_checks.BLOCKING_CODES
+            ):
+                raise
+            raise AppError(
+                409,
+                "Krankheit gemeldet: In den nächsten Tagen keine harte oder lange Einheit.",
+                reason="illness_hard",
+            ) from error
+        units = [item for item in changes if item["entity_type"] == "planned_unit"]
+        handler.send_json(200, {**result, **({"change": units[-1]} if units else {})})
 
     def _delete(self, handler: Any, request: RouteRequest) -> None:
         """Delete a planned unit from the calendar without a remote write (#3027).

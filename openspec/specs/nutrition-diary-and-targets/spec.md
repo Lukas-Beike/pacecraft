@@ -434,7 +434,7 @@ The client SHALL show the nutrition area as Tagebuch, Verlauf, Körper and Produ
 
 #### Scenario: Twelve weeks
 - **WHEN** 84 days are shown
-- **THEN** the chart has 12 rows of weekly averages of intake and expenditure, each with "{n} von 7 Tagen", and consecutive rows without data collapse into one "keine Daten" row.
+- **THEN** the chart has one row per calendar week (the first and the last partial) under the heads "Woche", "Aufnahme · Verbrauch" and "Bilanz", each reading "Woche ab dd.mm." (the week that holds today "Diese Woche") with weekly averages of intake and expenditure and "{n} von {days of that week} Tagen", and consecutive rows without data collapse into one "keine Daten" row, in the chart and in the day table (#3930).
 
 Detailed contract: a meal card shows time and meal label (the label alone when the time is unknown), description, values, and a source line unless the entry is a locally stored manual entry; synced entries show "Synchronisiert". The expenditure section shows "Tagesverbrauch", "Aktivkalorien" and "Grundumsatz"; a current measurement has no status line and "Tagesverbrauch" carries a source chip with the provider's short label ("Garmin"); otherwise the status line names the source and the freshness ("Veraltet", "Verzögert", else "Aktualität unbekannt") and, for the running day, "Vorläufig, da der Tag noch läuft", or says that no Garmin data exists for the day; its date line reads "Sync: …" or else "Abgerufen: …". For today "Prognose Tagesverbrauch" carries an estimate chip and a tooltip naming the resting reference day.
 

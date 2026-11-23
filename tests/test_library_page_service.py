@@ -134,6 +134,28 @@ class LibraryPageServiceTests(unittest.TestCase):
         )
         self.assertIsNone(result["next_cursor"])
 
+    def test_archived_lists_only_the_archived_undated_templates_newest_first(
+        self,
+    ) -> None:
+        self._insert_workout("1", sport="run", name="Active", archived=False)
+        self._insert_workout(
+            "2", sport="run", name="Old", archived=True, archived_at="2026-09-01"
+        )
+        self._insert_workout(
+            "3", sport="run", name="New", archived=True, archived_at="2026-09-20"
+        )
+        self._insert_workout(
+            "4", sport="run", name="Dated", archived=True, date="2026-09-23"
+        )
+
+        result = self.service.archived()
+
+        self.assertEqual(["New", "Old"], [item["name"] for item in result["workouts"]])
+        self.assertEqual(
+            [True, True], [item["archived"] for item in result["workouts"]]
+        )
+        self.assertIsNone(result["next_cursor"])
+
 
 if __name__ == "__main__":
     unittest.main()
