@@ -617,15 +617,6 @@ TOOL_SPECS: tuple[ToolSpec, ...] = (
         requirements=("training-library/TL10", CA5),
     ),
     ToolSpec(
-        "sync_nutrition",
-        SYNC,
-        REMOTE_WRITE,
-        REMOTE_INTERVALS,
-        done="Ernährungssynchronisierung beauftragt",
-        action="Ernährung synchronisieren",
-        requirements=(CA5, CA6),
-    ),
-    ToolSpec(
         "preview_adaptive_replan",
         PLANNING_ACTIONS,
         domain=PLANNING,

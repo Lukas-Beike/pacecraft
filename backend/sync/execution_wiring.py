@@ -70,7 +70,6 @@ def build_sync_job_execution(
                 sync_operation_observer=ctx.provider_sync.operation_observer(),
                 intervals_resync_gate=intervals_resync_gate,
             ),
-            nutrition_sync_service=ctx.nutrition.intervals_sync_service(),
             record_output=record_intervals_output,
         )
 

@@ -164,8 +164,8 @@ test("composite meal components are shown as text with unknown values and source
   const [summary, list] = details.children;
   assert.equal(textOf(summary), "Zutaten anzeigen (2)");
   const [known, unknown] = list.children.map((row) => row.children.map(textOf));
-  assert.deepEqual(known, [name, "· 40 g", " · 150 kcal · KH 25 g · Protein – g · Fett – g", "Verpackungsangabe"]);
-  assert.deepEqual(unknown, ["Unbenannte Zutat", "· –", " · – kcal · KH – g · Protein – g · Fett – g", "Quelle unbekannt"]);
+  assert.deepEqual(known, [name, "· 40 g", " · 150 kcal · Kohlenhydrate 25 g · Protein – g · Fett – g", "Verpackungsangabe"]);
+  assert.deepEqual(unknown, ["Unbenannte Zutat", "· –", " · – kcal · Kohlenhydrate – g · Protein – g · Fett – g", "Quelle unbekannt"]);
   assert.equal(context.nutritionComponentDetails({ nutrition_basis: { kind: "composite", components: [] } }), null);
   assert.equal(context.nutritionComponentDetails({ nutrition_basis: { kind: "database", components: [{ name: "x" }] } }), null);
 });
@@ -183,8 +183,8 @@ test("a diary component from a database product is labelled as such, an own prod
   assert.equal(context.nutritionComponentSource(estimate), "Erfasst");
   const details = context.nutritionComponentDetails({ source: "coach", nutrition_basis: { kind: "composite", components: [{ name: "Pasta", nutrition_basis: estimate }] } });
   assert.match(JSON.stringify(details), /"Coach"/);
-  assert.equal(context.nutritionBasisLabel(database, {}, "Erfasst"), "Datenbankprodukt · Haferdrink (Open Food Facts) · 50 ml");
-  assert.equal(context.nutritionBasisLabel(own, {}, "Erfasst"), "Lokales Produkt · Whey (packaging_label) · 50 ml");
+  assert.equal(context.nutritionBasisLabel(database, "Erfasst"), "Datenbankprodukt · Haferdrink (Open Food Facts) · 50 ml");
+  assert.equal(context.nutritionBasisLabel(own, "Erfasst"), "Lokales Produkt · Whey (packaging_label) · 50 ml");
 });
 
 test("the Coach draft of a product names the product by id, never by name", () => {
@@ -227,10 +227,12 @@ test("closing the barcode dialog stops the camera tracks and releases the video"
   const { context, dialog, video, stream, frames } = barcodeSetup();
   await context.scanNutritionBarcode();
   assert.equal(video.srcObject, stream);
+  assert.equal(video.hidden, false);
   assert.equal(stream.stopped, 0);
   dialog.close();
   assert.equal(stream.stopped, 1);
   assert.equal(video.srcObject, null);
+  assert.equal(video.hidden, true);
   assert.equal(frames.cancelled, 1);
 });
 
@@ -239,5 +241,6 @@ test("a camera that fails to start is stopped and the manual entry is offered", 
   await context.scanNutritionBarcode();
   assert.equal(stream.stopped, 1);
   assert.equal(video.srcObject, null);
+  assert.equal(video.hidden, true);
   assert.equal(document.nodes.get("#nutritionBarcodeStatus").textContent, "Kamera nicht verfügbar. Gib die EAN manuell ein. (play blocked)");
 });

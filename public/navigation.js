@@ -3,6 +3,7 @@ const NAV_ROUTES = Object.freeze({
   plan: "workoutsPanel",
   "plan/overview": "workoutsPanel",
   "plan/library": "workoutsPanel",
+  "plan/plans": "workoutsPanel",
   "plan/season": "workoutsPanel",
   nutrition: "nutritionPanel",
   "nutrition/diary": "nutritionPanel",
@@ -45,6 +46,7 @@ const NAV_VIEWS = (() => {
     plan: overview,
     "plan/overview": overview,
     "plan/library": view(PLAN_READS, [...PLAN_ACTIONS, "Weitere Bibliothekseinheiten laden", "Erneut senden"], ENTRIES),
+    "plan/plans": view(PLAN_READS, [...PLAN_ACTIONS, "Erneut senden"], ENTRIES),
     "plan/season": view([...PLAN_READS, "/api/profile"], [...PLAN_ACTIONS, "Erneut laden"], ENTRIES),
     nutrition: diary,
     "nutrition/diary": diary,
@@ -74,7 +76,7 @@ const NAV_LINK_ROUTES = Object.freeze({
   more: "more",
 });
 const DEFAULT_NAV_ROUTE = "coach";
-const PLAN_SEGMENTS = Object.freeze(["overview", "library", "season"]);
+const PLAN_SEGMENTS = Object.freeze(["overview", "library", "plans", "season"]);
 const MORE_SEGMENTS = Object.freeze(["profile", "connections", "equipment", "coach", "app", "operations"]);
 
 globalThis.AppNavigation = Object.freeze({

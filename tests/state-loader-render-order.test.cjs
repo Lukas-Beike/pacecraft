@@ -8,7 +8,7 @@ function loader(route) {
   const reloads = [];
   const stubs = [
     "renderAppVersion", "renderCoachOverview", "renderQuickMessageTemplates",
-    "renderStatus", "renderMessages", "renderPlanned", "renderLibrary", "renderProfile", "renderCompetitions", "renderGarmin",
+    "renderStatus", "renderMessages", "renderPlanned", "renderLibrary", "renderPlans", "renderProfile", "renderCompetitions", "renderGarmin",
     "renderAdaptivePlanning", "renderExternalCalendar", "renderPerformance", "renderModel", "renderThinkingLevel",
     "renderServiceTier", "renderDiagnosticCapture", "renderSettings", "updateChatControls",
   ];

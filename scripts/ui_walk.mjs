@@ -282,7 +282,8 @@ export const STEPS = [
   // step, while the calendar still shows today; later steps select other weeks and days. A running
   // week without any data yet (no plan, session, recovery value or check-in, early on a Monday) has
   // no card, so the step is optional.
-  { view: "plan", name: "Kalender: Wochenrückblick", covers: "#3298 week review (formerly Analyse › Woche, #3000)", pre: ['.planned-view-switch button[data-view="week"]'], ready: '.planned-week .week-review[data-this-week="true"] .week-review-tile', kind: "numbers", optional: true },
+  { view: "plan", name: "Kalender: Wochenrückblick", covers: "#3298 week review (formerly Analyse › Woche, #3000)", pre: ['.planned-view-switch button[data-view="week"]'], ready: '.planned-week .week-review[data-this-week="true"] .week-review-tile', kind: "numbers", optional: true,
+    saw: [["still loading", ".week-review .loading-state"], ["nicht verfügbar", ".week-review[data-failed]"], ["plan line instead", ".planned-week > .planned-week-totals"], ["card missing", null]] },
   // Shown only on a morning whose night values are clearly unusual (M14), so the step is optional. The values
   // come with the two answers, "Mir geht's gut" (neutral) and "Ich bin krank" (filled); they are never pressed.
   { view: "plan", name: "Kalender: Infekt-Hinweis", covers: "#3762 infection hint, #3821 answers", pre: ['.planned-view-switch button[data-view="week"]'], ready: ".planned-day.is-today [data-infection-hint]:has(.infection-hint-actions > button.secondary-button + button:not(.secondary-button))", kind: "numbers", optional: true },
@@ -303,14 +304,14 @@ export const STEPS = [
   // Read-only as well: the library card offers "Einplanen" and "Löschen"; the walk presses neither (#3028).
   { view: "plan", name: "Bibliothek: Einplanen, Löschen", covers: "#3028 library actions", pre: [tab("plan", "library")], opens: ["#library details.library-sport > summary"], ready: "#library .library-card .planned-activity-actions .danger-button", kind: "text", optional: true, post: [tab("plan", "overview")] },
   // Read-only: the walk checks that "+ Einheit" and "Bearbeiten" are there, it opens no editor and saves nothing (#3951).
-  { view: "plan", name: "Bibliothek: Einheit anlegen, bearbeiten", covers: "#3951 library editor", pre: [tab("plan", "library")], opens: ["#library details.library-sport > summary"], ready: "#library .library-toolbar:not(.library-plans-head) .secondary-button", kind: "text", post: [tab("plan", "overview")] },
+  { view: "plan", name: "Bibliothek: Einheit anlegen, bearbeiten", covers: "#3951 library editor", pre: [tab("plan", "library")], opens: ["#library details.library-sport > summary"], ready: "#library .library-toolbar .secondary-button", kind: "text", post: [tab("plan", "overview")] },
   { view: "plan", name: "Bibliothek: Bearbeiten", covers: "#4081 library card edit", pre: [tab("plan", "library")], opens: ["#library details.library-sport > summary"], ready: '#library .library-card .planned-activity-actions > .secondary-button:first-child', kind: "text", optional: true, post: [tab("plan", "overview")] },
   // A unit is planned from the Bibliothek (#4053): "Einplanen" only opens its day strip, no day is pressed (#4081).
   { view: "plan", name: "Bibliothek: Einplanen, Tagesauswahl", covers: "#4081 library Einplanen strip", pre: [tab("plan", "library")], opens: ["#library details.library-sport > summary", '#library .library-card .planned-activity-actions .secondary-button[aria-expanded="false"]'], ready: "#library .library-card .planned-move-days:not([hidden])", kind: "text", optional: true, post: ['#library .library-card .planned-activity-actions .secondary-button[aria-expanded="true"]', tab("plan", "overview")] },
   // The plan choice shows only with an active training plan (#4054).
   { view: "plan", name: "Bibliothek: Einplanen, Trainingsplan", covers: "#4054 Einplanen plan choice", pre: [tab("plan", "library")], opens: ["#library details.library-sport > summary", '#library .library-card .planned-activity-actions .secondary-button[aria-expanded="false"]'], ready: "#library .library-card .library-plan-field:not([hidden]) select", kind: "text", optional: true, post: [tab("plan", "overview")] },
-  // Read-only: the walk checks that the plans block with "+ Plan" is there, it opens no form (#3950).
-  { view: "plan", name: "Bibliothek: Pläne", covers: "#3950 training plans", pre: [tab("plan", "library")], ready: "#library .library-toolbar > strong", kind: "text", post: [tab("plan", "overview")] },
+  // Read-only: the walk checks that the Pläne tab shows "+ Plan" and its list, it opens no form (#3950, #4133).
+  { view: "plan", name: "Pläne: Plan anlegen", covers: "#4133 Pläne tab", since: "2.2.24", pre: [tab("plan", "plans")], ready: "#plans .library-toolbar .secondary-button", kind: "text", post: [tab("plan", "overview")] },
   // Only a unit with a Garmin copy offers "Aus Garmin entfernen" and the fixture sends nothing to Garmin, so the step is optional; it is never pressed (#4022).
   { view: "plan", name: "Kalender: Aus Garmin entfernen", covers: "#4022 Garmin removal", each: PLANNED, ...LATER, ready: ".planned-entry[open] .planned-garmin-remove", kind: "text", optional: true },
   // Only a competition with a sync conflict shows its choices and the fixture holds none, so the step is optional; neither is pressed (#4021).
@@ -462,6 +463,14 @@ async function maySeek(page, step, count, paged, began) {
   return page.locator(step.seek).filter({ visible: true }).first().isEnabled().catch(() => false);
 }
 
+// What the page shows instead of an optional step's element, named in its skip: the label of the first
+// `saw` pair [label, selector] with a visible match, else the pair without a selector.
+async function sawLabel(page, saw) {
+  if (!saw) return "";
+  const label = await page.evaluate((pairs) => pairs.find(([, selector]) => selector && [...document.querySelectorAll(selector)].some((node) => node.checkVisibility()))?.[0], saw).catch(() => null);
+  return ` (${label ?? saw.find(([, selector]) => !selector)?.[0] ?? "nothing"})`;
+}
+
 // One step: { status: ok|fail|skip, ms (interaction to ready, of the candidate that passed), why }.
 export async function runStep(page, { pre = [], post = [], unseek, ...step }, capMs = STEP_CAP_MS) {
   // After a restart the app reloads its data as each start sync ends, and a reload re-renders the view:
@@ -485,7 +494,7 @@ export async function runStep(page, { pre = [], post = [], unseek, ...step }, ca
     }
     // Nothing loaded and nothing empty: the data this step needs does not exist (info, not a failure).
     if (!empty) return { status: "skip", ms: 0, why: count ? "no stored data" : NO_SESSION };
-    return step.optional ? { status: "skip", ms: 0, why: `none of ${count} has it` } : { status: "fail", ms: Date.now() - began, why: "missing or empty" };
+    return step.optional ? { status: "skip", ms: 0, why: `none of ${count} has it${await sawLabel(page, step.saw)}` } : { status: "fail", ms: Date.now() - began, why: "missing or empty" };
   } catch (error) {
     return { status: "fail", ms: Date.now() - began, why: error.name === "TimeoutError" ? "control missing" : error.message.split("\n")[0] };
   } finally {

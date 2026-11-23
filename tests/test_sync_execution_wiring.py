@@ -106,7 +106,6 @@ class SyncJobExecutionBuilderTests(unittest.TestCase):
         self.assertEqual(2, self.selected.call_count)
         self.assertEqual(2, self.competitions.call_count)
         self.assertEqual(2, ctx.provider_sync.operation_observer.call_count)
-        self.assertEqual(2, ctx.nutrition.intervals_sync_service.call_count)
         i.assert_called_with(
             selected_workout_sync_service=self.selected.return_value,
             competition_sync_service=self.competitions.return_value,

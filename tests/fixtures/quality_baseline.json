@@ -2108,12 +2108,6 @@
     },
     {
       "tool": "mypy",
-      "path": "tests/test_sync_executor.py",
-      "code": "var-annotated",
-      "message_sha256": "c9109e7a789ff07480f61264ff9ebcc7b4ab58d2883dfaa9cf7c4e1a844d5b0e"
-    },
-    {
-      "tool": "mypy",
       "path": "tests/test_sync_garmin_service.py",
       "code": "var-annotated",
       "message_sha256": "c9109e7a789ff07480f61264ff9ebcc7b4ab58d2883dfaa9cf7c4e1a844d5b0e"

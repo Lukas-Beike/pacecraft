@@ -86,13 +86,14 @@ test("the routes name their panels and the segments the views offer", () => {
   const { context } = router();
   const { routes, planSegments, moreSegments, linkRoutes, defaultRoute } = context.AppNavigation;
   assert.ok(Object.isFrozen(context.AppNavigation));
-  assert.deepEqual(plain(planSegments), ["overview", "library", "season"]);
+  assert.deepEqual(plain(planSegments), ["overview", "library", "plans", "season"]);
   assert.deepEqual(plain(moreSegments), ["profile", "connections", "equipment", "coach", "app", "operations"]);
   assert.deepEqual(plain(Object.keys(linkRoutes)), ["coach", "plan", "nutrition", "analysis", "more"]);
   assert.equal(defaultRoute, "coach");
   assert.equal(routes.plan, "workoutsPanel");
   assert.equal(routes["plan/overview"], "workoutsPanel");
   assert.equal(routes["plan/library"], "workoutsPanel");
+  assert.equal(routes["plan/plans"], "workoutsPanel");
   assert.equal(routes.analysis, "dataPanel");
   assert.equal(routes["analysis/running"], "dataPanel");
   assert.equal(routes["analysis/cycling"], "dataPanel");

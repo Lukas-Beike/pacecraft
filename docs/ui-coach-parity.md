@@ -46,10 +46,10 @@ added a row conflicted on it (#4092).
 | Planning | Archive or restore a planned unit | Kalender card "Archivieren" `POST /api/planned-units/{id}/archive`, receipt "Rückgängig" `POST /api/change-history/undo` | `apply_training_patch` (`archive`, `restore`) | confirmed request, undo | both | |
 | Planning | Set a planned unit's focus | Kalender card `POST /api/planned-units/{id}/focus` | `apply_training_patch` (`session_focus`, `strength_intensity`) | receipt | both | |
 | Planning | Choose a strength exercise's Garmin exercise | Kalender card `POST /api/planned-units/{id}/garmin-exercise` | `apply_training_patch` (`garmin_exercise`) | receipt | both | |
-| Planning | Read multi-week training plans | Bibliothek › Pläne `GET /api/plan` | `list_training_plans` | — | both | |
-| Planning | Create a multi-week training plan | Bibliothek › Pläne "+ Plan" `POST /api/training-plans`, its units in the unit editor | `stage_training_plan`, `commit_training_plan` | receipt, plan checks | both | |
-| Planning | Replace a period of the plan | Bibliothek › Pläne "Zeitraum ersetzen" `POST /api/training-plans/{id}/replace`, receipt "Rückgängig" `POST /api/change-history/undo-batch` | `replace_training_plan` | confirmation, receipt, plan checks, undo | both | |
-| Planning | Change, archive or delete a training plan | Bibliothek › Pläne `POST /api/training-plans/{id}/update`, `POST /api/training-plans/{id}/delete` | `update_training_plan` | confirmed request, undo | both | |
+| Planning | Read multi-week training plans | Kalender › Pläne `GET /api/plan` | `list_training_plans` | — | both | |
+| Planning | Create a multi-week training plan | Kalender › Pläne "+ Plan" `POST /api/training-plans`, its units in the unit editor | `stage_training_plan`, `commit_training_plan` | receipt, plan checks | both | |
+| Planning | Replace a period of the plan | Kalender › Pläne "Zeitraum ersetzen" `POST /api/training-plans/{id}/replace`, receipt "Rückgängig" `POST /api/change-history/undo-batch` | `replace_training_plan` | confirmation, receipt, plan checks, undo | both | |
+| Planning | Change, archive or delete a training plan | Kalender › Pläne `POST /api/training-plans/{id}/update`, `POST /api/training-plans/{id}/delete` | `update_training_plan` | confirmed request, undo | both | |
 | Planning | Preview and apply an adaptive replan | Kalender card "Plananpassung" shows the stored preview, "Übernehmen" `POST /api/planning/replan/apply` | `preview_adaptive_replan`, `apply_adaptive_replan` | approved preview, undo | both | |
 | Planning | Read the week review and training report | Analyse `GET /api/analysis/week-review` | `get_training_report` | — | both | |
 | History | Undo a change | receipt "Rückgängig" `POST /api/change-history/undo`, `POST /api/change-history/undo-turn`, `POST /api/change-history/undo-batch` | `undo_training_change` | bound preview, confirmation | both | |
@@ -85,7 +85,6 @@ added a row conflicted on it (#4092).
 | Nutrition | Delete a meal | Tagebuch card `POST /api/nutrition/entry/delete` | `delete_nutrition_entry` | delete confirmation, undo | both | |
 | Nutrition | Create, edit or delete a saved meal | Produkte "Gespeicherte Mahlzeiten" `GET /api/nutrition/templates`, `POST /api/nutrition/templates`, `POST /api/nutrition/templates/from-entry`, `POST /api/nutrition/templates/delete` | `save_nutrition_template`, `delete_nutrition_template` | receipt, undo | both | |
 | Nutrition | Log a saved meal | Produkte "Eintragen" `POST /api/nutrition/templates/log` | `log_nutrition_template` | receipt, undo | both | |
-| Nutrition | Send daily totals to Intervals.icu | — | `sync_nutrition` | named sync | Coach only | #3952 |
 | Products | Search foods and products | Produkte `GET /api/nutrition/products`, `POST /api/nutrition/products/lookup` | `lookup_food`, `calculate_food_nutrition` | — | both | |
 | Products | Save a confirmed product, also from a label photo | Produkte `POST /api/nutrition/products`, `POST /api/nutrition/products/extract` | `save_nutrition_product` | receipt | both | |
 | Products | Edit a product or fill its missing values | Produkte `PUT /api/nutrition/products` | `list_incomplete_nutrition_products`, `fill_nutrition_product_gaps`, `search_web_for_product_values` | receipt | both | |

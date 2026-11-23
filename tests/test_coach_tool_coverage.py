@@ -92,7 +92,6 @@ REQUIRED_VARIANTS = {
         "retry_read",
     },
     "apply_adaptive_replan": {"local", "intervals"},
-    "sync_nutrition": {"date", "pending"},
     "push_strength_to_garmin": {"push", "remove"},
     "save_zones": {"save", "adopt_first_threshold", "adopt_lt2"},
     "assign_activity_equipment": {"activity", "planned_unit"},
@@ -141,8 +140,6 @@ def variants(name, arguments, result):
         }
     if name == "apply_adaptive_replan":
         return {"intervals" if arguments.get("sync_illness_to_intervals") else "local"}
-    if name == "sync_nutrition":
-        return {"date" if arguments.get("date") else "pending"}
     if name == "save_zones":
         return {arguments["action"]}
     if name == "assign_activity_equipment":
@@ -1836,6 +1833,17 @@ class CoachToolCoverageTests(DialogueHarness, unittest.TestCase):
             "Regenerate with: python tests/test_coach_tool_coverage.py --write",
         )
 
+    def test_no_coach_tool_sends_nutrition_to_intervals(self):
+        # Athlete decision (#4031): nutrition is never sent to Intervals.icu, so
+        # a request to transfer it has no tool to call.
+        for tools in (server.COACH_DIALOGUE_TOOLS, server.COACH_STRUCTURED_TOOLS):
+            names = {tool["name"] for tool in tools}
+            self.assertNotIn("sync_nutrition", names)
+            self.assertFalse(
+                [name for name in names if "nutrition" in name and "sync" in name]
+            )
+        self.assertNotIn("sync_nutrition", server.COACH_TOOL_CAPABILITIES)
+
     def test_capability_catalog_covers_each_schema_dispatch_owner_and_effect_policy(
         self,
     ):
@@ -1855,7 +1863,6 @@ class CoachToolCoverageTests(DialogueHarness, unittest.TestCase):
         for name in (
             "start_intervals_plan_sync",
             "sync_competitions",
-            "sync_nutrition",
         ):
             self.assertEqual(catalog[name]["effect"], "remote_write")
             self.assertEqual(
@@ -2515,12 +2522,8 @@ class CoachToolCoverageTests(DialogueHarness, unittest.TestCase):
             0,
         )
 
-    @covers(
-        "update_nutrition_entry:success",
-        "sync_nutrition:date",
-        "sync_nutrition:pending",
-    )
-    def test_nutrition_correction_preserves_fields_and_sync_is_explicitly_queued(self):
+    @covers("update_nutrition_entry:success")
+    def test_nutrition_correction_preserves_fields(self):
         entry = self.run_tool(
             "save_nutrition_entry",
             {
@@ -2552,36 +2555,6 @@ class CoachToolCoverageTests(DialogueHarness, unittest.TestCase):
         reread = self.run_tool("read_nutrition", {"date": "2026-09-08"})
         self.assertEqual(reread["entries"][0]["id"], entry["id"])
         self.assertEqual(reread["entries"][0]["kcal"], 600)
-        date_job = self.run_tool(
-            "sync_nutrition",
-            {"date": "2026-09-08"},
-            ["local_nutrition", "intervals_sync"],
-            message="Synchronisiere die Ernährung für den 8. September.",
-            target="intervals",
-            remote_write=True,
-        )
-        pending_job = self.run_tool(
-            "sync_nutrition",
-            {"pending_limit": 2},
-            ["local_nutrition", "intervals_sync"],
-            message="Synchronisiere die zwei ältesten ausstehenden Ernährungstage.",
-            target="intervals",
-            remote_write=True,
-        )
-        self.assertEqual(date_job["status"], "queued")
-        self.assertEqual(pending_job["status"], "queued")
-        with server.database_manager().reader() as db:
-            jobs = db.execute(
-                "SELECT type, payload FROM sync_jobs WHERE id IN (?, ?)",
-                (date_job["sync_job_id"], pending_job["sync_job_id"]),
-            ).fetchall()
-        self.assertEqual({row["type"] for row in jobs}, {"nutrition_sync"})
-        manifests = [json.loads(row["payload"])["approval_manifest"] for row in jobs]
-        self.assertEqual(len(manifests), 2)
-        self.assertEqual(manifests[0], manifests[1])
-        self.assertEqual([item["date"] for item in manifests[0]], ["2026-09-08"])
-        self.assertEqual(manifests[0][0]["total_kcal"], 600)
-        self.assertEqual(manifests[0][0]["entry_count"], 1)
 
     @covers("push_strength_to_garmin:push", "push_strength_to_garmin:remove")
     def test_garmin_strength_push_is_bound_to_the_stored_units(self):

@@ -102,6 +102,7 @@
         <nav class="plan-segment-nav" aria-label="Kalenderbereiche">
           <a href="#plan/overview" data-plan-segment="overview" aria-current="page">Übersicht</a>
           <a href="#plan/library" data-plan-segment="library">Bibliothek</a>
+          <a href="#plan/plans" data-plan-segment="plans">Pläne</a>
           <a href="#plan/season" data-plan-segment="season">Wettkämpfe</a>
         </nav>
         <output id="planListStatus" class="sr-only"></output>
@@ -118,6 +119,10 @@
         <section id="planLibrarySegment" class="plan-segment" data-plan-segment-panel="library" aria-labelledby="planLibraryTitle" hidden>
           <h3 id="planLibraryTitle" class="sr-only">Bibliothek</h3>
           <div id="library" class="library"></div>
+        </section>
+        <section id="planPlansSegment" class="plan-segment" data-plan-segment-panel="plans" aria-labelledby="planPlansTitle" hidden>
+          <h3 id="planPlansTitle" class="sr-only">Pläne</h3>
+          <div id="plans" class="library"></div>
         </section>
       </section>
 
@@ -205,7 +210,7 @@
           </section>
         </div>
         <section id="nutritionDiary" aria-label="Ernährungstagebuch">
-          <div class="nutrition-toolbar"><button class="secondary-button" type="button" id="nutritionPrevious" aria-label="Vorheriger Tag">←</button><label><span class="sr-only">Tag</span><input type="date" id="nutritionDate"></label><button class="secondary-button" type="button" id="nutritionNext" aria-label="Nächster Tag">→</button><button class="secondary-button" type="button" id="nutritionToday">Heute</button></div>
+          <div class="nutrition-toolbar"><button class="secondary-button" type="button" id="nutritionPrevious" aria-label="Vorheriger Tag">←</button><label><span id="nutritionDateName" class="nutrition-date-name">Tag</span><input type="date" id="nutritionDate"></label><button class="secondary-button" type="button" id="nutritionNext" aria-label="Nächster Tag">→</button><button class="secondary-button" type="button" id="nutritionToday">Heute</button></div>
           <div id="nutritionTotals" class="nutrition-totals"></div>
           <div id="nutritionEntries" class="nutrition-list"></div>
         </section>
@@ -729,7 +734,7 @@
   <dialog id="nutritionBarcodeDialog" aria-labelledby="nutritionBarcodeTitle">
     <form method="dialog" class="confirmation-dialog" id="nutritionBarcodeForm">
       <h2 id="nutritionBarcodeTitle">Barcode scannen</h2>
-      <video id="nutritionBarcodeVideo" playsinline muted aria-label="Kamerabild für Barcode-Scan"></video>
+      <video id="nutritionBarcodeVideo" hidden playsinline muted aria-label="Kamerabild für Barcode-Scan"></video>
       <p id="nutritionBarcodeStatus" class="tab-sync-detail" aria-live="polite">Kamera wird vorbereitet …</p>
       <label for="nutritionBarcodeManual">EAN manuell eingeben<input id="nutritionBarcodeManual" inputmode="numeric" pattern="[0-9]{8,14}" maxlength="14" autocomplete="off"></label>
       <div class="dialog-actions"><button type="button" id="nutritionBarcodeCancel" class="secondary-button">Abbrechen</button><button type="submit" id="nutritionBarcodeLookup">Produkt suchen</button></div>
@@ -790,10 +795,10 @@
       <h2 id="bodyFatDialogTitle">Körperfett eintragen</h2>
       <fieldset id="bodyFatDialogMode" class="segmented-control"><legend class="sr-only">Eingabe</legend><button type="button" data-body-fat-mode="pct" aria-pressed="true">Prozent</button><button type="button" data-body-fat-mode="folds" aria-pressed="false">Hautfalten</button></fieldset>
       <label for="bodyFatDialogDate">Datum<input id="bodyFatDialogDate" name="date" type="date" required></label>
-      <label for="bodyFatDialogPct">Körperfett (%)<input id="bodyFatDialogPct" name="pct" type="number" min="2" max="70" step="0.1" inputmode="decimal" required></label>
+      <label for="bodyFatDialogPct">Körperfett (%)<input id="bodyFatDialogPct" name="pct" autofocus type="number" min="2" max="70" step="0.1" inputmode="decimal" required></label>
       <output id="bodyFatDialogResult" aria-live="polite" hidden></output>
       <output id="bodyFatDialogStatus" class="tab-sync-detail" aria-live="polite"></output>
-      <div class="dialog-actions"><button type="button" id="bodyFatDialogCancel" class="secondary-button">Abbrechen</button><button type="button" id="bodyFatDialogRemove" class="secondary-button" hidden>Löschen</button><button type="submit" id="bodyFatDialogSave">Speichern</button></div>
+      <div class="dialog-actions"><button type="button" id="bodyFatDialogCancel" class="secondary-button">Abbrechen</button><button type="submit" id="bodyFatDialogSave">Speichern</button><button type="button" id="bodyFatDialogRemove" class="secondary-button" hidden>Löschen</button></div>
     </form>
   </dialog>
   <dialog id="lt2AdoptDialog" aria-labelledby="lt2AdoptTitle">
@@ -809,11 +814,11 @@
   </dialog>
   <dialog id="weightDialog" aria-labelledby="weightDialogTitle">
     <form id="weightDialogForm" class="confirmation-dialog">
-      <h2 id="weightDialogTitle">Gewicht</h2>
+      <h2 id="weightDialogTitle">Gewicht eintragen</h2>
       <label for="weightDialogDate">Datum<input id="weightDialogDate" name="date" type="date" required></label>
-      <label for="weightDialogKg">Gewicht (kg)<input id="weightDialogKg" name="kg" type="number" min="30" max="300" step="0.1" inputmode="decimal" required></label>
+      <label for="weightDialogKg">Gewicht (kg)<input id="weightDialogKg" name="kg" autofocus type="number" min="30" max="300" step="0.1" inputmode="decimal" required></label>
       <output id="weightDialogStatus" class="tab-sync-detail" aria-live="polite"></output>
-      <div class="dialog-actions"><button type="button" id="weightDialogCancel" class="secondary-button">Abbrechen</button><button type="button" id="weightDialogRemove" class="secondary-button" hidden>Löschen</button><button type="submit" id="weightDialogSave">Speichern</button></div>
+      <div class="dialog-actions"><button type="button" id="weightDialogCancel" class="secondary-button">Abbrechen</button><button type="submit" id="weightDialogSave">Speichern</button><button type="button" id="weightDialogRemove" class="secondary-button" hidden>Löschen</button></div>
     </form>
   </dialog>
   <dialog id="competitionDialog" aria-labelledby="competitionDialogTitle">
@@ -845,12 +850,12 @@
   </dialog>
   <dialog id="energyGoalDialog" aria-labelledby="energyGoalDialogTitle">
     <form id="energyGoalDialogForm" class="confirmation-dialog">
-      <h2 id="energyGoalDialogTitle">Energieziel</h2>
+      <h2 id="energyGoalDialogTitle">Energieziel festlegen</h2>
       <fieldset class="appearance-control"><legend class="sr-only">Ziel</legend><div class="segmented-control"><label><input type="radio" name="goal" value="lose" checked>Abnehmen</label><label><input type="radio" name="goal" value="hold">Halten</label><label><input type="radio" name="goal" value="build">Aufbauen</label></div></fieldset>
       <label for="energyGoalDialogKcal"><span id="energyGoalDialogKcalLabel">Defizit pro Tag (kcal)</span><input id="energyGoalDialogKcal" name="kcal" type="number" min="0" max="1500" step="1" inputmode="numeric"></label>
       <output id="energyGoalDialogWeek" class="tab-sync-detail"></output>
       <output id="energyGoalDialogStatus" class="tab-sync-detail" aria-live="polite"></output>
-      <div class="dialog-actions"><button type="button" id="energyGoalDialogCancel" class="secondary-button">Abbrechen</button><button type="button" id="energyGoalDialogRemove" class="secondary-button" hidden>Entfernen</button><button type="submit" id="energyGoalDialogSave">Speichern</button></div>
+      <div class="dialog-actions"><button type="button" id="energyGoalDialogCancel" class="secondary-button">Abbrechen</button><button type="submit" id="energyGoalDialogSave">Speichern</button><button type="button" id="energyGoalDialogRemove" class="secondary-button" hidden>Entfernen</button></div>
     </form>
   </dialog>
   <dialog id="confirmationDialog" aria-labelledby="confirmationDialogTitle" aria-describedby="confirmationDialogMessage">

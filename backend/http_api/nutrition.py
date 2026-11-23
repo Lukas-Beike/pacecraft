@@ -643,8 +643,7 @@ class NutritionPostRoutes:
 
         Request: JSON body `{"id": string, "revision": string, "edits": [...], "meal": {...}}`;
         `edits` and `meal` are each optional, one is required. `meal` changes the meal
-        itself: `meal_date` (YYYY-MM-DD, both days are marked for the next Intervals.icu
-        synchronization), `meal_type` (a new type moves a default time to the type's
+        itself: `meal_date` (YYYY-MM-DD), `meal_type` (a new type moves a default time to the type's
         default), and `meal_time` (HH:MM) or `logged_time_known: false` (the time is
         unknown, only the type stays); a `meal` without `edits` leaves the components and
         the origin as stored. `id` is the
@@ -657,8 +656,7 @@ class NutritionPostRoutes:
         most once, other components stay as stored. The server scales the nutrients from
         the stored snapshot or calculates them from the food or product and the amount;
         the client sends none. The meal becomes a composite and keeps its description;
-        its day is marked for the next Intervals.icu synchronization; templates and
-        saved meals are not changed.
+        templates and saved meals are not changed.
 
         Response: 200 `{"ok": true, "entry", "change"}` with the updated entry and the
         undo reference.

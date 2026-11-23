@@ -53,7 +53,8 @@ class SyncConflictCommandServiceTests(unittest.TestCase):
         self.assertTrue(
             SyncConflictCommandService.is_push_job({"type": "competition_push"})
         )
-        self.assertTrue(
+        # Nutrition is never sent (#4031): a stale job is no push to retry.
+        self.assertFalse(
             SyncConflictCommandService.is_push_job({"type": "nutrition_sync"})
         )
         self.assertFalse(SyncConflictCommandService.is_push_job({"type": "refresh"}))

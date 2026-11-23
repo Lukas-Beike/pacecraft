@@ -21,9 +21,9 @@ The system SHALL validate provider and job type together using the configured re
 - **WHEN** a stored refresh job carries more days than the provider maximum of today
 - **THEN** it still runs, because the provider maximum applies at enqueue only; a stored job accepts at most 3660 days.
 
-Detailed contract: Intervals supports plan push, competition push, and nutrition sync; Garmin supports refresh, activity details, plan push, historical backfill, wellness backfill, and stream backfill; Wahoo supports refresh, plan push, and stream backfill; weather and calendar support refresh. Nutrition approval semantics belong to the nutrition capability.
+Detailed contract: Intervals supports plan push and competition push; Garmin supports refresh, activity details, plan push, historical backfill, wellness backfill, and stream backfill; Wahoo supports refresh, plan push, and stream backfill; weather and calendar support refresh. Nutrition is never a job (see nutrition-provider-sync).
 
-Detailed contract (payload bounds): a payload is an object of at most 32 fields. A refresh takes only the fields of its provider (`days`, `force`, `reason`, `end_date`): `days` is -1 (whole history) or 1 to the provider maximum (90 for Garmin and Wahoo), `force` is a boolean, `end_date` an ISO day, `reason` is clipped to 80 characters; the backfill types also take `empty_chunks` from 0 to 100. `activity_details` takes exactly `activity_id` (1 to 200 letters, digits, `_` or `-`). `plan_push` takes 1 to 28 `entries`, each a 36-character local id with either a 64-hex `expected_payload_hash` or `remove: true` (Garmin and Wahoo only), plus an optional boolean `repair`. `competition_push` requires an `approval_manifest` of at most 1000 `{type: competition|tombstone, id, sha256}` entries. `nutrition_sync` takes a `date`, a `pending_limit` of 1 to 31, or an `approval_manifest` of at most 31 days. A job has 1 to 1000 items with unique keys of at most 160 characters.
+Detailed contract (payload bounds): a payload is an object of at most 32 fields. A refresh takes only the fields of its provider (`days`, `force`, `reason`, `end_date`): `days` is -1 (whole history) or 1 to the provider maximum (90 for Garmin and Wahoo), `force` is a boolean, `end_date` an ISO day, `reason` is clipped to 80 characters; the backfill types also take `empty_chunks` from 0 to 100. `activity_details` takes exactly `activity_id` (1 to 200 letters, digits, `_` or `-`). `plan_push` takes 1 to 28 `entries`, each a 36-character local id with either a 64-hex `expected_payload_hash` or `remove: true` (Garmin and Wahoo only), plus an optional boolean `repair`. `competition_push` requires an `approval_manifest` of at most 1000 `{type: competition|tombstone, id, sha256}` entries. A job has 1 to 1000 items with unique keys of at most 160 characters.
 
 Evidence: `backend/sync/jobs.py:normalize_sync_job_request`, `backend/sync/jobs.py:validate_job_request`, `backend/sync/jobs.py:SyncJobStore._normalize_operations`, `backend/sync/provider_table.py:DEFAULT_PROVIDER_DESCRIPTORS`; `tests/test_sync_jobs.py:test_every_provider_and_job_type_pair_matches_the_live_validator`, `tests/test_sync_jobs.py:test_boolean_fields_require_actual_booleans`, `tests/test_sync_jobs.py:test_plan_push_rejects_provider_fields_count_uuid_hash_and_booleans`, `tests/test_sync_jobs.py:test_enforced_period_limit_follows_the_provider_descriptor`.
 
@@ -38,9 +38,9 @@ The system SHALL queue a job from an authenticated, CSRF-protected request only 
 - **WHEN** a `plan_push` job is requested
 - **THEN** the job stores one item per distinct `library_workout_id`, keyed by that id and carrying the entry's expected payload hash.
 
-#### Scenario: Nutrition export is not a route
+#### Scenario: Nutrition is never a job
 - **WHEN** a request over this route asks for a `nutrition_sync` job
-- **THEN** it is refused with 400 `invalid_job_request`, because only an approved Coach card exports nutrition.
+- **THEN** it is refused with 400 `invalid_job_request` as an unsupported job type, because nutrition is never sent to a provider (#4031).
 
 #### Scenario: No retry route
 - **WHEN** a job failed or ended partial
@@ -194,7 +194,7 @@ A Coach refresh SHALL be queued with requester `coach` and answer `{ok, status: 
 Evidence: `backend/sync/commands.py:ProviderRefreshCommandService.start`, `backend/sync/commands.py:GarminSynchronousRefresh`, `backend/sync/commands.py:WahooSynchronousRefresh`, `backend/sync/garmin_service.py:GarminSyncService._wait_for_existing`, `backend/sync/garmin.py:GarminPayloadService.awaited_run_status`; `tests/test_sync_commands.py`, `tests/test_current_data_refresh.py`, `tests/test_sync_garmin_payload.py:test_awaited_run_status_requires_the_latest_complete_read_of_the_window`.
 
 ### Requirement: Output-only Intervals.icu
-The system SHALL NOT read Intervals.icu activities, wellness history, athlete record or activity details in any sync, and reads its calendar events only inside an explicit export. Intervals.icu SHALL accept only plan push, competition push and nutrition sync jobs plus the explicit library, metric and calendar writes with their read-backs. A refresh, historical backfill, activity-details or performance-refresh job, manual sync route or full resync for Intervals.icu SHALL be rejected.
+The system SHALL NOT read Intervals.icu activities, wellness history, athlete record or activity details in any sync, and reads its calendar events only inside an explicit export. Intervals.icu SHALL accept only plan push and competition push jobs plus the explicit library, metric and calendar writes with their read-backs. A refresh, historical backfill, activity-details or performance-refresh job, manual sync route or full resync for Intervals.icu SHALL be rejected.
 
 #### Scenario: Refresh for Intervals.icu
 - **WHEN** a request queues a `refresh` job for Intervals.icu
@@ -292,12 +292,12 @@ The system SHALL conditionally claim due queued jobs and increment attempts once
 - **THEN** it is requeued for a future eligible instant while already completed items remain complete.
 
 #### Scenario: Restart during a remote write
-- **WHEN** the process stops while a plan push, competition push or nutrition export is running, or while a job runs its last attempt
+- **WHEN** the process stops while a plan push or competition push is running, or while a job runs its last attempt
 - **THEN** after the restart that job is failed with `outcome_not_persisted` and its open items with it, never replayed, until the athlete retries it; interrupted read-only jobs are requeued.
 
 #### Scenario: Lost outcome in a running process
 - **WHEN** the worker finds a job still `running` between two claims because the database refused its outcome
-- **THEN** a job that only reads a provider (`refresh`, `activity_details`, the backfill types) is queued again, while a `plan_push`, `competition_push` or `nutrition_sync` job, or one that used three attempts, fails with `outcome_not_persisted` and runs again only after an explicit retry.
+- **THEN** a job that only reads a provider (`refresh`, `activity_details`, the backfill types) is queued again, while a `plan_push` or `competition_push` job, or one that used three attempts, fails with `outcome_not_persisted` and runs again only after an explicit retry.
 
 #### Scenario: Invalid manual retry
 - **WHEN** a caller retries a completed job, an unknown job, or a payload without the explicit retry action
@@ -333,9 +333,9 @@ A failed claim SHALL be queued again only when its error class is retryable and 
 - **WHEN** a competition sync's approved manifest no longer matches the pending competitions and deletions (reason `approval_stale`)
 - **THEN** the job fails with the class and freshness code `approval_stale`, and an explicit retry of that job is refused with 409 `approval_stale` "Die Freigabe ist veraltet. Bitte neu senden."; a new send approves the current set (#3838).
 
-#### Scenario: Stale nutrition approval
-- **WHEN** a nutrition export's approved days changed since the approval (reason `approval_stale`; a malformed approval is `invalid_job_request`)
-- **THEN** the job fails with that class, is not retried automatically, and an explicit retry is refused like a stale competition approval (#3891, `tests/test_nutrition_api_and_sync.py`). A plan push records per-unit errors under the final class `plan_push_error` instead.
+#### Scenario: Plan push error class
+- **WHEN** a plan push item fails
+- **THEN** it records the per-unit error under the final class `plan_push_error`.
 
 Detailed contract: HTTP 429 or a rate-limit reason maps to `rate_limited`; 401, 403 or an auth or reconnect reason to `auth_required`; 400 or a not-configured reason to `invalid_configuration`; a network reason or timeout to `network_error`; a busy local database to `database_busy`; a provider HTTP error to `temporary_error`; an unreadable provider answer to `client_error`; every other provider error to `temporary_error`.
 

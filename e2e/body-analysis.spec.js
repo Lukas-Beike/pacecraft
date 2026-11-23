@@ -172,6 +172,23 @@ test("@responsive a weight typed right after the dialog opens is kept on a slow 
   await dialog.getByRole("button", { name: "Abbrechen" }).click();
 });
 
+// #4037: the body dialogs share one title form, focus the value and order their actions Abbrechen, Speichern, Löschen.
+test("@responsive the weight and body fat dialogs name their action, focus the value and end on the removal", async ({ page }) => {
+  await page.goto("/#nutrition/body");
+  for (const [metric, button, dialogId, title, field] of [
+    ["weight_kg", "Gewicht eintragen", "#weightDialog", "Gewicht eintragen", "#weightDialogKg"],
+    ["body_fat_pct", "Körperfett eintragen", "#bodyFatDialog", "Körperfett eintragen", "#bodyFatDialogPct"],
+  ]) {
+    await page.locator(`tr[data-metric='${metric}']`).getByRole("button", { name: button }).click();
+    const dialog = page.locator(dialogId);
+    await expect(dialog).toBeVisible();
+    await expect(dialog.getByRole("heading", { level: 2 })).toHaveText(title);
+    await expect(page.locator(field)).toBeFocused();
+    expect(await dialog.locator(".dialog-actions button").evaluateAll((buttons) => buttons.map((item) => item.textContent))).toEqual(["Abbrechen", "Speichern", "Löschen"]);
+    await dialog.getByRole("button", { name: "Abbrechen" }).click();
+  }
+});
+
 // #4047: the weight row carries one line when the energy read names probable water for the shown weigh-in.
 test("@responsive the weight row names probable water under its source line, only for the shown weigh-in", async ({ page }) => {
   // Playwright disposes a response whose page moved on; such a read has nobody to answer (#3449).

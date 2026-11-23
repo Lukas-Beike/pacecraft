@@ -106,26 +106,6 @@ class NutritionBuilderTests(unittest.TestCase):
             )
         self.assertEqual(2, read.call_count)
 
-    def test_intervals_sync_uses_the_current_config_and_a_fresh_diary(self) -> None:
-        services = self.make_services()
-        with (
-            patch.object(nutrition_wiring, "IntervalsApiClient") as client,
-            patch.object(
-                nutrition_wiring, "IntervalsNutritionSyncService", return_value="sync"
-            ) as sync_service,
-            patch.object(
-                nutrition_wiring, "NutritionDiaryService", return_value="diary"
-            ),
-        ):
-            self.assertEqual("sync", services.intervals_sync_service())
-
-        client.assert_called_once_with(
-            api_key="synthetic-key", request=self.request.request
-        )
-        sync_service.assert_called_once_with(
-            config=self.config, api_client=client.return_value, diary_service="diary"
-        )
-
     def test_label_photo_uses_the_nutrition_model_and_thinking(self) -> None:
         self.make_services()
         settings = self.ctx.settings

@@ -6,7 +6,7 @@ from unittest.mock import Mock, patch
 from backend.errors import AppError
 from backend.http_api import sync_commands
 from backend.http_api.sync_commands import SyncCommandEndpoint
-from backend.nutrition.contracts import nutrition_approval_item
+from backend.sync.jobs import JobValidationError, normalize_sync_job_request
 
 
 class SyncCommandEndpointTests(unittest.TestCase):
@@ -82,15 +82,25 @@ class SyncCommandEndpointTests(unittest.TestCase):
             self.endpoint.execute("/api/garmin/full-resync", {})
         self.assertEqual(raised.exception.status, 400)
         self.full_resync.start.assert_not_called()
-        # Only the Coach card exports nutrition, never this route (#2137).
+
+        # Nutrition is never sent to a provider (#4031): the type is unknown.
+        def enqueue(provider, job_type, payload, **_):
+            try:
+                normalize_sync_job_request(
+                    provider, job_type, payload, all_sync_days=30
+                )
+            except JobValidationError as exc:
+                raise AppError(400, str(exc), reason="invalid_job_request") from exc
+            raise AssertionError("a nutrition_sync job passed validation")
+
+        self.queue.enqueue.side_effect = enqueue
         day = {"date": "2026-09-24", "total_kcal": 2000}
         cases = [
             ("nutrition_sync", {"date": "2026-09-24"}),
             ("nutrition_sync", {"pending_limit": 3}),
             ("nutrition_sync", {}),
             ("nutrition_sync", None),
-            # A client can compute a manifest itself; it proves no approval.
-            ("nutrition_sync", {"approval_manifest": [nutrition_approval_item(day)]}),
+            ("nutrition_sync", {"approval_manifest": [day]}),
             # The queue normalizes the type, so the route must as well.
             ("Nutrition_Sync", {"pending_limit": 3}),
             (" NUTRITION_SYNC ", {"date": "2026-09-24"}),
@@ -106,7 +116,8 @@ class SyncCommandEndpointTests(unittest.TestCase):
                     | ({} if payload is None else {"payload": payload}),
                 )
             self.assertEqual(raised.exception.status, 400)
-        self.queue.enqueue.assert_not_called()
+            self.assertEqual(raised.exception.reason, "invalid_job_request")
+            self.assertEqual(str(raised.exception), "Unsupported job type.")
 
     def test_job_request_keeps_requested_by_and_status(self):
         self.queue.enqueue.return_value = {"id": "job-2"}

@@ -37,7 +37,6 @@ class CoachSyncToolService:
         plan_repair: PlanRepairManifestService,
         plan_push: PlanPushCommandService,
         provider_refresh: ProviderRefreshCommandService,
-        nutrition_diary: Any | None = None,
         *,
         connection_checks: Any = None,
         yazio_check: Callable[[], dict[str, Any]] | None = None,
@@ -56,7 +55,6 @@ class CoachSyncToolService:
         self._plan_repair = plan_repair
         self._plan_push = plan_push
         self._provider_refresh = provider_refresh
-        self._nutrition_diary = nutrition_diary
 
     def execute(
         self,
@@ -80,8 +78,6 @@ class CoachSyncToolService:
             return {"ok": True, "job": self._queue.state(job_id)}
         if name == "sync_competitions":
             return self._sync_competitions(arguments, intent, sync_job_ids)
-        if name == "sync_nutrition":
-            return self._sync_nutrition(arguments, intent, sync_job_ids)
         if name == "resolve_training_sync_conflict":
             return self._resolve_conflict(arguments, intent, sync_job_ids)
         if name == "start_provider_refresh":
@@ -89,55 +85,6 @@ class CoachSyncToolService:
                 arguments, intent, sync_job_ids, cancel_event
             )
         return None
-
-    def _sync_nutrition(
-        self, arguments: dict[str, Any], intent: dict[str, Any], sync_job_ids: list[str]
-    ) -> dict[str, Any]:
-        if (
-            "sync_nutrition" not in authorized_operations(intent)
-            or intent.get("target_system") != ProviderId.INTERVALS
-        ):
-            raise AppError(
-                403, STRUCTURED_AUTHORIZATION_ERROR, reason="intent_scope_denied"
-            )
-        require_coach_scope(intent, "local_nutrition", "intervals_sync")
-        manifest = arguments.get("_approval_manifest")
-        if not isinstance(manifest, list) or self._nutrition_diary is None:
-            raise AppError(409, "Die freigegebene Ern\u00e4hrungsvorschau fehlt.")
-        dates = [entry.get("date") for entry in manifest if isinstance(entry, dict)]
-        if len(dates) != len(manifest):
-            raise AppError(
-                409, "Die freigegebene Ern\u00e4hrungsvorschau ist ung\u00fcltig."
-            )
-        date_value = str(arguments.get("date") or "").strip()
-        limit = arguments.get("pending_limit")
-        if bool(date_value) == (limit is not None):
-            raise AppError(
-                400,
-                "W\u00e4hle ein Datum oder ausstehende Tage.",
-                reason="invalid_job_request",
-            )
-        if date_value and dates != [date_value]:
-            raise AppError(
-                409, "Das freigegebene Ern\u00e4hrungsdatum hat sich ge\u00e4ndert."
-            )
-        if limit is not None and (type(limit) is not int or len(dates) > limit):
-            raise AppError(
-                409, "Der freigegebene Ern\u00e4hrungszeitraum ist ung\u00fcltig."
-            )
-        if self._nutrition_diary.sync_status.approval_manifest(dates=dates) != manifest:
-            raise AppError(
-                409,
-                "Die Ern\u00e4hrungsdaten haben sich seit der Freigabe ge\u00e4ndert.",
-            )
-        job = self._queue.enqueue(
-            ProviderId.INTERVALS.value,
-            "nutrition_sync",
-            {"approval_manifest": manifest},
-            requested_by="coach",
-        )
-        sync_job_ids.append(job["id"])
-        return {"ok": True, "status": "queued", "sync_job_id": job["id"]}
 
     def _start_provider_refresh(
         self,

@@ -150,9 +150,30 @@ class AthleteLevelTests(unittest.TestCase):
         self.assertEqual(result["status"], "unknown")
         self.assertEqual(
             result["reason"],
-            "nur 2 von 3 nötigen Läufen mit Brustgurt in 60 Tagen (1 noch nicht ausgewertet)",
+            "nur 2 von 3 nötigen harten Läufen, in denen DFA-α1 mit guter Qualität "
+            "unter 0,5 fällt (3 Läufe mit Brustgurt in 60 Tagen, 1 noch nicht ausgewertet)",
         )
         self.assertNotIn("heart_rate_bpm", result)
+
+    def test_chest_strap_runs_that_stay_above_one_half_are_counted_but_do_not_qualify(
+        self,
+    ) -> None:
+        # #4134: many chest-strap runs, none hard enough; the reason says so.
+        easy = [
+            (TODAY - timedelta(days=1 + i), stored(series(high=165.0)))
+            for i in range(4)
+        ]
+        result = lt2.dfa_second_threshold(easy, TODAY)
+        self.assertEqual(
+            result["reason"],
+            "nur 0 von 3 nötigen harten Läufen, in denen DFA-α1 mit guter Qualität "
+            "unter 0,5 fällt (4 Läufe mit Brustgurt in 60 Tagen)",
+        )
+        self.assertEqual(result["sessions"], 0)
+        self.assertIn(
+            "(1 Lauf mit Brustgurt in 60 Tagen)",
+            lt2.dfa_second_threshold(easy[:1], TODAY)["reason"],
+        )
 
     def test_runs_outside_60_days_do_not_count(self) -> None:
         result = lt2.dfa_second_threshold(self.runs(3, start=58), TODAY)
@@ -311,7 +332,8 @@ class ServiceTests(unittest.TestCase):
         result = self.service().estimates()["run"]["dfa_alpha1"]
         self.assertEqual(
             result["reason"],
-            "nur 1 von 3 nötigen Läufen mit Brustgurt in 60 Tagen (1 noch nicht ausgewertet)",
+            "nur 1 von 3 nötigen harten Läufen, in denen DFA-α1 mit guter Qualität "
+            "unter 0,5 fällt (2 Läufe mit Brustgurt in 60 Tagen, 1 noch nicht ausgewertet)",
         )
 
     def test_the_stored_first_threshold_bounds_the_value(self) -> None:

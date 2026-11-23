@@ -37,7 +37,7 @@ test("@responsive diary shows decimal commas and offers undo and delete for back
 
   await page.goto("/#nutrition/diary");
   const card = page.locator("#nutritionEntries .nutrition-card");
-  await expect(card).toContainText("668 kcal · KH 102,0 g · Protein 27,2 g · Fett 14,8 g");
+  await expect(card).toContainText("668 kcal · Kohlenhydrate 102,0 g · Protein 27,2 g · Fett 14,8 g");
   await expect(card.locator("h3")).toHaveText("Mittagessen");
 
   // Löschen acts at once (G-03): no dialog, the receipt line offers the undo.

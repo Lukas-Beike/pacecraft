@@ -1,4 +1,4 @@
-"""The athlete's own create, edit, archive and restore of planned units (#3950).
+"""The athlete's own scheduling, edit, archive, restore and period replacement of planned units (#3950).
 
 The same batch the Coach's ``apply_training_patch`` applies (validation, calendar
 conflicts, change history for undo), plus the plan checks as notes: the athlete
@@ -57,7 +57,11 @@ def illness_block(error: PlanCheckError) -> PlanCheckError | AppError:
 
 
 class PlannedUnitEditService:
-    """Apply one athlete edit as the Coach's change batch, under the plan checks."""
+    """Apply one athlete edit as the Coach's change batch, under the plan checks.
+
+    A unit is created through ``schedule`` (from a library entry) or ``replace_period``;
+    the form's per-day create had no caller since #4053 and is gone (#4144).
+    """
 
     def __init__(
         self,
@@ -109,25 +113,6 @@ class PlannedUnitEditService:
             )
             notes = guard.verify(before, accept or [], waived=_WAIVED)
         return {**result, "plan_check_notes": notes}
-
-    def create(
-        self,
-        fields: dict[str, Any],
-        *,
-        plan_id: str | None = None,
-        accept: list[str] | None = None,
-    ) -> dict[str, Any]:
-        """Plan a new unit; without ``template_id`` it also saves its library entry."""
-        fields = self._complete_new_unit(fields)
-
-        def build() -> dict[str, Any]:
-            return {
-                "action": "create",
-                **self._new_unit(fields),
-                **({"plan_id": plan_id} if plan_id else {}),
-            }
-
-        return self._apply(build, plan_id, accept, create=True)
 
     def _complete_new_unit(self, fields: dict[str, Any]) -> dict[str, Any]:
         """The form's fields, filled from its library entry and checked for the minimum."""
@@ -266,7 +251,6 @@ class PlannedUnitEditService:
                 "expected_payload_hash": self._hash(expected_hash),
                 **{key: fields[key] for key in UNIT_FIELDS if key in fields},
             },
-            None,
             accept,
         )
 
@@ -280,7 +264,6 @@ class PlannedUnitEditService:
                 "local_id": local_id,
                 "expected_payload_hash": self._hash(expected_hash),
             },
-            None,
             None,
         )
 
@@ -297,19 +280,14 @@ class PlannedUnitEditService:
     def _apply(
         self,
         build: Callable[[], dict[str, Any]],
-        plan_id: str | None,
         accept: list[str] | None,
-        *,
-        create: bool = False,
     ) -> dict[str, Any]:
         guard = self._plan_guard()
         with self._database_manager.unit_of_work():
             before = guard.findings()
             change = build()
             result = self._change_service().apply(
-                {"changes": [change]},
-                authorized_plan_id=plan_id if create else None,
-                source="manual",
+                {"changes": [change]}, source="manual"
             )
             notes = guard.verify(before, accept or [], waived=_WAIVED)
         return {**result["changes"][0], "plan_check_notes": notes}

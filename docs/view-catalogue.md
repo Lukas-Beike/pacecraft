@@ -46,9 +46,10 @@ Default route: `#coach`. Navigation items: `#coach`, `#plan`, `#nutrition`, `#an
 | `#plan` | `workoutsPanel` | `plan` | `/api/plan`, `/api/library?limit=100`, `/api/activities?limit=100`, `/api/analysis/week-review` | Kalender aktualisieren, Woche, Monat, Woche synchronisieren, Verschieben, Feedback, Mit Coach besprechen, Mit Coach besprechen | loading, empty, error, notConfigured, offline |
 | `#plan/library` | `workoutsPanel` | `plan` | `/api/plan`, `/api/library?limit=100` | Kalender aktualisieren, Weitere Bibliothekseinheiten laden, Erneut senden | loading, empty, error, offline |
 | `#plan/overview` | `workoutsPanel` | `plan` | `/api/plan`, `/api/library?limit=100`, `/api/activities?limit=100`, `/api/analysis/week-review` | Kalender aktualisieren, Woche, Monat, Woche synchronisieren, Verschieben, Feedback, Mit Coach besprechen, Mit Coach besprechen | loading, empty, error, notConfigured, offline |
+| `#plan/plans` | `workoutsPanel` | `plan` | `/api/plan`, `/api/library?limit=100` | Kalender aktualisieren, Erneut senden | loading, empty, error, offline |
 | `#plan/season` | `workoutsPanel` | `plan` | `/api/plan`, `/api/library?limit=100`, `/api/profile` | Kalender aktualisieren, Erneut laden | loading, empty, error, offline |
 
-Kalender segments: `overview`, `library`, `season`.
+Kalender segments: `overview`, `library`, `plans`, `season`.
 Mehr segments: `profile`, `connections`, `equipment`, `coach`, `app`, `operations`.
 
 Former routes that open another view:
@@ -129,6 +130,7 @@ expression. Other inline status lines are not listed.
 | `weekReviewFailed` | `h(.empty)` | Wochenrückblick gerade nicht verfügbar |  |
 | `retryWeekReview` | `createLoadingState` | Wochenrückblick wird geladen… |  |
 | `plannedNoSourceState` | `createEmptyState` | Noch keine Aktivitäten | Verbinde Garmin oder Wahoo, dann erscheinen deine Einheiten hier. |
+| `renderPlans` | `h(.context-empty)` | (computed) ` archivedView ? "Keine archivierten Pläne." : "Noch kein Plan." ` |  |
 | `renderLibrary` | `h(.context-empty)` | Noch keine Einheiten in der Bibliothek. Der Coach legt hier Einheiten ab, wenn du sie planst. |  |
 | `renderCompetitions` | `h(.context-empty)` | Noch keine Wettkämpfe gespeichert. |  |
 <!-- END GENERATED STATES -->

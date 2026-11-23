@@ -19,6 +19,11 @@ Scoring is mechanical; there is no judge model. Output goes to stdout only.
         --base-url https://api.anthropic.com --model claude-sonnet \
         --price-input <usd> --price-output <usd> [--thinking low]
 
+``--report <case id>`` prints the analysed session's report of a case without
+any model call, to compare the report before and after a change (#4136):
+
+    python tests/coach_live_eval.py --report a03-long-run-analysis
+
 The case definition is ``tests/coach_eval_cases.json``; the table in
 ``docs/coach-dialogue-evaluation.md`` is generated from it
 (``python tests/test_coach_live_eval.py --write``).
@@ -97,6 +102,8 @@ KNOWN_EXPECT_KEYS = frozenset(
         "no_session_guess",
         "notables_named",
         "fade_from_report",
+        "mentions",
+        "never_mentions",
     }
 )
 # Tables compared before and after a case; a change in a table the case does not
@@ -538,6 +545,7 @@ def score_case(
         misses += unnamed_notables(turns)
     if e.get("fade_from_report"):
         misses += unbacked_fade_claims(turns)
+    misses += mention_misses(e, turns)
     if e.get("no_session_guess") and any(
         '"session_report"' in output
         for turn in turns
@@ -570,6 +578,27 @@ def score_case(
         "unnecessary_clarifications": unnecessary,
         "passed": not safety and not misses and not unnecessary,
     }
+
+
+def mention_misses(e: dict[str, Any], turns: list[dict[str, Any]]) -> list[str]:
+    """Patterns the last answer must name, and patterns it must never name (#4136).
+
+    Case-insensitive regular expressions, such as the energy deficit or the date
+    of a session of another type that no comparison may list.
+    """
+    text = turns[-1]["text"] if turns else ""
+    return [
+        *(
+            f"not_mentioned:{pattern}"
+            for pattern in e.get("mentions", ())
+            if not re.search(pattern, text, re.IGNORECASE)
+        ),
+        *(
+            f"mentioned:{pattern}"
+            for pattern in e.get("never_mentions", ())
+            if re.search(pattern, text, re.IGNORECASE)
+        ),
+    ]
 
 
 # A number the answer writes: a clock time m:ss or h:mm, or a decimal.
@@ -940,6 +969,8 @@ def _seed(server: Any, case: dict[str, Any]) -> dict[str, str]:
     _seed_nutrition(server, setup)
     if setup.get("activity"):
         _seed_activity(server, setup["activity"])
+    if setup.get("long_run"):
+        _seed_long_runs(server, unit)
     if setup.get("draft"):
         tags["draft"] = _seed_draft(server, setup["draft"])
     if setup.get("pending"):
@@ -1040,6 +1071,214 @@ def _seed_activity(server: Any, setup: dict[str, Any]) -> None:
         }
         for seeded in ("synthetic-run", "synthetic-run-2")[: 1 + bool(second_start)]:
             add_garmin_copy(server.database_manager(), seeded, streams)
+
+
+# The athlete's long-run example (#4136), synthetic: yesterday's long run with
+# a heart-rate target of 130-140 bpm, four earlier long runs with that target,
+# and runs of other types, two of them in the same heart-rate band.
+LONG_RUN_ID = "synthetic-long-run"
+LONG_RUN_TARGET = "130-140bpm Langer Lauf locker"
+PLANNED_AT = datetime(2026, 8, 1, 8, tzinfo=UTC)
+LONG_RUN_ZONES = {
+    "sport": "run",
+    "metric": "heart_rate",
+    "threshold": 167,
+    "maximum": 190,
+    "limits": [125, 140, 152, 167, 178, 190],
+}
+# Activity id, day, plan focus, minutes, km, average HR, HR rise in the 2nd half.
+LONG_RUN_SESSIONS = (
+    (LONG_RUN_ID, "2026-09-06", "long", 86, 15.0, 132, 4),
+    ("synthetic-long-0830", "2026-08-30", "long", 80, 13.8, 133, 5),
+    ("synthetic-long-0823", "2026-08-23", "long", 80, 13.7, 133, 6),
+    ("synthetic-long-0816", "2026-08-16", "long", 78, 13.3, 134, 6),
+    ("synthetic-long-0809", "2026-08-09", "long", 75, 12.7, 134, 7),
+    ("synthetic-easy-0902", "2026-09-02", "easy", 60, 10.6, 131, 2),
+    ("synthetic-easy-0827", "2026-08-27", "easy", 58, 10.2, 133, 2),
+    ("synthetic-tempo-0903", "2026-09-03", "threshold", 55, 11.0, 158, 3),
+)
+# Diary: three days of about 1700 kcal, breakfast 2.5 hours before the long
+# run, and a can and a gel logged after it.
+LONG_RUN_MEALS: tuple[dict[str, Any], ...] = (
+    *(
+        {"meal_date": day, "meal_type": slot, "description": text, "kcal": kcal}
+        for day in ("2026-09-03", "2026-09-04", "2026-09-05")
+        for slot, text, kcal in (
+            ("breakfast", "Haferflocken mit Milch", 450),
+            ("lunch", "Reis mit Gemüse", 650),
+            ("dinner", "Brot mit Käse", 600),
+        )
+    ),
+    {
+        "meal_date": "2026-09-06",
+        "logged_at": "07:30",
+        "logged_time_known": True,
+        "description": "Haferflocken mit Banane und Honig",
+        "kcal": 620,
+        "carbs_g": 119,
+        "protein_g": 18,
+        "fat_g": 10,
+    },
+    {
+        "meal_date": "2026-09-06",
+        "logged_at": "11:57",
+        "logged_time_known": True,
+        "description": "Energydrink",
+        "kcal": 110,
+        "carbs_g": 27,
+    },
+    {
+        "meal_date": "2026-09-06",
+        "logged_at": "12:00",
+        "logged_time_known": True,
+        "description": "Gel",
+        "kcal": 90,
+        "carbs_g": 22,
+    },
+)
+
+
+def _long_run_streams(minutes: int, km: float, heart: int, rise: int) -> dict:
+    """Five-second streams: heart rate up from 90 bpm in ten minutes, then
+    ``rise`` bpm higher in the second half at nearly the same pace, around
+    ``heart`` on average; the main run touches 143 bpm for a minute."""
+    import math
+
+    total = minutes * 60
+    speed = km * 1000 / total
+    time = list(range(0, total + 1, 5))
+    heartrate = []
+    half = (total - 600) / 2
+    for t in time:
+        # After the warm-up the heart rate climbs evenly, so the second half of
+        # the main part averages ``rise`` bpm above the first.
+        steady = heart + 1 + rise * (t - 600 - half) / half
+        if t < 600:
+            steady = 90 + (heart - 6 - 90) * t / 600
+        if minutes == 86 and 4200 <= t < 4260:
+            steady = 143
+        heartrate.append(round(steady))
+    return {
+        "time": time,
+        "distance": [round(speed * t, 1) for t in time],
+        "velocity_smooth": [round(speed * (1 - 0.01 * t / total), 3) for t in time],
+        "heartrate": heartrate,
+        "altitude": [round(40 + 2 * math.sin(t / 300), 1) for t in time],
+        "cadence": [86.5] * len(time),
+    }
+
+
+def _seed_long_runs(server: Any, unit: Any) -> None:
+    """The long-run sessions with Garmin streams, their plan units, recovery,
+    weather and diary (#4136); each through the real stores."""
+    from unittest.mock import patch
+
+    import snapshot_seed
+    from canonical_detail_support import add_garmin_copy, seed_intervals_activity
+    from support import complete_canonical_backfill, mark_tables_serving
+
+    from backend.activities.hr_cap import effective_caps
+    from backend.sync.garmin_snapshot_writer import GarminSnapshotWriter
+
+    manager = server.database_manager()
+    # Own run zones; 84 % of the 167 bpm threshold caps a long run at 140 bpm.
+    server.ATHLETE_DATA.zones().save({**LONG_RUN_ZONES, "from_beginning": True})
+    listed = []
+    for activity_id, day, focus, minutes, km, heart, rise in LONG_RUN_SESSIONS:
+        name = {"long": "Langer Lauf", "easy": "Lockerer Lauf"}.get(focus, "Schwelle")
+        start = f"{day}T10:00:00"
+        fields = {"moving_time": minutes * 60, "distance": km * 1000}
+        listed.append({"id": activity_id, "type": "Run", "name": name, **fields})
+        seed_intervals_activity(
+            manager,
+            activity_id,
+            name=name,
+            type="Run",
+            start_date_local=start,
+            **fields,
+        )
+        add_garmin_copy(
+            manager, activity_id, _long_run_streams(minutes, km, heart, rise)
+        )
+        target = {"long": LONG_RUN_TARGET, "easy": "Z2 HR"}.get(focus, "Z4 HR")
+        description = f"- {minutes}m {target}"
+        # A unit is planned before its day, so the clock stands before them all.
+        with patch.object(server.ATHLETE_CLOCK, "now", return_value=PLANNED_AT):
+            unit(
+                f"run:{day}",
+                day,
+                name,
+                "Run",
+                session_focus=focus,
+                description=description,
+                duration_minutes=minutes,
+                hr_cap=effective_caps(None)["long"] if focus == "long" else None,
+            )
+    snapshot_seed.save_view(
+        server.SYNC_PERSISTENCE.state_repository(),
+        {
+            "recent_activities": listed,
+            "recent_wellness": [],
+            "planned_workouts": [],
+            "raw_provider_data": {"activities": [dict(row) for row in listed]},
+        },
+    )
+    nights = [f"2026-08-{day:02d}" for day in range(7, 32)] + [
+        f"2026-09-{day:02d}" for day in range(1, 8)
+    ]
+    with manager.unit_of_work() as db:
+        GarminSnapshotWriter(server.KEY_VALUE_REPOSITORY, lambda: UTC).write(
+            db,
+            {
+                "synced_at": "2026-09-07T08:00:00",
+                "sleep": [
+                    {"calendarDate": d, "sleepTimeSeconds": 26_640} for d in nights
+                ],
+                "hrv": [{"calendarDate": d, "lastNightAvg": 59} for d in nights],
+                "resting_hr": [
+                    {"calendarDate": d, "restingHeartRate": 47} for d in nights
+                ],
+            },
+        )
+    complete_canonical_backfill(server)
+    mark_tables_serving(server)
+    _seed_activity_weather(server, LONG_RUN_ID, 14.0, 3.0)
+    for entry in LONG_RUN_MEALS:
+        server.NUTRITION_SERVICES.diary_service().log_meal(dict(entry))
+
+
+def _seed_activity_weather(
+    server: Any, activity_id: str, temperature: float, wind_mps: float
+) -> None:
+    """The session's stored activity weather, as the weather stage writes it."""
+    from backend.canonical.vocabulary import MetricKind
+    from backend.db import canonical_store
+
+    # The stage's own observation builder, so the seeded row is the one the
+    # weather stage writes (no public writer takes a fetched value).
+    from backend.sync.activity_weather import _observation
+    from backend.weather.activity_weather_store import LOCATION_START
+
+    with server.database_manager().unit_of_work() as db:
+        summary = dict(
+            db.execute(
+                "SELECT activity_id AS id, sport, started_at, recorded_by, "
+                "local_date || 'T10:00:00' AS started_at_local FROM activity_records WHERE provider_activity_id = ?",
+                (activity_id,),
+            ).fetchone()
+        )
+        for kind, value in (
+            (MetricKind.ACTIVITY_WEATHER_TEMPERATURE, temperature),
+            (MetricKind.ACTIVITY_WEATHER_WIND_SPEED, wind_mps),
+        ):
+            canonical_store.upsert_observation(
+                db,
+                _observation(summary, kind, value, LOCATION_START, "0" * 64),
+                mapper_version=2,
+                now="2026-09-07T08:00:00+00:00",
+                owner=summary["id"],
+                derivation={"location_kind": LOCATION_START},
+            )
 
 
 def _seed_draft(server: Any, kind: str) -> str:
@@ -1641,6 +1880,53 @@ def _errored(case_id: str, error: Exception) -> dict[str, Any]:
     }
 
 
+# What the offline report prints of the analysed session's tool result (#4136).
+REPORT_KEYS = (
+    "session",
+    "focus",
+    "planned_targets",
+    "session_report",
+    "comparable_sessions",
+    "pace_at_heart_rate",
+    "recovery_before",
+    "weather",
+)
+
+
+def session_report_snapshot(case: dict[str, Any]) -> dict[str, Any]:
+    """The case's session as the analysis tool returns it, without a model.
+
+    The same synthetic session before and after a change to the report shows
+    what the Coach reads (#4136); nothing leaves the temporary storage.
+    """
+    activity_id = LONG_RUN_ID if case["setup"].get("long_run") else "synthetic-run"
+    with case_server(
+        "http://127.0.0.1:9", "offline", "low", "", provider="openai"
+    ) as server:
+        _seed(server, case)
+        result = server.COACH_READ_TOOLS.read_service().execute(
+            "get_activity_details", {"activity_id": activity_id}
+        )
+    return {key: result[key] for key in REPORT_KEYS if key in result}
+
+
+def print_reports(case_ids: list[str]) -> int:
+    """``--report <case id>...``: print the cases' session reports as one JSON object."""
+    cases = {
+        c["id"]: c
+        for c in load_cases()
+        if c["setup"].get("long_run")
+        or (c["setup"].get("activity") or {}).get("readable")
+    }
+    unknown = sorted(set(case_ids) - set(cases))
+    if not case_ids or unknown:
+        print(f"Name cases with a readable session: {sorted(cases)}")
+        return 2
+    reports = {case_id: session_report_snapshot(cases[case_id]) for case_id in case_ids}
+    sys.stdout.write(json.dumps(reports, ensure_ascii=False, indent=1) + "\n")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Live Coach dialogue evaluation.")
     # Named explicitly: no default and no fallback to the other provider.
@@ -1706,4 +1992,6 @@ def main(argv: list[str] | None = None) -> int:
 
 
 if __name__ == "__main__":
+    if sys.argv[1:2] == ["--report"]:
+        sys.exit(print_reports(sys.argv[2:]))
     sys.exit(main())

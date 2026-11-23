@@ -48,7 +48,6 @@ _INTERVALS_OUTPUT_JOB_TYPES = frozenset(
     {
         "plan_push",
         "competition_push",
-        "nutrition_sync",
     }
 )
 

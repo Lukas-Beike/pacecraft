@@ -1385,14 +1385,6 @@ def build_structured_tool_schemas(
             },
         ),
         _canonical_coach_tool(
-            "sync_nutrition",
-            "Explicitly synchronize nutrition with Intervals.icu. Use date for one day or pending_limit for pending dates. This writes nutrition data remotely and is never automatic.",
-            {
-                "date": {"type": "string"},
-                "pending_limit": {"type": "integer", "minimum": 1, "maximum": 31},
-            },
-        ),
-        _canonical_coach_tool(
             "read_nutrition",
             "Read nutrition entries and day summaries for a date or a range of at most 31 days, or with energy true the athlete's daily energy expenditure of date (default yesterday).",
             {
