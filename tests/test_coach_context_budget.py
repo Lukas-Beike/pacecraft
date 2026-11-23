@@ -352,6 +352,16 @@ class CoachContextBudgetTests(unittest.TestCase):
                 self.assertEqual(sections, present(row))
                 self.assertLessEqual(row["total"], ceiling)
 
+    def test_every_kind_keeps_one_percent_headroom(self) -> None:
+        # #4100: two PRs that each fit can together exceed a ceiling on
+        # develop; a PR that eats the last 1 % fails in its own CI instead.
+        # Make room by trimming context text, never by raising the ceiling.
+        for label, (_sections, ceiling) in EXPECTED.items():
+            with self.subTest(case=label):
+                self.assertLessEqual(
+                    self.measured[label]["total"], ceiling - ceiling // 100
+                )
+
     def test_a_given_structured_build_gives_the_identical_text(self) -> None:
         """The preview's one build yields the same text as the text's own build (#2966)."""
         service = _build_service()
