@@ -1,5 +1,20 @@
 const { test, expect } = require("@playwright/test");
 
+// Without a connected source the calendar is one empty state (#3936 G-13); the days need one.
+test.use({ serviceWorkers: "block" });
+test.beforeEach(async ({ page }) => {
+  await page.route(/\/api\/(bootstrap|performance)(\?|$)/, async (route) => {
+    try {
+      const response = await route.fetch();
+      const body = await response.json();
+      if (body.garmin) body.garmin = { ...body.garmin, configured: true };
+      await route.fulfill({ response, json: body });
+    } catch {
+      // The test ended with a request still in flight.
+    }
+  });
+});
+
 // #3953: today's calendar day opens the check-in form; a save shows its receipt and "Rückgängig" restores the day.
 test("@responsive the calendar day's check-in form saves a correction and undoes it", async ({ page }) => {
   await page.goto("/#plan");
