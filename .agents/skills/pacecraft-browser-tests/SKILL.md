@@ -21,8 +21,8 @@ python scripts/run_browser_tests.py --project all --keep-going
   repeats. `changed` picks what CI picks for the diff against `--base`
   (default `origin/develop`), from `.github/scripts/ci_changes.py` (#2759):
   nothing for documentation only (exit 0, no run, as CI), `desktop` without a
-  UI change, otherwise `all`. One project takes 28-32 min
-  locally with `--jobs 1`. Run the
+  UI change, otherwise `all`; one project takes 28-32 min locally (`--jobs 1`), so
+  locally run the affected specs on desktop and leave `all` to CI (#3983). Run the
   smallest selection that covers the change: the affected spec on the affected
   project, then the other viewports for layout changes. A backend read or
   projection change affects the specs of every view that shows the read, not
