@@ -71,6 +71,8 @@ function renderNutritionSegments(route) {
   document.querySelector("#nutritionDiary").hidden = week || products || body;
   document.querySelector("#bodyAnalysisCharts").hidden = !body;
   document.querySelector("#nutritionStatus").hidden = week || products || body;
+  // The diary's message to the Coach belongs to the diary alone.
+  if (week || products || body) document.querySelector("#nutritionTellCoach").hidden = true;
   document.querySelector("#nutritionWeek").hidden = !week;
   document.querySelector("#nutritionProductsPanel").hidden = !products;
   document.querySelectorAll("[data-nutrition-segment]").forEach((link) => {

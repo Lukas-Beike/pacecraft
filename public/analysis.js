@@ -2872,10 +2872,13 @@ function renderAnalysisEmptyState(segment) {
     root.replaceChildren(...(empty ? [analysisEmptyCard(segment)] : []));
   }
   root.hidden = !empty;
-  // Without a connected source the period buttons have nothing to change, so they step aside (#3936 G-13).
-  const idle = empty && !analysisDataSourceConnected();
-  document.querySelectorAll("#analysisLoadPeriod, #strengthPeriod, #personalRecovery .analysis-trend-controls").forEach((controls) => { controls.hidden = idle; });
+  document.querySelectorAll("#personalRecovery .analysis-trend-controls").forEach((controls) => { controls.hidden = analysisPeriodIdle(empty); });
   return empty;
+}
+
+// Without a connected source the period buttons have nothing to change, so they step aside (#3936 G-13).
+function analysisPeriodIdle(empty) {
+  return empty && !analysisDataSourceConnected();
 }
 
 function renderAnalysisSegmentsIfActive() {
@@ -2894,12 +2897,12 @@ function renderAnalysisSegments(route = state.route) {
   document.querySelectorAll("#dataPanel [data-analysis-sport]").forEach((part) => { part.hidden = part.dataset.analysisSport !== sport || !part.hasChildNodes(); });
   const endurance = document.getElementById("performanceEnduranceCharts");
   endurance.hidden = !load || !endurance.childElementCount;
-  document.getElementById("analysisLoadPeriod").hidden = segment !== "load";
+  document.getElementById("analysisLoadPeriod").hidden = segment !== "load" || analysisPeriodIdle(empty);
   document.getElementById("sessionPerformance").hidden = !load;
   document.getElementById("trainingZoneCharts").hidden = !load;
   document.getElementById("analysisLoadCharts").hidden = !load;
   document.getElementById("personalRecovery").hidden = segment !== "recovery";
-  document.getElementById("strengthPeriod").hidden = segment !== "strength";
+  document.getElementById("strengthPeriod").hidden = segment !== "strength" || analysisPeriodIdle(empty);
   document.getElementById("strengthAnalysis").hidden = segment !== "strength" || empty;
   document.querySelectorAll("[data-analysis-segment]").forEach((link) => {
     const active = link.dataset.analysisSegment === segment;
