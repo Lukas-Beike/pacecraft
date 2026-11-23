@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import builtins
 import copy
 import uuid
 from collections.abc import Callable
@@ -69,6 +70,38 @@ class WorkoutLibraryPlanService:
 
         self._publish_change()
         return {"status": "local", "planned": planned, "local_planned": len(planned)}
+
+    def blocked_days(
+        self, library_workout_id: Any, dates: Any
+    ) -> dict[str, builtins.list[str]]:
+        """The days among ``dates`` a library entry could not be planned on, with the entries in the way.
+
+        It asks the calendar rules planning asks, so the day strip never offers a
+        day the planning then refuses (#4060). Unreadable dates are left out; at
+        most 31 days are checked.
+        """
+        try:
+            workout_id = str(uuid.UUID(str(library_workout_id or "")))
+        except (ValueError, AttributeError) as exc:
+            raise AppError(400, INVALID_LIBRARY_ID_ERROR) from exc
+        blocked: dict[str, builtins.list[str]] = {}
+        with self._database_manager.unit_of_work() as db:
+            if not planning_store.library_row(db, workout_id):
+                raise AppError(404, "Bibliothekseinheit nicht gefunden.")
+            for raw in (dates if isinstance(dates, list) else [])[:31]:
+                try:
+                    day = LocalDate.parse(raw, allow_datetime=False).isoformat()
+                except TypeError, ValueError:
+                    continue
+                entries = self._calendar_conflict_service.conflicts(
+                    {"date": day}, {workout_id}
+                )
+                names = [
+                    str(entry.get("name") or "Kalendereintrag") for entry in entries
+                ]
+                if names:
+                    blocked[day] = list(dict.fromkeys(names))
+        return blocked
 
     @staticmethod
     def _library_plan_request(db: Any, item: Any) -> dict[str, Any]:

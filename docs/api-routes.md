@@ -96,6 +96,7 @@ handler's docstring. Regenerate it with
 | GET | `/api/library` | Session | no | Workout library page. |
 | POST | `/api/library` | Session + CSRF | after access | Save a new local library entry, the Coach's template `create`, without a remote write. |
 | POST | `/api/library/{id}/archive` | Session + CSRF | after access | Take a library entry out of the library after the athlete confirmed it. |
+| GET | `/api/library/{id}/blocked-days` | Session | no | Name the days a library entry could not be planned on. A read; nothing is written. |
 | POST | `/api/library/{id}/delete` | Session + CSRF | after access | Delete a never-synced library entry for good after the athlete confirmed it. |
 | POST | `/api/library/{id}/restore` | Session + CSRF | after access | Bring an archived library entry back into the library. |
 | POST | `/api/library/{id}/schedule` | Session + CSRF | after access | Plan a library entry on one day as a local unit, without a remote write. |
@@ -1273,6 +1274,17 @@ without `confirmed: true`; 400 "Die Anfrage muss ein Objekt sein." or
 "Unbekannte Felder: …" for another body; 400 for an id that is no UUID;
 404 "Bibliothekseinheit nicht gefunden."; 409 "Geplante lokale Einheiten
 werden im Kalender bearbeitet." for a planned unit.
+
+### `GET /api/library/{id}/blocked-days`
+
+Request: path `{id}`, the library entry id; query `dates`, up to 31 days as
+`YYYY-MM-DD` separated by commas.
+
+Response: 200 `{"blocked": {"YYYY-MM-DD": [name, ...]}}`: per day the names of
+the calendar entries in the way; free days are left out.
+
+Errors: 400 for an id that is no UUID; 404 "Bibliothekseinheit nicht
+gefunden." for an unknown entry.
 
 ### `POST /api/library/{id}/delete`
 

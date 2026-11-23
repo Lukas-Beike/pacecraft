@@ -1443,7 +1443,7 @@ function plannedUnitActions(entry, dateKey, todayKey) {
   toggle.addEventListener("click", () => {
     days.hidden = !days.hidden;
     toggle.setAttribute("aria-expanded", String(!days.hidden));
-    if (!days.hidden) void markBlockedDays(days, entry);
+    if (!days.hidden && entry.local_id) void markBlockedDays(days, `/api/planned-units/${encodeURIComponent(entry.local_id)}`);
   });
   const move = async (target) => {
     if (!target || target === dateKey || (plannedLastDateKey && target > plannedLastDateKey)) return;
@@ -1508,12 +1508,12 @@ function plannedArchiveControls(entry, dateKey) {
 
 // The strip asks the server which of its days a move would be refused for and marks them with what is in the
 // way, so no day is offered that fails after the tap (#4060). A failed read leaves the strip as it was.
-async function markBlockedDays(days, entry) {
+async function markBlockedDays(days, path) {
   const buttons = [...days.querySelectorAll("button[data-day]")];
-  if (!entry.local_id || !buttons.length) return;
+  if (!buttons.length) return;
   try {
     const dates = buttons.map((button) => button.dataset.day).join(",");
-    const { blocked } = await api(`/api/planned-units/${encodeURIComponent(entry.local_id)}/blocked-days?dates=${dates}`);
+    const { blocked } = await api(`${path}/blocked-days?dates=${dates}`);
     for (const button of buttons) {
       // Every read starts from the day's own label, so a reopened strip never stacks marks or keeps a freed day blocked.
       button.dataset.baseLabel ??= button.getAttribute("aria-label") || "";
@@ -3063,7 +3063,7 @@ function libraryActions(workout) {
   const showDays = (open) => {
     days.hidden = !open;
     toggle.setAttribute("aria-expanded", String(open));
-    if (open) libraryOpenStrips.add(id); else libraryOpenStrips.delete(id);
+    if (open) { libraryOpenStrips.add(id); void markBlockedDays(days, `/api/library/${encodeURIComponent(id)}`); } else libraryOpenStrips.delete(id);
   };
   toggle.addEventListener("click", () => showDays(days.hidden));
   if (libraryOpenStrips.has(id)) showDays(true);

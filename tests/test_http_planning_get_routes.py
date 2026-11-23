@@ -84,6 +84,27 @@ class PlanningGetRoutesTests(unittest.TestCase):
             200, {"blocked": {"2026-09-22": ["Reise"]}}
         )
 
+    def test_library_blocked_days_pass_the_listed_dates_to_the_plan_service(self):
+        service = Mock()
+        service.blocked_days.return_value = {"2026-09-22": ["Reise"]}
+        routes = PlanningGetRoutes(
+            Mock(return_value=self.plan),
+            Mock(return_value=self.weather),
+            Mock(return_value=self.library),
+            None,
+            Mock(return_value=service),
+        )
+        self.handler.path = "/api/library/abc/blocked-days?dates=2026-09-22"
+
+        self.assertTrue(
+            dispatch_route(routes, self.handler, "/api/library/abc/blocked-days")
+        )
+
+        service.blocked_days.assert_called_once_with("abc", ["2026-09-22"])
+        self.handler.send_json.assert_called_once_with(
+            200, {"blocked": {"2026-09-22": ["Reise"]}}
+        )
+
     def test_unknown_route_resolves_no_factory(self):
         factories = [
             Mock(return_value=self.plan),
