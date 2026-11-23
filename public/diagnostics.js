@@ -1,3 +1,61 @@
+// The local change history (#3954): newest first, 30 per page. An entry that is still its record's
+// newest change offers "Rückgängig"; any older one reads "überholt".
+let changeHistoryCursor = null;
+let changeHistoryReads = 0;
+
+function changeHistoryEntry(change) {
+  const meta = [formatTime(change.created_at), String(change.source).startsWith("coach") ? "Coach" : ""].filter(Boolean).join(" · ");
+  const item = h("li", { className: "change-history-item", dataset: { changeId: change.id } },
+    h("div", null, h("strong", null, change.line || "Änderung"), h("small", null, meta)));
+  if (change.can_undo) {
+    const undo = h("button", { type: "button", className: "secondary-button" }, "Rückgängig");
+    undo.addEventListener("click", () => void undoChangeHistoryEntry(change, undo));
+    item.append(undo);
+  } else if (change.action !== "undo" && change.undoable !== false && change.remote_sync !== "remote") item.append(h("span", "change-history-state", "überholt"));
+  return item;
+}
+
+async function loadChangeHistory(more = false) {
+  const list = $("#changeHistoryList");
+  const status = $("#changeHistoryStatus");
+  const button = $("#changeHistoryMore");
+  if (!list || !status || !button) return;
+  const read = ++changeHistoryReads;
+  button.disabled = true;
+  if (!more) { list.replaceChildren(); changeHistoryCursor = null; status.textContent = "Wird geladen…"; }
+  try {
+    const query = more && changeHistoryCursor ? `?cursor=${encodeURIComponent(changeHistoryCursor)}` : "";
+    const result = await api(`/api/change-history${query}`);
+    // A newer read replaces this one's page.
+    if (read !== changeHistoryReads) return;
+    list.append(...result.changes.map(changeHistoryEntry));
+    changeHistoryCursor = result.next_cursor;
+    status.textContent = list.childElementCount ? "" : "Noch keine Änderungen.";
+  } catch (error) {
+    if (read === changeHistoryReads) status.textContent = error.message;
+  } finally {
+    if (read === changeHistoryReads) { button.hidden = !changeHistoryCursor; button.disabled = false; }
+  }
+}
+
+async function undoChangeHistoryEntry(change, button) {
+  const confirmed = await requestConfirmation(`Die Änderung „${change.line || "Änderung"}“ wird zurückgenommen. Anbieter bleiben unverändert.`, {
+    title: "Änderung zurücknehmen?", confirmLabel: "Zurücknehmen",
+  });
+  if (!confirmed) return;
+  button.disabled = true;
+  try {
+    await api("/api/change-history/undo", { method: "POST", body: JSON.stringify({ change_id: change.id, expected_current_hash: change.after_hash }) });
+    toast("Änderung zurückgenommen");
+    await loadChangeHistory();
+    await globalThis.load?.();
+  } catch (error) {
+    toast(error.message, true);
+    // The entry may no longer be its record's newest: read the list again.
+    await loadChangeHistory();
+  }
+}
+
 function formatLogEntry(entry) {
   const timestamp = entry.timestamp ? `[${formatTime(entry.timestamp)}] ` : "";
   const level = entry.level ? `${entry.level} ` : "";

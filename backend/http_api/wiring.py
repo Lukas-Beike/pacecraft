@@ -49,6 +49,7 @@ from backend.http_api.handler import (
     HttpRequestHandlerDependencies,
     create_request_handler,
 )
+from backend.http_api.history_get import HistoryGetRoutes
 from backend.http_api.history_undo_post import HistoryUndoPostRoutes
 from backend.http_api.idempotency import IdempotencyStore
 from backend.http_api.library_page import LibraryPageService
@@ -509,6 +510,7 @@ def _read_routes(
                 ),
             ),
         ),
+        HistoryGetRoutes(ctx.history.change_history_service),
         DiagnosticsGetRoutes(
             ctx.diagnostics.recent_log_entries_service,
             ctx.diagnostics.report_service,
@@ -717,6 +719,7 @@ def build_http_api(
         sync_get,
         state_events_get,
         athlete_get,
+        history_get,
         diagnostics_get,
         analysis,
     ) = _read_routes(
@@ -772,6 +775,7 @@ def build_http_api(
             state_events_get,
             coach_get,
             athlete_get,
+            history_get,
             diagnostics_get,
             privacy_get,
             nutrition_get,

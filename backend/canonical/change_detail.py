@@ -126,7 +126,7 @@ def _changed_text(detail: dict[str, Any]) -> str:
     return ", ".join(parts)
 
 
-_ACTION_TEXT = {"create": "neu", "delete": "gelöscht"}
+_ACTION_TEXT = {"create": "neu", "delete": "gelöscht", "undo": "zurückgenommen"}
 
 
 def detail_line(entity_type: str, action: str, detail: Any) -> str:

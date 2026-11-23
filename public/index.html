@@ -635,6 +635,12 @@
           <div id="systemContextPreviewStatus" class="context-preview-status">Noch nicht geladen.</div>
           <div id="systemContextPreviewContent" class="context-preview-content" hidden></div>
         </details>
+        <details id="changeHistorySection" class="settings-section collapsible-section" data-more-segment-panel="operations">
+          <summary class="collapsible-summary"><span class="collapsible-summary-title">Verlauf der Änderungen</span></summary>
+          <ul id="changeHistoryList" class="change-history-list"></ul>
+          <output id="changeHistoryStatus" class="tab-sync-detail"></output>
+          <button id="changeHistoryMore" type="button" class="secondary-button" hidden>Mehr laden</button>
+        </details>
         <details class="settings-section logs-section collapsible-section" data-more-segment-panel="operations">
           <summary class="collapsible-summary"><span class="collapsible-summary-title">Server-Logs</span></summary>
           <div class="settings-section-heading"><h3 class="sr-only">Server-Logs</h3><div class="settings-inline-action"><button id="logsDownloadButton" type="button" class="secondary-button">Logs herunterladen</button><button id="logsRefreshButton" type="button" class="secondary-button">Logs aktualisieren</button><button id="logsDeleteButton" type="button" class="secondary-button danger-button">Logs löschen</button></div></div>
