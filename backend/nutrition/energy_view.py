@@ -72,7 +72,7 @@ from backend.nutrition.energy_inputs import (
     resolve_body,
     skinfold_state,
 )
-from backend.nutrition.water_hint import water_hint_for_latest
+from backend.nutrition.water_hint import water_hint_for_today
 from backend.performance.activity_energy import TEF_ERROR_KCAL
 from backend.performance.daily_health import complete_garmin_day
 from backend.providers.source_labels import SourceView, provider_label
@@ -1581,8 +1581,12 @@ def read_energy_view(
     day: date | None = None,
     fit_inputs: Callable[[], EnergyInputs | None] | None = None,
     fit_days: int | None = None,
+    today: date | None = None,
 ) -> dict[str, Any]:
     """Read the 12-week history ending on ``end`` and build the view of ``day``.
+
+    ``today`` brings this morning's weigh-in for the water hint (#4047); the
+    history itself still ends on ``end``.
 
     ``day`` (default ``end``) may be today, after ``end``, or before the history.
     ``fit_inputs`` serves the 6 months' inputs (``read_fit_inputs``) when
@@ -1626,8 +1630,17 @@ def read_energy_view(
     )
     # Digestion counts kcal without macros at 10 %, so it is estimated (#3617).
     view["tef_estimated"] = inputs.days.get(day, DayInputs()).uncovered_kcal > 0
-    # A marked weigh-in step read as probable water; a hint only (#4047).
-    view["water_hint"] = water_hint_for_latest(inputs.days, end)
+    # This morning's weigh-in step read as probable water; a hint only (#4047).
+    view["water_hint"] = (
+        water_hint_for_today(
+            inputs.days,
+            inputs.rmr_kcal,
+            today,
+            sources.weights(db, today, today).get(today),
+        )
+        if today is not None
+        else None
+    )
     # The day's strength sessions with the RPE and MET that priced them (#3530).
     view["strength"] = [
         {"rpe": cost.rpe, "met": cost.met, "kcal": _round(cost.kcal)}

@@ -17,6 +17,7 @@ from datetime import date, timedelta
 from typing import TYPE_CHECKING, Final, Literal
 
 from backend.athlete.body_records import MIN_LINE_WEIGHINS, weight_trend
+from backend.nutrition.energy_balance import is_complete
 
 # The usual scatter of the weigh-ins around the trend is read from this many days.
 SCATTER_DAYS: Final = 56
@@ -93,43 +94,52 @@ def weight_step(weights_kg: Mapping[date, float], day: date) -> Direction | None
 
 
 def _level(value: float | None, usual: Sequence[float | None], high: bool) -> bool:
-    """Whether ``value`` is clearly above (``high``) or below the usual days."""
+    """Whether ``value`` is clearly above (``high``) or below the usual days.
+
+    A usual level of 0 says nothing: with no carbohydrates or salt on record
+    nothing is "clearly" more or less.
+    """
     known = [v for v in usual if v is not None]
     if value is None or len(known) < MIN_USUAL_DAYS:
         return False
     median, sd = _robust(known)
+    if median <= 0:
+        return False
     if high:
-        return value >= median * (1 + CLEAR_SHARE) and value >= median + CLEAR_SD * sd
-    return value <= median * (1 - CLEAR_SHARE) and value <= median - CLEAR_SD * sd
+        return value > median * (1 + CLEAR_SHARE) and value >= median + CLEAR_SD * sd
+    return value < median * (1 - CLEAR_SHARE) and value <= median - CLEAR_SD * sd
 
 
-def water_hint_for_latest(
-    days: Mapping[date, DayInputs], end: date
+def water_hint_for_today(
+    days: Mapping[date, DayInputs],
+    rmr_kcal: float | None,
+    today: date,
+    today_weight_kg: float | None,
 ) -> dict[str, object] | None:
-    """The hint for the latest weigh-in of the energy read, as its payload.
+    """The hint for this morning's weigh-in, as the energy read's payload.
 
-    Only a weigh-in of ``end`` or the day before is the current one; the
-    intake of days without entries is unknown and left out.
+    The read's days end yesterday, so today's weigh-in comes beside them. Only
+    completely logged days speak: a day with a coffee before a long ride is not
+    a low carbohydrate day. The cause is read from yesterday.
     """
-    weights = {d: v.weight_kg for d, v in days.items() if v.weight_kg is not None}
-    weighed = [d for d in weights if d <= end]
-    if not weighed or max(weighed) < end - timedelta(days=1):
+    if today_weight_kg is None:
         return None
-    day = max(weighed)
+    weights = {d: v.weight_kg for d, v in days.items() if v.weight_kg is not None}
+    weights[today] = today_weight_kg
     hint = water_hint(
         weights,
         {
             d: DayIntake(v.carbohydrate_g, v.salt_g, v.salt_known_share)
             for d, v in days.items()
-            if v.entries
+            if d < today and is_complete(v, rmr_kcal)
         },
         frozenset(d for d, v in days.items() if v.long_session),
-        day,
+        today,
     )
     if hint is None:
         return None
     return {
-        "date": day.isoformat(),
+        "date": today.isoformat(),
         "direction": hint.direction,
         "causes": list(hint.causes),
     }

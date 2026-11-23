@@ -11,7 +11,7 @@ from backend.nutrition.water_hint import (
     DayIntake,
     WaterHint,
     water_hint,
-    water_hint_for_latest,
+    water_hint_for_today,
     weight_step,
 )
 
@@ -44,6 +44,29 @@ def intake(
     }
     days[START + timedelta(days=previous)] = DayIntake(carbs, salt, share)
     return days
+
+
+def logged_days(
+    carbs: float = 300.0,
+    salt: float = 6.0,
+    long_session: bool = False,
+    entries: int = 3,
+) -> dict[date, DayInputs]:
+    """Completely logged days before ``DAY``; the previous day carries the given values."""
+    usual = intake(PREVIOUS, carbs=carbs, salt=salt)
+    return {
+        d: DayInputs(
+            intake_kcal=2500.0,
+            weight_kg=steady()[d],
+            carbohydrate_g=usual[d].carbs_g or 0.0,
+            salt_g=usual[d].salt_g,
+            salt_known_share=usual[d].salt_known_share,
+            entries=entries,
+            long_session=long_session and d == START + timedelta(days=PREVIOUS),
+        )
+        for d in usual
+        if d < DAY
+    }
 
 
 STEP = 35
@@ -141,26 +164,37 @@ class WaterHintTests(unittest.TestCase):
         water_hint(weights, intake(PREVIOUS, carbs=450.0, salt=11.0), frozenset(), DAY)
         self.assertEqual(weights, before)
 
-    def test_the_energy_read_payload_names_the_day_direction_and_causes(self) -> None:
+    def test_this_mornings_payload_names_the_day_direction_and_causes(self) -> None:
+        days = logged_days(carbs=450.0, salt=11.0)
         weights = steady(STEP, 1.6)
-        usual = intake(PREVIOUS, carbs=450.0, salt=11.0)
-        days = {
-            d: DayInputs(
-                carbohydrate_g=usual[d].carbs_g or 0.0,
-                salt_g=usual[d].salt_g,
-                salt_known_share=usual[d].salt_known_share,
-                entries=2,
-                weight_kg=weights[d],
-            )
-            for d in weights
-        }
         self.assertEqual(
-            water_hint_for_latest(days, DAY + timedelta(days=0)),
+            water_hint_for_today(days, None, DAY, weights[DAY]),
             {"date": DAY.isoformat(), "direction": "up", "causes": ["salt", "carbs"]},
         )
-        # A weigh-in older than yesterday is not the current one; a usual day gives none.
-        self.assertIsNone(water_hint_for_latest(days, DAY + timedelta(days=5)))
-        self.assertIsNone(water_hint_for_latest({}, DAY))
+        # Without this morning's weigh-in there is nothing to explain.
+        self.assertIsNone(water_hint_for_today(days, None, DAY, None))
+
+    def test_only_completely_logged_days_speak(self) -> None:
+        weights = steady(STEP, 1.6)
+        # A day with one coffee entered is no low carbohydrate day, nor a usual one.
+        sparse = logged_days(carbs=120.0, long_session=True, entries=1)
+        self.assertIsNone(
+            water_hint_for_today(sparse, None, DAY, steady(STEP, -1.6)[DAY])
+        )
+        full = logged_days(carbs=120.0, long_session=True)
+        self.assertIsNotNone(
+            water_hint_for_today(full, None, DAY, steady(STEP, -1.6)[DAY])
+        )
+        self.assertIsNone(water_hint_for_today({}, None, DAY, weights[DAY]))
+
+    def test_a_usual_level_of_zero_makes_nothing_clearly_high_or_low(self) -> None:
+        weights = steady(STEP, 1.6)
+        none_usual = {
+            START + timedelta(days=i): DayIntake(0.0, 0.0, SOLID) for i in range(DAYS)
+        }
+        self.assertIsNone(water_hint(weights, none_usual, frozenset(), DAY))
+        none_usual[START + timedelta(days=PREVIOUS)] = DayIntake(0.0, 0.0, SOLID)
+        self.assertIsNone(water_hint(weights, none_usual, frozenset(), DAY))
 
     def test_a_days_salt_is_summed_with_the_share_of_values_that_report_it(
         self,

@@ -791,6 +791,24 @@ class EnergyViewTests(unittest.TestCase):
         self.assertEqual(1701, row(view, "katch_mcardle")["resting_kcal"])
         self.assertEqual(DAY1.isoformat(), view["body"]["date"])
 
+    def test_the_read_brings_this_mornings_weigh_in_for_the_water_hint(self) -> None:
+        # #4047: the history ends yesterday, so today's weigh-in is read beside it,
+        # for the hint only; without a today there is no hint.
+        asked: list[tuple[date, date]] = []
+        base = sources()
+
+        def weights(db: object, first: date, last: date) -> dict[date, float]:
+            asked.append((first, last))
+            return base.weights(db, first, last)
+
+        today = DAY3 + timedelta(days=1)
+        view = read_energy_view(
+            None, replace(base, weights=weights), DAY3, DAY3, today=today
+        )
+        self.assertIn((today, today), asked)
+        self.assertIsNone(view["water_hint"])
+        self.assertIsNone(read_energy_view(None, sources(), DAY3)["water_hint"])
+
     def test_an_old_diary_day_leaves_the_twelve_weeks_unchanged(self) -> None:
         # #3617 item 6: opening a day before the 12-week span reads the span as
         # it is and adds that day with the span's step length, flex-HR line and

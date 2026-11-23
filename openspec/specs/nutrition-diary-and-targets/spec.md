@@ -401,7 +401,7 @@ The energy card SHALL show two non-blocking notes as its last lines and, for tod
 Evidence: `backend/nutrition/energy_guard.py`, `backend/nutrition/energy_expected.py`, `public/analysis.js::energyUsage`; `tests/analysis-presentation.test.cjs::the diary's usage card draws the outlined source's parts, its day total and the info behind the small i (#3252, #3703)`.
 
 ### Requirement: A marked weigh-in step is explained as probable water
-The energy read SHALL carry `water_hint` for the latest weigh-in of today or yesterday: a hint only, with no kilogram figure, that changes no weight, trend or energy estimate. The weigh-in is marked when it lies beyond twice the robust scatter of the athlete's own weigh-ins around their trend, and at least 0.7 kg; the cause is read from the previous day against the athlete's usual 28 days.
+The energy read SHALL carry `water_hint` for this morning's weigh-in (today's, read beside the history that ends yesterday): a hint only, with no kilogram figure, that changes no weight, trend or energy estimate. The weigh-in is marked when it lies beyond twice the robust scatter of the athlete's own weigh-ins around their trend, and at least 0.7 kg; the cause is read from yesterday against the athlete's usual 28 days, counting only completely logged days.
 
 #### Scenario: A jump after salt or carbohydrates
 - **WHEN** the weigh-in is marked upward and the previous day's logged salt or carbohydrates were clearly above the usual level
@@ -412,7 +412,7 @@ The energy read SHALL carry `water_hint` for the latest weigh-in of today or yes
 - **THEN** the hint names `down`, and the row shows "Wahrscheinlich Wasser: gestern wenig Kohlenhydrate nach langer Einheit".
 
 #### Scenario: Nothing to say
-- **WHEN** the deviation is not marked, the direction does not match the previous day, or the salt data of that day is sparse (under half of its values report salt)
+- **WHEN** the deviation is not marked, the direction does not match yesterday, yesterday is not completely logged, or its salt data is sparse (under half of its values report salt)
 - **THEN** there is no hint, and without usable salt data the hint never names salt.
 
 #### Scenario: The Coach reads the same hint
