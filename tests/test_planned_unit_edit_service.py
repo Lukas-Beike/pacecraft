@@ -83,22 +83,6 @@ class PlannedUnitEditServiceTests(unittest.TestCase):
         def today():
             return date(2026, 9, 20)
 
-        planned = PlannedUnitService(
-            self.manager,
-            revision,
-            lambda: NOW,
-            today,
-            lambda: uuid.UUID(int=next(ids)),
-            lambda value: value,
-            conflicts,
-            lambda: None,
-        )
-        self.library = WorkoutLibraryService(
-            self.manager,
-            lambda: NOW,
-            lambda: str(uuid.UUID(int=100 + next(ids))),
-            Mock(),
-        )
         plans = TrainingPlanRepository()
         training_plans = TrainingPlanService(
             self.manager,
@@ -109,6 +93,23 @@ class PlannedUnitEditServiceTests(unittest.TestCase):
             lambda: NOW,
         )
         self.plan_service = training_plans
+        self.planned = planned = PlannedUnitService(
+            self.manager,
+            revision,
+            lambda: NOW,
+            today,
+            lambda: uuid.UUID(int=next(ids)),
+            lambda value: value,
+            conflicts,
+            lambda: None,
+            follow_plans=training_plans.update_bounds,
+        )
+        self.library = WorkoutLibraryService(
+            self.manager,
+            lambda: NOW,
+            lambda: str(uuid.UUID(int=100 + next(ids))),
+            Mock(),
+        )
         replacement = StructuredTrainingPlanReplacementService(
             self.manager,
             PlanningStateRepository(),
@@ -260,6 +261,77 @@ class PlannedUnitEditServiceTests(unittest.TestCase):
         self.assertEqual(
             ("2026-09-23", "2026-09-23"), (plan["start_date"], plan["end_date"])
         )
+
+    def plan_with_units(self, *days):
+        """A plan whose period is its units' days, and those units' ids (#4144)."""
+        plan_id = self.plan_service.create(
+            {"name": "Aufbau", "start_date": days[0], "end_date": days[-1]}
+        )["plan_id"]
+        units = [
+            self.service.create({**STEADY, "date": day}, plan_id=plan_id)["local_id"]
+            for day in days
+        ]
+        return plan_id, units
+
+    def period(self, plan_id):
+        plan = next(item for item in self.plan_service.list() if item["id"] == plan_id)
+        return plan["start_date"], plan["end_date"]
+
+    def hash_of(self, local_id):
+        return library_payload_hash(
+            next(raw for key, _, raw in self.rows("planned_units") if key == local_id)
+        )
+
+    def test_the_athlete_edit_and_archive_keep_the_plan_period_in_step(self) -> None:
+        plan_id, (_first, last) = self.plan_with_units("2026-09-22", "2026-09-24")
+
+        self.service.update(last, {"date": "2026-09-27"}, self.hash_of(last))
+        self.assertEqual(("2026-09-22", "2026-09-27"), self.period(plan_id))
+        self.service.set_archived(last, True, self.hash_of(last))
+        self.assertEqual(("2026-09-22", "2026-09-22"), self.period(plan_id))
+
+    def test_the_calendar_move_of_a_unit_moves_the_plan_period(self) -> None:
+        # #4144: the calendar's move strip (`PlannedUnitService.move`) never touched the plan.
+        plan_id, (first, last) = self.plan_with_units("2026-09-22", "2026-09-24")
+
+        self.planned.move(last, "2026-09-28", self.hash_of(last))
+        self.assertEqual(("2026-09-22", "2026-09-28"), self.period(plan_id))
+        self.planned.move(first, "2026-09-25", self.hash_of(first))
+        self.assertEqual(("2026-09-25", "2026-09-28"), self.period(plan_id))
+
+    def test_undoing_a_unit_change_moves_the_plan_period_back(self) -> None:
+        # #4144: the undo restores a unit through `restore_in_transaction`, outside the change batch.
+        plan_id, (_first, last) = self.plan_with_units("2026-09-22", "2026-09-24")
+        before = next(
+            unit for key, unit, _ in self.rows("planned_units") if key == last
+        )
+        self.planned.move(last, "2026-09-28", self.hash_of(last))
+        self.assertEqual(("2026-09-22", "2026-09-28"), self.period(plan_id))
+
+        with self.manager.unit_of_work() as db:
+            current = dict(
+                db.execute(
+                    "SELECT * FROM planned_units WHERE local_id=?", (last,)
+                ).fetchone()
+            )
+            self.planned.restore_in_transaction(
+                db, last, current, {"date": before["date"]}, "update"
+            )
+        self.assertEqual(("2026-09-22", "2026-09-24"), self.period(plan_id))
+
+        # Undoing the creation of the last unit takes its day out of the period ...
+        with self.manager.unit_of_work() as db:
+            current = dict(
+                db.execute(
+                    "SELECT * FROM planned_units WHERE local_id=?", (last,)
+                ).fetchone()
+            )
+            self.planned.restore_in_transaction(db, last, current, None, "create")
+        self.assertEqual(("2026-09-22", "2026-09-22"), self.period(plan_id))
+        # ... and undoing its deletion puts the day back.
+        with self.manager.unit_of_work() as db:
+            self.planned.restore_in_transaction(db, last, None, before, "delete")
+        self.assertEqual(("2026-09-22", "2026-09-24"), self.period(plan_id))
 
     def test_replace_period_refuses_a_period_that_is_past_or_out_of_order(
         self,
