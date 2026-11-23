@@ -972,24 +972,27 @@ async function applyReplan(preview, button, status, accept = false) {
   }
 }
 
+// "Rückgängig" for the changes one write returned: all are taken back together or none (#4020, #4024).
+function batchUndoButton(changes, status, undone) {
+  const undo = h("button", { type: "button", className: "message-undo" }, "Rückgängig");
+  undo.addEventListener("click", async () => {
+    undo.disabled = true;
+    try {
+      await api("/api/change-history/undo-batch", { method: "POST", body: JSON.stringify({ changes }) });
+      undone();
+      await globalThis.load?.();
+    } catch (error) {
+      undo.disabled = false;
+      status.firstChild.textContent = `${error.message} `;
+    }
+  });
+  return undo;
+}
+
 function replanReceiptLine() {
   const receipt = replanReceipt;
   const status = h("p", { className: "planned-move-status", role: "status" }, receipt.text);
-  if (receipt.changes.length) {
-    const undo = h("button", { type: "button", className: "message-undo" }, "Rückgängig");
-    undo.addEventListener("click", async () => {
-      undo.disabled = true;
-      try {
-        await api("/api/change-history/undo-batch", { method: "POST", body: JSON.stringify({ changes: receipt.changes }) });
-        replanReceipt = { previewId: receipt.previewId, text: "Zurückgenommen.", changes: [] };
-        await globalThis.load?.();
-      } catch (error) {
-        undo.disabled = false;
-        status.firstChild.textContent = `${error.message} `;
-      }
-    });
-    status.append(" ", undo);
-  }
+  if (receipt.changes.length) status.append(" ", batchUndoButton(receipt.changes, status, () => { replanReceipt = { previewId: receipt.previewId, text: "Zurückgenommen.", changes: [] }; }));
   return status;
 }
 
@@ -3247,7 +3250,7 @@ const PLAN_STATUS_LABELS = { draft: "Entwurf", planned: "Geplant", active: "Akti
 
 async function planChanged(text, result) {
   planReceipts.clear();
-  planReceipts.set(String(result.plan_id), { text, change: result.change });
+  planReceipts.set(String(result.plan_id), { text, change: result.change, changes: result.changes });
   await globalThis.load?.();
   announcePlanChange(text);
 }
@@ -3266,11 +3269,18 @@ function planRestoredStatus(plan) {
   return plan.start_date <= today && today <= plan.end_date ? "active" : "planned";
 }
 
+// One receipt line: a replacement's changes undo together, any other change by its own reference.
+function planReceiptLine(status, id, receipt) {
+  if (!receipt.changes?.length) return libraryReceiptLine(status, id, receipt, planReceipts);
+  status.append(receipt.text, " ", batchUndoButton(receipt.changes, status, () => planReceipts.set(id, { text: "Zurückgenommen." })));
+  return status;
+}
+
 function planCard(plan) {
   const id = String(plan.id);
   const status = h("p", { className: "planned-move-status", role: "status" });
   const receipt = planReceipts.get(id);
-  if (receipt) libraryReceiptLine(status, id, receipt, planReceipts);
+  if (receipt) planReceiptLine(status, id, receipt);
   const [remove, removeNote] = inCardDelete(planPost(plan, "delete", { confirmed: true }, `Gelöscht: ${plan.name}`));
   const buttons = [];
   const notes = [removeNote];
@@ -3281,10 +3291,12 @@ function planCard(plan) {
   } else {
     const edit = h("button", { type: "button", className: "secondary-button" }, "Bearbeiten");
     edit.addEventListener("click", () => openPlanForm(plan));
+    const replace = h("button", { type: "button", className: "secondary-button" }, "Zeitraum ersetzen");
+    replace.addEventListener("click", () => openPlanReplace({ plan, onReplaced: (result, counts) => planChanged(`Ersetzt: ${counts.replaced} → ${counts.created} Einheiten`, { ...result, plan_id: plan.id }) }));
     const [archive, archiveNote] = inCardDelete(planPost(plan, "update", { status: "archived", confirmed: true }, `Archiviert: ${plan.name}`));
     archive.textContent = "Archivieren";
     archive.classList.remove("danger-button");
-    buttons.push(edit, archive);
+    buttons.push(edit, replace, archive);
     notes.push(archiveNote);
   }
   const range = [plan.start_date, plan.end_date].filter(Boolean).map((day) => dateLabel(day)).join(" – ");
@@ -3304,7 +3316,7 @@ function libraryPlans(archivedView) {
     head.push(h("div", "library-toolbar library-plans-head", h("strong", null, "Pläne"), add));
   }
   // A deleted plan's card is gone, so its receipt leads the plans.
-  const lost = [...planReceipts].filter(([id]) => !shown.has(id)).map(([id, receipt]) => libraryReceiptLine(h("p", { className: "planned-move-status", role: "status" }), id, receipt, planReceipts));
+  const lost = [...planReceipts].filter(([id]) => !shown.has(id)).map(([id, receipt]) => planReceiptLine(h("p", { className: "planned-move-status", role: "status" }), id, receipt));
   return [...head, ...lost, ...plans.map(planCard)];
 }
 

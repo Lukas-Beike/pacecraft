@@ -11,13 +11,20 @@ from backend.http_api.route_table import Access, Route, RouteRequest
 
 _FIELDS = {"name", "goal", "start_date", "end_date", "status"}
 _MAX_BODY_BYTES = 8 * 1024
+# A replacement carries up to a plan's worth of new units.
+_MAX_REPLACE_BYTES = 512 * 1024
 
 
 class TrainingPlanPostRoutes:
     """The Coach's `update_training_plan` use case for the athlete: plan metadata only."""
 
-    def __init__(self, training_plan_service: Callable[[], Any]):
+    def __init__(
+        self,
+        training_plan_service: Callable[[], Any],
+        unit_edit: Callable[[], Any] | None = None,
+    ):
         self._training_plan_service = training_plan_service
+        self._unit_edit = unit_edit
 
     def routes(self) -> list[Route]:
         return [
@@ -34,7 +41,73 @@ class TrainingPlanPostRoutes:
                 Access.SESSION_CSRF,
                 self._delete,
             ),
+            Route(
+                "POST",
+                "/api/training-plans/{id}/replace",
+                Access.SESSION_CSRF,
+                self._replace,
+            ),
         ]
+
+    def _replace(self, handler: Any, request: RouteRequest) -> None:
+        """Swap the plan's units of a period for new ones, as the Coach's plan replacement (#4024).
+
+        Request: path `{id}`; JSON body `{"start", "end"}` (the period, today or
+        later), `"replaced_ids"` (the ids of the units the athlete saw listed),
+        `"workouts"` (the new units with the fields of `POST /api/library`),
+        `"accept_plan_findings"` and `"confirmed": true`. One transaction; the
+        replaced units stay in the local history; nothing is written remotely.
+
+        Response: 200 `{"status": "replaced", "archived_count", "created_count",
+        "plan_id", "plan_check_notes", "change"}`.
+
+        Errors: 409 `confirmation_required` "Das Ersetzen muss bestätigt werden."
+        without `confirmed: true`; 409 `period_changed` when the period holds other
+        units now; 409 `plan_not_available` for an archived plan; 409
+        `plan_date_conflict` for a day the calendar rules out; 400 for no new unit,
+        a unit before today or outside the period.
+        """
+        payload = _read_fields(
+            handler,
+            {
+                "start",
+                "end",
+                "replaced_ids",
+                "workouts",
+                "accept_plan_findings",
+                "confirmed",
+            },
+            _MAX_REPLACE_BYTES,
+        )
+        if payload.get("confirmed") is not True:
+            raise AppError(
+                409,
+                "Das Ersetzen muss bestätigt werden.",
+                reason="confirmation_required",
+            )
+        edit = self._unit_edit
+        assert edit is not None
+        ids, workouts, accept = (
+            payload.get("replaced_ids"),
+            payload.get("workouts"),
+            payload.get("accept_plan_findings"),
+        )
+        if not isinstance(ids, list) or not isinstance(workouts, list):
+            raise AppError(
+                400, "Zeitraum, Einheiten und Ersatz müssen als Listen kommen."
+            )
+        self._send(
+            handler,
+            lambda: edit().replace_period(
+                request.params["id"],
+                str(payload.get("start") or ""),
+                str(payload.get("end") or ""),
+                [str(item) for item in ids],
+                workouts,
+                accept=accept if isinstance(accept, list) else None,
+            ),
+            batch=True,
+        )
 
     def _create(self, handler: Any, _request: RouteRequest) -> None:
         """Save a new local plan without units.
@@ -111,16 +184,28 @@ class TrainingPlanPostRoutes:
         )
 
     @staticmethod
-    def _send(handler: Any, apply: Callable[[], dict[str, Any]]) -> None:
+    def _send(
+        handler: Any, apply: Callable[[], dict[str, Any]], *, batch: bool = False
+    ) -> None:
         with change_history.collect_changes() as changes:
             result = apply()
-        plan = [item for item in changes if item["entity_type"] == "training_plan"]
         body = {key: value for key, value in result.items() if key != "plan" or value}
-        handler.send_json(200, {**body, **({"change": plan[-1]} if plan else {})})
+        if batch:
+            # A replacement changes many records: `changes` is one undo batch.
+            body["changes"] = [
+                {"id": item["id"], "after_hash": item["after_hash"]} for item in changes
+            ]
+        else:
+            plan = [item for item in changes if item["entity_type"] == "training_plan"]
+            if plan:
+                body["change"] = plan[-1]
+        handler.send_json(200, body)
 
 
-def _read_fields(handler: Any, allowed: set[str]) -> dict[str, Any]:
-    payload = handler.read_json(_MAX_BODY_BYTES)
+def _read_fields(
+    handler: Any, allowed: set[str], limit: int = _MAX_BODY_BYTES
+) -> dict[str, Any]:
+    payload = handler.read_json(limit)
     if not isinstance(payload, dict):
         raise AppError(400, "Die Anfrage muss ein Objekt sein.")
     unknown = sorted(set(payload) - allowed)

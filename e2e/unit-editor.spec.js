@@ -128,7 +128,7 @@ test("@responsive the Bibliothek creates, archives, restores and deletes a train
   const card = () => page.locator("#library .library-card", { has: page.locator("h4", { hasText: "E2E Aufbau" }) });
   const lead = page.locator("#library > .planned-move-status");
   await expect(card().locator(":scope > .planned-move-status")).toContainText("Angelegt: E2E Aufbau");
-  await expect(card().locator(":scope > .planned-activity-actions").getByRole("button")).toHaveText(["Bearbeiten", "Archivieren", "Löschen"]);
+  await expect(card().locator(":scope > .planned-activity-actions").getByRole("button")).toHaveText(["Bearbeiten", "Zeitraum ersetzen", "Archivieren", "Löschen"]);
 
   // The plan is above the units.
   const above = await page.locator("#library").evaluate((root) => {
@@ -240,4 +240,58 @@ test("@responsive the calendar applies a shown replan preview and Rückgängig t
   await expect(receipt).toContainText("Zurückgenommen.");
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBeTruthy();
   await page.unrouteAll({ behavior: "ignoreErrors" });
+});
+
+// #4024: "Zeitraum ersetzen" on a plan card lists what is archived and what is new and replaces them as one change.
+test("@responsive a plan's period is replaced in one change and Rückgängig takes the whole change back", async ({ page, request }) => {
+  test.setTimeout(240_000);
+  const posts = [];
+  page.on("request", (item) => {
+    const path = new URL(item.url()).pathname;
+    if (item.method() === "POST" && /\/replace$|undo-batch$/.test(path)) posts.push([path, item.postDataJSON()]);
+  });
+  await openApp(page, request, "/#plan/library");
+  const dialog = page.locator("#unitEditDialog");
+  await page.locator("#library").getByRole("button", { name: "+ Plan" }).click();
+  await dialog.getByLabel("Name", { exact: true }).fill("E2E Ersatzplan");
+  await dialog.getByRole("button", { name: "Speichern" }).click();
+  await expect(dialog).toBeHidden();
+  await expect(page.locator("#library .library-card", { has: page.locator("h4", { hasText: "E2E Ersatzplan" }) })).toBeVisible();
+
+  // A unit of next week joins the plan.
+  // It is planned from the Bibliothek into the plan, through the routes "Einplanen" sends (the calendar has no add button).
+  await page.evaluate(async () => {
+    const plan = (state.data.plans || []).find((item) => item.name === "E2E Ersatzplan");
+    const made = await api("/api/library", { method: "POST", body: JSON.stringify({ name: "E2E Alt", description: "- 10m 60%", sport: "Ride", duration_minutes: 10, target: "POWER" }) });
+    const today = timezoneDateKey(state.data.profile.timezone, new Date());
+    await api(`/api/library/${made.local_id}/schedule`, { method: "POST", body: JSON.stringify({ date: addDateKey(planWeekStart(today), 9), plan_id: plan.id }) });
+    await globalThis.load();
+  });
+
+  await page.goto("/#plan/library");
+  const card = page.locator("#library .library-card", { has: page.locator("h4", { hasText: "E2E Ersatzplan" }) });
+  await card.getByRole("button", { name: "Zeitraum ersetzen" }).click();
+  await expect(dialog.getByRole("heading", { name: "Zeitraum ersetzen" })).toBeVisible();
+  await expect(dialog.getByText("Wird archiviert · 1 Einheit")).toBeVisible();
+  await expect(dialog.getByRole("button", { name: "Ersetzen" })).toBeDisabled();
+
+  // The new unit is made with the unit editor and kept for the replacement.
+  await dialog.getByRole("button", { name: "+ Einheit" }).click();
+  await expect(dialog.getByRole("heading", { name: "Einheit hinzufügen" })).toBeVisible();
+  await dialog.getByLabel("Name", { exact: true }).fill("E2E Neu");
+  await dialog.getByRole("button", { name: "+ Schritt" }).click();
+  await dialog.getByRole("button", { name: "Speichern" }).click();
+  await expect(dialog.getByText("Neu · 1 Einheit")).toBeVisible();
+  await dialog.getByRole("button", { name: "Ersetzen" }).click();
+  await expect(dialog).toBeHidden();
+  expect(posts.at(-1)).toEqual([expect.stringMatching(/\/replace$/), expect.objectContaining({ confirmed: true, replaced_ids: [expect.any(String)], workouts: [expect.objectContaining({ name: "E2E Neu", description: "- 10m 60%" })] })]);
+
+  // The plan stays what it is: its card carries the receipt, and no second plan appears.
+  const lead = card.locator(":scope > .planned-move-status", { hasText: "Ersetzt: 1 → 1 Einheiten" });
+  await expect(lead).toBeVisible();
+  await expect(page.locator("#library .library-card h4", { hasText: "E2E Ersatzplan" })).toHaveCount(1);
+  await lead.getByRole("button", { name: "Rückgängig" }).click();
+  expect(posts.at(-1)[0]).toMatch(/undo-batch$/);
+  expect(posts.at(-1)[1].changes.length).toBeGreaterThan(1);
+  await expect(page.locator("#library .planned-move-status", { hasText: "Zurückgenommen." }).first()).toBeVisible();
 });

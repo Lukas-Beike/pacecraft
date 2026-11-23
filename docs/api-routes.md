@@ -174,6 +174,7 @@ handler's docstring. Regenerate it with
 | GET | `/api/sync/status` | Session | no | Synchronization status. |
 | POST | `/api/training-plans` | Session + CSRF | after access | Save a new local plan without units. |
 | POST | `/api/training-plans/{id}/delete` | Session + CSRF | after access | Delete a plan's metadata after the athlete confirmed it; its units stay. |
+| POST | `/api/training-plans/{id}/replace` | Session + CSRF | after access | Swap the plan's units of a period for new ones, as the Coach's plan replacement (#4024). |
 | POST | `/api/training-plans/{id}/update` | Session + CSRF | after access | Change a plan's name, goal, dates or status; its units stay as they are. |
 | GET | `/api/wahoo/callback` | Public | no | Wahoo OAuth redirect target; answers 302 to the app. |
 | POST | `/api/wahoo/connect` | Session + CSRF | after access | Start the Wahoo OAuth connection or disconnect Wahoo. |
@@ -2503,6 +2504,23 @@ Response: 200 `{"status": "deleted", "plan_id", "change"}`.
 Errors: 409 `confirmation_required` "Das Löschen muss bestätigt werden."
 without `confirmed: true`; 400 for an id that is no UUID; 404
 "Trainingsplan nicht gefunden.".
+
+### `POST /api/training-plans/{id}/replace`
+
+Request: path `{id}`; JSON body `{"start", "end"}` (the period, today or
+later), `"replaced_ids"` (the ids of the units the athlete saw listed),
+`"workouts"` (the new units with the fields of `POST /api/library`),
+`"accept_plan_findings"` and `"confirmed": true`. One transaction; the
+replaced units stay in the local history; nothing is written remotely.
+
+Response: 200 `{"status": "replaced", "archived_count", "created_count",
+"plan_id", "plan_check_notes", "change"}`.
+
+Errors: 409 `confirmation_required` "Das Ersetzen muss bestätigt werden."
+without `confirmed: true`; 409 `period_changed` when the period holds other
+units now; 409 `plan_not_available` for an archived plan; 409
+`plan_date_conflict` for a day the calendar rules out; 400 for no new unit,
+a unit before today or outside the period.
 
 ### `POST /api/training-plans/{id}/update`
 

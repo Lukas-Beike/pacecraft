@@ -27,6 +27,9 @@ from backend.planning.library_service import WorkoutLibraryService
 from backend.planning.plan_guard_service import PlanCheckError, PlanGuardService
 from backend.planning.planned_unit_edit_service import PlannedUnitEditService
 from backend.planning.planned_unit_service import PlannedUnitService
+from backend.planning.replacement_service import (
+    StructuredTrainingPlanReplacementService,
+)
 from backend.planning.revision import PlanningRevisionService
 from backend.planning.training_plans import TrainingPlanService
 
@@ -94,6 +97,27 @@ class PlannedUnitEditServiceTests(unittest.TestCase):
             Mock(),
         )
         plans = TrainingPlanRepository()
+        training_plans = TrainingPlanService(
+            self.manager,
+            plans,
+            KeyValueRepository(lambda: NOW),
+            revision,
+            Mock(),
+            lambda: NOW,
+        )
+        self.plan_service = training_plans
+        replacement = StructuredTrainingPlanReplacementService(
+            self.manager,
+            PlanningStateRepository(),
+            revision,
+            plans,
+            KeyValueRepository(lambda: NOW),
+            conflicts,
+            planned,
+            today,
+            lambda: NOW,
+            lambda: str(uuid.UUID(int=500 + next(ids))),
+        )
         change_service = changes.StructuredTrainingChangeService(
             self.manager,
             changes.StructuredTrainingChangeValidator(
@@ -102,14 +126,7 @@ class PlannedUnitEditServiceTests(unittest.TestCase):
             changes.StructuredTrainingPlanResolver(plans),
             planned,
             revision,
-            TrainingPlanService(
-                self.manager,
-                plans,
-                KeyValueRepository(lambda: NOW),
-                revision,
-                Mock(),
-                lambda: NOW,
-            ),
+            training_plans,
             today,
             changes.TRAINING_CHANGE_LIMIT,
             lambda: None,
@@ -120,6 +137,8 @@ class PlannedUnitEditServiceTests(unittest.TestCase):
             lambda: change_service,
             lambda: self.library,
             lambda: cast(PlanGuardService, self.guard),
+            replacement_service=lambda: replacement,
+            training_plan_service=lambda: training_plans,
         )
 
     def rows(self, table):
@@ -204,6 +223,77 @@ class PlannedUnitEditServiceTests(unittest.TestCase):
         self.service.set_archived(local_id, True, library_payload_hash(raw))
 
         self.assertTrue(self.rows("planned_units")[0][1]["archived"])
+
+    def test_replace_period_swaps_the_listed_units_for_new_ones(self) -> None:
+        plan_id = self.plan_service.create(
+            {"name": "Aufbau", "start_date": "2026-09-21", "end_date": "2026-10-04"}
+        )["plan_id"]
+        first = self.service.create({**STEADY, "date": "2026-09-22"}, plan_id=plan_id)
+        second = self.service.create({**STEADY, "date": "2026-09-24"}, plan_id=plan_id)
+        listed = [first["local_id"], second["local_id"]]
+        new = {
+            **STEADY,
+            "name": "Neu 45",
+            "description": "- 45m 60%",
+            "duration_minutes": 45,
+            "date": "2026-09-23",
+        }
+
+        with self.assertRaises(AppError) as raised:
+            self.service.replace_period(
+                plan_id, "2026-09-21", "2026-09-27", listed[:1], [new]
+            )
+        self.assertEqual("period_changed", raised.exception.reason)
+
+        result = self.service.replace_period(
+            plan_id, "2026-09-21", "2026-09-27", listed, [new]
+        )
+
+        self.assertEqual((2, 1), (result["archived_count"], result["created_count"]))
+        live = [
+            unit
+            for _, unit, _raw in self.rows("planned_units")
+            if not unit.get("local_deleted")
+        ]
+        self.assertEqual(["Neu 45"], [unit["name"] for unit in live])
+        self.assertTrue(live[0]["template_id"])
+        # The plan stays what it is: the new unit joins it and no second plan is made.
+        self.assertEqual(plan_id, live[0]["plan_id"])
+        self.assertEqual([plan_id], [plan["id"] for plan in self.plan_service.list()])
+        # Its period follows the days of its units (the plan began on 2026-09-21).
+        plan = self.plan_service.list()[0]
+        self.assertEqual(
+            ("2026-09-23", "2026-09-23"), (plan["start_date"], plan["end_date"])
+        )
+
+    def test_replace_period_refuses_a_period_that_is_past_or_out_of_order(
+        self,
+    ) -> None:
+        plan_id = self.plan_service.create(
+            {"name": "Aufbau", "start_date": "2026-09-21", "end_date": "2026-10-04"}
+        )["plan_id"]
+        unit = self.service.create({**STEADY, "date": "2026-09-22"}, plan_id=plan_id)
+        new = {**STEADY, "name": "Neu", "date": "2026-09-23"}
+
+        for start, end in (
+            ("2026-09-01", "2026-09-27"),
+            ("2026-09-27", "2026-09-21"),
+            ("kein Datum", "2026-09-27"),
+        ):
+            with self.assertRaises(AppError) as raised:
+                self.service.replace_period(
+                    plan_id, start, end, [unit["local_id"]], [new]
+                )
+            self.assertEqual(
+                (400, "invalid_plan"),
+                (raised.exception.status, raised.exception.reason),
+            )
+        live = [
+            unit["name"]
+            for _, unit, _raw in self.rows("planned_units")
+            if not unit.get("local_deleted")
+        ]
+        self.assertEqual([STEADY["name"]], live)
 
 
 if __name__ == "__main__":

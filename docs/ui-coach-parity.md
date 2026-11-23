@@ -48,7 +48,7 @@ added a row conflicted on it (#4092).
 | Planning | Choose a strength exercise's Garmin exercise | Kalender card `POST /api/planned-units/{id}/garmin-exercise` | `apply_training_patch` (`garmin_exercise`) | receipt | both | |
 | Planning | Read multi-week training plans | Bibliothek › Pläne `GET /api/plan` | `list_training_plans` | — | both | |
 | Planning | Create a multi-week training plan | Bibliothek › Pläne "+ Plan" `POST /api/training-plans`, its units in the unit editor | `stage_training_plan`, `commit_training_plan` | receipt, plan checks | both | |
-| Planning | Replace a period of the plan | — | `replace_training_plan` | receipt, plan checks | Coach only | #4024 |
+| Planning | Replace a period of the plan | Bibliothek › Pläne "Zeitraum ersetzen" `POST /api/training-plans/{id}/replace`, receipt "Rückgängig" `POST /api/change-history/undo-batch` | `replace_training_plan` | confirmation, receipt, plan checks, undo | both | |
 | Planning | Change, archive or delete a training plan | Bibliothek › Pläne `POST /api/training-plans/{id}/update`, `POST /api/training-plans/{id}/delete` | `update_training_plan` | confirmed request, undo | both | |
 | Planning | Preview and apply an adaptive replan | Kalender card "Plananpassung" shows the stored preview, "Übernehmen" `POST /api/planning/replan/apply` | `preview_adaptive_replan`, `apply_adaptive_replan` | approved preview, undo | both | |
 | Planning | Read the week review and training report | Analyse `GET /api/analysis/week-review` | `get_training_report` | — | both | |
