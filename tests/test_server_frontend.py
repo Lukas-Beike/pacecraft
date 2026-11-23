@@ -1212,7 +1212,7 @@ class ServerFrontendTests(ServerTestCase):
     def test_segmented_controls_keep_the_touch_target_height(self):
         styles = (server.PUBLIC_DIR / "styles.css").read_text(encoding="utf-8")
         self.assertIn(
-            ".segmented-control > * { flex: 1 1 120px; min-height: 44px;", styles
+            ".segmented-control > * { flex: 1 1 7.5rem; min-height: 44px;", styles
         )
         self.assertNotIn("min-height: 40px; border: 0;", styles)
 

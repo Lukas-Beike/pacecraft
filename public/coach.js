@@ -2072,7 +2072,10 @@ const CONTEXT_KEY_LABELS = {
 const CONTEXT_HIDDEN_KEYS = new Set(["field", "role"]);
 
 function contextPreNode(text) {
-  return h("pre", null, text);
+  // Scrollable, so the keyboard reaches it; many of them share a page, so none is a landmark of its own.
+  const pre = h("pre", null, text);
+  pre.tabIndex = 0;
+  return pre;
 }
 
 function contextTextNode(text) {

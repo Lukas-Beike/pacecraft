@@ -62,10 +62,12 @@ async function finishAnimations(page) {
 
 // The dark page background is a flat colour under two soft radial glows (at most 15 % alpha) that axe cannot flatten
 // and reports every text on as undecided. The scan measures against the flat colour instead; the light theme has no glow.
+// The sticky save bar stays in the flow: where axe scrolls a node to, it can sit over the node and make its backdrop
+// undecidable. Its own contrast is measured at its place in the form.
 async function flattenPageGlow(page) {
   await page.evaluate(() => {
     const sheet = new CSSStyleSheet();
-    sheet.replaceSync("body { background-image: none !important; }");
+    sheet.replaceSync("body { background-image: none !important; } .save-bar { position: static !important; }");
     document.adoptedStyleSheets = [...document.adoptedStyleSheets, sheet];
   });
 }
@@ -157,6 +159,36 @@ async function expectTextFormats(page, view) {
   expect(found, `value formats: ${found.join(" | ")}`).toEqual([]);
 }
 
+// #3935 X-02: the structural rules axe found on the fixture views; none may come back.
+// Controls inside a summary (the competition pencil, the sync, conflict and Garmin buttons of a calendar card) are
+// still nested interactive content (#3981); a closed details hides everything outside its summary, so they cannot just move.
+const STRUCTURE_RULES = ["label-content-name-mismatch", "scrollable-region-focusable", "page-has-heading-one", "heading-order", "landmark-unique"];
+
+async function expectStructure(page, view) {
+  const { violations } = await new AxeBuilder({ page }).withRules(STRUCTURE_RULES).analyze();
+  const found = violations.flatMap((violation) => violation.nodes.map((node) => `${view}: ${violation.id} ${node.target.join(" ")}`));
+  expect(found, `axe structure: ${found.join(" | ")}`).toEqual([]);
+}
+
+// #3935 X-03: on the phone every control that is not a link inside a sentence keeps a 44 px hit area.
+async function expectTouchTargets(page, view) {
+  const small = await page.evaluate(() => {
+    const found = new Map();
+    const name = (element) => {
+      const first = typeof element.className === "string" ? element.className.trim().split(/\s+/)[0] : "";
+      return element.tagName.toLowerCase() + (element.id ? "#" + element.id : "") + (first ? "." + first : "");
+    };
+    for (const element of document.querySelectorAll(".panel.active :is(button, a[href], select, summary, input:not([type=hidden], [type=checkbox], [type=radio], [type=range]), [role=button]), .bottom-nav a")) {
+      if (!element.getClientRects().length || getComputedStyle(element).display === "inline" || element.closest("[hidden], .sr-only") || element.matches(".threshold-info")) continue;
+      const box = element.getBoundingClientRect();
+      if (box.width < 1 || box.height < 1) continue;
+      if (box.height < 43.5 || box.width < 43.5) found.set(name(element), `${Math.round(box.width)}x${Math.round(box.height)}`);
+    }
+    return [...found].map(([key, size]) => `${key} ${size}`);
+  });
+  expect(small, `touch targets under 44 px: ${view}: ${small.join(" | ")}`).toEqual([]);
+}
+
 // Fails with the view, the theme and every failing node with its measured and expected contrast.
 async function expectContrast(page, view, theme, scopes = SCOPES) {
   await page.mouse.move(0, 0);
@@ -170,11 +202,15 @@ async function expectContrast(page, view, theme, scopes = SCOPES) {
     const data = node.any.find((check) => check.id === "color-contrast")?.data || {};
     return `${view} [${theme}] ${node.target.join(" ")}: ${data.contrastRatio} < ${data.expectedContrastRatio} (${data.fgColor} on ${data.bgColor}, ${data.fontSize}, ${data.fontWeight})`;
   }));
-  expect(failures, `colour contrast violations:\n${failures.join("\n")}`).toEqual([]);
-  const undecided = incomplete.flatMap((result) => result.nodes.map((node) => ({ target: node.target.join(" "), message: node.any[0]?.message || result.help })))
+  expect(failures, `colour contrast violations: ${failures.join(" | ")}`).toEqual([]);
+  // The elements axe names as covering the node say what to fix.
+  const undecided = incomplete.flatMap((result) => result.nodes.map((node) => ({
+    target: node.target.join(" "), message: node.any[0]?.message || result.help,
+    by: (node.any[0]?.relatedNodes || []).map((related) => related.target.join(" ")).join(", "),
+  })))
     .filter(({ target, message }) => !INCOMPLETE_ALLOWED.some((allowed) => allowed.target.test(target) && allowed.message.test(message)))
-    .map(({ target, message }) => `${view} [${theme}] ${target}: ${message}`);
-  expect(undecided, `colour contrast axe could not decide:\n${undecided.join("\n")}`).toEqual([]);
+    .map(({ target, message, by }) => `${view} [${theme}] ${target}: ${message}` + (by ? " (by " + by + ")" : ""));
+  expect(undecided, `colour contrast axe could not decide: ${undecided.join(" | ")}`).toEqual([]);
 }
 
 test.describe("colour contrast sweep", () => {
@@ -191,6 +227,8 @@ test.describe("colour contrast sweep", () => {
           await applyTheme(page, theme);
           await expectContrast(page, view, theme);
           if (theme === "light") await expectTextFormats(page, view);
+          if (theme === "light") await expectStructure(page, view);
+          if (theme === "light" && page.viewportSize().width <= 480) await expectTouchTargets(page, view);
           if (route === "analysis/running") {
             // One opened explanation popover, named so a new chart legend cannot change it (#2766).
             await page.locator(".panel.active").getByRole("button", { name: "Entwicklung: Informationen", exact: true }).click();

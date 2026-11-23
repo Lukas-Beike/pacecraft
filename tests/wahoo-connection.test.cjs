@@ -80,7 +80,7 @@ const authRequired = { provider: "wahoo", error_code: "auth_required" };
 
 test("a server without Wahoo credentials is not configured and offers no action", () => {
   const view = wahooConnectionView({ wahoo: { configured: false, connected: false } });
-  assert.equal(view.status, "Nicht konfiguriert");
+  assert.equal(view.status, "Nicht eingerichtet");
   assert.equal(view.showSetupHint, true);
   assert.equal(view.canConnect, false);
   assert.equal(view.canDisconnect, false);
@@ -170,7 +170,7 @@ test("an auth error of another provider or a connected Wahoo is not a reconnect"
 });
 
 test("missing state degrades to not configured", () => {
-  assert.equal(wahooConnectionView({}).status, "Nicht konfiguriert");
+  assert.equal(wahooConnectionView({}).status, "Nicht eingerichtet");
   assert.equal(wahooConnectionView(undefined).canConnect, false);
 });
 

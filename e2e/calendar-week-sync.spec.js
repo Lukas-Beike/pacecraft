@@ -122,12 +122,12 @@ test("@responsive the Kalender badge sums undecided events and the running week'
   });
   const nav = page.locator('.nav-item[data-route="plan"]').filter({ visible: true });
   await expect(nav.locator("b.nav-count")).toHaveText("3");
-  await expect(nav).toHaveAccessibleName(`Kalender, 1 neuer Termin bis ${until}, 2 Einheiten zu synchronisieren`);
+  await expect(nav).toHaveAccessibleName(`Kalender 3, 1 neuer Termin bis ${until}, 2 Einheiten zu synchronisieren`);
   const button = page.locator(".planned-week .planned-week-sync-button").first();
   await button.scrollIntoViewIfNeeded();
   await button.click();
   await expect.poll(() => posted.length).toBeGreaterThan(0);
   await expect(nav.locator("b.nav-count")).toHaveText("1");
-  await expect(nav).toHaveAccessibleName(`Kalender, 1 neuer Termin bis ${until}`);
+  await expect(nav).toHaveAccessibleName(`Kalender 1, 1 neuer Termin bis ${until}`);
   await page.unrouteAll({ behavior: "ignoreErrors" });
 });
