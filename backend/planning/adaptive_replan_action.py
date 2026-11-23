@@ -32,6 +32,14 @@ class AdaptiveReplanActionService:
         self._illness_sync = illness_sync
         self._plan_guard = plan_guard
 
+    @staticmethod
+    def _outdated() -> AppError:
+        return AppError(
+            409,
+            "Die Vorschau ist nicht mehr aktuell. Bitte neu prüfen.",
+            reason="preview_outdated",
+        )
+
     def apply(
         self, adjustment_id: Any, accept: list[str] | None = None
     ) -> dict[str, Any]:
@@ -42,16 +50,15 @@ class AdaptiveReplanActionService:
             or str(latest.get("id")) != str(adjustment_id)
             or latest.get("status") != "preview"
         ):
-            raise AppError(
-                409,
-                "Die Vorschau ist nicht mehr aktuell. Bitte neu prüfen.",
-                reason="preview_outdated",
-            )
+            raise self._outdated()
         sync = self._illness_sync()
         guard = self._plan_guard()
         with self._database_manager.unit_of_work():
             before = guard.findings()
             applied = sync.apply_local(adjustment_id)
+            # A second device that applied it first leaves nothing to receipt.
+            if str(applied.get("status") or "").startswith("already_"):
+                raise self._outdated()
             # The replan rewrites existing units but cannot author a focus,
             # strength exercises or a heart-rate cap: a legacy unit that lacked
             # them before passes, a unit the replan leaves without them blocks.

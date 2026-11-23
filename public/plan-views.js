@@ -956,7 +956,9 @@ async function applyReplan(preview, button, status, accept = false) {
   try {
     const body = { adjustment_id: preview.id, confirmed: true, ...(accept ? { accept_plan_findings: ["illness_hard"] } : {}) };
     const result = await api("/api/planning/replan/apply", { method: "POST", body: JSON.stringify(body) });
-    replanReceipt = { previewId: preview.id, text: `Angepasst: ${result.updated ?? 0} Einheit${result.updated === 1 ? "" : "en"}`, changes: result.changes || [] };
+    // Units that changed since the preview stay as they are; the receipt says how many.
+    const skipped = result.stale?.length ? ` · ${result.stale.length} unverändert, da inzwischen geändert` : "";
+    replanReceipt = { previewId: preview.id, text: `Angepasst: ${result.updated ?? 0} Einheit${result.updated === 1 ? "" : "en"}${skipped}`, changes: result.changes || [] };
     await globalThis.load?.();
     announcePlanChange(replanReceipt.text);
   } catch (error) {

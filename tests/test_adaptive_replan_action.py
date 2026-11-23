@@ -73,6 +73,20 @@ class AdaptiveReplanActionTests(unittest.TestCase):
         self.sync.apply_local.assert_not_called()
         self.assertEqual(0, self.manager.entered)
 
+    def test_a_preview_another_device_applied_first_is_outdated_not_an_empty_receipt(
+        self,
+    ) -> None:
+        self.sync.apply_local.return_value = {"status": "already_applied", "id": ID}
+
+        with self.assertRaises(AppError) as raised:
+            self.service.apply(ID)
+
+        self.assertEqual(
+            (409, "preview_outdated"),
+            (raised.exception.status, raised.exception.reason),
+        )
+        self.sync.complete.assert_not_called()
+
     def test_a_blocking_plan_check_stops_before_the_illness_sync_result(self) -> None:
         self.guard.verify.side_effect = PlanCheckError(
             [{"code": "illness_hard", "message": "m"}]
