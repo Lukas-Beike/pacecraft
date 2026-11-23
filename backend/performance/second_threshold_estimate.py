@@ -150,9 +150,10 @@ def dfa_second_threshold(
     if len(values) < MIN_SESSIONS:
         # It names what is missing: hard runs that cross 0.5, not chest-strap runs (#4134).
         pending = f", {not_evaluated} noch nicht ausgewertet" if not_evaluated else ""
+        runs = "Lauf" if len(in_window) == 1 else "Läufe"
         return _unknown(
             f"nur {len(values)} von {MIN_SESSIONS} nötigen harten Läufen, in denen "
-            f"DFA-α1 mit guter Qualität unter 0,5 fällt ({len(in_window)} Läufe "
+            f"DFA-α1 mit guter Qualität unter 0,5 fällt ({len(in_window)} {runs} "
             f"mit Brustgurt in {ESTIMATE_DAYS} Tagen{pending})",
             len(values),
         )

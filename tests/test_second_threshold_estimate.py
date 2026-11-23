@@ -170,6 +170,10 @@ class AthleteLevelTests(unittest.TestCase):
             "unter 0,5 fällt (4 Läufe mit Brustgurt in 60 Tagen)",
         )
         self.assertEqual(result["sessions"], 0)
+        self.assertIn(
+            "(1 Lauf mit Brustgurt in 60 Tagen)",
+            lt2.dfa_second_threshold(easy[:1], TODAY)["reason"],
+        )
 
     def test_runs_outside_60_days_do_not_count(self) -> None:
         result = lt2.dfa_second_threshold(self.runs(3, start=58), TODAY)
