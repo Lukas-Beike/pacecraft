@@ -80,6 +80,11 @@ SAFE_BEFORE = re.compile(
 )
 
 
+# An escaped separator (`\;` in Bash, `` `; `` in PowerShell) is part of a word,
+# not a split: the segments seen here would not be the shell's (#3940 review).
+ESCAPED_SEPARATOR = re.compile(r"[\\`][;|&]")
+
+
 def names_secrets(text: str) -> bool:
     return bool(SECRETS.search(DOT_SEGMENT.sub("", QUOTES.sub("", text))))
 
@@ -92,7 +97,8 @@ def secret_mention_allowed(command: str) -> bool:
         if not names_secrets(segment):
             continue
         if (
-            not any(run.match(segment.strip()) for run in SECRET_RUN)
+            ESCAPED_SEPARATOR.search(command)
+            or not any(run.match(segment.strip()) for run in SECRET_RUN)
             or names_secrets(PASSWORD_FILE.sub(" ", segment))
             or not all(SAFE_BEFORE.fullmatch(item.strip()) for item in segments[:index])
         ):

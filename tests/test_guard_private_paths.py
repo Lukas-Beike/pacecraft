@@ -154,6 +154,8 @@ class GuardPrivatePathsTests(unittest.TestCase):
             "Set-Alias node Get-Content", "cp x.mjs scripts/ui_walk.mjs",
             "git checkout other -- scripts", "cat x > scripts/prod_guards.py",
             "git status && cd x",
+            # An escaped separator joins both into one command that reads the file.
+            "cat a\\", "cat a`", "git status\\",
         ]  # fmt: skip
         for run in runs:
             for first in before:
