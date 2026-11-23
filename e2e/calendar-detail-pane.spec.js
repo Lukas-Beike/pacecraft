@@ -206,7 +206,7 @@ test("@responsive an opened completed session shows its time in zones as one bar
   await expect(zone.locator(".planned-zone-time-bar i")).toHaveCount(3);
   // Every zone is named, one without time too; the bar draws only zones with time.
   await expect(zone.locator(".planned-zone-time-bar")).toHaveAttribute("aria-label", "Zeit in Leistungszonen: Z1 6 min, Z2 14 min, Z3 0 min, Z4 27 min");
-  await expect(zone.locator(".planned-zone-time-legend span")).toHaveText(["Z1 6′", "Z2 14′", "Z3 0′", "Z4 27′"]);
+  await expect(zone.locator(".planned-zone-time-legend span")).toHaveText(["Z1 6′", "Z2 14′", "Z4 27′"]); // a zone without time takes no place in the legend (#3932 K-04)
   await expect(zone.locator(".planned-zone-time-source")).toHaveText("Leistungszonen · Garmin Connect");
   // A session without zones, and one whose read fails, show no bar.
   await showCalendarDay(page, days.past);
@@ -248,7 +248,7 @@ test("@responsive an opened completed session shows its time in zones as one bar
     plannedRenderSnapshot = null;
     renderPlanned(state.data.training_calendar);
   });
-  await expect(ride.locator(".planned-zone-time-legend span").nth(3)).toHaveText("Z4 30′");
+  await expect(ride.locator(".planned-zone-time-legend span").nth(2)).toHaveText("Z4 30′");
   expect(reads.filter((id) => id === "today-ride")).toHaveLength(2);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBeTruthy();
 });

@@ -784,7 +784,7 @@ A completed strength session SHALL be shown and counted with its total (elapsed)
 
 #### Scenario: Calendar and details
 - **WHEN** a strength session with 58 minutes total and 31 minutes moving time and a run with 50 minutes total and 45 minutes moving time are completed in one week
-- **THEN** their cards show 58 min and 45 min, the week sums 1:43 h, the strength details list "Gesamtzeit" before "Bewegungszeit" and the run's details keep "Bewegungszeit" first.
+- **THEN** their cards show 58 min and 45 min, the week sums 1:43 h, the strength details list "Gesamtzeit" before "Bewegungszeit" (one "Zeit" when both read the same) and the run's details keep "Bewegungszeit" first.
 
 #### Scenario: Training time, carbohydrates and Coach
 - **WHEN** the Analyse training time, the day's carbohydrate range or the Coach reads a completed strength session

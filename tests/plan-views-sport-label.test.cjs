@@ -2,7 +2,7 @@ const assert = require("node:assert/strict");
 const { test } = require("node:test");
 const { loadPublicScript } = require("./frontend-harness.cjs");
 
-const { calendarSportType, activitySportLabel, calendarDisplayName, calendarSportShown, readCalendarSport } = loadPublicScript(["performance-view.js", "plan-views.js"]);
+const { calendarSportType, activitySportLabel, calendarDisplayName, calendarSportShown, readCalendarSport, calendarPaceLabel } = loadPublicScript(["performance-view.js", "plan-views.js"], { formatPace: (seconds) => `${Math.round(seconds)} s/km` });
 const label = (item) => activitySportLabel(calendarSportType(item));
 
 test("completed activities are labelled from the canonical sport and environment", () => {
@@ -55,4 +55,11 @@ test("the calendar sport filter shows a unit by the sport it was done in, else i
   assert.equal(calendarSportShown({}, "other"), true);
   // Without browser storage the calendar shows every sport (#2810).
   assert.equal(readCalendarSport(), "all");
+});
+
+test("a run's pace is the stored average speed, as the Details show it, else distance over moving time (#3932 K-04)", () => {
+  const run = { sport: "run", distance_m: 5000, moving_duration_s: 1500 };
+  assert.equal(calendarPaceLabel({ ...run, avg_speed_mps: 5000 / 1500 }), calendarPaceLabel(run));
+  assert.notEqual(calendarPaceLabel({ ...run, avg_speed_mps: 3.3 }), calendarPaceLabel(run));
+  assert.equal(calendarPaceLabel({ sport: "ride", avg_speed_mps: 8 }), null);
 });
