@@ -56,6 +56,13 @@ function checkinChips(stored) {
     h("label", "chip", h("input", { type: "checkbox", name: `tag_${key}`, checked: answers[key] === true }), h("span", null, label)))));
 }
 
+// The illness symptoms of the infection hint (#3919): the same list; any selected symptom means rest only.
+function checkinSymptoms(stored) {
+  const selected = stored.symptoms || [];
+  return h("fieldset", "chip-field", h("legend", null, "Symptome"), h("div", "chip-group", INFECTION_SYMPTOMS.map(([id, label]) =>
+    h("label", "chip", h("input", { type: "checkbox", name: "symptom", value: id, checked: selected.includes(id) }), h("span", null, label)))));
+}
+
 // What the form shows now, as plain values.
 function checkinValues(form) {
   const text = (name) => form.elements[name].value.trim();
@@ -63,25 +70,39 @@ function checkinValues(form) {
     texts: Object.fromEntries([...CHECKIN_SCORES.map(([name]) => name), "available_minutes", "illness", "notes"].map((name) => [name, text(name)])),
     day_status: form.elements.day_status.value,
     tags: Object.fromEntries(CHECKIN_TAGS.map(([key]) => [key, form.elements[`tag_${key}`].checked])),
+    symptoms: [...form.querySelectorAll("input[name=symptom]:checked")].map((input) => input.value),
     complaints: [...form.querySelectorAll(".checkin-complaint")].map((row) => ({ area: row.querySelector("[name=area]").value, side: row.querySelector("[name=side]").value, severity: Number(row.querySelector("[name=severity]").value) })),
   };
 }
 
+const checkinIds = (ids) => [...ids].sort((a, b) => a.localeCompare(b));
+const checkinSame = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+
+// The typed fields that differ from the stored day, and the emptied ones for `clear_fields`.
+function checkinTextChanges(texts, stored) {
+  const changed = {};
+  const clear = [];
+  for (const [name, value] of Object.entries(texts)) {
+    if (value !== "") {
+      if (String(stored[name] ?? "") !== value) changed[name] = ["illness", "notes"].includes(name) ? value : Number(value);
+    } else if (checkinFilled(stored[name])) clear.push(name);
+  }
+  return { changed, clear };
+}
+
 // The fields that differ from the stored day, with the emptied ones in `clear_fields`; null when nothing changed.
 function checkinChanges(values, stored, dateKey) {
-  const body = { checkin_date: dateKey };
-  const clear = [];
-  for (const [name, value] of Object.entries(values.texts)) {
-    if (value === "") {
-      if (checkinFilled(stored[name])) clear.push(name);
-    } else if (String(stored[name] ?? "") !== value) body[name] = ["illness", "notes"].includes(name) ? value : Number(value);
-  }
+  const { changed, clear } = checkinTextChanges(values.texts, stored);
+  const body = { checkin_date: dateKey, ...changed };
   if (values.day_status !== (stored.day_status || "unknown")) body.day_status = values.day_status;
   // A tag is answered once it was checked or already stored; an unchecked stored tag is a "no".
   const before = stored.tag_answers || {};
   const answers = Object.fromEntries(Object.entries(values.tags).filter(([key, on]) => on || key in before));
-  if (JSON.stringify(checkinEntries(answers)) !== JSON.stringify(checkinEntries(before))) body.tag_answers = answers;
-  if (JSON.stringify(checkinSorted(values.complaints)) !== JSON.stringify(checkinSorted(stored.complaints || []))) body.complaints = values.complaints;
+  if (!checkinSame(checkinEntries(answers), checkinEntries(before))) body.tag_answers = answers;
+  // The symptoms and complaints are sent whole, an empty list removing them.
+  const symptoms = values.symptoms || [];
+  if (!checkinSame(checkinIds(symptoms), checkinIds(stored.symptoms || []))) body.symptoms = symptoms;
+  if (!checkinSame(checkinSorted(values.complaints), checkinSorted(stored.complaints || []))) body.complaints = values.complaints;
   if (clear.length) body.clear_fields = clear;
   return Object.keys(body).length > 1 ? body : null;
 }
@@ -101,6 +122,7 @@ function checkinFormNodes(stored) {
     ...CHECKIN_SCORES.map(([key, label]) => checkinNumberField(key, `${label} (0–10)`, stored[key], 10)),
     checkinNumberField("available_minutes", "Verfügbare Zeit (min)", stored.available_minutes, 1440),
     checkinChips(stored),
+    checkinSymptoms(stored),
     h("label", null, "Krank", h("textarea", { name: "illness", rows: 2, maxLength: 1000, value: stored.illness || "" })),
     h("fieldset", "chip-field", h("legend", null, "Beschwerden"), complaints, add),
     h("label", null, "Notiz", h("textarea", { name: "notes", rows: 2, maxLength: 4000, value: stored.notes || "" })),

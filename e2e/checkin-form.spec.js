@@ -52,19 +52,21 @@ test("@responsive an unchanged form saves nothing and a refused save keeps the f
 
 test("@responsive the form starts from the stored status and tags and keeps them when another tag is added", async ({ page }) => {
   await page.goto("/#plan");
-  await page.evaluate(() => api("/api/checkins", { method: "POST", body: JSON.stringify({ day_status: "rest", tag_answers: { travel: true, late_meal: false } }) }));
+  await page.evaluate(() => api("/api/checkins", { method: "POST", body: JSON.stringify({ day_status: "rest", tag_answers: { travel: true, late_meal: false }, symptoms: ["husten"] }) }));
   await page.reload();
   const row = page.locator(".planned-day.is-today [data-checkin]");
   await row.getByRole("button").click();
   const dialog = page.locator("#checkinDialog");
   await expect(dialog.getByLabel("Ruhetag")).toBeChecked();
   await expect(dialog.getByLabel("Reise")).toBeChecked();
+  await expect(dialog.getByLabel("Husten")).toBeChecked();
   await dialog.getByLabel("Viel Stress").check();
   await dialog.getByRole("button", { name: "Speichern" }).click();
   await expect(dialog).toHaveCount(0);
   const today = await page.evaluate(() => api("/api/feedback").then((feedback) => feedback.local_feedback.today));
   expect(today.tag_answers).toEqual({ travel: true, late_meal: false, high_stress: true });
   expect(today.day_status).toBe("rest");
+  expect(today.symptoms).toEqual(["husten"]);
 });
 
 test("@responsive the reminder link opens the form, an earlier day is chosen by its date and a future day cannot be sent", async ({ page }) => {

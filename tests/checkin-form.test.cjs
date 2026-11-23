@@ -3,7 +3,7 @@ const { test } = require("node:test");
 const { extractFunctions } = require("./frontend-harness.cjs");
 
 // checkinChanges sends only what differs from the stored day (#3953), so an omitted field keeps its value.
-const { checkinChanges } = extractFunctions("checkin-form.js", ["CHECKIN_SCORES", "CHECKIN_TAGS", "checkinComplaintKey", "checkinSorted", "checkinEntries", "checkinFilled", "checkinChanges"], {});
+const { checkinChanges } = extractFunctions("checkin-form.js", ["CHECKIN_SCORES", "CHECKIN_TAGS", "checkinComplaintKey", "checkinSorted", "checkinEntries", "checkinFilled", "checkinIds", "checkinSame", "checkinTextChanges", "checkinChanges"], {});
 
 // Objects built inside the harness context compare by value after a JSON round trip.
 const plain = (value) => JSON.parse(JSON.stringify(value));
@@ -46,4 +46,11 @@ test("complaints are sent whole, also when the last one is removed", () => {
 test("a day status that changed is sent and the default is not", () => {
   assert.equal(checkinChanges(shown({}, { day_status: "pause" }), {}, "2026-11-20").day_status, "pause");
   assert.equal(checkinChanges(shown({}, { day_status: "unknown" }), {}, "2026-11-20"), null);
+});
+
+test("symptoms are sent whole when the selection differs, also when the last one is cleared", () => {
+  const picked = ["fieber", "husten"];
+  assert.deepEqual(plain(checkinChanges(shown({}, { symptoms: picked }), {}, "2026-11-20").symptoms), picked);
+  assert.deepEqual(plain(checkinChanges(shown(), { symptoms: picked }, "2026-11-20").symptoms), []);
+  assert.equal(checkinChanges(shown({}, { symptoms: ["husten", "fieber"] }), { symptoms: picked }, "2026-11-20"), null);
 });
