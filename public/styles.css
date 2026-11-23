@@ -1499,6 +1499,8 @@ dialog p { margin-bottom: 0; color: var(--muted); }
 .toast .message-undo { margin: -10px -8px -10px 4px; color: inherit; text-decoration: underline; }
 .toast.show .message-undo { pointer-events: auto; }
 body:has(#chatPanel.active) .toast { bottom: calc(var(--composer-height, 0px) + 24px); }
+/* A message stays above the profile save bar while it shows (#3934 G-04). */
+body:has(#profilePanel.active .dirty-indicator:not([hidden])) .toast { bottom: calc(var(--composer-offset) + 64px); }
 
 @media (min-width: 768px) {
   .shell { display: grid; grid-template-columns: 72px minmax(0, 1fr); grid-template-areas: "nav header" "nav main"; gap: 0 24px; padding: 0 24px 32px 0; }
@@ -1511,6 +1513,7 @@ body:has(#chatPanel.active) .toast { bottom: calc(var(--composer-height, 0px) + 
   .bottom-nav { display: none; }
   /* The side rail leaves the bottom free: the toast sits at the edge instead of over the content. */
   .toast { bottom: max(24px, env(safe-area-inset-bottom)); }
+  body:has(#profilePanel.active .dirty-indicator:not([hidden])) .toast { bottom: 84px; }
   .section-heading { margin-top: 8px; }
   .messages { min-height: 0; }
   .composer { position: sticky; bottom: 12px; }

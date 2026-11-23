@@ -3263,13 +3263,6 @@ function competitionSportChoice(competition) {
   return COMPETITION_SPORT_OPTIONS[competition.sport] || null;
 }
 
-function showCompetitionDialogStep(step) {
-  const confirming = step === "confirm";
-  $("#competitionDialogForm").hidden = confirming;
-  $("#competitionDialogConfirm").hidden = !confirming;
-  $("#competitionDialog").setAttribute("aria-labelledby", confirming ? "competitionDialogConfirmTitle" : "competitionDialogTitle");
-}
-
 function fillCompetitionDialog(competition) {
   const form = $("#competitionDialogForm");
   const stored = competition || {};
@@ -3301,9 +3294,7 @@ function fillCompetitionDialog(competition) {
   $("#competitionDialogResult").replaceChildren(...(result ? [competitionFact("Ergebnis", result)] : []));
   $("#competitionDialogRemove").hidden = !competition;
   $("#competitionDialogStatus").textContent = "";
-  $("#competitionDialogConfirmStatus").textContent = "";
   for (const button of $("#competitionDialog").querySelectorAll("button")) button.disabled = false;
-  showCompetitionDialogStep("form");
 }
 
 // The receipt stays in the toast with "Rückgängig" a little longer than a plain message.
@@ -3379,14 +3370,9 @@ function bindCompetitionDialog() {
     void sendCompetition("/api/competitions", payload, $("#competitionDialogSave"), status, () => "Wettkampf gespeichert.");
   });
   $("#competitionDialogCancel").addEventListener("click", () => $("#competitionDialog").close());
+  // "Löschen" acts at once and the receipt offers the undo (athlete decision, #3934 G-03).
   $("#competitionDialogRemove").addEventListener("click", () => {
-    const { name, event_date: day } = competitionEdit.competition;
-    $("#competitionDialogConfirmText").textContent = `„${name || "Wettkampf"}“ am ${dateLabel(day)} wird gelöscht. Bei Intervals.icu verschwindet er erst mit dem nächsten Sync, den du anstößt.`;
-    showCompetitionDialogStep("confirm");
-  });
-  $("#competitionDialogConfirmCancel").addEventListener("click", () => showCompetitionDialogStep("form"));
-  $("#competitionDialogConfirmRemove").addEventListener("click", () => {
-    void sendCompetition("/api/competitions/remove", { id: competitionEdit.competition.id, confirmed: true }, $("#competitionDialogConfirmRemove"), $("#competitionDialogConfirmStatus"),
+    void sendCompetition("/api/competitions/remove", { id: competitionEdit.competition.id, confirmed: true }, $("#competitionDialogRemove"), $("#competitionDialogStatus"),
       (result) => (result.remote_sync_pending ? "Wettkampf gelöscht. Bei Intervals.icu verschwindet er mit dem nächsten Sync." : "Wettkampf gelöscht."));
   });
 }
