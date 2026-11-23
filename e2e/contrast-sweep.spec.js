@@ -248,9 +248,14 @@ async function remeasureStraddling(page, view, theme, nodes) {
     // What lies over a node that stays undecided is the first thing to read in the failure.
     const stack = again.incomplete.length ? await page.locator(entry.target).first().evaluate((node) => {
       const box = node.getBoundingClientRect();
-      const names = document.elementsFromPoint(box.left + box.width / 2, box.top + Math.min(box.height / 2, 10)).slice(0, 4)
-        .map((over) => over.tagName.toLowerCase() + (over.id ? "#" + over.id : "") + (over.className ? "." + String(over.className).trim().split(" ")[0] : ""));
-      return names.join(" < ") + " at " + Math.round(box.top) + "-" + Math.round(box.bottom) + " of " + innerHeight;
+      const name = (over) => over.tagName.toLowerCase() + (over.id ? "#" + over.id : "") + (over.className ? "." + String(over.className).trim().split(" ")[0] : "");
+      // The top element at nine points of the box: a point that is not the node itself is what overlaps it.
+      const tops = [0.1, 0.5, 0.9].flatMap((row) => [0.05, 0.5, 0.95].map((column) => {
+        const over = document.elementsFromPoint(box.left + box.width * column, box.top + box.height * row)[0];
+        if (!over) return "none";
+        return over === node ? "self" : name(over);
+      }));
+      return tops.join(",") + " box " + Math.round(box.left) + "," + Math.round(box.top) + " " + Math.round(box.width) + "x" + Math.round(box.height) + " of " + innerWidth + "x" + innerHeight + " fonts " + document.fonts.status;
     }) : "";
     open.push(...undecidedNodes(again.incomplete).map((node) => ({ ...node, by: node.by || stack })));
   }
