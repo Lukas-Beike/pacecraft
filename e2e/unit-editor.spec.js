@@ -189,3 +189,55 @@ test("@responsive Einplanen sends the chosen plan and offers Trotzdem einplanen 
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBeTruthy();
   await page.unrouteAll({ behavior: "ignoreErrors" });
 });
+
+// #4020: a stored adaptive preview shows as a card above the week; "Übernehmen" applies it and the receipt undoes it as one batch.
+test("@responsive the calendar applies a shown replan preview and Rückgängig takes it back as one batch", async ({ page, request }) => {
+  test.setTimeout(180_000);
+  const posts = [];
+  await page.route("**/api/planning/replan/apply", async (route) => {
+    posts.push(["apply", route.request().postDataJSON()]);
+    // The first tap meets the illness check; "Trotzdem übernehmen" resends once, with the acceptance.
+    if (posts.length === 1) await route.fulfill({ status: 409, json: { error: "Krankheit gemeldet: In den nächsten Tagen keine harte oder lange Einheit.", reason: "illness_hard" } });
+    else await route.fulfill({ json: { status: "ok", id: "p1", updated: 2, plan_check_notes: [], changes: [{ id: "c1", after_hash: "h1" }, { id: "c2", after_hash: "h2" }] } });
+  });
+  await page.route("**/api/change-history/undo-batch", async (route) => {
+    posts.push(["undo", route.request().postDataJSON()]);
+    await route.fulfill({ json: { status: "undone", count: 2, remote_untouched: true } });
+  });
+  await openApp(page, request, "/#plan/overview");
+  const day = (offset) => new Date(Date.now() + offset * 86_400_000).toISOString().slice(0, 10);
+  await page.evaluate((dates) => {
+    state.data.planning = { ...state.data.planning, latest_replan: {
+      id: "p1", status: "preview",
+      illness_pause: { approved: false, end_date: dates[1] },
+      changes: [
+        { date: dates[0], name: "Grundlage", blocking_triggers: ["illness"], before: { duration_minutes: 60 }, after: { duration_minutes: 40, rationale: "Adaptive adjustment: recovery signal suggests reducing intensity. Rest" } },
+        { date: dates[1], name: "Lauf", blocking_triggers: ["calendar"], before: { duration_minutes: 90 }, after: { duration_minutes: 0, rationale: "Calendar [NO_TRAINING]: busy. The original stays." } },
+      ],
+    } };
+    // The server does not know the injected preview, so a reload only redraws.
+    globalThis.load = async () => renderPlanned(state.data.training_calendar);
+    renderPlanned(state.data.training_calendar);
+  }, [day(1), day(3)]);
+  const card = page.locator(".planned-replan");
+  await expect(card.locator(".replan-row")).toHaveCount(2);
+  await expect(card.locator(".replan-row").first()).toContainText("Grundlage 60 min → 40 min · Krankheit gemeldet");
+  await expect(card.locator(".replan-row").nth(1)).toContainText("Lauf 90 min → entfällt · Kalendertermin");
+  // The model-facing rationale never reaches the row.
+  await expect(card.locator(".replan-rows")).not.toContainText(/Adaptive|NO_TRAINING/);
+  await expect(card).toContainText("trägt den heutigen Check-in als krank ein");
+
+  await card.getByRole("button", { name: "Übernehmen" }).click();
+  await expect(card.getByRole("button", { name: "Trotzdem übernehmen" })).toBeVisible();
+  expect(posts).toEqual([["apply", { adjustment_id: "p1", confirmed: true }]]);
+  await card.getByRole("button", { name: "Trotzdem übernehmen" }).click();
+  await expect.poll(() => posts.length).toBe(2);
+  expect(posts.at(-1)).toEqual(["apply", { adjustment_id: "p1", confirmed: true, accept_plan_findings: ["illness_hard"] }]);
+  const receipt = page.locator("#plannedCalendar .planned-move-status").first();
+  await expect(receipt).toContainText("Angepasst: 2 Einheiten");
+  await receipt.getByRole("button", { name: "Rückgängig" }).click();
+  expect(posts.at(-1)).toEqual(["undo", { changes: [{ id: "c1", after_hash: "h1" }, { id: "c2", after_hash: "h2" }] }]);
+  await expect(receipt).toContainText("Zurückgenommen.");
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBeTruthy();
+  await page.unrouteAll({ behavior: "ignoreErrors" });
+});

@@ -14,6 +14,7 @@ _MISSING_HISTORY = "Änderung nicht gefunden."
 _ALREADY_UNDONE = "Eine Undo-Aktion kann nicht erneut zurückgenommen werden."
 _NOT_UNDOABLE = "Ein Export an einen Anbieter lässt sich nicht zurücknehmen."
 _NO_LONGER_UNDOABLE = "Diese Änderung lässt sich nicht mehr zurücknehmen."
+_BATCH_LIMIT = 400
 _STALE_HISTORY = (
     "Die lokale Änderung wurde inzwischen weiter geändert; Undo wurde abgebrochen."
 )
@@ -101,6 +102,27 @@ class HistoryUndoService:
             self._database_manager.unit_of_work() as db,
         ):
             return self._apply_one(db, change_id, expected_hash)
+
+    def apply_batch(self, payload: Any) -> dict[str, Any]:
+        """Undo one write's changes together, or none of them (#4024)."""
+        changes = payload.get("changes") if isinstance(payload, dict) else None
+        if (
+            not isinstance(changes, list)
+            or not 1 <= len(changes) <= _BATCH_LIMIT
+            or not all(
+                isinstance(change, dict)
+                and isinstance(change.get("id"), str)
+                and isinstance(change.get("after_hash"), str)
+                for change in changes
+            )
+        ):
+            raise AppError(400, "Ungültige Änderungsliste.")
+        with (
+            self._profile_mutation_coordinator,
+            self._database_manager.unit_of_work() as db,
+        ):
+            self.apply_many(db, changes)
+        return {"status": "undone", "count": len(changes), "remote_untouched": True}
 
     def apply_many(
         self, db: Any, changes: list[dict[str, Any]]

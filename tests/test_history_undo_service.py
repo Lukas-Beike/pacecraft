@@ -545,6 +545,28 @@ class HistoryUndoServiceTests(unittest.TestCase):
         )
         self.assertEqual(len(self.services[entity_type].calls), 1)
 
+    def test_apply_batch_undoes_the_listed_changes_together_or_none(self):
+        current_projection, _ = self._insert_history()
+        after_hash = change_history.audit_hash(current_projection)
+
+        for payload in (None, {"changes": []}, {"changes": [{"id": 1}]}):
+            with self.assertRaises(AppError) as raised:
+                self.service.apply_batch(payload)
+            self.assertEqual(400, raised.exception.status)
+        with self.assertRaises(AppError) as raised:
+            self.service.apply_batch(
+                {"changes": [{"id": _CHANGE_ID, "after_hash": "0" * 64}]}
+            )
+        self.assertEqual(409, raised.exception.status)
+        self.assertEqual(self.services["profile"].calls, [])
+
+        result = self.service.apply_batch(
+            {"changes": [{"id": _CHANGE_ID, "after_hash": after_hash}]}
+        )
+
+        self.assertEqual(("undone", 1), (result["status"], result["count"]))
+        self.assertEqual(len(self.services["profile"].calls), 1)
+
     def test_legacy_row_accepts_batch_after_hash_and_rejects_wrong_expected_hash(self):
         legacy_after = self._insert_legacy_profile_row()
         self.history.current_value = {"name": "after", "sleep_target_hours": "7.5"}

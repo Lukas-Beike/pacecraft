@@ -33,7 +33,29 @@ class HistoryUndoPostRoutes:
                 Access.SESSION_CSRF,
                 self._undo_turn,
             ),
+            Route(
+                "POST",
+                "/api/change-history/undo-batch",
+                Access.SESSION_CSRF,
+                self._undo_batch,
+            ),
         ]
+
+    def _undo_batch(self, handler: Any, _request: RouteRequest) -> None:
+        """Undo the changes of one write together, as a period replacement returns them.
+
+        Request: JSON body `{"changes": [{"id": string, "after_hash": string}]}`, 1
+        to 400 entries as the write's response listed them.
+
+        Response: 200 `{"status": "undone", "count", "remote_untouched": true}`. All
+        changes are restored in one transaction or none.
+
+        Errors: 400 "Ungültige Änderungsliste."; the errors of the single undo for a
+        change that is gone or was edited since (409, nothing is restored).
+        """
+        handler.send_json(
+            200, self._history_undo_service().apply_batch(handler.read_json())
+        )
 
     def _undo(self, handler: Any, _request: RouteRequest) -> None:
         """Apply an undo from the change history.
