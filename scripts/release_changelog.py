@@ -5,8 +5,9 @@
 Runs before the shared CI image is built; the image carries the file and the
 app reads it from its own server, never from GitHub. Each release tag (x.y.z)
 is mapped to the develop commit with the same tree, as the release step does,
-and lists the commit subjects since the previous release, without merges and
-both release chores. Releases are squashed onto main, so the history read is
+and lists the German `Changelog:` trailer of every commit since the previous
+release that has one, led by its type (`feat: ...`); commits without the
+trailer, merges and both release chores are left out (#3981). Releases are squashed onto main, so the history read is
 develop's (origin/develop, else develop, else HEAD's) and a build of a main
 commit stands for the develop commit with its tree (#2960). A tag whose tree is
 not in that history is skipped with a build warning; its commits count to the
@@ -34,6 +35,7 @@ RELEASE_CHORE = re.compile(
     r"^chore\(release\): (set application version to \d+\.\d+\.\d+|"
     r"promote \d+\.\d+\.\d+ to main)( \(#\d+\))?$"
 )
+CONVENTIONAL = re.compile(r"^([a-z]+)(?:\([^)]*\))?(!?): ")
 DEVELOP_REFS = ("refs/remotes/origin/develop", "refs/heads/develop")
 APP_VERSION = re.compile(r'^APP_VERSION = "(\d+\.\d+\.\d+)"$', re.MULTILINE)
 
@@ -55,10 +57,26 @@ def git(*args: str, cwd: Path = ROOT) -> str:
 
 
 def subjects(commit_range: str, cwd: Path) -> list[str]:
-    lines = git("log", "--no-merges", "--format=%s", commit_range, cwd=cwd)
-    return [
-        line for line in lines.splitlines() if line and not RELEASE_CHORE.match(line)
-    ]
+    """One German entry per commit with a ``Changelog:`` trailer, led by its type.
+
+    Subjects stay English; a commit without the trailer is not shown (#3981).
+    """
+    log = git(
+        "log",
+        "--no-merges",
+        "--format=%s%x1f%(trailers:key=Changelog,valueonly,unfold)%x1e",
+        commit_range,
+        cwd=cwd,
+    )
+    entries = []
+    for record in log.split("\x1e"):
+        subject, _, trailer = record.strip().partition("\x1f")
+        text = next((line.strip() for line in trailer.splitlines() if line.strip()), "")
+        if not text or RELEASE_CHORE.match(subject):
+            continue
+        kind = CONVENTIONAL.match(subject)
+        entries.append(f"{kind[1]}{kind[2]}: {text}" if kind else text)
+    return entries
 
 
 def develop_line(cwd: Path, warn) -> str:

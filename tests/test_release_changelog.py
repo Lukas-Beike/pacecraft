@@ -10,8 +10,12 @@ import release_changelog
 from test_release_contains import commit, git
 
 
-def change(repo, day, subject):
-    return commit(repo, day, f"f{day}.txt", subject, subject=subject)
+def change(repo, day, subject, trailer=True):
+    """A commit whose Changelog trailer is its subject's text, as the German line would be."""
+    message = (
+        f"{subject}\n\nChangelog: {subject.partition(': ')[2]}" if trailer else subject
+    )
+    return commit(repo, day, f"f{day}.txt", subject, subject=message)
 
 
 def promote(repo, tag, day):
@@ -39,7 +43,9 @@ class ReleaseChangelogTests(unittest.TestCase):
         change(repo, 5, "feat(c): from a merged branch")
         git(repo, "switch", "-q", "develop")
         git(repo, "merge", "-q", "--no-ff", "side", "-m", "Merge branch 'side'", day=6)
-        change(repo, 7, "chore(release): set application version to 1.0.1")
+        change(
+            repo, 7, "chore(release): set application version to 1.0.1", trailer=False
+        )
         self.release = git(repo, "rev-parse", "HEAD")
         promote(repo, "1.0.1", 8)
         # A hotfix tag whose tree never reached develop, and a non-release tag.
@@ -62,9 +68,9 @@ class ReleaseChangelogTests(unittest.TestCase):
         self.assertEqual(
             [(r["version"], r.get("after"), sorted(r["commits"])) for r in releases],
             [
-                (None, "1.0.1", ["docs(d): after the release"]),
-                ("1.0.1", None, ["feat(c): from a merged branch", "fix(b): second"]),
-                ("1.0.0", None, ["feat(a): first"]),
+                (None, "1.0.1", ["docs: after the release"]),
+                ("1.0.1", None, ["feat: from a merged branch", "fix: second"]),
+                ("1.0.0", None, ["feat: first"]),
             ],
         )
         self.assertEqual(len(self.warnings), 1)
@@ -74,10 +80,10 @@ class ReleaseChangelogTests(unittest.TestCase):
     def test_a_later_revert_to_a_release_tree_stays_in_the_build_section(self):
         git(self.repo, "revert", "--no-edit", "HEAD", day=10)
         releases = self.run_changelog("1.0.1")
-        self.assertEqual(len(releases[0]["commits"]), 2)
+        self.assertEqual(len(releases[0]["commits"]), 1)
         self.assertEqual(
             sorted(releases[1]["commits"]),
-            ["feat(c): from a merged branch", "fix(b): second"],
+            ["feat: from a merged branch", "fix: second"],
         )
 
     def test_a_release_build_names_its_new_version_and_a_release_tree_adds_nothing(
@@ -108,8 +114,8 @@ class ReleaseChangelogTests(unittest.TestCase):
         self.assertEqual(
             [(r["version"], sorted(r["commits"])) for r in self.run_changelog("1.0.1")],
             [
-                ("1.0.1", ["feat(c): from a merged branch", "fix(b): second"]),
-                ("1.0.0", ["feat(a): first"]),
+                ("1.0.1", ["feat: from a merged branch", "fix: second"]),
+                ("1.0.0", ["feat: first"]),
             ],
         )
 
@@ -122,6 +128,20 @@ class ReleaseChangelogTests(unittest.TestCase):
         self.assertIn(
             "::warning::No develop ref; the changelog follows HEAD's history.",
             self.warnings,
+        )
+
+    def test_only_a_commit_with_a_changelog_trailer_is_shown_as_its_german_line(self):
+        commit(self.repo, 10, "g.txt", "g", subject="fix(x): without a trailer")
+        commit(
+            self.repo,
+            11,
+            "h.txt",
+            "h",
+            subject="feat(y)!: with one\n\nBody.\n\nChangelog: Die Woche zeigt die Belastung.",
+        )
+        self.assertEqual(
+            sorted(self.run_changelog("1.0.1")[0]["commits"]),
+            ["docs: after the release", "feat!: Die Woche zeigt die Belastung."],
         )
 
     def test_both_release_chores_are_left_out(self):
