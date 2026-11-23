@@ -410,7 +410,7 @@ function openPlanReplace({ plan, onReplaced }) {
   const form = dialog?.querySelector("form");
   if (!form) return;
   const today = timezoneDateKey(state.data?.profile?.timezone, new Date());
-  const start = [plan.start_date, today].sort().pop();
+  const start = [plan.start_date, today].sort((a, b) => a.localeCompare(b)).at(-1);
   const period = { start, end: plan.end_date >= start ? plan.end_date : addDateKey(start, 13), workouts: [] };
   const dayText = (key) => MOVE_DAY_FORMAT.format(dateFromKey(key));
   const render = () => {
