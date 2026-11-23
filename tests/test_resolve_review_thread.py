@@ -496,6 +496,10 @@ class GuardHookTests(unittest.TestCase):
             "sed -n '1p' f\x00sed scripts/r*.py",
             # #3982 bypass review: a glob in sed's files can expand to an option.
             "sed -n '1p' scripts/r*.py",
+            # #4091 gate: a sed shape that is a redirection's target starts no command.
+            "> sed -n '5p' ls scripts/r*.py",
+            "ls x 2> sed -n '5p' scripts/r*.py",
+            "< sed -n '5p' ls scripts/r*.py",
             "touch -- '--expression=1e python scripts/r*.py 1 PRRT_x' a; sed -n '1p' *",
             # Quote marks the shells do not read as ours: fullwidth ones NFKC
             # turns into quotes, and PowerShell's low-9 and reversed ones.

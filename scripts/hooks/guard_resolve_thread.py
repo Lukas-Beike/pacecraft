@@ -464,8 +464,14 @@ def only_inert_programs(raw: str) -> bool:
         )
     ):
         return False
-    commands = simple_commands(SED_PRINT.sub(SED_LINES, raw))
-    return commands is not None and all(inert(words) for words in commands)
+    text = SED_PRINT.sub(SED_LINES, raw)
+    commands = simple_commands(text)
+    if commands is None:
+        return False
+    # Each sed shape must start a command of its own: after a redirection it is
+    # the target, and the shell runs `-n` instead (#4091 gate).
+    starts = sum(words[0] == SED_LINES for words in commands)
+    return starts == text.count(SED_LINES) and all(inert(words) for words in commands)
 
 
 def reaching_word(text: str, raw: str) -> str | None:
