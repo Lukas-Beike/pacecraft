@@ -1848,6 +1848,43 @@ function profileSetupButton() {
   return button;
 }
 
+// Pure: the three steps of a first start and which are done (athlete decision, #3936 G-13): the profile
+// has something in it, Garmin or Wahoo is connected, and the Coach's model has its key.
+function coachSetupSteps(data) {
+  const profile = data?.profile || {};
+  const configured = data?.configured || {};
+  const garmin = data?.garmin || {};
+  const filled = (value) => String(value || "").trim() !== "";
+  return [
+    { key: "profile", title: "Profil ausfüllen", done: ["name", "goals", "sports"].some((key) => filled(profile[key])) },
+    { key: "source", title: "Datenquelle verbinden", hint: "Garmin oder Wahoo", done: Boolean((garmin.configured && garmin.available !== false) || data?.wahoo?.connected) },
+    { key: "model", title: "Modell wählen", hint: "Schlüssel eintragen", done: !data || Boolean(configured.coach ?? configured.openai) },
+  ];
+}
+
+// The list of open steps in the empty Coach chat; none once every step is done.
+function coachSetupCard(data) {
+  const steps = coachSetupSteps(data);
+  const open = steps.filter((step) => !step.done);
+  if (!open.length) return null;
+  const items = steps.map((step) => {
+    const mark = h("span", { className: `coach-setup-mark${step.done ? " is-done" : ""}`, "aria-hidden": "true" }, step.done ? "✓" : "");
+    const title = h("span", step.done ? "coach-setup-done" : null, step.title);
+    const hint = step.done || !step.hint ? null : h("small", null, step.hint);
+    return h("li", { dataset: { step: step.key, done: String(step.done) } }, mark, title, hint);
+  });
+  const next = open[0];
+  let action;
+  if (next.key === "profile") action = profileSetupButton();
+  else {
+    const modelConnection = data?.model?.provider === "anthropic" ? "anthropic" : "openai";
+    const connection = next.key === "model" ? modelConnection : providerIds().garmin;
+    action = h("a", { className: "secondary-button", href: "#more/connections", dataset: { connection } }, next.title);
+  }
+  return h("section", { className: "coach-setup", "aria-label": "Einrichten" },
+    h("strong", null, `Einrichten · ${steps.length - open.length} von ${steps.length}`), h("ol", null, ...items), action);
+}
+
 function appendChatStream(root, streamVisible) {
   const phase = state.chatRequest?.phase;
   if (!streamVisible) return false;
@@ -1863,7 +1900,7 @@ function renderMessages(messages, forceScroll = false, preserveScroll = false) {
   const visibleMessages = messages || [];
   const signature = JSON.stringify([
     visibleMessages.map((message) => [message.id || null, message.created_at || null, message.role, message.content, message.attachment_names, message.error, message.coach_changes || null, Boolean(message.coach_failed), message.coach_model || null]),
-    appShellLoading, state.data?.messages_next_cursor, state.chatStreamText, state.chatServerOperationId,
+    appShellLoading, coachSetupSteps(state.data).map((step) => step.done), state.data?.messages_next_cursor, state.chatStreamText, state.chatServerOperationId,
     state.chatResponseStarted, state.chatRequest?.phase || null, state.chatRequest?.responseMessageId || null,
     state.chatRequest?.responseMessageReceived || false,
     (state.coachActionProposals || []).map((proposal) => [proposal.id, proposal.status]),
@@ -1882,7 +1919,7 @@ function renderMessages(messages, forceScroll = false, preserveScroll = false) {
   root.replaceChildren();
   appendHistoryPageButton(root, "chat");
   if (!visibleMessages.length && !state.chatRequest && !state.chatQueue.length) {
-    root.append(appShellLoading ? createSkeletonStack(4) : createEmptyState("Dein Coach ist bereit", null, profileSetupButton()));
+    root.append(appShellLoading ? createSkeletonStack(4) : createEmptyState("Dein Coach ist bereit", null, coachSetupCard(state.data)));
   }
   visibleMessages.forEach((message, index) => root.append(renderMessageNode(message, index === visibleMessages.length - 1)));
   state.chatQueue.forEach((entry, index) => root.append(createPendingMessage(entry, index)));

@@ -360,6 +360,13 @@ h2 {
 .analysis-chart-stack { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; }
 .analysis-subchart { min-width: 0; padding-top: 12px; border-top: 1px solid var(--line); }
 .analysis-subchart h4 { margin: 0; color: var(--ink); font-size: .9rem; }
+.coach-setup { display: grid; gap: 10px; justify-items: start; text-align: left; }
+.coach-setup ol { display: grid; gap: 6px; margin: 0; padding: 0; list-style: none; }
+.coach-setup li { display: flex; align-items: center; gap: 8px; }
+.coach-setup small { color: var(--muted); }
+.coach-setup-mark { display: inline-grid; place-items: center; flex: none; width: 20px; height: 20px; border: 1.5px solid var(--line-strong); border-radius: 50%; font-size: .72rem; }
+.coach-setup-mark.is-done { border-color: var(--accent); background: var(--accent); color: var(--on-accent); }
+.coach-setup-done { color: var(--muted); text-decoration: line-through; }
 .analysis-period-controls { display: flex; flex-wrap: wrap; gap: 4px; }
 .analysis-period-controls button { flex: 1 1 0; min-width: 4.5rem; min-height: 44px; padding-inline: 4px; }
 .analysis-trend-controls { display: grid; gap: 8px; }

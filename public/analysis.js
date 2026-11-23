@@ -2768,7 +2768,9 @@ async function renderTrainingRecords({ background = false } = {}) { // NOSONAR
       tab.setAttribute("role", "tab"); tabs.append(tab);
       const panel = h("div", { className: "equipment-tab-panel", id: `equipmentPanel-${key}`, "aria-labelledby": tab.id, tabIndex: 0, hidden: equipmentTab !== key });
       panel.setAttribute("role", "tabpanel");
-      panel.append(equipmentAddRow(key), equipmentRuleTable(key, equipment.rules, groups[key].items));
+      // The defaults choose among items, so they wait until there is one (#3936 G-13).
+      panel.append(equipmentAddRow(key));
+      if (groups[key].items.length) panel.append(equipmentRuleTable(key, equipment.rules, groups[key].items));
       for (const item of groups[key].items) panel.append(card(key)({ item, source: "local" }));
       for (const item of garminGroups[key]) panel.append(card(key)({ item, source: "provider" }));
       if (archivedGroups[key].length) panel.append(archive(key, archivedGroups[key]));
@@ -2870,6 +2872,9 @@ function renderAnalysisEmptyState(segment) {
     root.replaceChildren(...(empty ? [analysisEmptyCard(segment)] : []));
   }
   root.hidden = !empty;
+  // Without a connected source the period buttons have nothing to change, so they step aside (#3936 G-13).
+  const idle = empty && !analysisDataSourceConnected();
+  document.querySelectorAll("#analysisLoadPeriod, #strengthPeriod, #personalRecovery .analysis-trend-controls").forEach((controls) => { controls.hidden = idle; });
   return empty;
 }
 

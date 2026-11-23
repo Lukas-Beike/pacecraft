@@ -160,7 +160,7 @@ The client SHALL show at most one status strip above every screen: the most seve
 - **THEN** only a critical notice is announced as `alert`, others as `status`, and an unchanged strip is not rendered again; the dismissed hint stays hidden for the browser session and focus moves to the main region.
 
 #### Scenario: Several notices at once
-- **WHEN** the browser is offline, the Coach reports an error and an optional provider key is missing
+- **WHEN** the browser is offline, the Coach reports an error and a provider needs attention
 - **THEN** one strip shows the offline notice with a "+N Hinweise" button ("+1 Hinweis" for one further notice), and the button lists the Coach error.
 
 #### Scenario: Due equipment
@@ -257,7 +257,7 @@ The client SHALL keep history reading independent of live announcements, preserv
 
 #### Scenario: Turn changes line and empty chat
 - **WHEN** a Coach reply carries recorded changes, or the chat has no messages
-- **THEN** the reply shows its changes in one line with a visible "Rückgängig" action that asks for confirmation and undoes the whole turn locally (shown as "Zurückgenommen" afterwards, absent when not undoable); an empty chat shows one empty state with a "Profil ausfüllen" action that starts a normal Coach turn.
+- **THEN** the reply shows its changes in one line with a visible "Rückgängig" action that asks for confirmation and undoes the whole turn locally (shown as "Zurückgenommen" afterwards, absent when not undoable); an empty chat shows one empty state with the list "Einrichten · n von 3" (Profil ausfüllen, Datenquelle verbinden, Modell wählen) and the next open step as its one action, "Profil ausfüllen" starting a normal Coach turn; the list is gone once every step is done.
 
 Evidence:
 - `e2e/coach-history-anchor.spec.js::older chat history keeps the reading position without moving focus @responsive`

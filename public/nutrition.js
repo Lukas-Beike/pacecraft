@@ -604,6 +604,12 @@ function nutritionIntakeKey(day) {
   return JSON.stringify([day.date, day.total_kcal, day.entries || []]);
 }
 
+// The message the empty diary hands to the Coach: only written into the composer, never sent.
+function nutritionCoachDraft(date, today) {
+  const when = date === today ? "heute" : `am ${dateLabel(date)}`;
+  return `Ich habe ${when} gegessen: `;
+}
+
 function renderNutritionDay(day) {
   document.querySelector("#nutritionDate").value = day.date;
   const intake = nutritionIntakeKey(day);
@@ -613,9 +619,15 @@ function renderNutritionDay(day) {
   energyIntakeKey = intake;
   renderDiaryEnergy();
   document.querySelector("#nutritionStatus").textContent = day.entry_count ? "" : "Noch keine Mahlzeiten erfasst.";
+  // An empty day shows no row of "nicht erfasst" tiles; meals are entered through the Coach, so the empty
+  // view says that and offers the message (athlete decisions, #3936 G-13, G-14).
+  const tellCoach = document.querySelector("#nutritionTellCoach");
+  tellCoach.hidden = Boolean(day.entry_count);
+  tellCoach.dataset.date = day.date;
   const totals = document.querySelector("#nutritionTotals");
   totals.replaceChildren();
-  appendNutritionTotals(totals, day);
+  totals.hidden = !day.entry_count;
+  if (day.entry_count) appendNutritionTotals(totals, day);
   appendNutritionMacroNote(totals, Number(day.entries_without_macros) || 0);
   document.querySelector("#nutritionEntries").replaceChildren(...day.entries.map((item) => nutritionCard(item, false, day.sessions || [])));
 }
@@ -665,6 +677,7 @@ async function loadNutrition({ preserve = false, expectedRoute = null, expectedD
 }
 
 document.querySelector("#nutritionDate").addEventListener("change", () => void loadNutrition());
+document.querySelector("#nutritionTellCoach").addEventListener("click", (event) => void globalThis.askCoach?.(nutritionCoachDraft(event.currentTarget.dataset.date, todayIso())));
 for (const [id, offset] of [["nutritionPrevious", -1], ["nutritionNext", 1]]) {
   document.getElementById(id).addEventListener("click", () => {
     const input = document.querySelector("#nutritionDate");
@@ -1155,6 +1168,16 @@ let nutritionProductSearchShown = "";
 // What was open before a search; clearing the search restores it.
 let nutritionProductSectionsBeforeSearch = null;
 
+// Without any product the refresh and clean-up buttons have nothing to act on, and the status line says "Keine
+// Produkte gefunden." once, so the list stays empty (#3936 G-13).
+function showNutritionProductActions(targetId, products, search) {
+  if (targetId === "#nutritionProducts") document.querySelector("#nutritionProductActions")?.toggleAttribute("hidden", !products?.length && !search);
+}
+
+function noNutritionProductsText(targetId) {
+  return targetId === "#nutritionProducts" ? "" : "Keine Produkte gefunden.";
+}
+
 function renderNutritionProducts(products, { local = true, targetId = "#nutritionProducts", search = "" } = {}) {
   const target = document.querySelector(targetId);
   if (!target) return;
@@ -1163,7 +1186,8 @@ function renderNutritionProducts(products, { local = true, targetId = "#nutritio
     for (const node of target.children) if (Object.hasOwn(nutritionProductSectionsOpen, node.dataset?.section ?? "")) nutritionProductSectionsOpen[node.dataset.section] = node.open;
   }
   target.replaceChildren();
-  if (!products?.length) { target.textContent = "Keine Produkte gefunden."; return; }
+  showNutritionProductActions(targetId, products, search);
+  if (!products?.length) { target.textContent = noNutritionProductsText(targetId); return; }
   const items = products.map(normalizeNutritionProduct);
   if (!local || targetId !== "#nutritionProducts") { target.append(...items.map((product) => nutritionProductCard(product, local))); return; }
   const newSearch = Boolean(search) && search !== nutritionProductSearchShown;

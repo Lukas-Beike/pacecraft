@@ -418,11 +418,11 @@ A correction SHALL accept only meal date, time, time knowledge, meal type, descr
 Evidence: `backend/nutrition/diary.py::NutritionDiaryService.correct_meal`, `backend/nutrition/diary.py::NutritionDiaryService._apply_meal_correction`, `backend/nutrition/diary.py::NutritionDiaryService.add_product_to_meal`, `backend/nutrition/meal_components.py::wrapped_component`, `backend/nutrition/diary.py::NutritionDiaryService._extended_description`; `tests/test_nutrition_favorites_and_meal_additions.py::test_an_estimated_meal_keeps_its_values_as_the_first_component`, `tests/test_nutrition_favorites_and_meal_additions.py::test_description_keeps_the_newest_product_within_the_limit`, `tests/test_nutrition_favorites_and_meal_additions.py::test_wrapped_meal_keeps_sugar_and_salt_totals`, `tests/test_nutrition.py::test_database_values_override_model_values_and_provenance_survives_corrections`.
 
 ### Requirement: Diary and history view states
-The client SHALL show the nutrition area as Tagebuch, Verlauf, Körper and Produkte. The diary SHALL offer a date field with previous, next and "Heute", show a cached copy of the requested view at once, and let the athlete delete a meal directly after a confirmation, with a "Rückgängig" receipt. The history SHALL switch between 4 weeks, 3 months and 6 months, draw one card layout with the period in every title row, and state the coverage of every figure.
+The client SHALL show the nutrition area as Tagebuch, Verlauf, Körper and Produkte. The diary SHALL offer a date field with previous, next and "Heute", show a cached copy of the requested view at once, and let the athlete delete a meal directly at once, with a "Rückgängig" receipt. The history SHALL switch between 4 weeks, 3 months and 6 months, draw one card layout with the period in every title row, and state the coverage of every figure.
 
 #### Scenario: Empty day
 - **WHEN** a day has no entries
-- **THEN** all total tiles show "nicht erfasst" and the status reads "Noch keine Mahlzeiten erfasst."
+- **THEN** no total tiles show, the status reads "Noch keine Mahlzeiten erfasst." and "Dem Coach sagen" writes "Ich habe heute gegessen: " into the composer without sending it
 
 #### Scenario: Failed load
 - **WHEN** a day cannot be loaded and no cached copy exists

@@ -21,7 +21,19 @@ test("@responsive nutrition overview shows consumed sugar and salt with honest m
   await expect(salt.locator("strong.value-missing")).toHaveCount(1);
   mode = "empty";
   await page.reload();
-  await expect(sugar).toHaveText("nicht erfasstZucker");
-  await expect(salt).toHaveText("nicht erfasstSalz");
+  await expect(page.locator("#nutritionTotals")).toBeHidden();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+});
+
+test("@responsive an empty diary offers the message to the Coach and sends nothing (#3936 G-14)", async ({ page }) => {
+  await page.route("**/api/nutrition/day**", (route) => route.fulfill({ json: { date: "2026-10-20", entry_count: 0, entries: [], total_kcal: 0 } }));
+  let chats = 0;
+  await page.route("**/api/chat/**", (route) => { if (route.request().method() === "POST") chats += 1; return route.fallback(); });
+  await page.goto("/#nutrition/diary");
+  const tell = page.getByRole("button", { name: "Dem Coach sagen" });
+  await expect(tell).toBeVisible();
+  await tell.click();
+  await expect(page).toHaveURL(/#coach$/);
+  await expect(page.locator("#messageInput")).toHaveValue(/^Ich habe am 20\.10\.2026 gegessen: $/);
+  expect(chats).toBe(0);
 });
