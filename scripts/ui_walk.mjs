@@ -162,7 +162,7 @@ export async function rendered(page, route, open) {
     const busy = await page.evaluate(() => {
       const panel = document.querySelector(".panel.active");
       // A loading line is a text element of its own, not a button label or a Coach message quoting one.
-      const line = (node) => !node.children.length && /wird geladen…$/.test(node.textContent.trim()) && !node.closest("button, #messages");
+      const line = (node) => !node.children.length && node.textContent.trim().endsWith("wird geladen…") && !node.closest("button, #messages");
       return !panel || [...panel.querySelectorAll(".loading-state, [aria-busy='true'], .skeleton")].some((node) => node.checkVisibility()) || [...panel.querySelectorAll("p, div, span, small")].some((node) => line(node) && node.checkVisibility());
     }).catch(() => true);
     if (busy || pending().length) quietSince = null;
