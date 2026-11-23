@@ -1315,7 +1315,7 @@ function appendSessionRpeLoadChart(report, loadRoot, loadMissing, start, end) {
   const weekly = analysisPeriodWeekly(analysisHistoryPeriod);
   const points = days.map((day) => ({ date: day.date, value: day.value }));
   const series = [{ label: weekly ? "RPE-Belastung pro Woche" : "RPE-Belastung pro Tag", legendLabel: "RPE-Belastung", source, unit: "RPE-Punkte", color: 2, bars: true, connected: true, cadenceDays: weekly ? 7 : 1, points: weekly ? analysisWeeklySumPoints(points, start, end) : points }];
-  const chart = analysisChart(`RPE-Belastung · ${rated}/${total} bewertet`, series, "RPE-Punkte", start, end, `${source}: RPE × Gesamtdauer je Einheit.`, { calendarWeeks: weekly, caption: analysisBasisCaption("RPE-Punkte", weekly, "sum") });
+  const chart = analysisChart(`RPE-Belastung · ${rated} von ${total} Einheiten bewertet`, series, "RPE-Punkte", start, end, `${source}: RPE × Gesamtdauer je Einheit.`, { calendarWeeks: weekly, caption: analysisBasisCaption("RPE-Punkte", weekly, "sum") });
   if (!chart) { loadMissing.push("RPE-Belastung"); return; }
   chart.querySelector(".analysis-chart-legend")?.remove();
   loadRoot.append(chart);

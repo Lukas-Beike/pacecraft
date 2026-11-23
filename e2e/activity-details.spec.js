@@ -58,7 +58,7 @@ test("@responsive activity details preserve calendar without Coach shortcuts", a
 test("@responsive load tab shows the session-RPE load with its coverage", async ({ page }) => {
   await page.goto("/#analysis/load");
   await expect(page.locator("#appShell")).toBeVisible();
-  const heading = page.locator("#analysisLoadCharts").getByRole("heading", { name: /^RPE-Belastung · \d+\/\d+ bewertet/ });
+  const heading = page.locator("#analysisLoadCharts").getByRole("heading", { name: /^RPE-Belastung · \d+ von \d+ Einheiten bewertet/ });
   await expect(heading).toBeVisible();
 });
 
