@@ -12,6 +12,7 @@ from backend.errors import AppError
 IMPACTS = frozenset({"block", "short", "easy", "none"})
 _MAX_UID_LENGTH = 500
 _MAX_START_LENGTH = 40
+_INVALID_EVENT = "Ungültiger Termin."
 
 
 class ExternalCalendarDecisionService:
@@ -41,7 +42,7 @@ class ExternalCalendarDecisionService:
         none or several of them is refused. The answer names no UID either.
         """
         if not isinstance(name, str) or not isinstance(start_local, str):
-            raise AppError(400, "Ungültiger Termin.")
+            raise AppError(400, _INVALID_EVENT)
         with self._database_manager.reader() as db:
             rows = db.execute(
                 "SELECT DISTINCT uid, name FROM external_calendar_events "
@@ -63,9 +64,9 @@ class ExternalCalendarDecisionService:
         uid = uid if isinstance(uid, str) else ""
         start = "" if occurrence_start is None else occurrence_start
         if not 0 < len(uid) <= _MAX_UID_LENGTH or not isinstance(start, str):
-            raise AppError(400, "Ungültiger Termin.")
+            raise AppError(400, _INVALID_EVENT)
         if len(start) > _MAX_START_LENGTH:
-            raise AppError(400, "Ungültiger Termin.")
+            raise AppError(400, _INVALID_EVENT)
         if impact is not None and (
             not isinstance(impact, str) or impact not in IMPACTS
         ):
