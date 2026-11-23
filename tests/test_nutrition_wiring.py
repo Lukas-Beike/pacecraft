@@ -94,7 +94,9 @@ class NutritionBuilderTests(unittest.TestCase):
         self.ctx.clock.now.return_value = datetime(2026, 11, 19, 12, tzinfo=UTC)
         reads = iter(({"goal": {"eaten_kcal": 640}}, {"goal": {"eaten_kcal": 0}}))
         with patch.object(
-            nutrition_wiring, "read_energy_view", side_effect=lambda *args: next(reads)
+            nutrition_wiring,
+            "read_energy_view",
+            side_effect=lambda *args, **kwargs: next(reads),
         ) as read:
             self.assertEqual(
                 640, services.energy_view("2026-11-19")["goal"]["eaten_kcal"]

@@ -7,7 +7,8 @@ issue that closes a missing side. `—` marks a missing side.
 
 Parity values: `both`; `UI only` or `Coach only` (a gap with its issue);
 `neither`; `UI by rule` (the Coach must not do it: credentials, logins,
-backups, purges and device permissions stay in the UI).
+backups, purges and device permissions stay in the UI, and so do the
+settings the athlete kept there on #3960).
 
 Guards stay as they are on both sides: Coach writes keep the server-side impact
 gate (receipt, whole-turn undo when every write is tracked, a confirmed request
@@ -21,7 +22,7 @@ case on both sides, so the guards match.
 tool and route exists, the parity value matches the two columns, each gap names
 its issue and the counts below match the table.
 
-Counts: both 67, UI only 9, Coach only 10, neither 0, UI by rule 8.
+Counts: both 71, UI only 0, Coach only 10, neither 0, UI by rule 13.
 
 ## Matrix
 
@@ -39,7 +40,7 @@ Counts: both 67, UI only 9, Coach only 10, neither 0, UI by rule 8.
 | Competitions | Delete a competition | Kalender › Wettkampf `PUT /api/competitions/remove` | `delete_competition` | delete confirmation | both | |
 | Competitions | Send competitions to Intervals.icu | Kalender › Wettkampf `POST /api/intervals/competitions/send` | `sync_competitions` | named sync | both | |
 | Planning | Read planned units and the planning view | Kalender `GET /api/plan` | `list_planned_workouts`, `read_training_state` | — | both | |
-| Planning | Create a planned unit | Bibliothek "+ Einheit" `POST /api/library`, then "Einplanen" `POST /api/library/{id}/schedule` | `apply_training_patch` (`workouts`) | receipt, undo, calendar rule check | both | "Einplanen" runs no illness plan check yet (#4055) |
+| Planning | Create a planned unit | Bibliothek "+ Einheit" `POST /api/library`, then "Einplanen" `POST /api/library/{id}/schedule` | `apply_training_patch` (`workouts`) | receipt, undo, plan checks | both | |
 | Planning | Change a planned unit's content | Kalender card "Bearbeiten" `POST /api/planned-units/{id}/update` | `apply_training_patch` (`update`) | receipt, undo, plan checks | both | |
 | Planning | Move a planned unit to another day | Kalender card `POST /api/planned-units/{id}/date` | `apply_training_patch` (`update` with `date`) | receipt, undo | both | |
 | Planning | Delete a planned unit | Kalender card `POST /api/planned-units/{id}/delete` | `apply_training_patch` (`delete`) | delete confirmation | both | |
@@ -57,7 +58,7 @@ Counts: both 67, UI only 9, Coach only 10, neither 0, UI by rule 8.
 | Library | List library workouts | Bibliothek `GET /api/library` | `list_workout_library` | — | both | |
 | Library | Create a library workout | Bibliothek "+ Einheit" `POST /api/library` | `manage_training_templates` (`create`) | receipt, undo | both | |
 | Library | Edit a library workout | Bibliothek "Bearbeiten" `POST /api/library/{id}/update` | `manage_training_templates` (`update`) | receipt, undo | both | |
-| Library | Schedule a library workout on a day | Bibliothek `POST /api/library/{id}/schedule` | `apply_workout_library_plan` | receipt, undo | both | |
+| Library | Schedule a library workout on a day | Bibliothek "Einplanen" with the optional plan `POST /api/library/{id}/schedule` | `apply_workout_library_plan` | plan checks, receipt, undo | both | |
 | Library | Archive a library workout | Bibliothek `POST /api/library/{id}/archive` | `manage_training_templates` (`archive`) | confirmation | both | |
 | Library | Restore an archived library workout | Bibliothek › Archiviert `GET /api/library` (`archived=1`), "Wiederherstellen" `POST /api/library/{id}/restore` | `manage_training_templates` (`restore`) | receipt, undo | both | |
 | Library | Delete a library workout | Bibliothek › Archiviert "Endgültig löschen" `POST /api/library/{id}/delete` | `manage_training_templates` (`delete`) | confirmed request, undo | both | |
@@ -97,22 +98,22 @@ Counts: both 67, UI only 9, Coach only 10, neither 0, UI by rule 8.
 | Body | Save or change weight | Körper `PUT /api/body/weight` | `save_body_entry` (`weight`) | receipt; writes Garmin and Wahoo | both | |
 | Body | Save or change body fat | Körper `PUT /api/body/body-fat` | `save_body_entry` (`body_fat`) | receipt; writes Garmin | both | |
 | Body | Remove weight or body fat | Körper `PUT /api/body/weight/remove`, `PUT /api/body/body-fat/remove` | `delete_body_entry` | confirmation | both | |
-| Body | Save or remove a skinfold measurement | Körper `PUT /api/body/skinfolds`, `PUT /api/body/skinfolds/remove` | — | confirmation | UI only | #3959 |
+| Body | Save or remove a skinfold measurement | Körper `PUT /api/body/skinfolds`, `PUT /api/body/skinfolds/remove` | `save_skinfolds`, `delete_skinfolds` | receipt; writes Garmin; delete confirmation | both | |
 | Check-ins | Enter or correct the daily check-in | — | `save_checkin` | receipt, undo | Coach only | #3953 |
 | Check-ins | Report illness or wellness from the infection hint | Kalender day `POST /api/infection-hint/ill`, `POST /api/infection-hint/well` | `save_checkin` | receipt, undo | both | |
-| Calendar | Classify an external calendar event | Kalender "Einordnen" `POST /api/external-calendar/decisions` | — | — | UI only | #3959 |
+| Calendar | Classify an external calendar event | Kalender "Einordnen" `POST /api/external-calendar/decisions` | `classify_calendar_event` | receipt | both | |
 | Syncs | Refresh calendars, Garmin, Wahoo and weather | Sync buttons `POST /api/external-calendar/sync`, `POST /api/garmin/sync`, `POST /api/wahoo/sync`, `POST /api/weather/sync`, `POST /api/analysis/refresh`, `POST /api/nutrition/refresh` | `start_provider_refresh` | — | both | |
 | Syncs | Read sync state and job results | Status strip `GET /api/sync/status`, `GET /api/sync/jobs/{id}` | `get_sync_job` | — | both | |
 | Syncs | Send planned units to Intervals.icu or Garmin | Kalender week sync `POST /api/sync/jobs` (`plan_push`) | `start_intervals_plan_sync`, `push_strength_to_garmin` (`push`) | named sync | both | |
 | Syncs | Remove the app's own Garmin workouts of a unit | — | `push_strength_to_garmin` (`remove`) | Garmin removal card | Coach only | #4022 |
 | Syncs | Resolve a training sync conflict | — | `resolve_training_sync_conflict` | receipt | Coach only | #4021 |
-| Syncs | Start a full Garmin or Wahoo resync | Anbindungen `POST /api/garmin/full-resync`, `POST /api/wahoo/full-resync` | — | confirmation | UI only | #3960 |
-| Syncs | Check a provider connection | Anbindungen `POST /api/providers/{provider}/check`, `POST /api/nutrition/yazio/check` | — | read-only | UI only | #3960 |
-| Syncs | Switch the automatic metric export | Anbindungen `POST /api/metric-export/automatic` | — | consent per field | UI only | #3960 |
-| Settings | Select model, thinking level and service tier | Coach & Modell `PUT /api/settings/model`, `PUT /api/settings/thinking-level`, `PUT /api/settings/service-tier` | — | — | UI only | #3960 |
-| Settings | Switch a notification type on or off | App `POST /api/push/preferences` | — | — | UI only | #3960 |
-| Settings | Turn GPS-track storage on or off | Datenschutz `POST /api/privacy/gps` | — | — | UI only | #3960 |
-| Settings | Reset the Coach conversation | Coach & Modell `POST /api/chat/reset` | — | confirmation | UI only | #3960 |
+| Syncs | Start a full Garmin or Wahoo resync | Anbindungen `POST /api/garmin/full-resync`, `POST /api/wahoo/full-resync` | `start_provider_refresh` (`full_resync`) | confirmation; the Coach: the athlete's own request naming the provider | both | |
+| Syncs | Check a provider connection | Anbindungen `POST /api/providers/{provider}/check`, `POST /api/nutrition/yazio/check` | `check_provider_connection` | read-only | both | |
+| Syncs | Switch the automatic metric export | Anbindungen `POST /api/metric-export/automatic` | — | consent per field; athlete decision #3960 | UI by rule | |
+| Settings | Select model, thinking level and service tier | Coach & Modell `PUT /api/settings/model`, `PUT /api/settings/thinking-level`, `PUT /api/settings/service-tier` | — | athlete decision #3960 | UI by rule | |
+| Settings | Switch a notification type on or off | App `POST /api/push/preferences` | — | athlete decision #3960 | UI by rule | |
+| Settings | Turn GPS-track storage on or off | Datenschutz `POST /api/privacy/gps` | — | athlete decision #3960 | UI by rule | |
+| Settings | Reset the Coach conversation | Coach & Modell `POST /api/chat/reset` | — | confirmation; athlete decision #3960 | UI by rule | |
 | Settings | Save or clear provider credentials | Anbindungen `PUT /api/settings/credentials` | — | secrets stay server-side | UI by rule | |
 | Settings | Connect or disconnect Garmin | Anbindungen `POST /api/garmin/login`, `POST /api/garmin/login/mfa`, `POST /api/garmin/disconnect` | — | credentials | UI by rule | |
 | Settings | Connect or disconnect Wahoo | Anbindungen `POST /api/wahoo/connect`, `POST /api/wahoo/disconnect` | — | OAuth | UI by rule | |
@@ -133,5 +134,4 @@ Write routes that are no athlete action on data: `POST /api/login`,
 `POST /api/coach/actions/execute`, `POST /api/diagnostics/delete`,
 `POST /api/logs/delete`, `PUT /api/zones/lt2/notice-baseline`.
 
-A Coach path for the notification switches is part of #3960. G-14 in #3936 adds
-interim "Dem Coach sagen" hints on the screens with a Coach-only action.
+G-14 in #3936 adds interim "Dem Coach sagen" hints on the screens with a Coach-only action.

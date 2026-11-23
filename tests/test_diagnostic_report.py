@@ -218,6 +218,7 @@ class DiagnosticReportServiceTests(unittest.TestCase):
                 "plan_sync",
                 "garmin_past_workout_removal",
                 "garmin_daily_calories",
+                "garmin_sleep_temperature_keys",
                 "nutrition_expenditure_gaps",
                 "canonical_coverage",
                 "canonical_backfill",
@@ -410,8 +411,9 @@ class DiagnosticReportServiceTests(unittest.TestCase):
         # Garmin body push adds its counts and its links (#3403); the Wahoo
         # weight push adds its state (#3559); the Garmin history re-read reads
         # the Garmin state (#3729); the competition sync reads its failure
-        # record and last success (#3838).
-        self.assertEqual(len(self.db.queries), 50)
+        # record and last success (#3838); the sleep key names read the stored
+        # nights once (#4017).
+        self.assertEqual(len(self.db.queries), 51)
         self.assertEqual(
             [query.rsplit("FROM ", 1)[1] for query in count_queries],
             [
@@ -449,7 +451,8 @@ class DiagnosticReportServiceTests(unittest.TestCase):
         # counts one more (#3122), the mapper replay size the backfill state and the
         # mapping issue kinds (#2220); the retired FIT value probe no more (#3396).
         # Web Push reads its counts and subscriptions, two more (#3914).
-        self.assertEqual(self.key_values.get.call_count, 24)
+        # The sleep key names read their state, one more (#4017).
+        self.assertEqual(self.key_values.get.call_count, 25)
 
     def test_storage_and_recovery_copies_are_sizes_and_ages_only(self):
         # Stat only: sizes, free space and the newest copy's age; no name or path.

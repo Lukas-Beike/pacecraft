@@ -462,6 +462,7 @@ def _read_routes(
             public.weather_state_service,
             library_page_service,
             ctx.planning.planned_unit,
+            ctx.planning_workflows.workout_library_plan_service,
         ),
         SyncGetRoutes(
             ctx.sync_job_queue.service,
@@ -521,6 +522,17 @@ def _read_routes(
     )
 
 
+def _unit_edit_service(ctx: Any) -> Callable[[], PlannedUnitEditService]:
+    """The athlete's unit edits and library scheduling over the Coach's use cases and plan checks."""
+    return lambda: PlannedUnitEditService(
+        ctx.database(),
+        ctx.planning_workflows.structured_training_change_service,
+        ctx.planning.workout_library,
+        ctx.plan_guard.plan_guard_service,
+        ctx.planning_workflows.workout_library_plan_service,
+    )
+
+
 def _athlete_write_routes(
     ctx: Any, session_auth_service: Callable[[], Any]
 ) -> tuple[Any, ...]:
@@ -565,17 +577,9 @@ def _athlete_write_routes(
             ctx.planning.planned_unit,
             ctx.database,
             ctx.planning_workflows.structured_training_change_service,
-            lambda: PlannedUnitEditService(
-                ctx.database(),
-                ctx.planning_workflows.structured_training_change_service,
-                ctx.planning.workout_library,
-                ctx.plan_guard.plan_guard_service,
-            ),
+            _unit_edit_service(ctx),
         ),
-        LibraryPostRoutes(
-            ctx.planning.workout_library,
-            ctx.planning_workflows.workout_library_plan_service,
-        ),
+        LibraryPostRoutes(ctx.planning.workout_library, _unit_edit_service(ctx)),
         TrainingPlanPostRoutes(ctx.planning.training_plan),
         CredentialsPutRoutes(ctx.provider_credential_service, session_auth_service),
         EquipmentPostRoutes(athlete.equipment),

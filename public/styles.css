@@ -993,6 +993,7 @@ a.message-retry { display: grid; place-items: center; text-decoration: none; }
 .planned-entry-details { display: grid; gap: 10px; padding: 12px; border-top: 1px solid var(--line); overflow-wrap: anywhere; }
 .planned-activity-actions { display: flex; flex-wrap: wrap; gap: 8px; }
 .planned-activity-actions > button { flex: 1 1 auto; }
+.planned-move-group { display: grid; flex: 1 1 auto; gap: 8px; }
 .planned-actual-facts { display: flex; flex-wrap: wrap; gap: 7px 13px; color: var(--muted); font-size: .75rem; }
 .planned-actual-facts strong { color: var(--subtle); font-size: inherit; font-weight: 500; }
 .planned-comparison { display: grid; gap: 4px; padding: 10px; border-radius: 10px; color: var(--muted); background: var(--translucent-surface); font-size: .75rem; line-height: 1.5; }
@@ -1811,6 +1812,7 @@ button:focus-visible, a:focus-visible, summary:focus-visible {
 .unit-exercise .unit-row { grid-template-columns: 64px minmax(0, 1fr) 44px; }
 .unit-exercise .unit-row:last-child { grid-template-columns: minmax(0, 1fr) 96px; }
 .unit-total { margin: 0; color: var(--muted); font-size: .85rem; }
+.library-plan-field { display: grid; gap: 6px; margin-top: 10px; color: var(--muted); font-size: .76rem; font-weight: 650; }
 .library-toolbar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; justify-content: space-between; margin-bottom: 12px; }
 .edit-row { display: grid; gap: 8px; padding: 12px; border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--surface); }
 .edit-row.is-removed { opacity: .6; }

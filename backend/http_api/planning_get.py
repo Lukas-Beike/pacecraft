@@ -20,8 +20,10 @@ class PlanningGetRoutes:
         public_weather_state_service: Callable[[], PublicWeatherStateService],
         library_page_service: Callable[[], LibraryPageService],
         planned_unit_service: Callable[[], Any] | None = None,
+        library_plan_service: Callable[[], Any] | None = None,
     ) -> None:
         self._planned_unit_service = planned_unit_service
+        self._library_plan_service = library_plan_service
         self._public_plan_state_service = public_plan_state_service
         self._public_weather_state_service = public_weather_state_service
         self._library_page_service = library_page_service
@@ -41,7 +43,43 @@ class PlanningGetRoutes:
                     self._blocked_days,
                 )
             )
+        if self._library_plan_service is not None:
+            routes.append(
+                Route(
+                    "GET",
+                    "/api/library/{id}/blocked-days",
+                    Access.SESSION,
+                    self._library_blocked_days,
+                )
+            )
         return routes
+
+    def _library_blocked_days(self, handler: Any, request: RouteRequest) -> None:
+        """Name the days a library entry could not be planned on. A read; nothing is written.
+
+        Request: path `{id}`, the library entry id; query `dates`, up to 31 days as
+        `YYYY-MM-DD` separated by commas.
+
+        Response: 200 `{"blocked": {"YYYY-MM-DD": [name, ...]}}`: per day the names of
+        the calendar entries in the way; free days are left out.
+
+        Errors: 400 for an id that is no UUID; 404 "Bibliothekseinheit nicht
+        gefunden." for an unknown entry.
+        """
+        dates = [
+            day.strip()
+            for day in request.query.get("dates", [""])[0].split(",")
+            if day.strip()
+        ]
+        assert self._library_plan_service is not None
+        handler.send_json(
+            200,
+            {
+                "blocked": self._library_plan_service().blocked_days(
+                    request.params["id"], dates
+                )
+            },
+        )
 
     def _blocked_days(self, handler: Any, request: RouteRequest) -> None:
         """Name the days a move of one planned unit would be refused. A read; nothing is written.

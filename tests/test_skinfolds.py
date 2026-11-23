@@ -2,7 +2,7 @@
 
 import json
 import unittest
-from datetime import date
+from datetime import date, timedelta
 
 from support import temp_database
 
@@ -70,6 +70,16 @@ class SkinfoldServiceTests(unittest.TestCase):
         self.assertEqual(self.on(date(2026, 10, 31)).measured_on, date(2026, 10, 1))
         self.assertEqual(self.on(TODAY).measured_on, date(2026, 11, 10))
         self.assertIsNone(self.on(date(2026, 9, 30)))
+
+    def test_a_day_counts_as_measured_beyond_the_listed_newest_twenty(self):
+        # The Coach's replace guard (#3959, Gitar on #4076): the read lists only
+        # the newest 20, but an older day still holds its measurement.
+        for offset in range(22):
+            self.save((date(2026, 10, 1) + timedelta(days=offset)).isoformat(), MEN)
+        listed = {item["date"] for item in self.service.read()["measurements"]}
+        self.assertNotIn("2026-10-01", listed)
+        self.assertTrue(self.service.measured_on("2026-10-01"))
+        self.assertFalse(self.service.measured_on("2026-09-30"))
 
     def test_a_save_replaces_that_day_and_a_confirmed_remove_retires_it(self):
         self.save("2026-11-10", MEN)

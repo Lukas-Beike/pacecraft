@@ -37,10 +37,12 @@ from backend.planning import library as planning_library
 from backend.planning.planned_units import plan_push_payload_hash
 from backend.providers import http as provider_http
 from backend.providers import openai_requests
+from backend.providers.connection_checks import ProviderConnectionChecks
 from backend.providers.open_food_facts import OpenFoodFactsClient
 from backend.providers.openai_responses_adapter import model_turn, request_payload
 from backend.sync import canonical_ingest
 from backend.sync.adaptive import IllnessPauseSyncService
+from backend.sync.full_resync import FullProviderResyncService
 from backend.sync.garmin_body_push import GarminBodyPushService
 from backend.sync.wahoo_weight_push import WahooWeightPushService
 
@@ -1708,6 +1710,54 @@ class CoachToolCoverageTests(DialogueHarness, unittest.TestCase):
         )
         self.assertEqual(self.athlete_state(), before)
 
+    @covers("check_provider_connection:success")
+    def test_the_coach_checks_connections_and_starts_a_full_resync(self):
+        # #3960: the read-only check and the full resync of Anbindungen; the
+        # provider request and the background run are stubbed at their owners.
+        with (
+            patch.object(
+                ProviderConnectionChecks,
+                "check",
+                autospec=True,
+                return_value={"status": "success", "checked_at": "now"},
+            ) as checked,
+            patch.object(
+                FullProviderResyncService,
+                "start",
+                autospec=True,
+                return_value={"status": "started", "source": "garmin",
+                              "operation_id": "op-1"},
+            ) as resynced,
+        ):  # fmt: skip
+            before = self.athlete_state()
+            status = self.run_tool(
+                "check_provider_connection",
+                {"provider": "wahoo"},
+                [],
+                message="Funktioniert die Wahoo-Verbindung?",
+            )
+            self.assertEqual(
+                ("wahoo", "success"), (status["provider"], status["status"])
+            )
+            self.assertEqual("wahoo", checked.call_args.args[1])
+            # It contacts the provider: a read-only turn the athlete did not
+            # start is not offered it.
+            self.assertNotIn(
+                "check_provider_connection", server.STRUCTURED_READ_ONLY_TOOLS
+            )
+            self.assertEqual(before, self.athlete_state())
+            started = self.run_tool(
+                "start_provider_refresh",
+                {"full_resync": True},
+                ["garmin_refresh"],
+                target="garmin",
+                message="Mach einen vollständigen Garmin-Resync.",
+            )
+        self.assertEqual(
+            ("started", "op-1"), (started["status"], started["operation_id"])
+        )
+        self.assertEqual("garmin", resynced.call_args.args[1])
+
     @covers(
         "start_provider_refresh:garmin",
         "start_provider_refresh:wahoo",
@@ -2106,6 +2156,9 @@ class CoachToolCoverageTests(DialogueHarness, unittest.TestCase):
         diary = server.APP.nutrition.energy_view(today.isoformat())
         self.assertEqual(diary["goal"], energy_today["goal"])
         self.assertEqual(diary["rows"], energy_today["rows"])
+        # #4047: the card and the Coach read the one water flag of the weigh-in step.
+        self.assertIn("water_hint", energy_today)
+        self.assertEqual(diary["water_hint"], energy_today["water_hint"])
         tomorrow = (today + timedelta(days=1)).isoformat()
         future, _ = self.turn(
             message_for("read_nutrition"),
@@ -2648,6 +2701,82 @@ class CoachToolCoverageTests(DialogueHarness, unittest.TestCase):
         self.assertEqual("weight", removed["kind"])
         self.assertEqual(3, sum(1 for name, _ in pushed if name == "garmin"))
         self.assertEqual({"entries": []}, server.ATHLETE_DATA.weight_entries().read())
+
+    @covers("save_skinfolds:success", "delete_skinfolds:success")
+    def test_the_coach_records_skinfolds_with_the_dialogs_garmin_write(self):
+        # #3959: as Körper's dialog, a skinfold day reaches Garmin after the
+        # turn commits; Wahoo stays untouched.
+        pushed = []
+        with (
+            patch.object(
+                GarminBodyPushService,
+                "push",
+                autospec=True,
+                side_effect=lambda _self, day: pushed.append(("garmin", day)) or "sent",
+            ),
+            patch.object(
+                WahooWeightPushService,
+                "start",
+                autospec=True,
+                side_effect=lambda _self: pushed.append(("wahoo", None)),
+            ),
+        ):
+            saved = self.run_tool(
+                "save_skinfolds",
+                {
+                    "date": "2026-09-07",
+                    "folds_mm": {"chest": 8, "abdomen": [14, 15], "thigh": 11},
+                    "replace": False,
+                },
+                ["local_body"],
+                message="Hautfalten heute: Brust 8, Bauch 14 und 15, Oberschenkel 11.",
+            )
+            self.assertEqual(
+                ("scheduled", [8, 14.5, 11]),
+                (saved["remote"], [f["mm"] for f in saved["measurement"]["folds_mm"]]),
+            )
+            removed = self.run_tool(
+                "delete_skinfolds",
+                {"date": "2026-09-07"},
+                ["local_body"],
+                message="Lösch die Hautfaltenmessung von heute.",
+            )
+        self.assertIsNone(removed["measurement"])
+        self.assertEqual(["garmin", "garmin"], [name for name, _ in pushed])
+
+    @covers("classify_calendar_event:success")
+    def test_the_coach_classifies_a_calendar_event_like_einordnen(self):
+        # #3959: the event the Coach names by start and name gets the decision.
+        start = "2026-09-10T18:00:00"
+        with server.database_manager().unit_of_work() as db:
+            db.execute(
+                "INSERT INTO external_calendar_events VALUES "
+                "(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                ("e1", "uid-team", "Synthetic team evening", start[:10], start,
+                 "2026-09-10T20:00:00", 120, 0, 1, 0, 0, 0, "updated"),
+            )  # fmt: skip
+        decided = self.run_tool(
+            "classify_calendar_event",
+            {
+                "name": "Synthetic team evening",
+                "start_local": start,
+                "impact": "short",
+            },
+            ["local_calendar"],
+            message="Am Teamabend nur kurz trainieren.",
+        )
+        self.assertEqual(
+            ("short", start), (decided["impact"], decided["occurrence_start"])
+        )
+        self.assertNotIn("uid", decided)
+        with server.database_manager().read_snapshot() as db:
+            stored = db.execute(
+                "SELECT uid, occurrence_start, impact FROM external_calendar_decisions"
+            ).fetchall()
+        self.assertEqual(
+            [("uid-team", start, "short")],
+            [(row["uid"], row["occurrence_start"], row["impact"]) for row in stored],
+        )
 
     @covers(
         "save_zones:save",

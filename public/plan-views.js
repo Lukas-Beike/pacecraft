@@ -1047,8 +1047,11 @@ function plannedWeekSummary(weekKey, weekEndKey, weekEntries, compliance, todayK
   return `${units} · Belastung ${load}`;
 }
 
+// The pace of a run is the stored average speed, as the Details show it, else distance over moving time (#3932 K-04).
 function calendarPaceLabel(activity) {
   if (activitySportLabel(calendarSportType(activity)) !== "Laufen") return null;
+  const speed = Number(activity?.avg_speed_mps);
+  if (speed > 0) return formatPace(1000 / speed);
   const duration = Number(activity?.moving_duration_s);
   const distance = Number(activity?.distance_m);
   return duration > 0 && distance > 0 ? formatPace(duration / (distance / 1000)) : null;
@@ -1101,7 +1104,7 @@ function actualCalendarFacts(actual) {
     "Ø Herzfrequenz": calendarMetricNumber(actual.avg_hr, " bpm"),
     "Ø Leistung": calendarMetricNumber(actual.avg_power, " W"),
     Pace: calendarPaceLabel(actual),
-    Höhenmeter: calendarMetricNumber(actual.elevation_gain_m, " m"),
+    Anstieg: calendarMetricNumber(actual.elevation_gain_m, " m"),
   };
   const sport = activitySportLabel(calendarSportType(actual));
   if (sport === "Laufen") {
@@ -1111,7 +1114,7 @@ function actualCalendarFacts(actual) {
       ["Schrittfrequenz", Number(actual.avg_cadence) > 0 ? calendarRoundedNumber(Number(actual.avg_cadence) * 2, " spm") : null],
       ["Ø Leistung", values["Ø Leistung"]], ["Belastung", values.Belastung], ["RPE", values.RPE],
       ["Bodenkontaktzeit", calendarRoundedNumber(actual.ground_contact_time_ms, " ms")],
-      ["Höhenmeter", values.Höhenmeter],
+      ["Anstieg", values.Anstieg],
     ];
   }
   if (sport === "Radfahren" || sport === "Rad indoor") {
@@ -1121,7 +1124,7 @@ function actualCalendarFacts(actual) {
       ["Trittfrequenz", calendarRoundedNumber(actual.avg_cadence, " rpm")],
       ["Belastung", values.Belastung], ["RPE", values.RPE],
       ["Ø Geschwindigkeit", calendarSpeedLabel(actual)],
-      ["Höhenmeter", values.Höhenmeter],
+      ["Anstieg", values.Anstieg],
     ];
   }
   return Object.entries(values);
@@ -1136,6 +1139,12 @@ function appendActualCalendarDetails(details, actual) {
 }
 
 // One compact row: sport icon, title, sport/time/status line, duration and distance.
+// What the duration of a row is, for its tooltip: a session's moving time (strength: its total time), else the plan (#3932 K-04).
+function durationTitle(actual) {
+  if (!actual) return "Geplante Dauer";
+  return calendarSportType(actual) === "strength" ? "Gesamtzeit" : "Bewegungszeit";
+}
+
 function plannedSessionHeader(entry, actual, title, appendStatus, slim = false) {
   const displayed = actual || entry;
   const sportLabel = activitySportLabel(calendarSportType(displayed));
@@ -1150,7 +1159,7 @@ function plannedSessionHeader(entry, actual, title, appendStatus, slim = false) 
   appendStatus(line);
   const shownDistance = actual ? actual.distance_m : entry.distance;
   const value = h("span", "planned-session-value",
-    h("strong", null, plannedEntryDurationLabel(actual, entry) || "–"),
+    h("strong", { title: durationTitle(actual) }, plannedEntryDurationLabel(actual, entry) || "–"),
     shownDistance > 0 ? h("span", null, distanceLabel(shownDistance)) : null);
   return h("span", "planned-session-header", icon, h("strong", "planned-session-title", title), line, value);
 }
@@ -1443,7 +1452,7 @@ function plannedUnitActions(entry, dateKey, todayKey) {
   toggle.addEventListener("click", () => {
     days.hidden = !days.hidden;
     toggle.setAttribute("aria-expanded", String(!days.hidden));
-    if (!days.hidden) void markBlockedDays(days, entry);
+    if (!days.hidden && entry.local_id) void markBlockedDays(days, `/api/planned-units/${encodeURIComponent(entry.local_id)}`);
   });
   const move = async (target) => {
     if (!target || target === dateKey || (plannedLastDateKey && target > plannedLastDateKey)) return;
@@ -1467,7 +1476,8 @@ function plannedUnitActions(entry, dateKey, todayKey) {
   const edit = h("button", { type: "button", className: "secondary-button" }, "Bearbeiten");
   edit.addEventListener("click", () => openUnitEditor({ kind: "unit", entry, onSaved: plannedUnitSaved }));
   const [archive, archiveNote] = plannedArchiveControls(entry, dateKey);
-  return [h("div", "planned-activity-actions", edit, toggle, coach, archive, remove), confirm, archiveNote, days, status];
+  // The day strip opens right under "Verschieben", not below "Löschen" (#3932 K-11).
+  return [h("div", "planned-activity-actions", edit, h("div", "planned-move-group", toggle, days), coach, archive, remove), confirm, archiveNote, status];
 }
 
 // "Bearbeiten" and "Archivieren" (#3950): the unit editor over the Coach's change batch; the card shows the receipt
@@ -1508,12 +1518,12 @@ function plannedArchiveControls(entry, dateKey) {
 
 // The strip asks the server which of its days a move would be refused for and marks them with what is in the
 // way, so no day is offered that fails after the tap (#4060). A failed read leaves the strip as it was.
-async function markBlockedDays(days, entry) {
+async function markBlockedDays(days, path) {
   const buttons = [...days.querySelectorAll("button[data-day]")];
-  if (!entry.local_id || !buttons.length) return;
+  if (!buttons.length) return;
   try {
     const dates = buttons.map((button) => button.dataset.day).join(",");
-    const { blocked } = await api(`/api/planned-units/${encodeURIComponent(entry.local_id)}/blocked-days?dates=${dates}`);
+    const { blocked } = await api(`${path}/blocked-days?dates=${dates}`);
     for (const button of buttons) {
       // Every read starts from the day's own label, so a reopened strip never stacks marks or keeps a freed day blocked.
       button.dataset.baseLabel ??= button.getAttribute("aria-label") || "";
@@ -1744,7 +1754,7 @@ async function appendPlannedZoneTime(details, activityId, ride) {
       part.style.setProperty("flex-grow", String(item.seconds));
       return part;
     }));
-  const legend = h("div", { className: "planned-zone-time-legend", "aria-hidden": "true" }, buckets.map((item) => h("span", null, `${item.name} ${minutes(item.seconds)}`)));
+  const legend = h("div", { className: "planned-zone-time-legend", "aria-hidden": "true" }, buckets.filter((item) => item.seconds >= 30).map((item) => h("span", null, `${item.name} ${minutes(item.seconds)}`)));
   box.append(bar, legend, h("p", "planned-zone-time-source", [kind, zone.source?.label].filter(Boolean).join(" · ")));
 }
 
@@ -3040,14 +3050,22 @@ function libraryActions(workout) {
   const name = workout.name || "Bibliotheks-Einheit";
   const toggle = h("button", { type: "button", className: "secondary-button", "aria-expanded": "false" }, "Einplanen");
   const status = h("p", { className: "planned-move-status", role: "status" });
-  const schedule = async (day) => {
+  // The training plans the unit may join (#4054) and the illness block's second tap (#4055).
+  const plans = (state.data?.plans || []).filter((plan) => plan.id && !["archived", "completed", "cancelled"].includes(plan.status));
+  const planSelect = plans.length ? h("select", null, h("option", { value: "" }, "Ohne Plan"), plans.map((plan) => h("option", { value: plan.id }, plan.name))) : null;
+  const planField = planSelect ? h("label", { className: "library-plan-field", hidden: true }, "Trainingsplan", planSelect) : null;
+  const again = h("button", { type: "button", className: "secondary-button", hidden: true }, "Trotzdem einplanen");
+  let blockedDay = "";
+  const schedule = async (day, accept = false) => {
     if (!day) return;
     const buttons = [...days.querySelectorAll("button, input")];
     buttons.forEach((item) => { item.disabled = true; });
     status.replaceChildren();
+    again.hidden = true;
     libraryOpenStrips.delete(id);
     try {
-      const result = await api(`/api/library/${encodeURIComponent(id)}/schedule`, { method: "POST", body: JSON.stringify({ date: day }) });
+      const body = { date: day, ...(planSelect?.value ? { plan_id: planSelect.value } : {}), ...(accept ? { accept_plan_findings: ["illness_hard"] } : {}) };
+      const result = await api(`/api/library/${encodeURIComponent(id)}/schedule`, { method: "POST", body: JSON.stringify(body) });
       const text = `Eingeplant: ${MOVE_DAY_FORMAT.format(dateFromKey(day))}`;
       libraryReceipts.clear();
       libraryReceipts.set(id, { text, change: result.change });
@@ -3057,13 +3075,16 @@ function libraryActions(workout) {
       buttons.forEach((item) => { item.disabled = false; });
       status.textContent = error.message;
       libraryOpenStrips.add(id);
+      if (error.reason === "illness_hard") { blockedDay = day; again.hidden = false; }
     }
   };
+  again.addEventListener("click", () => void schedule(blockedDay, true));
   const days = plannedDayStrip(timezoneDateKey(state.data?.profile?.timezone, new Date()), null, "Tag", (day) => void schedule(day));
   const showDays = (open) => {
     days.hidden = !open;
+    if (planField) planField.hidden = !open;
     toggle.setAttribute("aria-expanded", String(open));
-    if (open) libraryOpenStrips.add(id); else libraryOpenStrips.delete(id);
+    if (open) { libraryOpenStrips.add(id); void markBlockedDays(days, `/api/library/${encodeURIComponent(id)}`); } else libraryOpenStrips.delete(id);
   };
   toggle.addEventListener("click", () => showDays(days.hidden));
   if (libraryOpenStrips.has(id)) showDays(true);
@@ -3078,7 +3099,7 @@ function libraryActions(workout) {
   if (receipt) libraryReceiptLine(status, id, receipt);
   const edit = h("button", { type: "button", className: "secondary-button" }, "Bearbeiten");
   edit.addEventListener("click", () => openLibraryEditor(workout));
-  return [h("div", "planned-activity-actions", edit, toggle, remove), confirm, days, status];
+  return [h("div", "planned-activity-actions", edit, toggle, remove), confirm, days, planField, again, status];
 }
 
 // "+ Einheit" and "Bearbeiten" (#3951): the unit editor over the library use cases; the receipt offers "Rückgängig".

@@ -290,7 +290,7 @@ def build_nutrition(ctx: AppContext) -> NutritionServices:
         # Only Verlauf's 6 and 12 Monate need the longer read, each its own (#3711).
         if period not in LONG_PERIODS:
             with ctx.database().reader() as db:
-                return read_energy_view(db, energy_sources(), end, day)
+                return read_energy_view(db, energy_sources(), end, day, today=today)
         days = FIT_PERIODS[period]
 
         def periods() -> EnergyInputs | None:
@@ -298,7 +298,9 @@ def build_nutrition(ctx: AppContext) -> NutritionServices:
             return inputs if kept_end == end else yesterdays_periods(days)[1]
 
         with ctx.database().reader() as db:
-            return read_energy_view(db, energy_sources(), end, day, periods, days)
+            return read_energy_view(
+                db, energy_sources(), end, day, periods, days, today
+            )
 
     def intervals_sync_service() -> IntervalsNutritionSyncService:
         config = ctx.config()

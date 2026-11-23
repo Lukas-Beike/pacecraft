@@ -42,6 +42,7 @@ from backend.sync.garmin_service import (
     GarminTargetedRefreshService,
     shared_garmin_sync_lock,
 )
+from backend.sync.garmin_sleep_keys import SleepKeyRecorder
 from backend.sync.garmin_snapshot_writer import GarminSnapshotWriter
 from backend.sync.garmin_stream_backfill import (
     STREAM_BATCH_LIMIT,
@@ -229,6 +230,9 @@ def build_garmin(
             sync_chunk_days,
             all_sync_days,
             garmin_tokens=tokens,
+            sleep_keys=SleepKeyRecorder(
+                ctx.database(), ctx.key_values, local_today
+            ).observe,
         )
 
     def check_stored_login() -> None:

@@ -170,3 +170,28 @@ test("@responsive a weight typed right after the dialog opens is kept on a slow 
   await page.context().unroute("**/api/body/weight");
   await dialog.getByRole("button", { name: "Abbrechen" }).click();
 });
+
+// #4047: the weight row carries one line when the energy read names probable water for the shown weigh-in.
+test("@responsive the weight row names probable water under its source line, only for the shown weigh-in", async ({ page }) => {
+  // Playwright disposes a response whose page moved on; such a read has nobody to answer (#3449).
+  const GONE = /Response has been disposed|Target page, context or browser has been closed/;
+  const answer = async (route, change) => {
+    try {
+      const response = await route.fetch();
+      await route.fulfill({ response, json: change(await response.json()) });
+    } catch (error) {
+      if (!GONE.test(String(error))) throw error;
+    }
+  };
+  await page.route("**/api/performance", (route) => answer(route, (data) => { data.performance.history = bodyHistory(); return data; }));
+  let hint = { date: "2026-10-06", direction: "up", causes: ["salt", "carbs"] };
+  await page.route("**/api/body/energy*", (route) => answer(route, (read) => ({ ...read, water_hint: hint })));
+  await page.goto("/#nutrition/body");
+  const weight = page.locator("#bodyAnalysisCharts [data-body-overview] [data-metric='weight_kg'] th small");
+  await expect(weight).toHaveText(["Garmin Connect · 06.10.2026", "Wahrscheinlich Wasser: gestern viel Salz und Kohlenhydrate"]);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  // A hint of another weigh-in says nothing.
+  hint = { date: "2026-09-01", direction: "up", causes: ["salt"] };
+  await page.evaluate(() => { resetEnergy(); renderBodyAnalysis(state.data.performance.history.body); });
+  await expect(weight).toHaveText(["Garmin Connect · 06.10.2026"]);
+});

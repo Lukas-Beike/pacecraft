@@ -202,6 +202,7 @@ class PrMergeTests(unittest.TestCase):
         code, out, writes, _ = run(self, 7, "--wait", "1", gitar="in_progress")
         self.assertEqual((code, writes), (3, []))
         self.assertIn("Gitar has not reviewed feedc0de yet", out)
+        self.assertNotIn("repo-wide", out)
         # #4059: a dropped connection while waiting is read again; one that lasts
         # to the end of the wait exits 2 and names it.
         code, out, writes, _ = run(
@@ -213,6 +214,50 @@ class PrMergeTests(unittest.TestCase):
         code, out, writes, _ = run(self, 7, "--wait", "1", gitar=DOWN)
         self.assertEqual((code, writes), (2, []))
         self.assertRegex(out, f"error: gh .* failed: {DOWN}")
+
+    def test_a_repo_wide_gitar_silence_is_named_once(self):
+        # #4043: several heads without Gitar an hour after their CI is an outage.
+        now = pr_merge.datetime(2026, 11, 23, 7, 0, tzinfo=pr_merge.UTC)
+
+        def head(number, ci_done, gitar=None):
+            rollup = [{"__typename": "CheckRun", "name": "test", "status": "COMPLETED",
+                       "completedAt": ci_done}]  # fmt: skip
+            if gitar:
+                rollup.append({"__typename": "CheckRun", "name": "Gitar", **gitar})
+            return {"number": number, "statusCheckRollup": rollup}
+
+        reviewed = {"status": "COMPLETED", "completedAt": "2026-11-23T05:22:00Z"}
+        stuck = {"status": "IN_PROGRESS", "completedAt": None}
+        running = head(9, "2026-11-23T06:50:00Z")
+        running["statusCheckRollup"].append(
+            {"__typename": "CheckRun", "name": "browser", "status": "IN_PROGRESS"}
+        )
+        for prs, expect in (
+            # Two heads past CI by over an hour, one Gitar run stuck: named once.
+            ([head(1, "2026-11-23T05:30:00Z", stuck), head(2, "2026-11-23T05:40:00Z"),
+              head(3, "2026-11-23T05:00:00Z", reviewed)],
+             "Gitar silent repo-wide since 2026-11-23T05:22:00Z: #1, #2 wait over 60 min"),
+            # One silent head is that PR's matter, not an outage.
+            ([head(1, "2026-11-23T05:30:00Z"), head(3, "2026-11-23T05:00:00Z", reviewed)], ""),
+            # Bot PRs and drafts never get Gitar's check: no outage from them.
+            ([{**head(4, "2026-11-23T05:30:00Z"), "author": {"is_bot": True}},
+              {**head(5, "2026-11-23T05:30:00Z"), "isDraft": True},
+              head(1, "2026-11-23T05:30:00Z")], ""),
+            # Heads whose CI finished within the hour, or still runs, are not silent yet.
+            ([head(1, "2026-11-23T06:30:00Z"), head(2, "2026-11-23T06:40:00Z"), running], ""),
+        ):  # fmt: skip
+            with (
+                self.subTest(expect=expect),
+                mock.patch.object(pr_merge, "gh_json", return_value=prs),
+            ):
+                self.assertEqual(pr_merge.gitar_silence(now)[: len(expect)], expect)
+                self.assertEqual(bool(pr_merge.gitar_silence(now)), bool(expect))
+        # The refusal names it after its own line.
+        silent = "Gitar silent repo-wide since unknown: #1, #2"
+        with mock.patch.object(pr_merge, "gitar_silence", return_value=silent):
+            code, out, _, _ = run(self, 7, "--wait", "1", gitar="in_progress")
+        self.assertEqual(code, 3)
+        self.assertLess(out.index("has not reviewed"), out.index(silent))
 
     def test_the_other_gates_run_after_the_gitar_wait(self):
         # #3310 review: Gitar posts its threads when it finishes, and a freeze or

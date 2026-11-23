@@ -507,7 +507,18 @@ class CoachCommandToolBuilderTests(unittest.TestCase):
             commands.plan_push.return_value,
             commands.provider_refresh.return_value,
             nutrition_diary=ctx.nutrition.diary_service.return_value,
+            connection_checks=ctx.provider_connection_checks,
+            yazio_check=ANY,
+            full_resync=ctx.provider_resync.full_resync_service.return_value,
+            operation_id=ctx.ids,
         )
+        # #3960: the Yazio check reads the food database only when called.
+        yazio_check = constructors["CoachSyncToolService"].call_args.kwargs[
+            "yazio_check"
+        ]
+        database = ctx.nutrition.meal_library_service.return_value.food_database
+        database.check_yazio_connection.assert_not_called()
+        self.assertIs(database.check_yazio_connection.return_value, yazio_check())
         constructors["CoachAthleteRecordToolService"].assert_called_once_with(
             ctx.athlete.checkin.return_value,
             ctx.athlete.activity_feedback.return_value,
@@ -609,7 +620,14 @@ class CoachToolDispatchBuilderTests(unittest.TestCase):
             ctx.planning.training_plan,
             history.undo_service,
             ctx.coach_proposals.creation_service,
+            calendar_decisions=ANY,
         )
+        # #3959: the decision service is built only when the Coach classifies.
+        decisions = built["CoachPlanningActionToolService"].call_args.kwargs[
+            "calendar_decisions"
+        ]
+        ctx.external_calendar.decisions.assert_not_called()
+        self.assertIs(ctx.external_calendar.decisions.return_value, decisions())
         ctx.database.assert_not_called()
         planning.training_plan_artifact_service.assert_not_called()
 

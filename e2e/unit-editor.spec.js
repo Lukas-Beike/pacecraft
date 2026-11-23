@@ -1,5 +1,8 @@
 const { test, expect } = require("@playwright/test");
 
+// The Einplanen test fails an /api request, so the service worker is blocked (#3842).
+test.use({ serviceWorkers: "block" });
+
 // #3951 and #3950: one editor makes a library entry and a planned unit without the Coach; each write shows a
 // receipt with "Rückgängig", a deleted entry can be restored, and nothing goes to a provider.
 async function openApp(page, request, route) {
@@ -152,4 +155,37 @@ test("@responsive the Bibliothek creates, archives, restores and deletes a train
   await lead.getByRole("button", { name: "Rückgängig" }).click();
   await expect(card()).toHaveCount(1);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBeTruthy();
+});
+
+// #4054, #4055: Einplanen offers the active plans and, when the illness check blocks, "Trotzdem einplanen" resends with the accepted code.
+test("@responsive Einplanen sends the chosen plan and offers Trotzdem einplanen on an illness block", async ({ page, request }) => {
+  test.setTimeout(180_000);
+  const posts = [];
+  await page.route("**/api/library/*/schedule", async (route) => {
+    posts.push(route.request().postDataJSON());
+    if (posts.length === 1) await route.fulfill({ status: 409, json: { error: "Krankheit gemeldet: In den nächsten Tagen keine harte oder lange Einheit.", reason: "illness_hard" } });
+    else await route.fulfill({ json: { status: "local", planned: {}, change: { id: "c1", after_hash: "h1" } } });
+  });
+  await openApp(page, request, "/#plan/library");
+  await page.evaluate(() => {
+    state.data.plans = [{ id: "11111111-1111-1111-1111-111111111111", name: "E2E Plan", status: "planned" }, { id: "22222222-2222-2222-2222-222222222222", name: "E2E Alt", status: "archived" }];
+    globalThis.load = async () => {};
+    renderLibrary(state.data.library);
+  });
+  await page.locator("#library details.library-sport").first().evaluate((section) => { section.open = true; });
+  const card = page.locator("#library .library-card", { has: page.getByRole("button", { name: "Einplanen" }) }).first();
+  await card.getByRole("button", { name: "Einplanen" }).click();
+  const field = card.getByLabel("Trainingsplan");
+  await expect(field.locator("option")).toHaveText(["Ohne Plan", "E2E Plan"]);
+  await field.selectOption({ label: "E2E Plan" });
+  const day = card.locator(".planned-move-days button[data-day]").nth(1);
+  const dayKey = await day.getAttribute("data-day");
+  await day.click();
+  expect(posts[0]).toEqual({ date: dayKey, plan_id: "11111111-1111-1111-1111-111111111111" });
+  await expect(card.locator(":scope > .planned-move-status")).toContainText("Krankheit gemeldet");
+  await card.getByRole("button", { name: "Trotzdem einplanen" }).click();
+  await expect.poll(() => posts.length).toBe(2);
+  expect(posts[1]).toEqual({ date: dayKey, plan_id: "11111111-1111-1111-1111-111111111111", accept_plan_findings: ["illness_hard"] });
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBeTruthy();
+  await page.unrouteAll({ behavior: "ignoreErrors" });
 });

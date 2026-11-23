@@ -186,6 +186,7 @@ def build_planning_workflows(ctx: AppContext) -> PlanningWorkflowServices:
             ctx.planning.planned_unit(),
             calendar_conflict_service(),
             partial(_publish_changed, "coach"),
+            ctx.planning.training_plan(),
         )
 
     def local_plan_creation_service() -> LocalTrainingPlanCreationService:

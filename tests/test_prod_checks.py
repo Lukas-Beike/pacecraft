@@ -467,6 +467,30 @@ class ProdChecksTests(unittest.TestCase):
                  "--section", "fit_inventory", "--expect-version", "2.1.2"]
             )  # fmt: skip
 
+    def test_the_sleep_key_section_prints_its_paths_and_dates_only(self):
+        # #4017: the key names are the point; an unknown field is never printed.
+        report = {
+            "garmin_sleep_temperature_keys": {
+                "collectors": {
+                    "get_sleep_data": {"dailySleepDTO.someSkinTempKey": 3},
+                    "stored": {"dailySleepDTO.someSkinTempKey": 2},
+                },
+                "date_range": {"from": "2026-11-01", "to": "2026-11-20"},
+                "none_found": False,
+                "planted": "value",
+            }
+        }
+        lines = [text for _, text in prod_diagnostics.section_lines(
+            report, "garmin_sleep_temperature_keys"
+        )]  # fmt: skip
+        joined = "\n".join(lines)
+        self.assertIn("collectors.get_sleep_data.dailySleepDTO.someSkinTempKey", joined)
+        self.assertIn("collectors.stored.dailySleepDTO.someSkinTempKey", joined)
+        self.assertIn("none_found", joined)
+        # Dates and unknown fields are never printed.
+        self.assertNotIn("date_range", joined)
+        self.assertNotIn("planted", joined)
+
     def test_push_notifications_print_counts_only(self):
         # #3914: device and delivery counts are readable on prod; nothing else is.
         report = {
@@ -1215,6 +1239,9 @@ NOT_PRINTED = {
         "python": "free text: the interpreter version",
         "platform": "free text: the host platform",
         "slowest_routes": "a list of route patterns, printed by --section route_timings (#3630)",
+    },
+    "garmin_sleep_temperature_keys": {
+        "date_range": "athlete dates: never printed; the night counts carry the evidence (#4017)",
     },
 }
 

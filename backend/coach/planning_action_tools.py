@@ -29,7 +29,10 @@ class CoachPlanningActionToolService:
         training_plan_service: Callable[[], TrainingPlanService],
         history_undo_service: Callable[[], HistoryUndoService],
         proposal_creation_service: Callable[[], CoachProposalCreationService],
+        calendar_decisions: Callable[[], Any] | None = None,
     ) -> None:
+        # How an external calendar event affects training, as "Einordnen" (#3959).
+        self._calendar_decisions = calendar_decisions
         self._adaptive_preview_service = adaptive_preview_service
         self._adaptive_apply_service = adaptive_apply_service
         self._training_plan_service = training_plan_service
@@ -44,6 +47,8 @@ class CoachPlanningActionToolService:
         client_turn_id: str,
         session_csrf_hash: str,
     ) -> dict[str, Any] | None:
+        if name == "classify_calendar_event":
+            return self._classify_calendar_event(arguments, intent)
         if name == "preview_adaptive_replan":
             if name not in authorized_operations(intent):
                 raise AppError(
@@ -82,6 +87,25 @@ class CoachPlanningActionToolService:
             return self._undo_training_change(arguments, intent, session_csrf_hash)
 
         return None
+
+    def _classify_calendar_event(
+        self, arguments: dict[str, Any], intent: dict[str, Any]
+    ) -> dict[str, Any]:
+        """Decide the event the Coach names by start and name (#3959); local only."""
+        if "classify_calendar_event" not in authorized_operations(intent):
+            raise AppError(
+                403, STRUCTURED_AUTHORIZATION_ERROR, reason="intent_scope_denied"
+            )
+        require_coach_scope(intent, "local_calendar")
+        if self._calendar_decisions is None:
+            raise AppError(503, "Kalendereinordnung ist nicht verfügbar.")
+        decided = self._calendar_decisions().decide_shown(
+            arguments.get("name"),
+            arguments.get("start_local"),
+            arguments.get("impact"),
+            series=arguments.get("series") is True,
+        )
+        return {"ok": True, "stored_locally": True, **decided}
 
     def _undo_training_change(
         self,

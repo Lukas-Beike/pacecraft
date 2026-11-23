@@ -1559,11 +1559,22 @@ function bodyFoldFat(read, entered) {
 function bodyOverviewReading(metric, body, preferred) {
   if (metric === "body_fat_pct") return bodyFoldFat(skinfoldRead, bodyOverviewLatest(metric, body, preferred, true)) || { text: "—" };
   const latest = bodyOverviewLatest(metric, body, preferred);
-  return latest ? { value: latest.value, note: `${latest.source} · ${dateLabel(latest.observed_at || latest.date)}` } : { text: "—" };
+  return latest ? { value: latest.value, date: latest.date, note: `${latest.source} · ${dateLabel(latest.observed_at || latest.date)}` } : { text: "—" };
+}
+
+// A marked weigh-in step the server reads as probable water: a hint, no figure, only for the shown weigh-in (#4047).
+const WATER_HINT_CAUSES = { salt: "Salz", carbs: "Kohlenhydrate" };
+
+function waterHintText(hint, reading) {
+  if (!hint || hint.date !== reading.date) return null;
+  if (hint.direction === "down") return "Wahrscheinlich Wasser: gestern wenig Kohlenhydrate nach langer Einheit";
+  const named = hint.causes.filter((cause) => WATER_HINT_CAUSES[cause]);
+  if (named.length === 1) return `Wahrscheinlich Wasser: gestern ${named[0] === "carbs" ? "viele" : "viel"} ${WATER_HINT_CAUSES[named[0]]}`;
+  return named.length ? "Wahrscheinlich Wasser: gestern viel Salz und Kohlenhydrate" : null;
 }
 
 function bodyOverviewRow(metric, title, unit, reading, edit) {
-  return h("tr", { dataset: { metric } }, h("th", { scope: "row" }, title, reading.note && h("small", null, reading.note)),
+  return h("tr", { dataset: { metric } }, h("th", { scope: "row" }, title, reading.note && h("small", null, reading.note), reading.hint && h("small", { className: "water-hint" }, reading.hint)),
     h("td", null, reading.value == null ? reading.text : analysisValue(reading.value, unit)), h("td", null, edit));
 }
 
@@ -2669,6 +2680,9 @@ function renderBodyAnalysis(body) {
   ];
   const preferred = body?.preferred_providers || {};
   const weight = bodyOverviewReading("weight_kg", body, preferred);
+  // The weight's water hint comes with the energy read; Körper starts it when no view has (#4047).
+  if (!energyRead) loadEnergy("");
+  weight.hint = waterHintText(energyRead?.water_hint, weight);
   const fat = bodyOverviewReading("body_fat_pct", body, preferred);
   const fatRow = bodyOverviewRow("body_fat_pct", "Körperfett", "%", fat, bodyEditButton("Körperfett eintragen", openBodyFatDialog));
   fatRow.addEventListener("click", (event) => { if (!event.target.closest("button")) void openBodyFatDialog(); });

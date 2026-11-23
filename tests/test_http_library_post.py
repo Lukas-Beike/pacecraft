@@ -9,11 +9,16 @@ import unittest
 import uuid
 from datetime import date
 from types import SimpleNamespace
+from typing import cast
 from unittest.mock import Mock
 
 from support import dispatch_route, temp_database
 
-from backend.db.repositories import PlanningStateRepository
+from backend.db.repositories import (
+    KeyValueRepository,
+    PlanningStateRepository,
+    TrainingPlanRepository,
+)
 from backend.db.schema import initialize_schema
 from backend.errors import INVALID_PLANNING_DATE_ERROR, AppError
 from backend.history.service import ChangeHistoryService
@@ -22,8 +27,11 @@ from backend.http_api.library_post import LibraryPostRoutes
 from backend.planning.calendar_service import CalendarConflictService
 from backend.planning.library_plan_service import WorkoutLibraryPlanService
 from backend.planning.library_service import WorkoutLibraryService
+from backend.planning.plan_guard_service import PlanCheckError, PlanGuardService
+from backend.planning.planned_unit_edit_service import PlannedUnitEditService
 from backend.planning.planned_unit_service import PlannedUnitService
 from backend.planning.revision import PlanningRevisionService
+from backend.planning.training_plans import TrainingPlanService
 
 NOW = "2026-09-20T08:00:00+00:00"
 TEMPLATE = {
@@ -33,6 +41,22 @@ TEMPLATE = {
     "duration_minutes": 30,
     "target": "AUTO",
 }
+
+
+class _Guard:
+    """The plan guard with a scripted verdict; the Coach path's rules are the real ones."""
+
+    def __init__(self) -> None:
+        self.refuse: list[dict] | None = None
+
+    def findings(self) -> list:
+        return []
+
+    def verify(self, before, accepted, *, waived=(), inherited=()):
+        blocking = {item["code"] for item in self.refuse or []}
+        if blocking and not blocking <= set(accepted):
+            raise PlanCheckError(self.refuse)
+        return []
 
 
 class LibraryPostRoutesTests(unittest.TestCase):
@@ -65,10 +89,26 @@ class LibraryPostRoutesTests(unittest.TestCase):
             lambda: str(uuid.UUID(int=100 + next(ids))),
             Mock(),
         )
-        plan = WorkoutLibraryPlanService(
-            self.manager, self.planned, self.conflicts, Mock()
+        self.plans = TrainingPlanService(
+            self.manager,
+            TrainingPlanRepository(),
+            KeyValueRepository(lambda: NOW),
+            revision,
+            Mock(),
+            lambda: NOW,
         )
-        self.routes = LibraryPostRoutes(lambda: self.library, lambda: plan)
+        plan = WorkoutLibraryPlanService(
+            self.manager, self.planned, self.conflicts, Mock(), self.plans
+        )
+        self.guard = _Guard()
+        edit = PlannedUnitEditService(
+            self.manager,
+            lambda: None,
+            lambda: self.library,
+            lambda: cast(PlanGuardService, self.guard),
+            lambda: plan,
+        )
+        self.routes = LibraryPostRoutes(lambda: self.library, lambda: edit)
         self.undo = HistoryUndoService(
             self.manager,
             ChangeHistoryService(self.manager, None),
@@ -132,6 +172,80 @@ class LibraryPostRoutesTests(unittest.TestCase):
                 if not unit.get("local_deleted")
             ],
         )
+
+    def test_schedule_runs_the_illness_check_and_a_second_tap_accepts_it(self) -> None:
+        # #4055: the UI route ran no plan check, the Coach's apply_workout_library_plan does.
+        self.guard.refuse = [{"code": "illness_hard", "message": "m"}]
+
+        with self.assertRaises(AppError) as raised:
+            self.post("schedule", {"date": "2026-09-22"})
+
+        self.assertEqual(
+            (409, "illness_hard"), (raised.exception.status, raised.exception.reason)
+        )
+        self.assertEqual([], self.rows("planned_units"))
+
+        status, body = self.post(
+            "schedule", {"date": "2026-09-22", "accept_plan_findings": ["illness_hard"]}
+        )
+
+        self.assertEqual((200, "local"), (status, body["status"]))
+        self.assertEqual(1, len(self.rows("planned_units")))
+
+    def test_schedule_into_a_plan_attaches_the_unit_and_follows_its_period(
+        self,
+    ) -> None:
+        # #4054
+        plan_id = self.plans.create(
+            {"name": "Aufbau", "start_date": "2026-10-01", "end_date": "2026-10-31"}
+        )["plan_id"]
+
+        status, body = self.post("schedule", {"date": "2026-09-22", "plan_id": plan_id})
+
+        unit = self.rows("planned_units")[0]
+        self.assertEqual(
+            (200, plan_id, "Aufbau"), (status, unit["plan_id"], unit["plan_name"])
+        )
+        plan = self.plans.list()[0]
+        self.assertEqual(
+            ("2026-09-22", "2026-09-22"), (plan["start_date"], plan["end_date"])
+        )
+        self.assertEqual("planned_unit", body["change"]["entity_type"])
+
+    def test_schedule_accepts_a_non_canonical_plan_id_and_moves_the_period(
+        self,
+    ) -> None:
+        plan_id = self.plans.create(
+            {"name": "Aufbau", "start_date": "2026-10-01", "end_date": "2026-10-31"}
+        )["plan_id"]
+
+        status, _ = self.post(
+            "schedule", {"date": "2026-09-22", "plan_id": plan_id.upper()}
+        )
+
+        plan = self.plans.list()[0]
+        self.assertEqual(
+            (200, plan_id, "2026-09-22"),
+            (status, self.rows("planned_units")[0]["plan_id"], plan["start_date"]),
+        )
+
+    def test_schedule_refuses_an_archived_or_unknown_plan(self) -> None:
+        plan_id = self.plans.create(
+            {"name": "Alt", "start_date": "2026-10-01", "end_date": "2026-10-31"}
+        )["plan_id"]
+        self.plans.update(plan_id, {"status": "archived"})
+
+        for plan, reason in (
+            (plan_id, "plan_not_available"),
+            ("11111111-1111-1111-1111-111111111111", None),
+        ):
+            with self.assertRaises(AppError) as raised:
+                self.post("schedule", {"date": "2026-09-22", "plan_id": plan})
+            self.assertEqual(
+                (409 if reason else 404, reason),
+                (raised.exception.status, raised.exception.reason),
+            )
+        self.assertEqual([], self.rows("planned_units"))
 
     def test_schedule_refuses_another_body_and_a_bad_date(self) -> None:
         for payload, message in (

@@ -86,6 +86,11 @@ _DENIAL_GUIDANCE = {
         "This turn already made the maximum number of changes. Tell the athlete "
         "what was saved so far and offer to continue in a new message."
     ),
+    "full_resync_not_requested": (
+        "A full resync runs only when the athlete's own message names Garmin or "
+        "Wahoo and asks for a full resync. Run a normal refresh instead, or ask "
+        "whether the athlete wants the full resync."
+    ),
 }
 # A remote denial names only the provider the call targeted (decision.domain).
 _REMOTE_GUIDANCE = {

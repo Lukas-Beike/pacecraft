@@ -182,6 +182,7 @@ from backend.sync.garmin_service import (
     GarminMorningRemoteReader,
     shared_garmin_sync_lock,
 )
+from backend.sync.garmin_sleep_keys import SleepKeyRecorder
 from backend.sync.garmin_snapshot_writer import GarminSnapshotWriter
 from backend.sync.garmin_wiring import GarminServices, build_garmin
 from backend.sync.gates import (
@@ -238,7 +239,7 @@ DATA_DIR = Path(os.environ.get("DATA_DIR", ROOT / "data"))
 DB_PATH = DATA_DIR / "intervals-coach.db"
 LOG_PATH = DATA_DIR / "intervals-coach.log"
 APP_NAME = "Pacecraft · AI Coach"
-APP_VERSION = "2.2.20"
+APP_VERSION = "2.2.21"
 MAX_BODY_BYTES = 1_000_000
 COACH_CONVERSATION_GATE = CoachConversationGate()
 
@@ -345,6 +346,11 @@ def morning_body_battery_service() -> MorningBodyBatteryService:
                 DIAGNOSTIC_CAPTURE,
                 LOGGER,
                 garmin_tokens=GARMIN_TOKENS,
+                sleep_keys=SleepKeyRecorder(
+                    manager,
+                    KEY_VALUE_REPOSITORY,
+                    lambda: ATHLETE_CLOCK.now().date(),
+                ).observe,
             ),
             observability.safe_diagnostic_error,
         ),

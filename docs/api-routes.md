@@ -96,6 +96,7 @@ handler's docstring. Regenerate it with
 | GET | `/api/library` | Session | no | Workout library page. |
 | POST | `/api/library` | Session + CSRF | after access | Save a new local library entry, the Coach's template `create`, without a remote write. |
 | POST | `/api/library/{id}/archive` | Session + CSRF | after access | Take a library entry out of the library after the athlete confirmed it. |
+| GET | `/api/library/{id}/blocked-days` | Session | no | Name the days a library entry could not be planned on. A read; nothing is written. |
 | POST | `/api/library/{id}/delete` | Session + CSRF | after access | Delete a never-synced library entry for good after the athlete confirmed it. |
 | POST | `/api/library/{id}/restore` | Session + CSRF | after access | Bring an archived library entry back into the library. |
 | POST | `/api/library/{id}/schedule` | Session + CSRF | after access | Plan a library entry on one day as a local unit, without a remote write. |
@@ -1274,6 +1275,17 @@ without `confirmed: true`; 400 "Die Anfrage muss ein Objekt sein." or
 404 "Bibliothekseinheit nicht gefunden."; 409 "Geplante lokale Einheiten
 werden im Kalender bearbeitet." for a planned unit.
 
+### `GET /api/library/{id}/blocked-days`
+
+Request: path `{id}`, the library entry id; query `dates`, up to 31 days as
+`YYYY-MM-DD` separated by commas.
+
+Response: 200 `{"blocked": {"YYYY-MM-DD": [name, ...]}}`: per day the names of
+the calendar entries in the way; free days are left out.
+
+Errors: 400 for an id that is no UUID; 404 "Bibliothekseinheit nicht
+gefunden." for an unknown entry.
+
 ### `POST /api/library/{id}/delete`
 
 Request: path `{id}`; JSON body `{"confirmed": true}` and no other field.
@@ -1298,20 +1310,26 @@ gefunden."; 409 for a planned unit.
 
 ### `POST /api/library/{id}/schedule`
 
-Request: path `{id}`, the library entry's local id; JSON body
-`{"date": "YYYY-MM-DD"}` and no other field. It runs the batch behind the
-Coach's `apply_workout_library_plan`; the next explicit sync exports the
-new unit.
+Request: path `{id}`, the library entry's local id; JSON body `{"date":
+"YYYY-MM-DD"}`, optionally `"plan_id"` (an active training plan the unit
+joins; its period follows the unit) and `"accept_plan_findings"` (the codes
+of blocking plan checks the athlete accepts, `illness_hard`), and no other
+field. It runs the Coach's `apply_workout_library_plan` under the same plan
+checks; the next explicit sync exports the new unit.
 
-Response: 200 `{"status", "planned", "change"}`: `status` is `local`, or
-`already_planned` when the entry already sits on that day (then without
-`change`); `planned` is the planned unit; `change` is the undo reference.
+Response: 200 `{"status", "planned", "plan_check_notes", "change"}`:
+`status` is `local`, or `already_planned` when the entry already sits on that
+day (then without `change`); `planned` is the planned unit; `change` is the
+undo reference.
 
 Errors: 400 "Die Anfrage muss ein Objekt sein." or "Unbekannte Felder: …"
 for another body; 400 for an id that is no UUID or a date that is no
-JJJJ-MM-TT date; 404 "Bibliothekseinheit nicht gefunden."; 409 "Planung
-wegen bestehender Kalendereinheiten nicht möglich: …" for a day the
-calendar rules out.
+JJJJ-MM-TT date; 404 "Bibliothekseinheit nicht gefunden." or
+"Trainingsplan nicht gefunden."; 409 "Planung wegen bestehender
+Kalendereinheiten nicht möglich: …" for a day the calendar rules out; 409
+`plan_not_available` for an archived plan; 409 `illness_hard` for a hard or
+long unit within days of a reported illness (resend with
+`accept_plan_findings`).
 
 ### `POST /api/library/{id}/update`
 

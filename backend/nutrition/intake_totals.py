@@ -1,5 +1,6 @@
 """Display-only nutrient totals derived from frozen consumption snapshots."""
 
+from collections.abc import Mapping, Sequence
 from typing import Any
 
 INTAKE_FIELDS = ("sugar_g", "salt_g")
@@ -35,6 +36,23 @@ def _snapshot_values(basis: dict[str, Any], key: str) -> list[float | None]:
             else float(value) * float(basis["amount"]) / float(product["basis_amount"])
         ]
     return [None]
+
+
+def salt_totals(entries: Sequence[Mapping[str, Any]]) -> tuple[float | None, float]:
+    """The known salt of a day's entries and the share of their values that report it.
+
+    The share is 0.0 without entries; a day whose salt is mostly unknown says
+    nothing about salt (#4047).
+    """
+    values = [
+        value
+        for entry in entries
+        for value in _snapshot_values(entry.get("nutrition_basis", {}), "salt_g")
+    ]
+    known = [value for value in values if value is not None]
+    return (round(sum(known), 1) if known else None), (
+        len(known) / len(values) if values else 0.0
+    )
 
 
 def add_intake_totals(summary: dict[str, Any]) -> None:

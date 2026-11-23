@@ -16,7 +16,7 @@ read. A new key needs no entry: it appears here when its write is added.
   `profile` is only set when absent.
 
 <!-- BEGIN GENERATED KEYS -->
-106 keys and 25 key patterns; `<value>` stands for a value the code computes.
+107 keys and 25 key patterns; `<value>` stands for a value the code computes.
 
 | Key | Written by | Deleted by | Export | Reset at start | Purge |
 | --- | --- | --- | --- | --- | --- |
@@ -74,6 +74,7 @@ read. A new key needs no entry: it appears here when its write is added.
 | `garmin_run_sent:<value>` | backend/sync/garmin_strength_push.py:GarminStrengthPushService._save_link | - | yes | - | - |
 | `garmin_sdk_skipped` | backend/sync/garmin.py:GarminSyncStateService.clear_sdk_skipped<br>backend/sync/garmin.py:GarminSyncStateService.record_sdk_skipped | backend/sync/garmin_login.py:GarminTokenStore.store | yes | - | - |
 | `garmin_sdk_threshold_failures` | backend/sync/garmin.py:GarminSyncStateService._track_threshold_reads | - | yes | - | - |
+| `garmin_sleep_temperature_keys` | backend/sync/garmin_sleep_keys.py:SleepKeyRecorder.observe | - | yes | - | - |
 | `garmin_state` | backend/db/garmin_store.py:write_state | - | no | - | - |
 | `garmin_sync_status` | backend/sync/garmin_service.py:GarminSyncLifecycleState.set_sync_status | - | no | - | - |
 | `garmin_tokenstore_state` | backend/privacy.py:PrivacyDeleteService.delete<br>backend/sync/garmin_login.py:GarminTokenStore.clear | backend/sync/garmin_login.py:GarminTokenStore.store<br>backend/sync/garmin_login.py:GarminTokenStore.write_back | no | - | rewritten |

@@ -561,6 +561,8 @@ _COACH_CALENDAR_EVENT_KEYS = (
     "no_training",
     "no_intensity",
     "short_only",
+    # "open" until the athlete classified it (#3959).
+    "impact",
 )
 
 

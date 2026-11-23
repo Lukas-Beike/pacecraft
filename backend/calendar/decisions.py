@@ -12,6 +12,7 @@ from backend.errors import AppError
 IMPACTS = frozenset({"block", "short", "easy", "none"})
 _MAX_UID_LENGTH = 500
 _MAX_START_LENGTH = 40
+_INVALID_EVENT = "Ungültiger Termin."
 
 
 class ExternalCalendarDecisionService:
@@ -31,6 +32,31 @@ class ExternalCalendarDecisionService:
         self._utc_now = utc_now
         self._today = today
 
+    def decide_shown(
+        self, name: Any, start_local: Any, impact: Any, *, series: bool
+    ) -> dict[str, Any]:
+        """Decide the event the Coach names as it reads it (#3959).
+
+        The Coach sees no UID, so the event is the one stored with exactly this
+        start and name (the name as the Coach reads it, cut to 200 characters);
+        none or several of them is refused. The answer names no UID either.
+        """
+        if not isinstance(name, str) or not isinstance(start_local, str):
+            raise AppError(400, _INVALID_EVENT)
+        with self._database_manager.reader() as db:
+            rows = db.execute(
+                "SELECT DISTINCT uid, name FROM external_calendar_events "
+                "WHERE start_local = ?",
+                (start_local[:_MAX_START_LENGTH],),
+            ).fetchall()
+        # The name as the Coach reads it: cut to 200 characters.
+        shown = {(row["uid"], str(row["name"])[:200]) for row in rows}
+        uids = sorted({uid for uid, shown_name in shown if shown_name == name})
+        if len(uids) != 1:
+            raise AppError(404, "Termin nicht gefunden.")
+        result = self.decide(uids[0], None if series else start_local, impact)
+        return {key: value for key, value in result.items() if key != "uid"}
+
     def decide(self, uid: Any, occurrence_start: Any, impact: Any) -> dict[str, Any]:
         """Set the impact of one occurrence, or of every occurrence when no start is given.
 
@@ -40,9 +66,9 @@ class ExternalCalendarDecisionService:
         uid = uid if isinstance(uid, str) else ""
         start = "" if occurrence_start is None else occurrence_start
         if not 0 < len(uid) <= _MAX_UID_LENGTH or not isinstance(start, str):
-            raise AppError(400, "Ungültiger Termin.")
+            raise AppError(400, _INVALID_EVENT)
         if len(start) > _MAX_START_LENGTH:
-            raise AppError(400, "Ungültiger Termin.")
+            raise AppError(400, _INVALID_EVENT)
         if impact is not None and (
             not isinstance(impact, str) or impact not in IMPACTS
         ):
