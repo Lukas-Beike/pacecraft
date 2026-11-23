@@ -3307,7 +3307,7 @@ function equipmentRuleTable(key, rules, items) {
     body.append(h("tr", { dataset: { ruleKind: kind } }, h("th", { scope: "row" }, label), h("td", null, select)));
   }
   return h("section", { className: "equipment-rules", "aria-label": "Standard-Ausrüstung" },
-    h("h4", null, "Standardausrüstung"), h("table", "race-predictions-table", body), status);
+    h("h4", null, "Standard-Ausrüstung"), h("table", "race-predictions-table", body), status);
 }
 
 async function saveEquipmentRule(status, kind, select, rule) {
