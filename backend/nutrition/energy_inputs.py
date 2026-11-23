@@ -68,6 +68,7 @@ from backend.nutrition.energy_balance import (
     twelve_week_base,
     unexplained_spreads,
 )
+from backend.nutrition.intake_totals import salt_totals
 from backend.performance import activity_energy as energy
 from backend.performance.daily_health import complete_garmin_day
 from backend.performance.session_rpe_load import (
@@ -121,6 +122,10 @@ class EnergySources:
     planned: Callable[[Any, date], Sequence[Mapping[str, Any]]] = field(
         default=lambda _db, _day: ()
     )
+
+
+# A session this long makes a low carbohydrate day show on the scale (#4047).
+LONG_SESSION_S: Final = 90 * 60
 
 
 @dataclass(frozen=True)
@@ -1261,10 +1266,14 @@ def _day_inputs(
     error = energy.activity_error_kcal(
         [(c.method, c.kcal) for c in today if c.kcal is not None], neat or 0.0
     )
+    salt_g, salt_known_share = salt_totals(entries)
     return DayInputs(
         intake_kcal=sum(_number(e.get("kcal")) or 0.0 for e in entries)
         if entries
         else None,
+        salt_g=salt_g,
+        salt_known_share=salt_known_share,
+        long_session=any((c.duration_s or 0.0) >= LONG_SESSION_S for c in today),
         protein_g=sum(_number(e.get("protein_g")) or 0.0 for e in entries),
         carbohydrate_g=sum(_number(e.get("carbs_g")) or 0.0 for e in entries),
         fat_g=sum(_number(e.get("fat_g")) or 0.0 for e in entries),

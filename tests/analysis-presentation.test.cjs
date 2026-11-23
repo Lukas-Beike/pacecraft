@@ -215,7 +215,7 @@ test("a filled analysis chart is kept and is not listed as missing", () => {
   assert.deepEqual(Array.from(missing), ["Körperfett"], "only the empty chart is listed");
 });
 
-const BODY_OVERVIEW_FUNCTIONS = ["bodySourceShown", "bodyOverviewLatest", "bodyFoldFat", "bodyOverviewReading", "bodyOverviewRow", "energyGoalText", "energyGoalRow", "renderBodyAnalysis"];
+const BODY_OVERVIEW_FUNCTIONS = ["bodySourceShown", "bodyOverviewLatest", "bodyFoldFat", "bodyOverviewReading", "WATER_HINT_CAUSES", "waterHintText", "bodyOverviewRow", "energyGoalText", "energyGoalRow", "renderBodyAnalysis"];
 
 function bodyOverviewHarness(root, reads, profile = { body_fat_pct: "18.5" }) {
   return extractFunctions("analysis.js", BODY_OVERVIEW_FUNCTIONS, {
@@ -225,9 +225,10 @@ function bodyOverviewHarness(root, reads, profile = { body_fat_pct: "18.5" }) {
     analysisValidPoint: (p) => p.value != null, dateLabel: (v) => v, analysisValue: (v, unit) => `${v} ${unit}`,
     analysisPeriodControls: () => new FakeElement("nav"), bodyHistoryPeriod: "91d", bodyMetricChart: () => null,
     analysisPeriod: (key) => ({ key }), trendHistoryFor: () => null, BASE_PERIOD_DAYS: 91,
-    energyBodyCards: () => [], loadSkinfolds: () => {}, openBodyFatDialog: () => {}, openWeightDialog: () => {},
+    energyBodyCards: () => [], loadEnergy: (day) => (reads.loaded ||= []).push(day), loadSkinfolds: () => {}, openBodyFatDialog: () => {}, openWeightDialog: () => {},
     bodyEditButton: (label) => Object.assign(new FakeElement("button"), { label }),
     get skinfoldRead() { return reads.skinfolds; },
+    get energyRead() { return reads.energy ?? null; },
   });
 }
 
@@ -248,6 +249,26 @@ test("body overview: the newest own body fat with its source, weight with its so
   assert.equal(textOf(shown[1].children[1]), "15 %");
   assert.equal(shown[0].children[2].children[0].label, "Gewicht eintragen");
   assert.equal(shown[1].children[2].children[0].label, "Körperfett eintragen");
+  // #4047: the server's water hint stands under the weight's source line, only for the shown weigh-in and with no figure.
+  const hintText = () => textOf(rows([["2026-11-15", 15]])[0].children[0]);
+  reads.energy = { water_hint: { date: "2026-11-16", direction: "up", causes: ["salt", "carbs"] } };
+  assert.equal(hintText(), "GewichtGarmin Connect · 2026-11-16Wahrscheinlich Wasser: gestern viel Salz und Kohlenhydrate");
+  reads.energy = { water_hint: { date: "2026-11-16", direction: "up", causes: ["carbs"] } };
+  assert.match(hintText(), /Wahrscheinlich Wasser: gestern viele Kohlenhydrate$/);
+  reads.energy = { water_hint: { date: "2026-11-16", direction: "down", causes: ["carbs_after_session"] } };
+  assert.match(hintText(), /Wahrscheinlich Wasser: gestern wenig Kohlenhydrate nach langer Einheit$/);
+  reads.energy = { water_hint: { date: "2026-11-10", direction: "up", causes: ["salt"] } };
+  assert.equal(hintText(), "GewichtGarmin Connect · 2026-11-16", "a hint of another weigh-in says nothing");
+  // Without an energy read the body view starts it; with one it does not.
+  reads.energy = null;
+  reads.loaded = [];
+  rows([["2026-11-15", 15]]);
+  assert.deepEqual([...reads.loaded], [""]);
+  reads.energy = { water_hint: null };
+  reads.loaded = [];
+  rows([["2026-11-15", 15]]);
+  assert.deepEqual([...reads.loaded], []);
+  reads.energy = null;
   // The fat-free mass is derived from the two values and has no pencil.
   assert.equal(textOf(shown[2].children[0]), "Fettfreie Masse");
   assert.equal(textOf(shown[2].children[1]), "68 kg");
@@ -1117,7 +1138,7 @@ test("one merged body series names each day's source in the overview and the tab
   } } } });
   const preferred = { weight_kg: "garmin", body_fat_pct: "garmin" };
   const entered = merged([{ date: "2026-11-16", value: 80, source_label: "Garmin" }, { date: "2026-11-17", value: 79.5, source_label: "eingetragen" }]);
-  assert.equal(JSON.stringify(bodyOverviewReading("weight_kg", entered, preferred)), JSON.stringify({ value: 79.5, note: "Eingetragen · 2026-11-17" }));
+  assert.equal(JSON.stringify(bodyOverviewReading("weight_kg", entered, preferred)), JSON.stringify({ value: 79.5, date: "2026-11-17", note: "Eingetragen · 2026-11-17" }));
   const garmin = merged([{ date: "2026-11-17", value: 80, source_label: "Garmin" }]);
   assert.equal(bodyOverviewReading("weight_kg", garmin, preferred).note, "Garmin Connect · 2026-11-17");
   // KFA reads only the athlete's own days, also out of the merged series.
