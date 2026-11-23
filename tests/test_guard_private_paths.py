@@ -157,6 +157,18 @@ class GuardPrivatePathsTests(unittest.TestCase):
             # An escaped separator joins both into one command that reads the file.
             "cat a\\", "cat a`", "git status\\",
         ]  # fmt: skip
+        # #4075 review: a segment that runs alongside the run (a pipe or `&`
+        # after it) could rewrite the script while it starts.
+        after = [
+            "| cp x.mjs scripts/ui_walk.mjs", "| head > scripts/prod_guards.py",
+            "& cp x.py scripts/prod_logs.py", "| tee scripts/ui_explore.mjs",
+            "| head -n $(cp x scripts/ui_walk.mjs)", "| Select-Object -First 1 | sh",
+        ]  # fmt: skip
+        for run in runs:
+            for last in after:
+                command = f'{run} --url u --password-file "{secret}" {last}'
+                with self.subTest(command=command):
+                    self.assertEqual(run_hook(command), 2)
         for run in runs:
             for first in before:
                 command = f'{first}; {run} --url u --password-file "{secret}"'
@@ -174,6 +186,9 @@ class GuardPrivatePathsTests(unittest.TestCase):
             f"cat p.json | node scripts/ui_explore.mjs --url u --password-file={posix} --plan -",
             # A later segment cannot change what already ran.
             f'node scripts/ui_walk.mjs --password-file "{secret}" --url u; cd x',
+            # A reader of its output may run alongside (#4075 review).
+            f'python scripts/prod_guards.py --url u --password-file "{secret}" 2>&1 | Select-Object -Last 5',
+            f"node scripts/ui_walk.mjs --password-file {posix} --url u | tail -3 && cd x",
             f'py.exe -3 scripts/prod_guards.py --url u --password-file "{secret}"',
             f'python3.14.exe -I scripts/prod_logs.py --password-file "{secret}"',
             f'python scripts/prod_diagnostics.py --url u \\\n  --password-file "{secret}"',

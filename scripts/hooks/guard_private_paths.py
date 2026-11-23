@@ -75,7 +75,15 @@ PASSWORD_FILE = re.compile(
 # it, or the script itself. An allowlist: a status read, or one literal file read
 # into a pipe; everything else before the run blocks it.
 SAFE_BEFORE = re.compile(
-    r"|git\s+status(?:\s+(?:-s|--short))?|(?:get-content|cat|type)\s+[\w./\\:-]+",
+    r"(?:git\s+status(?:\s+(?:-s|--short))?|(?:get-content|cat|type)\s+[\w./\\:-]+)?",
+    re.IGNORECASE,
+)
+# What a pipe may feed the run's output into (#4075 review): a segment joined by
+# `|` runs alongside the run, so only a reader without a redirection,
+# substitution or expansion; a single `&` (background) after the run blocks it.
+SAFE_AFTER = re.compile(
+    r"(?:select-object|select|head|tail|sort|out-null|out-host|more|grep|findstr"
+    r"|select-string|sls)(?:\s+[\w\s.,:=/\\\"'*-]*)?",
     re.IGNORECASE,
 )
 
@@ -83,16 +91,32 @@ SAFE_BEFORE = re.compile(
 # An escaped separator (`\;` in Bash, `` `; `` in PowerShell) is part of a word,
 # not a split: the segments seen here would not be the shell's (#3940 review).
 ESCAPED_SEPARATOR = re.compile(r"[\\`][;|&]")
+# `2>&1` copies a stream; its `&` separates nothing.
+STREAM_COPY = re.compile(r">&(?=[0-9-])")
 
 
 def names_secrets(text: str) -> bool:
     return bool(SECRETS.search(DOT_SEGMENT.sub("", QUOTES.sub("", text))))
 
 
+def alongside_safe(segments: list[str], separators: list[str], index: int) -> bool:
+    """Whether every segment that runs alongside segment ``index`` (joined after
+    it by `|` or `&`) is a SAFE_AFTER reader; a sequential separator ends them."""
+    for after, separator in zip(segments[index + 1 :], separators[index:]):
+        if separator not in ("|", "&"):
+            return True
+        if separator == "&" or not SAFE_AFTER.fullmatch(after.strip()):
+            return False
+    return True
+
+
 def secret_mention_allowed(command: str) -> bool:
-    """True when every secret-folder path is a prod script's --password-file value
-    and only SAFE_BEFORE segments come before that script's run."""
-    segments = SEGMENTS.split(CONTINUATION.sub(" ", command))
+    """True when every secret-folder path is a prod script's --password-file value,
+    only SAFE_BEFORE segments come before that script's run and only SAFE_AFTER
+    readers run alongside it."""
+    text = STREAM_COPY.sub(">", CONTINUATION.sub(" ", command))
+    pieces = re.split(f"({SEGMENTS.pattern})", text)
+    segments, separators = pieces[0::2], pieces[1::2]
     for index, segment in enumerate(segments):
         if not names_secrets(segment):
             continue
@@ -101,6 +125,7 @@ def secret_mention_allowed(command: str) -> bool:
             or not any(run.match(segment.strip()) for run in SECRET_RUN)
             or names_secrets(PASSWORD_FILE.sub(" ", segment))
             or not all(SAFE_BEFORE.fullmatch(item.strip()) for item in segments[:index])
+            or not alongside_safe(segments, separators, index)
         ):
             return False
     return True
