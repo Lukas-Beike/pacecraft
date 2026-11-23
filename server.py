@@ -451,6 +451,7 @@ PERFORMANCE = build_performance(
 )
 APP.performance = PERFORMANCE
 PLAN_GUARD = build_plan_guard(APP)
+APP.plan_guard = PLAN_GUARD
 ACTIVITY_READS = build_activity_reads(
     APP,
     session_activities=CanonicalTableReader().session_activities,

@@ -11,6 +11,7 @@ from support import dispatch_route
 from backend import change_history
 from backend.errors import AppError
 from backend.http_api.planned_unit_focus_post import PlannedUnitFocusPostRoutes
+from backend.planning.plan_guard_service import PlanCheckError
 
 LOCAL_ID = "12345678-1234-5678-1234-567812345678"
 
@@ -178,6 +179,82 @@ class PlannedUnitFocusPostRoutesTests(unittest.TestCase):
                 f"/api/planned-units/{LOCAL_ID}/garmin-exercise",
                 method="POST",
             )
+
+    def test_edit_routes_pass_the_form_to_the_edit_service_and_answer_a_blocking_check(
+        self,
+    ) -> None:
+        edit = Mock()
+        change = {"id": "c3", "entity_type": "planned_unit", "after_hash": "h"}
+
+        def created(*_args, **_kwargs):
+            change_history._collected_changes.get().append(change)
+            return {"status": "local", "local_id": LOCAL_ID, "plan_check_notes": []}
+
+        edit.create.side_effect = created
+        edit.update.return_value = {"status": "local", "plan_check_notes": []}
+        edit.set_archived.return_value = {"status": "local", "plan_check_notes": []}
+        routes = PlannedUnitFocusPostRoutes(
+            lambda: self.service, lambda: MagicMock(), None, lambda: edit
+        )
+
+        handler = self.handler(
+            {
+                "date": "2026-11-14",
+                "name": "x",
+                "plan_id": "p1",
+                "accept_plan_findings": ["a"],
+            }
+        )
+        dispatch_route(routes, handler, "/api/planned-units", method="POST")
+        edit.create.assert_called_once_with(
+            {"date": "2026-11-14", "name": "x"}, plan_id="p1", accept=["a"]
+        )
+        handler.send_json.assert_called_once_with(
+            200,
+            {
+                "status": "local",
+                "local_id": LOCAL_ID,
+                "plan_check_notes": [],
+                "change": change,
+            },
+        )
+
+        handler = self.handler({"name": "y", "expected_payload_hash": "abc"})
+        dispatch_route(
+            routes, handler, f"/api/planned-units/{LOCAL_ID}/update", method="POST"
+        )
+        edit.update.assert_called_once_with(LOCAL_ID, {"name": "y"}, "abc", accept=None)
+
+        path = f"/api/planned-units/{LOCAL_ID}/archive"
+        with self.assertRaises(AppError) as raised:
+            dispatch_route(
+                routes,
+                self.handler({"expected_payload_hash": "abc"}),
+                path,
+                method="POST",
+            )
+        self.assertEqual("confirmation_required", raised.exception.reason)
+        dispatch_route(
+            routes,
+            self.handler({"confirmed": True, "expected_payload_hash": "abc"}),
+            path,
+            method="POST",
+        )
+        edit.set_archived.assert_called_once_with(LOCAL_ID, True, "abc")
+
+        edit.update.side_effect = PlanCheckError(
+            [{"code": "illness_hard", "message": "Nicht gespeichert."}]
+        )
+        with self.assertRaises(AppError) as raised:
+            dispatch_route(
+                routes,
+                self.handler({"expected_payload_hash": "abc"}),
+                f"/api/planned-units/{LOCAL_ID}/update",
+                method="POST",
+            )
+        self.assertEqual(
+            (409, "illness_hard"), (raised.exception.status, raised.exception.reason)
+        )
 
 
 if __name__ == "__main__":

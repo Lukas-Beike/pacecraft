@@ -80,7 +80,9 @@ class PlanningGetRoutes:
 
         Request: query `cursor` (opaque `next_cursor` of the previous page; an
         invalid cursor is ignored and starts at the first page) and `limit`
-        (1 to 100, default 100; an unparsable value gives 100).
+        (1 to 100, default 100; an unparsable value gives 100), `archived` (`1`
+        answers the archived templates instead, newest archive first, up to 100
+        in one answer without a cursor).
 
         Response: 200 with `workouts` (active, undated library templates ordered
         by sport, name and id, each with the derived `type` and, when Wahoo state
@@ -90,6 +92,9 @@ class PlanningGetRoutes:
         Errors: none beyond the common ones.
         """
         query = request.query
+        if query.get("archived", ["0"])[0] == "1":
+            handler.send_json(200, self._library_page_service().archived())
+            return
         handler.send_json(
             200,
             self._library_page_service().page(

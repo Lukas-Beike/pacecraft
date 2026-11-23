@@ -1,0 +1,187 @@
+"""The athlete's own create, edit, archive and restore of planned units (#3950).
+
+The same batch the Coach's ``apply_training_patch`` applies (validation, calendar
+conflicts, change history for undo), plus the plan checks as notes: the athlete
+decides, so the data-completeness and library-template rules that bind the Coach
+are waived and an illness warning is accepted by the athlete's own tap.
+"""
+
+from __future__ import annotations
+
+from collections.abc import Callable
+from typing import Any
+
+from backend.canonical.planning_fields import SESSION_FOCUS_KEYS
+from backend.errors import AppError
+from backend.planning import library, plan_checks
+from backend.planning.plan_guard_service import PlanGuardService
+from backend.planning.sport import planned_stored_sport
+
+# Fields a create or an edit takes; the day and time go with them.
+UNIT_FIELDS = frozenset(
+    {
+        "date",
+        "starts_at_local",
+        "sport",
+        "environment",
+        "name",
+        "description",
+        "duration_minutes",
+        "target",
+        "session_focus",
+        "strength_intensity",
+        "strength_structure",
+        "hr_cap",
+        "template_id",
+    }
+)
+_CREATE_RATIONALE = "Vom Athleten angelegt"
+_REQUIRED_NEW = ("date", "sport", "name", "description", "duration_minutes")
+# The unit-level rules written for the Coach; the athlete's form supplies the
+# data itself and a variant of a template is the athlete's choice.
+_WAIVED = plan_checks.REQUIRED_CODES
+
+
+class PlannedUnitEditService:
+    """Apply one athlete edit as the Coach's change batch, under the plan checks."""
+
+    def __init__(
+        self,
+        database_manager: Any,
+        change_service: Callable[[], Any],
+        library_service: Callable[[], Any],
+        plan_guard: Callable[[], PlanGuardService],
+    ) -> None:
+        self._database_manager = database_manager
+        self._change_service = change_service
+        self._library_service = library_service
+        self._plan_guard = plan_guard
+
+    def create(
+        self,
+        fields: dict[str, Any],
+        *,
+        plan_id: str | None = None,
+        accept: list[str] | None = None,
+    ) -> dict[str, Any]:
+        """Plan a new unit; without ``template_id`` it also saves its library entry."""
+        if fields.get("template_id"):
+            fields = {**self._template_fields(fields["template_id"]), **fields}
+        if any(fields.get(key) in (None, "") for key in _REQUIRED_NEW):
+            raise AppError(
+                400,
+                "Eine neue Einheit braucht Tag, Sportart, Name, Workout und Dauer.",
+                reason="invalid_change",
+            )
+
+        def build() -> dict[str, Any]:
+            template_id = fields.get("template_id")
+            if not template_id:
+                template_id = self._library_service().create_template(
+                    {
+                        key: fields[key]
+                        for key in fields
+                        if key not in {"date", "starts_at_local", "template_id"}
+                    },
+                    "manual",
+                )["id"]
+            return {
+                "action": "create",
+                **{key: fields[key] for key in UNIT_FIELDS if key in fields},
+                "template_id": template_id,
+                "target": fields.get("target") or "AUTO",
+                "rationale": _CREATE_RATIONALE,
+                **({"plan_id": plan_id} if plan_id else {}),
+            }
+
+        return self._apply(build, plan_id, accept, create=True)
+
+    def _template_fields(self, template_id: Any) -> dict[str, Any]:
+        """The content a unit takes from its library entry, until the form changes it."""
+        entry = next(
+            (
+                item
+                for item in self._library_service().list(1000)
+                if str(item.get("id")) == str(template_id) and not item.get("date")
+            ),
+            None,
+        )
+        if entry is None:
+            raise AppError(404, "Bibliothekseinheit nicht gefunden.")
+        duration = library.library_workout_duration_minutes(entry)
+        return {
+            **planned_stored_sport(entry).fields(),
+            "name": entry.get("name"),
+            "description": entry.get("description"),
+            "duration_minutes": None if duration is None else max(5, round(duration)),
+            "target": entry.get("target"),
+            **{
+                key: entry[key]
+                for key in SESSION_FOCUS_KEYS
+                if entry.get(key) is not None
+            },
+        }
+
+    def update(
+        self,
+        local_id: str,
+        fields: dict[str, Any],
+        expected_hash: Any,
+        *,
+        accept: list[str] | None = None,
+    ) -> dict[str, Any]:
+        """Change a unit's content; the hash is the one of the read the form came from."""
+        return self._apply(
+            lambda: {
+                "action": "update",
+                "local_id": local_id,
+                "expected_payload_hash": self._hash(expected_hash),
+                **{key: fields[key] for key in UNIT_FIELDS if key in fields},
+            },
+            None,
+            accept,
+        )
+
+    def set_archived(
+        self, local_id: str, archived: bool, expected_hash: Any
+    ) -> dict[str, Any]:
+        """Archive a unit out of the calendar, or restore it."""
+        return self._apply(
+            lambda: {
+                "action": "archive" if archived else "restore",
+                "local_id": local_id,
+                "expected_payload_hash": self._hash(expected_hash),
+            },
+            None,
+            None,
+        )
+
+    @staticmethod
+    def _hash(value: Any) -> str:
+        if not isinstance(value, str) or not value.strip():
+            raise AppError(
+                409,
+                "Die Einheit wurde inzwischen geändert.",
+                reason="planning_revision_conflict",
+            )
+        return value
+
+    def _apply(
+        self,
+        build: Callable[[], dict[str, Any]],
+        plan_id: str | None,
+        accept: list[str] | None,
+        *,
+        create: bool = False,
+    ) -> dict[str, Any]:
+        guard = self._plan_guard()
+        with self._database_manager.unit_of_work():
+            before = guard.findings()
+            change = build()
+            result = self._change_service().apply(
+                {"changes": [change]},
+                authorized_plan_id=plan_id if create else None,
+                source="manual",
+            )
+            notes = guard.verify(before, accept or [], waived=_WAIVED)
+        return {**result["changes"][0], "plan_check_notes": notes}

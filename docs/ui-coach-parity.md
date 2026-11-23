@@ -21,7 +21,7 @@ case on both sides, so the guards match.
 tool and route exists, the parity value matches the two columns, each gap names
 its issue and the counts below match the table.
 
-Counts: both 43, UI only 23, Coach only 20, neither 0, UI by rule 8.
+Counts: both 50, UI only 23, Coach only 13, neither 0, UI by rule 8.
 
 ## Matrix
 
@@ -39,11 +39,11 @@ Counts: both 43, UI only 23, Coach only 20, neither 0, UI by rule 8.
 | Competitions | Delete a competition | Kalender › Wettkampf `PUT /api/competitions/remove` | `delete_competition` | delete confirmation | both | |
 | Competitions | Send competitions to Intervals.icu | Kalender › Wettkampf `POST /api/intervals/competitions/send` | `sync_competitions` | named sync | both | |
 | Planning | Read planned units and the planning view | Kalender `GET /api/plan` | `list_planned_workouts`, `read_training_state` | — | both | |
-| Planning | Create a planned unit | — | `apply_training_patch` (`workouts`) | receipt, undo, plan checks | Coach only | #3950 |
-| Planning | Change a planned unit's content | — | `apply_training_patch` (`update`) | receipt, undo, plan checks | Coach only | #3950 |
+| Planning | Create a planned unit | Kalender day "+ Einheit hinzufügen" `POST /api/planned-units` | `apply_training_patch` (`workouts`) | receipt, undo, plan checks | both | |
+| Planning | Change a planned unit's content | Kalender card "Bearbeiten" `POST /api/planned-units/{id}/update` | `apply_training_patch` (`update`) | receipt, undo, plan checks | both | |
 | Planning | Move a planned unit to another day | Kalender card `POST /api/planned-units/{id}/date` | `apply_training_patch` (`update` with `date`) | receipt, undo | both | |
 | Planning | Delete a planned unit | Kalender card `POST /api/planned-units/{id}/delete` | `apply_training_patch` (`delete`) | delete confirmation | both | |
-| Planning | Archive or restore a planned unit | — | `apply_training_patch` (`archive`, `restore`) | confirmed request | Coach only | #3950 |
+| Planning | Archive or restore a planned unit | Kalender card "Archivieren" `POST /api/planned-units/{id}/archive`, receipt "Rückgängig" `POST /api/change-history/undo` | `apply_training_patch` (`archive`, `restore`) | confirmed request, undo | both | |
 | Planning | Set a planned unit's focus | Kalender card `POST /api/planned-units/{id}/focus` | `apply_training_patch` (`session_focus`, `strength_intensity`) | receipt | both | |
 | Planning | Choose a strength exercise's Garmin exercise | Kalender card `POST /api/planned-units/{id}/garmin-exercise` | `apply_training_patch` (`garmin_exercise`) | receipt | both | |
 | Planning | Read multi-week training plans | — | `list_training_plans` | — | Coach only | #3950 |
@@ -55,12 +55,12 @@ Counts: both 43, UI only 23, Coach only 20, neither 0, UI by rule 8.
 | History | Undo a change | receipt "Rückgängig" `POST /api/change-history/undo`, `POST /api/change-history/undo-turn` | `undo_training_change` | bound preview, confirmation | both | |
 | History | Read the change history | — | `list_change_history` | — | Coach only | #3954 |
 | Library | List library workouts | Bibliothek `GET /api/library` | `list_workout_library` | — | both | |
-| Library | Create a library workout | — | `manage_training_templates` (`create`) | receipt, undo | Coach only | #3951 |
-| Library | Edit a library workout | — | `manage_training_templates` (`update`) | receipt, undo | Coach only | #3951 |
+| Library | Create a library workout | Bibliothek "+ Einheit" `POST /api/library` | `manage_training_templates` (`create`) | receipt, undo | both | |
+| Library | Edit a library workout | Bibliothek "Bearbeiten" `POST /api/library/{id}/update` | `manage_training_templates` (`update`) | receipt, undo | both | |
 | Library | Schedule a library workout on a day | Bibliothek `POST /api/library/{id}/schedule` | `apply_workout_library_plan` | receipt, undo | both | |
 | Library | Archive a library workout | Bibliothek `POST /api/library/{id}/archive` | `manage_training_templates` (`archive`) | confirmation | both | |
-| Library | Restore an archived library workout | — | `manage_training_templates` (`restore`) | receipt | Coach only | #3951 |
-| Library | Delete a library workout | — | `manage_training_templates` (`delete`) | confirmed request | Coach only | #3951 |
+| Library | Restore an archived library workout | Bibliothek › Archiviert `GET /api/library` (`archived=1`), "Wiederherstellen" `POST /api/library/{id}/restore` | `manage_training_templates` (`restore`) | receipt, undo | both | |
+| Library | Delete a library workout | Bibliothek › Archiviert "Endgültig löschen" `POST /api/library/{id}/delete` | `manage_training_templates` (`delete`) | confirmed request, undo | both | |
 | Activities | Read sessions and session details | Kalender `GET /api/activities`, `GET /api/activities/{id}` | `list_recent_activities`, `get_activity_details` | — | both | |
 | Activities | Read analyses, trends and records | Analyse `GET /api/analysis/trends`, `GET /api/analysis/training-records` | `read_training_records` | — | both | |
 | Activities | Save or edit activity feedback and purpose | Session details `POST /api/activities/{id}/feedback` | `save_activity_feedback` | receipt, undo | both | |

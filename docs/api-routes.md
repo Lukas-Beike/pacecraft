@@ -94,8 +94,12 @@ handler's docstring. Regenerate it with
 | POST | `/api/infection-hint/well` | Session + CSRF | after access | Answer today's infection hint with "Mir geht's gut" (#3821). |
 | POST | `/api/intervals/competitions/send` | Session + CSRF | after access | Queue the Intervals.icu competition sync the athlete pressed, deletions included. |
 | GET | `/api/library` | Session | no | Workout library page. |
+| POST | `/api/library` | Session + CSRF | after access | Save a new local library entry, the Coach's template `create`, without a remote write. |
 | POST | `/api/library/{id}/archive` | Session + CSRF | after access | Take a library entry out of the library after the athlete confirmed it. |
+| POST | `/api/library/{id}/delete` | Session + CSRF | after access | Delete a never-synced library entry for good after the athlete confirmed it. |
+| POST | `/api/library/{id}/restore` | Session + CSRF | after access | Bring an archived library entry back into the library. |
 | POST | `/api/library/{id}/schedule` | Session + CSRF | after access | Plan a library entry on one day as a local unit, without a remote write. |
+| POST | `/api/library/{id}/update` | Session + CSRF | after access | Change a library entry's content, the Coach's template `update`. |
 | POST | `/api/login` | Public | no | Create a session. |
 | POST | `/api/logout` | Session + CSRF | no | End the current session. |
 | GET | `/api/logs` | Session | no | Recent redacted log entries. |
@@ -130,10 +134,13 @@ handler's docstring. Regenerate it with
 | GET | `/api/nutrition/yazio/status` | Session | no | Last local Yazio authentication check, without contacting Yazio. |
 | GET | `/api/performance` | Session | no | Performance projection. |
 | GET | `/api/plan` | Session | no | Planning projection. |
+| POST | `/api/planned-units` | Session + CSRF | after access | Plan a new unit on a day, from scratch or from a library entry, without a remote write. |
+| POST | `/api/planned-units/{id}/archive` | Session + CSRF | after access | Archive a planned unit out of the calendar; its receipt offers the undo. |
 | POST | `/api/planned-units/{id}/date` | Session + CSRF | after access | Move a planned unit to another day without a remote write. |
 | POST | `/api/planned-units/{id}/delete` | Session + CSRF | after access | Delete a planned unit from the calendar without a remote write (#3027). |
 | POST | `/api/planned-units/{id}/focus` | Session + CSRF | after access | Set or clear the focus of a planned unit without a remote write. |
 | POST | `/api/planned-units/{id}/garmin-exercise` | Session + CSRF | after access | Assign the Garmin catalogue exercise of one strength exercise of a unit. |
+| POST | `/api/planned-units/{id}/update` | Session + CSRF | after access | Change a unit's content or day without a remote write. |
 | GET | `/api/privacy/backup` | Session | no | Download the encrypted database backup. |
 | POST | `/api/privacy/delete` | Session + CSRF | after access | Delete the local athlete data after the typed confirmation (`confirm`). |
 | GET | `/api/privacy/delete/preview` | Session | no | Preview of the local data deletion. |
@@ -1219,7 +1226,9 @@ seit der Freigabe geändert." when competitions changed before it ran.
 
 Request: query `cursor` (opaque `next_cursor` of the previous page; an
 invalid cursor is ignored and starts at the first page) and `limit`
-(1 to 100, default 100; an unparsable value gives 100).
+(1 to 100, default 100; an unparsable value gives 100), `archived` (`1`
+answers the archived templates instead, newest archive first, up to 100
+in one answer without a cursor).
 
 Response: 200 with `workouts` (active, undated library templates ordered
 by sport, name and id, each with the derived `type` and, when Wahoo state
@@ -1227,6 +1236,20 @@ exists, `wahoo_state`), `next_cursor` (null on the last page) and
 `limit` (the applied page size).
 
 Errors: none beyond the common ones.
+
+### `POST /api/library`
+
+Request: JSON body with `name`, `description` (the workout text), `sport`,
+`environment`, `duration_minutes` (5 to 1440), `target`, `session_focus`,
+`strength_intensity`, `strength_structure` and `hr_cap`, and no other
+field. The entry stays local until the athlete syncs the library.
+
+Response: 200 `{"status": "local", "local_id", "library_entry", "change"}`;
+`change` is the undo reference.
+
+Errors: 400 "Die Anfrage muss ein Objekt sein." or "Unbekannte Felder: …";
+400 "Der Name der Einheit fehlt."; 400 for a duration outside the range, a sport the library does not take or
+a workout text whose steps do not add up to the duration.
 
 ### `POST /api/library/{id}/archive`
 
@@ -1244,6 +1267,28 @@ without `confirmed: true`; 400 "Die Anfrage muss ein Objekt sein." or
 404 "Bibliothekseinheit nicht gefunden."; 409 "Geplante lokale Einheiten
 werden im Kalender bearbeitet." for a planned unit.
 
+### `POST /api/library/{id}/delete`
+
+Request: path `{id}`; JSON body `{"confirmed": true}` and no other field.
+The Coach's template `delete`; the undo reference brings the entry back.
+
+Response: 200 `{"status": "deleted", "local_id", "change"}`.
+
+Errors: 409 `confirmation_required` "Das Löschen muss bestätigt werden."
+without `confirmed: true`; 400 for an id that is no UUID; 404
+"Bibliothekseinheit nicht gefunden."; 409 "Synchronisierte
+Bibliothekseinheiten können nicht lokal gelöscht werden. Archiviere sie
+stattdessen." for an entry a provider holds.
+
+### `POST /api/library/{id}/restore`
+
+Request: path `{id}`; JSON body `{}` and no other field.
+
+Response: 200 `{"status": "local", "local_id", "library_entry", "change"}`.
+
+Errors: 400 for an id that is no UUID; 404 "Bibliothekseinheit nicht
+gefunden."; 409 for a planned unit.
+
 ### `POST /api/library/{id}/schedule`
 
 Request: path `{id}`, the library entry's local id; JSON body
@@ -1260,6 +1305,18 @@ for another body; 400 for an id that is no UUID or a date that is no
 JJJJ-MM-TT date; 404 "Bibliothekseinheit nicht gefunden."; 409 "Planung
 wegen bestehender Kalendereinheiten nicht möglich: …" for a day the
 calendar rules out.
+
+### `POST /api/library/{id}/update`
+
+Request: path `{id}`, the library entry's local id; JSON body with the
+fields of the create route; a missing field keeps its stored value.
+Units planned from the entry stay unchanged.
+
+Response: 200 `{"status": "local", "local_id", "library_entry", "change"}`.
+
+Errors: as the create route; 400 for an id that is no UUID; 404
+"Bibliothekseinheit nicht gefunden."; 409 "Geplante lokale Einheiten
+werden im Kalender bearbeitet." for a planned unit.
 
 ### `POST /api/login`
 
@@ -1804,6 +1861,36 @@ from one database snapshot.
 
 Errors: none beyond the common ones.
 
+### `POST /api/planned-units`
+
+Request: JSON body with `date` (not before today), `starts_at_local`,
+`sport`, `environment`, `name`, `description`, `duration_minutes`,
+`target`, `session_focus`, `strength_intensity`, `strength_structure`,
+`hr_cap`, `template_id` (the library entry it comes from; without it the
+unit's entry is saved to the library too), `plan_id` (an active training
+plan to join) and `accept_plan_findings` (the codes of blocking plan
+checks the athlete accepts, e.g. `illness_hard`). It runs the Coach's
+change batch with the same checks; the next explicit sync exports it.
+
+Response: 200 `{"status": "local", "local_id", "plan_check_notes",
+"change"}`; `change` is the undo reference of the unit.
+
+Errors: 400 for a missing field, a bad date or duration or workout text
+whose steps miss the duration; 409 `plan_date_conflict` for a day the
+calendar rules out; 409 `illness_hard` for a hard or long unit within
+days of a reported illness (resend with `accept_plan_findings`); 409
+`plan_not_available` for an archived plan.
+
+### `POST /api/planned-units/{id}/archive`
+
+Request: path `{id}`; JSON body `{"confirmed": true, "expected_payload_hash":
+string}`. A copy at a provider goes with the next explicit sync.
+
+Response: 200 `{"status", "local_id", "plan_check_notes", "change"}`.
+
+Errors: 409 `confirmation_required` without `confirmed: true`; as the
+update route for the hash.
+
 ### `POST /api/planned-units/{id}/date`
 
 Request: path `{id}`, the local unit id; JSON body `{"date": "YYYY-MM-DD",
@@ -1882,6 +1969,19 @@ missing or outdated `expected_payload_hash`; 400 `invalid_exercise_index`
 "Unbekannte Übung." when the unit has no strength structure or the index is
 not an integer within it; 400 `invalid_strength_structure` "Unbekannte
 Garmin-Übung: ..." with suggestions for a name the catalogue does not know.
+
+### `POST /api/planned-units/{id}/update`
+
+Request: path `{id}`; JSON body with the fields of the create route (a
+missing field keeps its stored value), `expected_payload_hash` (the unit's
+hash from the read the form came from) and `accept_plan_findings`.
+
+Response: 200 `{"status": "local", "local_id", "plan_check_notes",
+"change"}`. The unit's provider copies are replaced by the next sync.
+
+Errors: as the create route; 409 `planning_revision_conflict` for a
+missing hash; 409 `payload_hash_conflict` for an outdated hash or an
+unknown id.
 
 ### `GET /api/privacy/backup`
 

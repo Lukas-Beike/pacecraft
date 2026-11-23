@@ -1778,6 +1778,21 @@ button:focus-visible, a:focus-visible, summary:focus-visible {
 .edit-meal label:nth-child(n+3) { grid-column: 1 / -1; }
 .edit-meal .chip { justify-self: start; }
 .edit-list, .swap-results { display: grid; gap: 10px; margin: 0; padding: 0; list-style: none; }
+/* The editor of a planned unit and a library entry: steps and exercises as rows (#3950, #3951). */
+.unit-edit { display: grid; gap: 12px; }
+.unit-edit label:not(.chip) { display: grid; gap: 6px; min-width: 0; }
+.unit-edit legend { padding: 0; color: var(--muted); font-size: .76rem; font-weight: 650; }
+.unit-rows { display: grid; gap: 8px; margin: 0; padding: 0; list-style: none; }
+.unit-row { display: grid; grid-template-columns: 76px minmax(0, 1fr) 44px; gap: 8px; align-items: center; }
+.unit-row.is-label { grid-template-columns: minmax(0, 1fr) 44px; }
+.unit-step-value { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 6px; align-items: center; }
+.unit-group { display: grid; gap: 8px; padding: 10px; border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--surface); }
+.unit-group > .unit-row { grid-template-columns: minmax(0, 1fr) auto 64px 44px; }
+.unit-exercise { display: grid; gap: 8px; padding: 10px; border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--surface); }
+.unit-exercise .unit-row { grid-template-columns: 64px minmax(0, 1fr) 44px; }
+.unit-exercise .unit-row:last-child { grid-template-columns: minmax(0, 1fr) 96px; }
+.unit-total { margin: 0; color: var(--muted); font-size: .85rem; }
+.library-toolbar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; justify-content: space-between; margin-bottom: 12px; }
 .edit-row { display: grid; gap: 8px; padding: 12px; border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--surface); }
 .edit-row.is-removed { opacity: .6; }
 .edit-row.is-removed strong { text-decoration: line-through; }
