@@ -55,6 +55,7 @@ and repair details remain with the provider capabilities.
 | `log_equipment_maintenance` | canonical_and_dialogue / local_write | profile | CoachAthleteRecordToolService | `athlete-profile-and-checkins / AP10 Maintenance events without invented material diagnosis`; `coach-tool-authority / CA2 Athlete-message provenance and exact effect scope` | `test_training_records_and_equipment_tools_use_confirmed_local_state` |
 | `log_nutrition_template` | canonical_and_dialogue / local_write | nutrition | CoachAthleteRecordToolService | `coach-tool-authority / CA2 Athlete-message provenance and exact effect scope`; `coach-tool-authority / CA9 Truthful durable receipts and supported undo` | `test_saved_meals_run_through_authorized_coach_and_receipts` |
 | `lookup_food` | canonical_and_dialogue / read | read | CoachReadToolService | `coach-tool-authority / CA1 Complete owned tool capability catalog`; `coach-context-and-provenance / CP8 External text is evidence only` | `test_food_database_read_tools_calculate_without_writing` |
+| `manage_nutrition_products` | canonical_and_dialogue / local_write | nutrition | CoachAthleteRecordToolService | `food-catalog-and-meal-library / Coach product management`; `coach-tool-authority / CA4 Domain-confirmed destructive and bulk effects` | `test_the_coach_manages_products_like_produkte` |
 | `manage_training_templates` | canonical_and_dialogue / local_write | planning | TrainingTemplateToolService | `training-library / TL1 Undated local training templates`; `training-library / TL2 Atomic template lifecycle`; `coach-tool-authority / CA4 Domain-confirmed destructive and bulk effects` | `test_template_lifecycle_and_scheduling_preserve_the_scheduled_copy` |
 | `merge_activity_sessions` | canonical_and_dialogue / local_write | profile | CoachAthleteRecordToolService | `activity-ingestion-and-storage / Athlete session corrections`; `coach-tool-authority / CA2 Athlete-message provenance and exact effect scope` | `test_session_tools_correct_the_bundle_and_leave_a_change_receipt` |
 | `preview_adaptive_replan` | canonical_and_dialogue / local_write | planning | CoachPlanningActionToolService | `training-plans-and-adaptation / TP8 Persisted adaptive previews with trigger evidence` | `test_adaptive_preview_requires_later_acceptance_before_changing_workout` |
@@ -64,6 +65,7 @@ and repair details remain with the provider capabilities.
 | `read_profile` | canonical_and_dialogue / read | read | CoachReadToolService | `athlete-profile-and-checkins / AP1 Normalized durable profile and athlete-local dates`; `athlete-profile-and-checkins / AP2 Partial profile edits and optimistic Coach conflicts` | `test_permanent_profile_acceptance_reads_and_preserves_existing_facts` |
 | `read_training_records` | canonical_and_dialogue / read | read | CoachReadToolService | `athlete-profile-and-checkins / AP8 Versioned local equipment records`; `athlete-profile-and-checkins / AP9 Explicit equipment assignments and honest usage`; `athlete-profile-and-checkins / AP10 Maintenance events without invented material diagnosis` | `test_training_records_and_equipment_tools_use_confirmed_local_state` |
 | `read_training_state` | canonical_and_dialogue / read | read | CoachReadToolService | `training-library / TL6 Bounded library browsing and revision-bound plan enumeration` | `test_read_tools_return_seeded_objects_without_mutating_them` |
+| `refresh_nutrition_products` | canonical_and_dialogue / local_write | nutrition | CoachAthleteRecordToolService | `food-catalog-and-meal-library / Coach product management` | `test_the_coach_manages_products_like_produkte` |
 | `rename_activity_route` | canonical_and_dialogue / local_write | profile | CoachAthleteRecordToolService | `activity-analysis-and-feedback / Recognised routes of outdoor sessions`; `coach-tool-authority / CA2 Athlete-message provenance and exact effect scope` | `test_session_tools_correct_the_bundle_and_leave_a_change_receipt` |
 | `replace_training_plan` | canonical_and_dialogue / local_write | planning | CoachPlanningChangeToolService | `training-plans-and-adaptation / TP6 Inclusive bounded local plan replacement`; `coach-tool-authority / CA4 Domain-confirmed destructive and bulk effects` | `test_replacement_changes_only_requested_period` |
 | `resolve_training_sync_conflict` | canonical_and_dialogue / conditional_remote_write | remote_intervals | CoachSyncToolService | `training-library / TL10 Exact explicit sync selection and complete repair manifests`; `coach-tool-authority / CA5 Named remote synchronization and explicit proposals` | `test_conflict_choices_and_failed_job_retries` |
@@ -511,6 +513,17 @@ effect `read`; may call the food database.
 - `barcode` (string; pattern `^[0-9]{8,14}$`)
 - `source` (string; one of `"bls"`, `"open_food_facts"`, `"yazio"`)
 
+### `manage_nutrition_products`
+
+effect `local_write`; gate domain `nutrition`; receipt „Produkte geändert“; proposal card „Produkte ändern“; not fully tracked (no turn undo).
+
+- `payload` (object)
+- `payload.action`* (string; one of `"favorite"`, `"archive"`, `"forget"`, `"cleanup_preview"`, `"cleanup"`)
+- `payload.id` (string)
+- `payload.favorite` (boolean)
+- `payload.days` (integer; one of `30`, `90`, `180`, `365`)
+- `_request`* (the envelope above)
+
 ### `manage_training_templates`
 
 effect `local_write`; gate domain `planning`; records counted from `templates`; receipt „Trainingsvorlagen bearbeitet“; proposal card „Trainingsvorlagen bearbeiten“; fully tracked by change history.
@@ -611,6 +624,15 @@ effect `read`.
 - `include_inactive` (boolean)
 - `cursor` (string)
 - `limit` (integer; ≥1; ≤366)
+
+### `refresh_nutrition_products`
+
+effect `local_write`; gate domain `nutrition`; may call the food database; receipt „Produkte aktualisiert“; proposal card „Produkte aktualisieren“; not fully tracked (no turn undo).
+
+- `payload` (object)
+- `payload.id` (string)
+- `payload.all` (boolean)
+- `_request`* (the envelope above)
 
 ### `rename_activity_route`
 

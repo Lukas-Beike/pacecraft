@@ -15,6 +15,7 @@ from backend.coach.authorization import (
     structured_action_payload,
 )
 from backend.errors import AppError
+from backend.nutrition.catalog import NOTHING_FILLED_NOTICE
 from backend.nutrition.diary import NutritionDiaryService
 from backend.nutrition.meal_library import NutritionMealLibraryService
 from backend.planning.competition_service import CompetitionService
@@ -54,6 +55,20 @@ _ZONE_FIELDS = (
     "from_beginning",
 )
 _LT2_FIELDS = ("sport", "source", "value", "shown", "confirm_deviation", "activity_id")
+# Produkte's card and list actions, through the routes' use cases (#3958).
+_PRODUCT_TOOLS = frozenset({"manage_nutrition_products", "refresh_nutrition_products"})
+_NUTRITION_TOOLS = frozenset(
+    {
+        "save_nutrition_template",
+        "save_nutrition_product",
+        "fill_nutrition_product_gaps",
+        "delete_nutrition_template",
+        "log_nutrition_template",
+        "save_nutrition_entry",
+        "update_nutrition_entry",
+        "delete_nutrition_entry",
+    }
+)
 
 
 class CoachAthleteRecordToolService:
@@ -70,19 +85,27 @@ class CoachAthleteRecordToolService:
         equipment: Any = None,
         session_corrections: Any = None,
         body_entries: Callable[[str], BodyEntryService] | None = None,
-        zones: Callable[[], Any] | None = None,
-        first_threshold: Callable[[], Any] | None = None,
+        athlete: Any = None,
         second_threshold: Callable[[], Any] | None = None,
         step_test: Callable[[str], Any] | None = None,
         activity_routes: Callable[[], Any] | None = None,
+        nutrition_services: Any = None,
     ) -> None:
-        # Zonen & Schwellen's services and the step-test read of one session.
-        self._zones = zones
-        self._first_threshold = first_threshold
+        # Zonen & Schwellen's services (from the athlete services) and the
+        # step-test read of one session.
+        self._zones = None if athlete is None else athlete.zones
+        self._first_threshold = None if athlete is None else athlete.first_threshold
         self._second_threshold = second_threshold
         self._step_test = step_test
         # The recognised routes, renamed as the session details do (#3957).
         self._activity_routes = activity_routes
+        # Produkte's clean-up and its background re-check of every product.
+        self._product_cleanup = (
+            None if nutrition_services is None else nutrition_services.product_cleanup
+        )
+        self._product_refresh = (
+            None if nutrition_services is None else nutrition_services.product_refresh
+        )
         # The Körper entry service of "weight" or "body_fat" (#3640).
         self._body_entries = body_entries
         self._checkins = checkins
@@ -96,25 +119,24 @@ class CoachAthleteRecordToolService:
     def execute(
         self, name: str, arguments: dict[str, Any], intent: dict[str, Any]
     ) -> dict[str, Any] | None:
-        if name in _EQUIPMENT_TOOLS:
-            return self._execute_equipment(name, arguments, intent)
-        if name in _SESSION_TOOLS:
-            return self._execute_session(name, arguments, intent)
-        if name in _BODY_TOOLS:
-            return self._execute_body(name, arguments, intent)
-        if name in _ZONE_TOOLS:
-            return self._execute_zones(name, arguments, intent)
-        if name in {
-            "save_nutrition_template",
-            "save_nutrition_product",
-            "fill_nutrition_product_gaps",
-            "delete_nutrition_template",
-            "log_nutrition_template",
-            "save_nutrition_entry",
-            "update_nutrition_entry",
-            "delete_nutrition_entry",
-        }:
-            return self._execute_nutrition(name, arguments, intent)
+        # Each group of tools has its own handler.
+        handler = next(
+            (
+                handler
+                for tools, handler in (
+                    (_EQUIPMENT_TOOLS, self._execute_equipment),
+                    (_SESSION_TOOLS, self._execute_session),
+                    (_BODY_TOOLS, self._execute_body),
+                    (_ZONE_TOOLS, self._execute_zones),
+                    (_PRODUCT_TOOLS, self._execute_products),
+                    (_NUTRITION_TOOLS, self._execute_nutrition),
+                )
+                if name in tools
+            ),
+            None,
+        )
+        if handler is not None:
+            return handler(name, arguments, intent)
         if name == "save_checkin":
             self._authorize(
                 intent,
@@ -511,6 +533,61 @@ class CoachAthleteRecordToolService:
             "first_threshold_bpm": result["profile"].get(FIRST_THRESHOLD_FIELD),
             "first_threshold_estimate": result["first_threshold_estimate"],
         }
+
+    def _execute_products(
+        self, name: str, arguments: dict[str, Any], intent: dict[str, Any]
+    ) -> dict[str, Any]:
+        """Favourite, archive, forget, clean up or re-check products (#3958).
+
+        Archive, forget and clean-up are deletes for the write gate, the
+        clean-up also bulk; its preview and an empty run change nothing.
+        """
+        self._authorize(
+            intent,
+            name,
+            "Die strukturierte Coach-Autorisierung erlaubt diese Produktänderung nicht.",
+        )
+        require_coach_scope(intent, "local_nutrition")
+        library = self._nutrition_meal_library_service()
+        payload = structured_action_payload(arguments)
+        product_id = str(payload.get("id") or "")
+        if name == "refresh_nutrition_products":
+            return self._refresh_products(library, payload, product_id)
+        action, catalog = payload.get("action"), library.product_catalog
+        if action == "favorite":
+            product = catalog.set_favorite(product_id, payload.get("favorite"))
+            return {"ok": True, "product": product}
+        if action == "archive":
+            return {"ok": True, "product": catalog.archive_product(product_id)}
+        if action == "forget":
+            return library.forget_database_food(product_id)
+        if action in {"cleanup_preview", "cleanup"} and self._product_cleanup:
+            cleanup = self._product_cleanup()
+            if action == "cleanup_preview":
+                preview = cleanup.preview(payload.get("days"))
+                return {"ok": True, "status": "unchanged", **preview}
+            run = cleanup.run({"days": payload.get("days"), "confirmed": True})
+            return run | ({"status": "unchanged"} if run["change"] is None else {})
+        raise AppError(
+            400, "Unbekannte Produktaktion.", reason="tool_arguments_invalid"
+        )
+
+    def _refresh_products(
+        self, library: Any, payload: dict[str, Any], product_id: str
+    ) -> dict[str, Any]:
+        """Re-check one product online, or start "Alle aktualisieren"."""
+        if payload.get("all") is True:
+            if self._product_refresh is None:
+                raise AppError(503, "Die Produktaktualisierung ist nicht verfügbar.")
+            # The background run, one at a time; starting it changes nothing
+            # yet, so the turn shows no receipt.
+            return {"ok": True, "status": "unchanged",
+                    "run": self._product_refresh.start()}  # fmt: skip
+        refreshed = library.refresh_database_food(product_id)
+        if NOTHING_FILLED_NOTICE in str(refreshed.get("notice") or ""):
+            # An own product with nothing left to fill shows no receipt.
+            return {**refreshed, "status": "unchanged"}
+        return refreshed
 
     @staticmethod
     def _authorize(intent: dict[str, Any], operation: str, message: str) -> None:

@@ -21,7 +21,7 @@ case on both sides, so the guards match.
 tool and route exists, the parity value matches the two columns, each gap names
 its issue and the counts below match the table.
 
-Counts: both 62, UI only 14, Coach only 10, neither 0, UI by rule 8.
+Counts: both 67, UI only 9, Coach only 10, neither 0, UI by rule 8.
 
 ## Matrix
 
@@ -89,11 +89,11 @@ Counts: both 62, UI only 14, Coach only 10, neither 0, UI by rule 8.
 | Products | Search foods and products | Produkte `GET /api/nutrition/products`, `POST /api/nutrition/products/lookup` | `lookup_food`, `calculate_food_nutrition` | — | both | |
 | Products | Save a confirmed product, also from a label photo | Produkte `POST /api/nutrition/products`, `POST /api/nutrition/products/extract` | `save_nutrition_product` | receipt | both | |
 | Products | Edit a product or fill its missing values | Produkte `PUT /api/nutrition/products` | `list_incomplete_nutrition_products`, `fill_nutrition_product_gaps`, `search_web_for_product_values` | receipt | both | |
-| Products | Mark a product as favourite | Produkte `POST /api/nutrition/products/favorite` | — | — | UI only | #3958 |
-| Products | Archive a product | Produkte `POST /api/nutrition/products/archive` | — | confirmation | UI only | #3958 |
-| Products | Clean up unused products | Produkte `GET /api/nutrition/products/cleanup`, `POST /api/nutrition/products/cleanup` | — | preview, confirmation, undo | UI only | #3958 |
-| Products | Forget a food-database entry | Produkte `POST /api/nutrition/products/database/delete` | — | confirmation | UI only | #3958 |
-| Products | Re-check products online | Produkte `POST /api/nutrition/products/database/refresh`, `POST /api/nutrition/products/refresh-all` | — | — | UI only | #3958 |
+| Products | Mark a product as favourite | Produkte `POST /api/nutrition/products/favorite` | `manage_nutrition_products` (`favorite`) | receipt | both | |
+| Products | Archive a product | Produkte `POST /api/nutrition/products/archive` | `manage_nutrition_products` (`archive`) | delete confirmation | both | |
+| Products | Clean up unused products | Produkte `GET /api/nutrition/products/cleanup`, `POST /api/nutrition/products/cleanup` | `manage_nutrition_products` (`cleanup_preview`, `cleanup`) | preview, confirmed delete and bulk request, undo | both | |
+| Products | Forget a food-database entry | Produkte `POST /api/nutrition/products/database/delete` | `manage_nutrition_products` (`forget`) | delete confirmation | both | |
+| Products | Re-check products online | Produkte `POST /api/nutrition/products/database/refresh`, `POST /api/nutrition/products/refresh-all` | `refresh_nutrition_products` | receipt | both | |
 | Body | Save or change weight | Körper `PUT /api/body/weight` | `save_body_entry` (`weight`) | receipt; writes Garmin and Wahoo | both | |
 | Body | Save or change body fat | Körper `PUT /api/body/body-fat` | `save_body_entry` (`body_fat`) | receipt; writes Garmin | both | |
 | Body | Remove weight or body fat | Körper `PUT /api/body/weight/remove`, `PUT /api/body/body-fat/remove` | `delete_body_entry` | confirmation | both | |

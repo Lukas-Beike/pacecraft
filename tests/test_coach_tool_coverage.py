@@ -29,6 +29,7 @@ from backend.coach.tool_specs import PROFILE_MUTATING_TOOLS
 from backend.coach.training_patch import CoachTrainingPatchService
 from backend.coach.write_gate import CLASSIFIER_DOMAINS, TOOL_DOMAIN
 from backend.errors import AppError
+from backend.nutrition.product_refresh import ProductRefreshRunner
 from backend.performance.first_threshold_estimate import FirstThresholdEstimate
 from backend.performance.first_threshold_service import FirstThresholdService
 from backend.performance.second_threshold_service import SecondThresholdService
@@ -36,6 +37,7 @@ from backend.planning import library as planning_library
 from backend.planning.planned_units import plan_push_payload_hash
 from backend.providers import http as provider_http
 from backend.providers import openai_requests
+from backend.providers.open_food_facts import OpenFoodFactsClient
 from backend.providers.openai_responses_adapter import model_turn, request_payload
 from backend.sync import canonical_ingest
 from backend.sync.adaptive import IllnessPauseSyncService
@@ -93,6 +95,14 @@ REQUIRED_VARIANTS = {
     "save_zones": {"save", "adopt_first_threshold", "adopt_lt2"},
     "assign_activity_equipment": {"activity", "planned_unit"},
     "set_equipment_rule": {"set", "preview", "apply"},
+    "manage_nutrition_products": {
+        "favorite",
+        "archive",
+        "forget",
+        "cleanup_preview",
+        "cleanup",
+    },
+    "refresh_nutrition_products": {"one", "all"},
 }
 
 
@@ -139,6 +149,10 @@ def variants(name, arguments, result):
         }
     if name == "set_equipment_rule":
         return {arguments["payload"]["action"]}
+    if name == "manage_nutrition_products":
+        return {arguments["payload"]["action"]}
+    if name == "refresh_nutrition_products":
+        return {"all" if arguments["payload"].get("all") else "one"}
     if name == "push_strength_to_garmin":
         return {
             "remove" if entry.get("remove") else "push"
@@ -2751,6 +2765,102 @@ class CoachToolCoverageTests(DialogueHarness, unittest.TestCase):
         self.assertEqual([168], [entry["threshold"] for entry in effective])
         self.assertEqual(
             "150", server.ATHLETE_DATA.profile().get()["first_threshold_hr"]
+        )
+
+    @covers(
+        "manage_nutrition_products:favorite",
+        "manage_nutrition_products:archive",
+        "manage_nutrition_products:forget",
+        "manage_nutrition_products:cleanup_preview",
+        "manage_nutrition_products:cleanup",
+        "refresh_nutrition_products:one",
+        "refresh_nutrition_products:all",
+    )
+    def test_the_coach_manages_products_like_produkte(self):
+        # #3958: Produkte's card and list actions through the routes' use cases;
+        # only the food database and the background run are stubbed.
+        catalog = server.NUTRITION_SERVICES.meal_library_service().product_catalog
+        mirror = server.NUTRITION_SERVICES.food_mirror()
+
+        def own(name):
+            return catalog.save_product(
+                {"name": name, "basis_amount": 100, "basis_unit": "g", "kcal": 63,
+                 "source": "manual"}
+            )  # fmt: skip
+
+        kept, unused = own("Synthetic skyr"), own("Synthetic unused")
+        food = {
+            "id": "off:4006381333931",
+            "name": "Synthetic bar",
+            "basis_amount": 100,
+            "basis_unit": "g",
+            "per_100": {"kcal": 500},
+        }
+        mirror.refresh([food])
+
+        def manage(payload, message):
+            return self.run_tool(
+                "manage_nutrition_products",
+                {"payload": payload},
+                ["local_nutrition"],
+                message=message,
+            )
+
+        favorite = manage(
+            {"action": "favorite", "id": kept["id"], "favorite": True},
+            "Markier den Skyr als Favorit.",
+        )
+        self.assertTrue(favorite["product"]["favorite"])
+        fresh = {**food, "per_100": {"kcal": 500, "salt_g": 0.3}}
+        with (
+            patch.object(OpenFoodFactsClient, "product", return_value=fresh),
+            patch.object(
+                ProductRefreshRunner, "start", return_value={"running": True}
+            ) as started,
+        ):
+            refreshed = self.run_tool(
+                "refresh_nutrition_products",
+                {"payload": {"id": food["id"]}},
+                ["local_nutrition"],
+                message="Prüf den Riegel online nach.",
+            )
+            everything = self.run_tool(
+                "refresh_nutrition_products",
+                {"payload": {"all": True}},
+                ["local_nutrition"],
+                message="Aktualisiere alle Produkte.",
+            )
+        self.assertEqual(0.3, refreshed["food"]["per_100"]["salt_g"])
+        # Starting the background run changes nothing yet: no receipt.
+        self.assertEqual(
+            ({"running": True}, "unchanged"), (everything["run"], everything["status"])
+        )
+        started.assert_called_once_with()
+        manage({"action": "forget", "id": food["id"]}, "Vergiss den Riegel.")
+        self.assertIsNone(mirror.get(food["id"]))
+        preview = manage(
+            {"action": "cleanup_preview", "days": 30},
+            "Welche Produkte würde Aufräumen löschen?",
+        )
+        # Never used, whatever its age; a favourite always stays.
+        self.assertEqual(
+            ("unchanged", [unused["id"]]),
+            (preview["status"], [item["id"] for item in preview["products"]]),
+        )
+        cleaned = manage(
+            {"action": "cleanup", "days": 30}, "Ja, lösch dieses eine Produkt."
+        )
+        self.assertEqual(1, cleaned["count"])
+        self.assertIsNotNone(cleaned["change"])
+        archived = manage(
+            {"action": "archive", "id": kept["id"]}, "Archivier den Skyr."
+        )
+        self.assertEqual(
+            ("archived", "archived"),
+            (
+                archived["product"]["status"],
+                catalog.get_product(unused["id"])["status"],
+            ),
         )
 
     @covers(

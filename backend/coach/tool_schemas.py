@@ -1476,6 +1476,35 @@ def build_structured_tool_schemas(
             ["route_id", "name"],
         ),
         (
+            "manage_nutrition_products",
+            "Produkte's card actions, only on the athlete's explicit request; id from read_nutrition or lookup_food. action favorite: set favorite true or false. action archive: archive an own product. action forget: remove a stored database food. action cleanup_preview: count the products not used for days (30, 90, 180 or 365; never favourites or products a saved meal uses); tell the athlete the count. action cleanup: remove them, only after the athlete confirmed that count in a later message.",
+            {
+                "action": {
+                    "type": "string",
+                    "enum": [
+                        "favorite",
+                        "archive",
+                        "forget",
+                        "cleanup_preview",
+                        "cleanup",
+                    ],
+                },
+                "id": {"type": "string"},
+                "favorite": {"type": "boolean"},
+                "days": {"type": "integer", "enum": [30, 90, 180, 365]},
+            },
+            ["action"],
+        ),
+        (
+            "refresh_nutrition_products",
+            "Re-check products online as Produkte does, only on the athlete's explicit request: one own product (by its EAN) or stored database food by id, or every product with all true (a background run). Only empty values fill; known and own values stay.",
+            {
+                "id": {"type": "string"},
+                "all": {"type": "boolean"},
+            },
+            [],
+        ),
+        (
             "confirm_activity_session",
             "Local only: confirm how provider recordings are bundled into one activity session, so it is never re-bundled automatically. activity_id is the local session ID (act_...) from get_activity_details session_bundle.",
             {"activity_id": {"type": "string", "minLength": 1}},

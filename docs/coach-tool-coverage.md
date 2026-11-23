@@ -55,6 +55,7 @@ generated from the `covers` declarations; regenerate it with
 | `log_equipment_maintenance` | `success` | `test_training_records_and_equipment_tools_use_confirmed_local_state` |
 | `log_nutrition_template` | `success` | `test_saved_meals_run_through_authorized_coach_and_receipts` |
 | `lookup_food` | `success` | `test_food_database_read_tools_calculate_without_writing` |
+| `manage_nutrition_products` | `archive`, `cleanup`, `cleanup_preview`, `favorite`, `forget` | `test_the_coach_manages_products_like_produkte` |
 | `manage_training_templates` | `archive`, `create`, `delete`, `restore`, `update` | `test_template_lifecycle_and_scheduling_preserve_the_scheduled_copy` |
 | `merge_activity_sessions` | `success` | `test_session_tools_correct_the_bundle_and_leave_a_change_receipt` |
 | `preview_adaptive_replan` | `success` | `test_adaptive_preview_requires_later_acceptance_before_changing_workout` |
@@ -64,6 +65,7 @@ generated from the `covers` declarations; regenerate it with
 | `read_profile` | `success` | `test_permanent_profile_acceptance_reads_and_preserves_existing_facts` |
 | `read_training_records` | `success` | `test_training_records_and_equipment_tools_use_confirmed_local_state` |
 | `read_training_state` | `success` | `test_read_tools_return_seeded_objects_without_mutating_them` |
+| `refresh_nutrition_products` | `all`, `one` | `test_the_coach_manages_products_like_produkte` |
 | `rename_activity_route` | `success` | `test_session_tools_correct_the_bundle_and_leave_a_change_receipt` |
 | `replace_training_plan` | `success` | `test_replacement_changes_only_requested_period` |
 | `resolve_training_sync_conflict` | `adopt_remote`, `keep_local`, `retry_push`, `retry_read` | `test_conflict_choices_and_failed_job_retries` |

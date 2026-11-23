@@ -557,6 +557,19 @@ Evidence:
 - `tests/test_nutrition_web_search.py::NutritionWebSearchCatalogTests.test_a_web_fill_needs_the_value_of_a_search_from_its_own_page`
 - `tests/test_nutrition_product_history.py::NutritionProductHistoryTests.test_undo_of_a_gap_fill_names_its_products_and_keeps_an_earlier_fill`
 
+### Requirement: Coach product management
+The Coach SHALL do Produkte's card and list actions through the same use cases as their routes (#3949, #3958): `manage_nutrition_products` marks a favourite, archives an own product, forgets a database food, and previews or runs the clean-up; `refresh_nutrition_products` re-checks one product or starts the run over every product. Both run only in a turn started by the athlete's own message, under scope `local_nutrition` and write-gate domain `nutrition`.
+
+#### Scenario: Deletes and the clean-up
+- **WHEN** the call archives, forgets or cleans up
+- **THEN** the write gate needs the athlete's confirmed delete request in `nutrition`, the clean-up also a confirmed bulk request, and the clean-up stays one undoable run; its preview and a run that finds nothing change nothing and show no receipt.
+
+#### Scenario: Re-check
+- **WHEN** the athlete asks the Coach to re-check a product or every product online
+- **THEN** only empty values fill as with "Aktualisieren" or "Alle aktualisieren", and the call holds no write transaction while the food database answers.
+
+Evidence: `backend/coach/athlete_record_tools.py:CoachAthleteRecordToolService._execute_products`, `backend/coach/write_gate.py:_removes_records`; `tests/test_coach_tool_coverage.py:test_the_coach_manages_products_like_produkte`.
+
 ### Requirement: Coach web search for missing product values
 The Coach SHALL be able to search the web for the still-empty core values of up to five named products through one Responses API request with the `web_search` tool, sending only product name, brand, EAN, basis and missing field names. Only finite, plausible values whose source page the search read or cited SHALL be returned, with origin `web`, the source page and an untrusted-data notice.
 

@@ -178,8 +178,7 @@ def build_coach_command_tools(
             equipment=athlete.equipment(),
             session_corrections=athlete.session_corrections(),
             body_entries=body_entries,
-            zones=athlete.zones,
-            first_threshold=athlete.first_threshold,
+            athlete=athlete,
             second_threshold=lambda: athlete.second_threshold(
                 ctx.performance.curve_records
             ),
@@ -189,6 +188,7 @@ def build_coach_command_tools(
                 )
             ),
             activity_routes=lambda: ctx.activity_routes,
+            nutrition_services=nutrition,
         )
 
     def profile_update_service() -> CoachProfileUpdateService:

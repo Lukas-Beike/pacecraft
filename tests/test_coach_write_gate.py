@@ -585,6 +585,36 @@ class DestructiveTierTests(unittest.TestCase):
                 )  # fmt: skip
                 self.assertEqual(allowed, decision.allowed, decision)
 
+    def test_product_removals_are_deletes_and_the_cleanup_also_bulk(self):
+        # #3958: archive, forget and the clean-up remove products; the
+        # clean-up removes many at once; a favourite and the preview do not.
+        for action, impact in (
+            ("favorite", set()),
+            ("cleanup_preview", set()),
+            ("archive", {"delete"}),
+            ("forget", {"delete"}),
+            ("cleanup", {"delete", "bulk"}),
+        ):
+            with self.subTest(action=action):
+                self.assertEqual(
+                    gate.call_impact(
+                        "manage_nutrition_products", {"payload": {"action": action}}
+                    ),
+                    impact,
+                )
+        cleanup = {"payload": {"action": "cleanup", "days": 90}}
+        for verdict, allowed in (
+            (_verdict(["nutrition"], True, bulk=True), True),
+            (_verdict(["nutrition"], True), False),
+            (_verdict(["profile"], True, bulk=True), False),
+        ):
+            with self.subTest(verdict=verdict):
+                decision = _check(
+                    "manage_nutrition_products", "ja, räum auf",
+                    classifier=_Classifier(verdict), arguments=cleanup,
+                )  # fmt: skip
+                self.assertEqual(allowed, decision.allowed, decision)
+
     def test_many_records_in_one_turn_need_a_confirmed_bulk_change(self):
         week = {"changes": [{"action": "update"}] * gate.BULK_THRESHOLD}
         self.assertEqual(gate.call_impact("apply_training_changes", week), set())

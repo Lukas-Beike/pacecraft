@@ -517,11 +517,11 @@ class CoachCommandToolBuilderTests(unittest.TestCase):
             equipment=ctx.athlete.equipment.return_value,
             session_corrections=ctx.athlete.session_corrections.return_value,
             body_entries=ANY,
-            zones=ctx.athlete.zones,
-            first_threshold=ctx.athlete.first_threshold,
+            athlete=ctx.athlete,
             second_threshold=ANY,
             step_test=ANY,
             activity_routes=ANY,
+            nutrition_services=ctx.nutrition,
         )
         # #3956: the LT2 service reads the performance curves, lazily.
         kwargs = constructors["CoachAthleteRecordToolService"].call_args.kwargs
