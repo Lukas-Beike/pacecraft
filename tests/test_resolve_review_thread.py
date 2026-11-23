@@ -471,6 +471,10 @@ class GuardHookTests(unittest.TestCase):
             'cat"" scripts/r*.py',
             "j'ython' scripts/r*.py 1 PRRT_abc",
             "uni'x' scripts/r*.py",
+            # #3982 advisor: a heredoc named like an inert program, whose body's
+            # lone quote pairs across lines in this reading.
+            "cat <<true\necho '\ntrue\npython scripts/resolve_review_threa?.py 1 PRRT_x\n"
+            "cat <<true\necho '\ntrue",
         ):
             with self.subTest(command):
                 self.assertEqual(self.decide(command), 2)

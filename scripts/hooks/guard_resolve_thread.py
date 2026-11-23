@@ -376,9 +376,10 @@ RUNS_ARGUMENTS = re.compile(
     r"|alias|extension|config|bisect|submodule|foreach)(?![\w-])|[{%]"
 )
 # Text whose words the shells may split differently than this reading:
-# escapes, comments, history and alias marks, ANSI-C, substitutions and
-# typographic quotes PowerShell closes on.
-UNREADABLE = re.compile(r"\\|#|!|`|\r|\$[('\"]|[<>]\(|[‘’“”]")
+# escapes, comments, history and alias marks, ANSI-C, substitutions,
+# typographic quotes PowerShell closes on, and heredocs, whose body a lone
+# quote would pair across (#3982 advisor).
+UNREADABLE = re.compile(r"\\|#|!|`|\r|<<|\$[('\"]|[<>]\(|[‘’“”]")
 QUOTED = re.compile(r"'[^']*'|\"[^\"]*\"")
 # Shell tokens: a quoted run, a separator, blanks, plain characters; a lone
 # quote never closes.
