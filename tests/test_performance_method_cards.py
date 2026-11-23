@@ -341,7 +341,7 @@ METHOD_NUMBER_PINS = {
     "backend/activities/stream_zones.py": (2, "aa1d0759b6b339be"),
     "backend/athlete/body_composition.py": (5, "8d13a81b8c901c9c"),
     "backend/canonical/dfa_alpha1.py": (3, "15f9cecd3bd14787"),
-    "backend/nutrition/energy_balance.py": (26, "133a07e43fdc5174"),
+    "backend/nutrition/energy_balance.py": (26, "632233b3baab197b"),
     "backend/performance/activity_energy.py": (8, "29737ead83232fbf"),
     "backend/performance/canonical_session_analysis.py": (9, "bc0a8ff2471f7144"),
     "backend/performance/critical_power.py": (3, "7ddfaff976ff585a"),

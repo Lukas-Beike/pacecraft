@@ -41,6 +41,15 @@ if TYPE_CHECKING:
     from backend.nutrition.energy_balance import DayInputs
 
 Cause = Literal["salt", "carbs", "carbs_after_session"]
+
+# What the Coach says with the hint (athlete decision, #4047): the cause, no kilogram
+# figure, and that salt never builds tissue or fat. It travels with the hint, as the
+# Coach prompt and its playbooks are at their size budgets.
+COACH_NOTE: Final = (
+    "Nenne die Ursache, keine Kilogrammzahl: Das Plus von heute früh passt zu viel Salz "
+    "und Kohlenhydraten gestern. Das ist Wasser, kein Fett und kein Gewebe: Salz bindet "
+    "nur kurz Wasser und lässt dich nicht zunehmen."
+)
 Direction = Literal["up", "down"]
 
 
@@ -142,6 +151,7 @@ def water_hint_for_today(
         "date": today.isoformat(),
         "direction": hint.direction,
         "causes": list(hint.causes),
+        "coach_note": COACH_NOTE,
     }
 
 

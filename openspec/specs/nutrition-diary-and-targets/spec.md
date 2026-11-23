@@ -417,7 +417,7 @@ The energy read SHALL carry `water_hint` for this morning's weigh-in (today's, r
 
 #### Scenario: The Coach reads the same hint
 - **WHEN** the Coach reads the energy of a day
-- **THEN** it receives the same `water_hint` and its rules say to name the cause, to give no kilogram figure, and that salt binds water only for a short time and never causes tissue or fat gain.
+- **THEN** it receives the same `water_hint`, which carries `coach_note`: name the cause, give no kilogram figure, and salt binds water only for a short time and never causes tissue or fat gain.
 
 Evidence: `backend/nutrition/water_hint.py`, `backend/nutrition/energy_view.py::read_energy_view`, `public/analysis.js::waterHintText`; `tests/test_water_hint.py`, `tests/test_coach_tool_coverage.py::test_the_energy_read_takes_the_asked_day`, `tests/analysis-presentation.test.cjs::body overview: the newest own body fat with its source, weight with its source, lean mass derived (#3402)`.
 

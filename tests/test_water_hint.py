@@ -8,6 +8,7 @@ from datetime import date, timedelta
 from backend.nutrition.energy_balance import DayInputs
 from backend.nutrition.intake_totals import salt_totals
 from backend.nutrition.water_hint import (
+    COACH_NOTE,
     DayIntake,
     WaterHint,
     water_hint,
@@ -169,7 +170,12 @@ class WaterHintTests(unittest.TestCase):
         weights = steady(STEP, 1.6)
         self.assertEqual(
             water_hint_for_today(days, None, DAY, weights[DAY]),
-            {"date": DAY.isoformat(), "direction": "up", "causes": ["salt", "carbs"]},
+            {
+                "date": DAY.isoformat(),
+                "direction": "up",
+                "causes": ["salt", "carbs"],
+                "coach_note": COACH_NOTE,
+            },
         )
         # Without this morning's weigh-in there is nothing to explain.
         self.assertIsNone(water_hint_for_today(days, None, DAY, None))
