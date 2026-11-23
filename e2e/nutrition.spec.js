@@ -21,8 +21,10 @@ test("@responsive nutrition diary and saved meals remain read-only and preserve 
   await expect(page.locator("#appShell")).toBeVisible();
   await expect(page.locator("#nutritionStatus")).not.toContainText("wird geladen");
   await expect(page.locator("#nutritionEntries .nutrition-card")).toHaveCount(0);
-  await expect(page.locator("#nutritionTotals strong.value-missing")).toHaveCount(6);
-  await expect(page.locator("#nutritionTotals strong.value-missing").first()).toHaveText("nicht erfasst");
+  // An empty day shows no row of missing tiles; the status says so and offers the message to the Coach (#3936 G-13, G-14).
+  await expect(page.locator("#nutritionTotals")).toBeHidden();
+  await expect(page.locator("#nutritionStatus")).toHaveText("Noch keine Mahlzeiten erfasst.");
+  await expect(page.locator("#nutritionTellCoach")).toBeVisible();
   await expect(page.locator('[data-nutrition-segment="meals"], #nutritionMeals, #nutritionTemplates')).toHaveCount(0);
   await expect(page.locator("#nutritionDefine, #nutritionLog, #trainingFueling")).toHaveCount(0);
   const send = async (text) => {

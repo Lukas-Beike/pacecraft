@@ -217,8 +217,10 @@ test("@responsive nutrition history switches between 4 weeks, 3, 6 and 12 months
   await root.getByRole("button", { name: "12 Monate", exact: true }).click();
   await expect(root.locator("#nutritionWeekChartPeriod")).toHaveText("12 Monate");
   await expect(root.locator("#nutritionWeekDays tr")).toHaveCount(1);
+  // The choice is remembered per tab across a reload (#3929 A-11).
   await page.reload();
-  await expect(root.locator("#nutritionWeekChartHeading")).toHaveText("Tagesverlauf");
+  await expect(root.locator("#nutritionWeekChartHeading")).toHaveText("Wochendurchschnitte");
+  await expect(root.getByRole("button", { name: "12 Monate", exact: true })).toHaveAttribute("aria-pressed", "true");
   await root.getByRole("button", { name: "4 Wochen", exact: true }).click();
   await expect(root.locator("#nutritionWeekChartHeading")).toHaveText("Tagesverlauf");
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);

@@ -100,6 +100,9 @@ def with_structure_versions(db: Any, payloads: list[dict[str, Any]]) -> None:
             ]
 
 
+UNIT_NOT_FOUND = "Einheit nicht gefunden."
+
+
 class PlannedUnitService:
     """Own local planned-unit persistence, mutation, and transaction orchestration."""
 
@@ -649,6 +652,45 @@ class PlannedUnitService:
         self._database_manager.after_commit(self._publish_change)
         return result
 
+    def blocked_days(self, local_id: str, dates: Any) -> dict[str, builtins.list[str]]:
+        """The days among ``dates`` a move of this unit would be refused, with the entries in the way.
+
+        It asks the calendar rules the move asks, so a day strip never offers a day
+        the move then refuses (#4060). Past days, the unit's own day and unreadable
+        dates are left out; at most 31 days are checked.
+        """
+        normalized_id = planned_units.planned_workout_update_request(local_id, {})[0]
+        with self._database_manager.unit_of_work() as db:
+            _row, current, _before = self._load_for_update(db, normalized_id)
+        if current.get("archived") or current.get("local_deleted"):
+            raise AppError(404, UNIT_NOT_FOUND)
+        today = self._today().isoformat()
+        blocked: dict[str, builtins.list[str]] = {}
+        for raw in (dates if isinstance(dates, list) else [])[:31]:
+            try:
+                day = LocalDate.parse(raw, allow_datetime=False).isoformat()
+            except TypeError, ValueError:
+                continue
+            if day < today or day == current.get("date"):
+                continue
+            _id, values, action = planned_units.planned_workout_update_request(
+                normalized_id, {"date": day}
+            )
+            candidate = planned_units.planned_workout_update_candidate(
+                current, action, values
+            )
+            planned_units.prepare_planned_workout_date(
+                candidate, current, today=self._today()
+            )
+            entries = [
+                *self._calendar_conflict_service.constraints(candidate),
+                *self._calendar_conflict_service.conflicts(candidate, {normalized_id}),
+            ]
+            names = [str(entry.get("name") or "Kalendereintrag") for entry in entries]
+            if names:
+                blocked[day] = list(dict.fromkeys(names))
+        return blocked
+
     def move(
         self, local_id: str, target_date: Any, expected_hash: Any
     ) -> dict[str, Any]:
@@ -671,7 +713,7 @@ class PlannedUnitService:
                 _unchanged_row(db, normalized_id, expected_hash)["payload"] or "{}"
             )
             if current.get("archived") or current.get("local_deleted"):
-                raise AppError(404, "Einheit nicht gefunden.")
+                raise AppError(404, UNIT_NOT_FOUND)
             if current.get("date") == day:
                 return {
                     "status": "local",
@@ -722,7 +764,7 @@ def _unchanged_row(db: Any, local_id: Any, expected_hash: Any) -> Any:
     """The stored unit, if its content hash still matches the browser's read."""
     row = planning_store.planned_unit_row(db, str(local_id))
     if row is None or row["tombstone"]:
-        raise AppError(404, "Einheit nicht gefunden.")
+        raise AppError(404, UNIT_NOT_FOUND)
     if not planned_units.plan_push_hash_matches(row["payload"], expected_hash):
         raise AppError(
             409,

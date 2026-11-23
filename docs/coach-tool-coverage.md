@@ -28,17 +28,19 @@ generated from the `covers` declarations; regenerate it with
 | `apply_adaptive_replan` | `intervals`, `local` | `test_adaptive_preview_requires_later_acceptance_before_changing_workout`, `test_illness_sync_requires_explicit_remote_acceptance_after_preview` |
 | `apply_training_patch` | `archive`, `create`, `delete`, `move`, `restore`, `update` | `test_planned_unit_lifecycle_keeps_identity_until_deleted` |
 | `apply_workout_library_plan` | `success` | `test_template_lifecycle_and_scheduling_preserve_the_scheduled_copy` |
-| `assign_activity_equipment` | `success` | `test_training_records_and_equipment_tools_use_confirmed_local_state` |
+| `assign_activity_equipment` | `activity`, `planned_unit` | `test_training_records_and_equipment_tools_use_confirmed_local_state` |
 | `calculate_food_nutrition` | `success` | `test_food_database_read_tools_calculate_without_writing` |
 | `cancel_coach_request` | `success` | `test_clarification_and_cancellation_preserve_athlete_data` |
 | `clarify_coach_request` | `success` | `test_clarification_and_cancellation_preserve_athlete_data` |
 | `commit_training_plan` | `success` | `test_requested_draft_commit_and_metadata_lifecycle` |
 | `confirm_activity_session` | `success` | `test_session_tools_correct_the_bundle_and_leave_a_change_receipt` |
 | `delete_activity_feedback` | `success` | `test_daily_feedback_and_activity_feedback_are_separate_from_profile` |
+| `delete_activity_session` | `success` | `test_session_tools_correct_the_bundle_and_leave_a_change_receipt` |
 | `delete_body_entry` | `success` | `test_the_coach_records_weight_and_body_fat_in_koerper` |
 | `delete_competition` | `success` | `test_competition_lifecycle_syncs_only_after_explicit_followup` |
 | `delete_nutrition_entry` | `success` | `test_nutrition_entries_can_be_saved_read_and_deleted` |
 | `delete_nutrition_template` | `success` | `test_saved_meals_run_through_authorized_coach_and_receipts` |
+| `delete_zones` | `success` | `test_the_coach_saves_and_adopts_zones_like_the_zone_editor` |
 | `fill_nutrition_product_gaps` | `success` | `test_incomplete_products_are_listed_and_filled_by_authorized_coach_turn` |
 | `get_activity_details` | `success` | `test_read_tools_return_seeded_objects_without_mutating_them` |
 | `get_sync_job` | `success` | `test_provider_reads_and_job_status_use_correct_provider` |
@@ -53,6 +55,7 @@ generated from the `covers` declarations; regenerate it with
 | `log_equipment_maintenance` | `success` | `test_training_records_and_equipment_tools_use_confirmed_local_state` |
 | `log_nutrition_template` | `success` | `test_saved_meals_run_through_authorized_coach_and_receipts` |
 | `lookup_food` | `success` | `test_food_database_read_tools_calculate_without_writing` |
+| `manage_nutrition_products` | `archive`, `cleanup`, `cleanup_preview`, `favorite`, `forget` | `test_the_coach_manages_products_like_produkte` |
 | `manage_training_templates` | `archive`, `create`, `delete`, `restore`, `update` | `test_template_lifecycle_and_scheduling_preserve_the_scheduled_copy` |
 | `merge_activity_sessions` | `success` | `test_session_tools_correct_the_bundle_and_leave_a_change_receipt` |
 | `preview_adaptive_replan` | `success` | `test_adaptive_preview_requires_later_acceptance_before_changing_workout` |
@@ -62,6 +65,8 @@ generated from the `covers` declarations; regenerate it with
 | `read_profile` | `success` | `test_permanent_profile_acceptance_reads_and_preserves_existing_facts` |
 | `read_training_records` | `success` | `test_training_records_and_equipment_tools_use_confirmed_local_state` |
 | `read_training_state` | `success` | `test_read_tools_return_seeded_objects_without_mutating_them` |
+| `refresh_nutrition_products` | `all`, `one` | `test_the_coach_manages_products_like_produkte` |
+| `rename_activity_route` | `success` | `test_session_tools_correct_the_bundle_and_leave_a_change_receipt` |
 | `replace_training_plan` | `success` | `test_replacement_changes_only_requested_period` |
 | `resolve_training_sync_conflict` | `adopt_remote`, `keep_local`, `retry_push`, `retry_read` | `test_conflict_choices_and_failed_job_retries` |
 | `save_activity_feedback` | `success` | `test_daily_feedback_and_activity_feedback_are_separate_from_profile` |
@@ -72,7 +77,9 @@ generated from the `covers` declarations; regenerate it with
 | `save_nutrition_entry` | `success` | `test_nutrition_entries_can_be_saved_read_and_deleted` |
 | `save_nutrition_product` | `success` | `test_confirmed_product_is_saved_locally_through_authorized_coach_receipt` |
 | `save_nutrition_template` | `success` | `test_saved_meals_run_through_authorized_coach_and_receipts` |
+| `save_zones` | `adopt_first_threshold`, `adopt_lt2`, `save` | `test_the_coach_saves_and_adopts_zones_like_the_zone_editor` |
 | `search_web_for_product_values` | `success` | `test_web_search_returns_cited_values_and_degrades_to_unavailable` |
+| `set_equipment_rule` | `apply`, `preview`, `set` | `test_training_records_and_equipment_tools_use_confirmed_local_state` |
 | `split_activity_session` | `success` | `test_session_tools_correct_the_bundle_and_leave_a_change_receipt` |
 | `stage_training_plan` | `success` | `test_requested_draft_commit_and_metadata_lifecycle` |
 | `start_intervals_plan_sync` | `all_pending`, `created`, `selected` | `test_new_plan_sync_and_later_selected_sync_use_real_ids` |

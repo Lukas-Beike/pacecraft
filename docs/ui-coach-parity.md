@@ -21,7 +21,7 @@ case on both sides, so the guards match.
 tool and route exists, the parity value matches the two columns, each gap names
 its issue and the counts below match the table.
 
-Counts: both 53, UI only 23, Coach only 10, neither 0, UI by rule 8.
+Counts: both 67, UI only 9, Coach only 10, neither 0, UI by rule 8.
 
 ## Matrix
 
@@ -30,16 +30,16 @@ Counts: both 53, UI only 23, Coach only 10, neither 0, UI by rule 8.
 | Profile | Read profile and competitions | Mehr › Profil `GET /api/profile` | `read_profile`, `read_coach_context` | — | both | |
 | Profile | Edit profile fields, time zone, weather location, preferred sources | Mehr › Profil `PUT /api/profile` | `update_profile` | receipt, undo | both | |
 | Profile | Set the energy goal | Analyse › Körper "Energieziel" `PUT /api/profile` | `update_profile` (`energy_goal`, `energy_goal_kcal`) | receipt | both | |
-| Zones | Read zones and thresholds | Profil › Zonen & Schwellen `GET /api/zones` | `read_training_state` | — | both | |
-| Zones | Save a local zone configuration | Zonen & Schwellen `PUT /api/zones` | — | UI save | UI only | #3956 |
-| Zones | Remove a local zone configuration | Zonen & Schwellen `PUT /api/zones/remove` | — | confirmation | UI only | #3956 |
-| Zones | Adopt the first-threshold estimate | Zonen & Schwellen `POST /api/profile/first-threshold/adopt` | — | receipt, undo | UI only | #3956 |
-| Zones | Adopt an LT2 estimate | Zonen & Schwellen `POST /api/zones/lt2/adopt` | — | receipt | UI only | #3956 |
+| Zones | Read zones and thresholds | Profil › Zonen & Schwellen `GET /api/zones` | `read_coach_context` | — | both | |
+| Zones | Save a local zone configuration | Zonen & Schwellen `PUT /api/zones` | `save_zones` (`save`) | receipt, undo | both | |
+| Zones | Remove a local zone configuration | Zonen & Schwellen `PUT /api/zones/remove` | `delete_zones` | delete confirmation, undo | both | |
+| Zones | Adopt the first-threshold estimate | Zonen & Schwellen `POST /api/profile/first-threshold/adopt` | `save_zones` (`adopt_first_threshold`) | receipt, undo; replacing a measured value needs a confirmed request | both | |
+| Zones | Adopt an LT2 estimate | Zonen & Schwellen `POST /api/zones/lt2/adopt` | `save_zones` (`adopt_lt2`) | receipt, undo; replacing an entered value needs a confirmed request | both | |
 | Competitions | Create or change a competition | Kalender › Wettkampf `PUT /api/competitions` | `save_competition`, `list_competitions` | receipt, undo | both | |
 | Competitions | Delete a competition | Kalender › Wettkampf `PUT /api/competitions/remove` | `delete_competition` | delete confirmation | both | |
 | Competitions | Send competitions to Intervals.icu | Kalender › Wettkampf `POST /api/intervals/competitions/send` | `sync_competitions` | named sync | both | |
 | Planning | Read planned units and the planning view | Kalender `GET /api/plan` | `list_planned_workouts`, `read_training_state` | — | both | |
-| Planning | Create a planned unit | Kalender day "+ Einheit hinzufügen" `POST /api/planned-units` | `apply_training_patch` (`workouts`) | receipt, undo, plan checks | both | |
+| Planning | Create a planned unit | Bibliothek "+ Einheit" `POST /api/library`, then "Einplanen" `POST /api/library/{id}/schedule` | `apply_training_patch` (`workouts`) | receipt, undo, calendar rule check | both | "Einplanen" runs no illness plan check yet (#4055) |
 | Planning | Change a planned unit's content | Kalender card "Bearbeiten" `POST /api/planned-units/{id}/update` | `apply_training_patch` (`update`) | receipt, undo, plan checks | both | |
 | Planning | Move a planned unit to another day | Kalender card `POST /api/planned-units/{id}/date` | `apply_training_patch` (`update` with `date`) | receipt, undo | both | |
 | Planning | Delete a planned unit | Kalender card `POST /api/planned-units/{id}/delete` | `apply_training_patch` (`delete`) | delete confirmation | both | |
@@ -66,14 +66,14 @@ Counts: both 53, UI only 23, Coach only 10, neither 0, UI by rule 8.
 | Activities | Save or edit activity feedback and purpose | Session details `POST /api/activities/{id}/feedback` | `save_activity_feedback` | receipt, undo | both | |
 | Activities | Clear activity feedback | Session details `POST /api/activities/{id}/feedback` | `delete_activity_feedback` | receipt, undo | both | |
 | Activities | Confirm, split or merge a session bundle | Session details `POST /api/activities/{id}/session` | `confirm_activity_session`, `split_activity_session`, `merge_activity_sessions` | receipt, undo | both | |
-| Activities | Delete a session bundle | Session details `POST /api/activities/{id}/session` (`delete`) | — | delete confirmation | UI only | #3957 |
-| Activities | Rename a recognised route | Session details `POST /api/routes/rename` | — | — | UI only | #3957 |
+| Activities | Delete a session bundle | Session details `POST /api/activities/{id}/session` (`delete`) | `delete_activity_session` | delete confirmation, undo | both | |
+| Activities | Rename a recognised route | Session details `POST /api/routes/rename` | `rename_activity_route` | receipt | both | |
 | Equipment | Create, edit or retire equipment | Mehr › Ausrüstung `POST /api/equipment` | `save_equipment` | receipt | both | |
 | Equipment | Record maintenance | Mehr › Ausrüstung `POST /api/equipment/maintenance` | `log_equipment_maintenance` | receipt | both | |
 | Equipment | Assign equipment to a session | Session details `POST /api/equipment/assignment` | `assign_activity_equipment` | receipt | both | |
-| Equipment | Assign equipment to a planned unit | Kalender card `GET /api/equipment/planned`, `POST /api/equipment/assignment` | — | receipt | UI only | #3957 |
-| Equipment | Set a default equipment rule | Mehr › Ausrüstung `POST /api/equipment/rules` | — | — | UI only | #3957 |
-| Equipment | Apply a rule to earlier sessions | Mehr › Ausrüstung `GET /api/equipment/rules/preview`, `POST /api/equipment/rules/apply` | — | preview count, confirmation | UI only | #3957 |
+| Equipment | Assign equipment to a planned unit | Kalender card `GET /api/equipment/planned`, `POST /api/equipment/assignment` | `assign_activity_equipment` (`planned_unit_id`) | receipt | both | |
+| Equipment | Set a default equipment rule | Mehr › Ausrüstung `POST /api/equipment/rules` | `set_equipment_rule` (`set`) | receipt, undo | both | |
+| Equipment | Apply a rule to earlier sessions | Mehr › Ausrüstung `GET /api/equipment/rules/preview`, `POST /api/equipment/rules/apply` | `set_equipment_rule` (`preview`, `apply`) | preview count, confirmed bulk request | both | |
 | Nutrition | Read the diary day, week and energy | Ernährung `GET /api/nutrition/day`, `GET /api/nutrition/week`, `GET /api/body/energy` | `read_nutrition` | — | both | |
 | Nutrition | Log a saved product as a meal | Produkt dialog `POST /api/nutrition/entry` | `save_nutrition_entry` | receipt, undo | both | |
 | Nutrition | Log a composed meal from several foods | — | `save_nutrition_entry` | receipt, undo | Coach only | #3952 |
@@ -89,11 +89,11 @@ Counts: both 53, UI only 23, Coach only 10, neither 0, UI by rule 8.
 | Products | Search foods and products | Produkte `GET /api/nutrition/products`, `POST /api/nutrition/products/lookup` | `lookup_food`, `calculate_food_nutrition` | — | both | |
 | Products | Save a confirmed product, also from a label photo | Produkte `POST /api/nutrition/products`, `POST /api/nutrition/products/extract` | `save_nutrition_product` | receipt | both | |
 | Products | Edit a product or fill its missing values | Produkte `PUT /api/nutrition/products` | `list_incomplete_nutrition_products`, `fill_nutrition_product_gaps`, `search_web_for_product_values` | receipt | both | |
-| Products | Mark a product as favourite | Produkte `POST /api/nutrition/products/favorite` | — | — | UI only | #3958 |
-| Products | Archive a product | Produkte `POST /api/nutrition/products/archive` | — | confirmation | UI only | #3958 |
-| Products | Clean up unused products | Produkte `GET /api/nutrition/products/cleanup`, `POST /api/nutrition/products/cleanup` | — | preview, confirmation, undo | UI only | #3958 |
-| Products | Forget a food-database entry | Produkte `POST /api/nutrition/products/database/delete` | — | confirmation | UI only | #3958 |
-| Products | Re-check products online | Produkte `POST /api/nutrition/products/database/refresh`, `POST /api/nutrition/products/refresh-all` | — | — | UI only | #3958 |
+| Products | Mark a product as favourite | Produkte `POST /api/nutrition/products/favorite` | `manage_nutrition_products` (`favorite`) | receipt | both | |
+| Products | Archive a product | Produkte `POST /api/nutrition/products/archive` | `manage_nutrition_products` (`archive`) | delete confirmation | both | |
+| Products | Clean up unused products | Produkte `GET /api/nutrition/products/cleanup`, `POST /api/nutrition/products/cleanup` | `manage_nutrition_products` (`cleanup_preview`, `cleanup`) | preview, confirmed delete and bulk request, undo | both | |
+| Products | Forget a food-database entry | Produkte `POST /api/nutrition/products/database/delete` | `manage_nutrition_products` (`forget`) | delete confirmation | both | |
+| Products | Re-check products online | Produkte `POST /api/nutrition/products/database/refresh`, `POST /api/nutrition/products/refresh-all` | `refresh_nutrition_products` | receipt | both | |
 | Body | Save or change weight | Körper `PUT /api/body/weight` | `save_body_entry` (`weight`) | receipt; writes Garmin and Wahoo | both | |
 | Body | Save or change body fat | Körper `PUT /api/body/body-fat` | `save_body_entry` (`body_fat`) | receipt; writes Garmin | both | |
 | Body | Remove weight or body fat | Körper `PUT /api/body/weight/remove`, `PUT /api/body/body-fat/remove` | `delete_body_entry` | confirmation | both | |

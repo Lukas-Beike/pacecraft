@@ -65,6 +65,8 @@ test("the deletion stays locked while the backup before deletion is running", as
     await route.continue();
   });
   const exportButton = page.locator("#privacyExportButton");
+  // The export sits in its own section "Daten", apart from "Löschen".
+  await page.locator("#privacySection").evaluate((section) => { section.open = true; });
   await exportButton.click();
   await expect(exportButton).toBeDisabled();
   await expect(exportButton).toHaveAttribute("aria-busy", "true");

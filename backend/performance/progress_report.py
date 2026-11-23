@@ -149,11 +149,10 @@ def _bucket(
 ) -> dict[str, Any]:
     bucket = {
         "sessions": len(sessions),
-        # A strength week counts its sessions' total time (#2317).
-        "duration_s": metric_sum(
-            sessions,
-            summary_leading_duration_s if sport == "strength" else "moving_duration_s",
-        ),
+        # Every week counts the time a session is shown with (#2317): the moving time, else the
+        # elapsed time, strength the elapsed time first. The calendar header sums the same
+        # time, so header and review agree (#4061).
+        "duration_s": metric_sum(sessions, summary_leading_duration_s),
         "training_load": _load(sessions),
         "session_rpe_load": _rpe(sessions, feedback, timezone),
         "intensity_3zone": intensity_3zone(sessions),
@@ -163,7 +162,7 @@ def _bucket(
     commutes = [row for row in sessions if summary_is_commute(row)]
     if commutes:
         bucket["commute_sessions"] = len(commutes)
-        bucket["commute_duration_s"] = metric_sum(commutes, "moving_duration_s")
+        bucket["commute_duration_s"] = metric_sum(commutes, summary_leading_duration_s)
     return bucket
 
 

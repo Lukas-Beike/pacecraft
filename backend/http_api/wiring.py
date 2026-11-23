@@ -461,6 +461,7 @@ def _read_routes(
             public.plan_state_service,
             public.weather_state_service,
             library_page_service,
+            ctx.planning.planned_unit,
         ),
         SyncGetRoutes(
             ctx.sync_job_queue.service,
@@ -580,8 +581,6 @@ def _athlete_write_routes(
         EquipmentPostRoutes(athlete.equipment),
         FirstThresholdPostRoutes(
             athlete.first_threshold,
-            athlete.profile,
-            ctx.database,
             step_test=lambda activity_id: _step_test(ctx, activity_id),
         ),
         SecondThresholdPostRoutes(

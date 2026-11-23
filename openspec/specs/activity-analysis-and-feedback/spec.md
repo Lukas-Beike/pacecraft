@@ -289,7 +289,7 @@ The system SHALL group repeated rides and runs with a stored GPS track that are 
 - **THEN** it joins no route of the first loop and the last three get no route
 
 #### Scenario: Rename
-- **WHEN** the athlete posts a name of 1 to 60 characters without control characters for a known route to `/api/routes/rename`
+- **WHEN** the athlete posts a name of 1 to 60 characters without control characters for a known route to `/api/routes/rename`, or asks the Coach, whose `rename_activity_route` uses the same rename (#3957)
 - **THEN** the route shows that label from then on, also after recomputation; an unknown route answers 404 and an invalid name 400
 
 #### Scenario: Usable track

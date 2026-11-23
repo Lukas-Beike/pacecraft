@@ -735,7 +735,7 @@ A run unit whose focus has a cap in `HR_CAP_PERCENT` (`backend/activities/hr_cap
 - **THEN** the profile read gives it in bpm with the run threshold HR in effect on the day that percent was last changed (change history), else today, writes nothing, and the next profile save or adoption stores the bpm and drops the percent
 
 #### Scenario: Adopted first threshold estimate
-- **WHEN** the athlete adopts the first threshold estimate from chest-strap RR intervals (`POST /api/profile/first-threshold/adopt`, never by the Coach)
+- **WHEN** the athlete adopts the first threshold estimate from chest-strap RR intervals (`POST /api/profile/first-threshold/adopt`, or the Coach's `save_zones` on the athlete's request)
 - **THEN** it is stored in bpm of today's run threshold HR as `first_threshold_hr` with the origin `estimated` (`first_threshold_origin`) through the profile save path with change receipt and undo, the caps follow it like a measured value, the cap source is `estimated` (label `geschätzt`), a stored measured value is replaced only when the request says so, and a later manual entry sets the origin back to `measured`.
 
 #### Scenario: Units with an older default cap

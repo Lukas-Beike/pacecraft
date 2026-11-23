@@ -69,6 +69,7 @@ function analysisCoverageText(count, total, unitWord) {
 
 let analysisInfoId = 0;
 
+// The quick-action menu of the Coach still opens as a positioned popover, kept inside the viewport.
 function analysisPopoverPosition(anchor, popover, viewport) {
   const margin = 12, gap = 8;
   const width = Math.min(popover.width, viewport.width - margin * 2);
@@ -81,25 +82,22 @@ function analysisPopoverPosition(anchor, popover, viewport) {
   return { left, top };
 }
 
-function positionAnalysisPopover(button, info) {
-  const rect = button.getBoundingClientRect();
-  const { left, top } = analysisPopoverPosition(
-    { left: rect.left, top: rect.top, bottom: rect.bottom },
-    { width: info.offsetWidth, height: info.offsetHeight },
-    { width: innerWidth, height: innerHeight });
-  info.style.left = `${left}px`;
-  info.style.top = `${top}px`;
-}
-
+// An explanation opens in place under its button and pushes the rest down, so it covers nothing and needs no
+// positioning (athlete decision, #3929 A-08). Escape closes it again.
 function bindAnalysisPopover(button, info) {
-  info.setAttribute("popover", "auto");
-  info.setAttribute("role", "tooltip");
-  button.setAttribute("popovertarget", info.id);
+  info.removeAttribute("popover");
+  info.hidden = true;
+  info.setAttribute("role", "note");
+  button.removeAttribute("popovertarget");
   button.setAttribute("aria-expanded", "false");
-  info.addEventListener("toggle", (event) => {
-    button.setAttribute("aria-expanded", String(event.newState === "open"));
-    if (event.newState === "open") positionAnalysisPopover(button, info);
-  });
+  button.setAttribute("aria-controls", info.id);
+  const set = (open) => {
+    info.hidden = !open;
+    button.setAttribute("aria-expanded", String(open));
+  };
+  button.addEventListener("click", () => set(info.hidden));
+  info.addEventListener("keydown", (event) => { if (event.key === "Escape") { set(false); button.focus(); } });
+  button.addEventListener("keydown", (event) => { if (event.key === "Escape" && !info.hidden) set(false); });
 }
 
 function analysisChart(title, series, unit, start, end, note, {
@@ -124,8 +122,7 @@ function analysisChart(title, series, unit, start, end, note, {
     const button = h("button", { className: "analysis-legend-info", type: "button", "aria-label": `Erklärung zu ${label}`, "aria-describedby": info.id }, label);
     bindAnalysisPopover(button, info);
     const entry = h("li", { dataset: { color: String(item.color ?? index), line: analysisLineStyle(item, index) } }, button, info);
-    const sourceSuffix = item.source ? " · " + item.source : "";
-    if (latest) info.append(h("span", "analysis-metric-meta", `${dateLabel(latest.observedDate || latest.date)}${sourceSuffix}`));
+    // Value, date and source stand once, in the first line of the explanation (#3929 A-08).
     if (item.referenceLabel) info.append(h("span", "analysis-metric-context", item.referenceLabel));
     const readings = item.points.filter(valid);
     info.append(h("span", "analysis-metric-meta", item.coverageShort || analysisCoverageText(readings.length, item.cadenceDays === 7 ? periodCount[7] : item.points.length, item.cadenceDays === 7 ? "Wochen" : "Tagen")));
@@ -671,6 +668,12 @@ function rememberAnalysisSectionState(...roots) {
   for (const root of roots) root.querySelectorAll("details[data-analysis-section]").forEach((details) => analysisSectionState.set(details.dataset.analysisSection, details.open));
 }
 
+// What the Entwicklung of a sport draws, said once for its own sport (#3929 A-08).
+function developmentNote(sport, weeks) {
+  const values = sport === "Lauf" ? "letzter gültiger Wochenwert für die Schwellenpace, Wochenmedian für VO₂max" : "alle datierten FTP-Werte, Wochenmedian für VO₂max";
+  return `Letzte ${weeks} Kalenderwochen einschließlich der laufenden: ${values}. Fehlende Messungen bleiben Lücken.`;
+}
+
 function analysisChartGroup(title, charts, series, note) {
   const group = h("section", "analysis-chart-card analysis-chart-stack");
   const heading = h("h3", "analysis-group-heading", h("span", "analysis-group-title", title));
@@ -682,10 +685,9 @@ function analysisChartGroup(title, charts, series, note) {
       if (details) info.append(h("p", null, `${item.legendLabel || item.label}: ${details}`));
     });
     if (note) info.append(h("p", null, note));
-    bindAnalysisPopover(help, info); heading.append(help); group.append(info);
-  }
-  group.append(heading);
-  if (note) charts.forEach((chart) => chart.querySelectorAll(".analysis-legend-info + .analysis-info-tooltip").forEach((info) => info.append(h("p", null, note))));
+    bindAnalysisPopover(help, info); heading.append(help);
+    group.append(heading, info);
+  } else group.append(heading);
   charts.forEach((chart) => {
     chart.classList.remove("analysis-chart-card"); chart.classList.add("analysis-subchart");
     const heading = chart.querySelector("h3");
@@ -707,6 +709,16 @@ const ANALYSIS_PERIODS = [
 // The performance state serves up to 3 Monate; a longer period reads /api/analysis/trend-history on demand.
 const BASE_PERIOD_DAYS = 91;
 
+// Each tab starts on its remembered period; called once when the app starts, before any view renders.
+function restoreAnalysisPeriods() {
+  analysisHistoryPeriod = storedAnalysisPeriod("load", analysisHistoryPeriod);
+  recoveryHistoryPeriod = storedAnalysisPeriod("recovery", recoveryHistoryPeriod);
+  developmentPeriod = storedAnalysisPeriod("development", developmentPeriod);
+  strengthHistoryPeriod = storedAnalysisPeriod("strength", strengthHistoryPeriod);
+  bodyHistoryPeriod = storedAnalysisPeriod("body", bodyHistoryPeriod);
+  restoreNutritionPeriod();
+}
+
 function analysisPeriod(key) {
   return ANALYSIS_PERIODS.find((item) => item.key === key) || ANALYSIS_PERIODS[0];
 }
@@ -715,13 +727,15 @@ function analysisPeriodWeekly(key) {
   return analysisPeriod(key).days > 28;
 }
 
-// `trend` adds the line under the buttons that names a failed longer read.
-function analysisPeriodControls(label, value, change, { trend = false } = {}) {
+// `trend` adds the line under the buttons that names a failed longer read; `remember` names the tab
+// whose choice is kept on this device. Each text stays on one line.
+function analysisPeriodControls(label, value, change, { trend = false, remember = null } = {}) {
   const controls = h("div", { className: "analysis-period-controls", "aria-label": label });
   controls.setAttribute("role", "group");
   for (const { key, label: text } of ANALYSIS_PERIODS) {
     const button = h("button", { className: "secondary-button", type: "button", "aria-pressed": String(key === value) }, text);
     button.addEventListener("click", () => {
+      if (remember) rememberAnalysisPeriod(remember, key);
       // A choice retries a failed longer read.
       for (const [days, entry] of trendHistories) if (entry.failed) trendHistories.delete(days);
       change(key);
@@ -916,7 +930,7 @@ async function renderStrengthAnalysis() {
   try {
     const report = await requestAnalysisReport(`/api/analysis/strength?weeks=${analysisPeriod(strengthHistoryPeriod).weeks}`);
     if (generation !== strengthAnalysisGeneration) return;
-    const controls = analysisPeriodControls("Zeitraum für Kraft", strengthHistoryPeriod, (choice) => { strengthHistoryPeriod = choice; void renderStrengthAnalysis(); });
+    const controls = analysisPeriodControls("Zeitraum für Kraft", strengthHistoryPeriod, (choice) => { strengthHistoryPeriod = choice; void renderStrengthAnalysis(); }, { remember: "strength" });
     // The selector stays above the empty card, so a short period without sessions can be widened.
     document.getElementById("strengthPeriod").replaceChildren(controls);
     root.replaceChildren(...strengthAnalysisCards(report));
@@ -1205,7 +1219,7 @@ function renderAnalysisHistory(history) { // NOSONAR
     analysisHistoryPeriod = period;
     renderAnalysisHistory(history);
     renderTrainingFocus(analysisTrainingFocus());
-  }, { trend: true }));
+  }, { trend: true, remember: "load" }));
   const developmentWeeks = analysisPeriod(developmentPeriod).weeks;
   const performanceStart = addDateKey(weekStart, -7 * (developmentWeeks - 1));
   const development = trendHistoryFor(developmentPeriod, BASE_PERIOD_DAYS, rerenderAnalysisTrend)?.history || history;
@@ -1265,7 +1279,7 @@ function renderAnalysisHistory(history) { // NOSONAR
   root.append(analysisPeriodControls("Zeitraum für Entwicklung", developmentPeriod, (period) => {
     developmentPeriod = period;
     rerenderAnalysisTrend();
-  }, { trend: true }));
+  }, { trend: true, remember: "development" }));
   // Each sport's development sits in its own segment, so the group is only "Entwicklung" (#2265).
   for (const [sport, primaryUnit, analysisSport] of [["Lauf", "s/km", "run"], ["Rad", "W", "ride"]]) {
     const sportSeries = performanceSeries.filter((item) => item.label.startsWith(sport));
@@ -1277,7 +1291,7 @@ function renderAnalysisHistory(history) { // NOSONAR
       charts.push(...extra.children);
     }
     root.dataset[analysisSport === "run" ? "analysisEmptyRunning" : "analysisEmptyCycling"] = String(!charts.length);
-    const group = analysisChartGroup("Entwicklung", charts, sportSeries, `Letzte ${developmentWeeks} Kalenderwochen einschließlich der laufenden Woche: alle datierten Garmin-FTP-Werte, letzter gültiger Wochenwert für Schwellenpace, Wochenmedian für VO₂max. Fehlende Messungen bleiben Lücken. Garmin. Quellen und Messdatum bleiben sichtbar.`);
+    const group = analysisChartGroup("Entwicklung", charts, sportSeries, `${developmentNote(sport, developmentWeeks)}`);
     makeAnalysisSectionCollapsible(group, `development-${sport}`);
     group.dataset.analysisSport = analysisSport;
     if (sport === "Lauf") group.querySelector(".analysis-section-content").append(predictions, runningBest);
@@ -2670,7 +2684,7 @@ function renderBodyAnalysis(body) {
   root.append(analysisPeriodControls("Zeitraum für Körper", bodyHistoryPeriod, (period) => {
     bodyHistoryPeriod = period;
     renderBodyAnalysis(body);
-  }, { trend: true }));
+  }, { trend: true, remember: "body" }));
   if (!window?.start || !window?.end) {
     root.append(h("p", "empty", "Noch keine Körper-Historie verfügbar."));
     return;
@@ -2754,7 +2768,9 @@ async function renderTrainingRecords({ background = false } = {}) { // NOSONAR
       tab.setAttribute("role", "tab"); tabs.append(tab);
       const panel = h("div", { className: "equipment-tab-panel", id: `equipmentPanel-${key}`, "aria-labelledby": tab.id, tabIndex: 0, hidden: equipmentTab !== key });
       panel.setAttribute("role", "tabpanel");
-      panel.append(equipmentAddRow(key), equipmentRuleTable(key, equipment.rules, groups[key].items));
+      // The defaults choose among items, so they wait until there is one (#3936 G-13).
+      panel.append(equipmentAddRow(key));
+      if (groups[key].items.length) panel.append(equipmentRuleTable(key, equipment.rules, groups[key].items));
       for (const item of groups[key].items) panel.append(card(key)({ item, source: "local" }));
       for (const item of garminGroups[key]) panel.append(card(key)({ item, source: "provider" }));
       if (archivedGroups[key].length) panel.append(archive(key, archivedGroups[key]));
@@ -2856,7 +2872,13 @@ function renderAnalysisEmptyState(segment) {
     root.replaceChildren(...(empty ? [analysisEmptyCard(segment)] : []));
   }
   root.hidden = !empty;
+  document.querySelectorAll("#personalRecovery .analysis-trend-controls").forEach((controls) => { controls.hidden = analysisPeriodIdle(empty); });
   return empty;
+}
+
+// Without a connected source the period buttons have nothing to change, so they step aside (#3936 G-13).
+function analysisPeriodIdle(empty) {
+  return empty && !analysisDataSourceConnected();
 }
 
 function renderAnalysisSegmentsIfActive() {
@@ -2875,12 +2897,12 @@ function renderAnalysisSegments(route = state.route) {
   document.querySelectorAll("#dataPanel [data-analysis-sport]").forEach((part) => { part.hidden = part.dataset.analysisSport !== sport || !part.hasChildNodes(); });
   const endurance = document.getElementById("performanceEnduranceCharts");
   endurance.hidden = !load || !endurance.childElementCount;
-  document.getElementById("analysisLoadPeriod").hidden = segment !== "load";
+  document.getElementById("analysisLoadPeriod").hidden = segment !== "load" || analysisPeriodIdle(empty);
   document.getElementById("sessionPerformance").hidden = !load;
   document.getElementById("trainingZoneCharts").hidden = !load;
   document.getElementById("analysisLoadCharts").hidden = !load;
   document.getElementById("personalRecovery").hidden = segment !== "recovery";
-  document.getElementById("strengthPeriod").hidden = segment !== "strength";
+  document.getElementById("strengthPeriod").hidden = segment !== "strength" || analysisPeriodIdle(empty);
   document.getElementById("strengthAnalysis").hidden = segment !== "strength" || empty;
   document.querySelectorAll("[data-analysis-segment]").forEach((link) => {
     const active = link.dataset.analysisSegment === segment;
@@ -2947,10 +2969,16 @@ function selectedRecoveryBaselines(report) {
   });
 }
 
+// The one line under a recovery value: the sleep average, the seven-day mean's verdict, or the night's own range.
+function recoveryReference({ metric, item, range, target, unit, position, rollingOk }) {
+  if (metric === "sleep") return "Durchschnitt der angezeigten Werte";
+  return rollingOk ? recoveryRollingNote(item.rolling) : recoveryReferenceLabel(item, range, target, unit, position);
+}
+
 function recoveryReferenceLabel(item, range, target, unit, position) {
   if (range) {
     const provisional = item.status === "provisional" ? " · vorläufig" : "";
-    return `${position || "Bereich deiner früheren Werte"} · ${analysisValue(range.lower, unit)}–${analysisValue(range.upper, unit)}${provisional}`;
+    return `${position || "Bereich deiner früheren Werte"} (${analysisValue(range.lower, unit)}–${analysisValue(range.upper, unit)})${provisional}`;
   }
   if (target != null) return `Persönliches Schlafziel: ${analysisValue(target, unit)}`;
   return item.reason || "Noch kein Vergleich verfügbar";
@@ -2960,11 +2988,11 @@ function recoveryReferenceLabel(item, range, target, unit, position) {
 // The caller ends the note with a full stop, so a reason drops its own.
 function recoveryRollingNote(rolling) {
   if (!["ok", "provisional"].includes(rolling.status)) return `7-Tage-Mittel: ${String(rolling.reason || "kein Vergleich").replace(/\.$/, "")}`;
-  const position = { below: "unter", within: "in", above: "über" }[rolling.position] || "neben";
+  const position = { below: "unter dem Bereich deiner früheren Werte", within: "im Bereich deiner früheren Werte", above: "über dem Bereich deiner früheren Werte" }[rolling.position] || "neben dem Bereich deiner früheren Werte";
   const range = `${analysisValue(rolling.lower_ms, "ms")}–${analysisValue(rolling.upper_ms, "ms")}`;
   const spread = rolling.cv_pct == null ? "" : ` · Schwankung ${analysisValue(rolling.cv_pct, "%")}`;
   const provisional = rolling.status === "provisional" ? " · vorläufig" : "";
-  return `7-Tage-Mittel ${analysisValue(rolling.mean_ms, "ms")} (${rolling.window_nights} Nächte) · ${position} deinem Bereich ${range}${spread}${provisional}`;
+  return `7-Tage-Mittel ${analysisValue(rolling.mean_ms, "ms")} (${rolling.window_nights} Nächte) · ${position} (${range})${spread}${provisional}`;
 }
 
 // Daily values on `dates`, or the mean of each calendar week when `weekly`; missing values stay gaps.
@@ -3002,11 +3030,13 @@ function renderRecoveryCharts(report, root) {
     const rangeDescription = range ? " Vergleich mit " + item.nights + " früheren Nächten." : "";
     const changed = item.context_changed_on ? ` Messkontext geändert am ${dateLabel(item.context_changed_on)}.` : "";
     const continuity = `${changed}${item.continuity === "unknown" ? " Messkontext unbekannt." : ""}`;
-    const rolling = item.rolling ? ` ${recoveryRollingNote(item.rolling)}.` : "";
+    // With a seven-day mean the card gives one verdict, the mean's; the single night's range stays out of it (#3929 A-08).
+    const rollingOk = ["ok", "provisional"].includes(item.rolling?.status);
+    const rolling = item.rolling && !rollingOk ? ` ${recoveryRollingNote(item.rolling)}.` : "";
     return { label: `${title} · ${item.source}${measurement}`, legendLabel: title, source: item.source, unit, color,
       bars: metric === "sleep", average: true, averageInHeading: true, cadenceDays: weekly ? 7 : 1, range, target,
       currentPoint: points.some(analysisValidPoint) ? null : item.history.findLast((point) => point.date <= today && analysisValidPoint(point)),
-      referenceLabel: metric === "sleep" ? "Durchschnitt der angezeigten Werte" : recoveryReferenceLabel(item, range, target, unit, position),
+      referenceLabel: recoveryReference({ metric, item, range, target, unit, position, rollingOk }),
       coverageShort: analysisCoverageText(readings.length, expectedDays, "Tagen"),
       coverage: `${analysisCoverageText(readings.length, expectedDays, "Tagen")}${rangeDescription}${continuity}${rolling}`, points };
   });
@@ -3023,7 +3053,7 @@ function renderRecoveryCharts(report, root) {
     renderProviderMetrics({ training_readiness_history: readiness }, readinessCharts, start, end, missing, { weeklyReadiness: weekly });
     charts.unshift(...readinessCharts.children);
   }
-  root.append(analysisPeriodControls("Zeitraum für Erholung", recoveryHistoryPeriod, (choice) => { recoveryHistoryPeriod = choice; renderPersonalRecovery(report); }, { trend: true }));
+  root.append(analysisPeriodControls("Zeitraum für Erholung", recoveryHistoryPeriod, (choice) => { recoveryHistoryPeriod = choice; renderPersonalRecovery(report); }, { trend: true, remember: "recovery" }));
   root.dataset.analysisEmpty = String(!charts.length);
   if (!charts.length) return;
   const group = analysisChartGroup(`Erholung · Letzte ${period.label}`, charts, series);
@@ -3060,7 +3090,7 @@ function renderTrainingFocus(report) {
   const categories = [["low_aerobic", "Leicht aerob"], ["high_aerobic", "Hoch aerob"], ["anaerobic", "Anaerob"]];
   const info = h("button", { className: "analysis-legend-info analysis-info-icon", type: "button", "aria-label": "Trainingsfokus: Informationen" }, "i");
   const explanation = h("div", { className: "analysis-info-tooltip", id: `focus-info-${++analysisInfoId}` }, `${trainingFocusPeriodLabel(report)}: ${dateLabel(report.start)} bis ${dateLabel(report.end)}. ${report.coverage?.known_sessions ?? 0} erfasste Garmin-Einheiten im Zeitraum${report.coverage?.observed_start && report.coverage?.observed_end ? ` · erfasste Daten ${dateLabel(report.coverage.observed_start)} bis ${dateLabel(report.coverage.observed_end)}` : ""}. Garmin: aufgezeichnete Belastung nach der Hauptwirkung der Einheit (Training Effect). Keine aus Zonen abgeleitete Einteilung und nicht Garmins separat berechnete Load-Focus-Metrik. ${AppFormat.plural(report.unclassified_sessions || 0, "Einheit", "Einheiten")} ohne bekannte Wirkung oder Belastung ${report.unclassified_sessions === 1 ? "bleibt" : "bleiben"} ausgeschlossen.`); // NOSONAR
-  bindAnalysisPopover(info, explanation); root.firstChild.append(info); root.append(explanation);
+  bindAnalysisPopover(info, explanation); root.firstChild.append(info); root.firstChild.after(explanation);
   appendTrainingFocusShare(report, categories, root);
   appendTrainingFocusZones(report, zones);
   zones.dataset.analysisEmpty = String(!zones.childElementCount);
@@ -3101,7 +3131,7 @@ function equipmentCard(item, source, parents, place) {
       form.hidden = !form.hidden;
       edit.setAttribute("aria-expanded", String(!form.hidden));
     });
-    const retire = h("button", { className: "secondary-button", type: "button" }, "Ausmustern");
+    const retire = h("button", { className: "secondary-button danger-button", type: "button" }, "Ausmustern");
     retire.addEventListener("click", () => void retireEquipment(item, retire));
     actions.append(maintenanceButton(item), edit, retire);
     body.append(actions, form);

@@ -59,9 +59,13 @@ class GhCliRunTests(unittest.TestCase):
         self.assertEqual(self.run_gh(fake, "pr", "view", "3"), "ok")
         self.assertEqual(len(calls), 2)
         self.sleep.assert_called_once()
-        fake, calls = outcomes((1, "error connecting: operation timed out"), (0, ""))
-        self.assertEqual(self.run_gh(fake, "api", "repos/o/r/pulls/3"), "ok")
-        self.assertEqual(len(calls), 2)
+        for error in (
+            "error connecting: operation timed out",
+            "error connecting to api.github.com",  # #4059
+        ):
+            fake, calls = outcomes((1, error), (0, ""))
+            self.assertEqual(self.run_gh(fake, "api", "repos/o/r/pulls/3"), "ok")
+            self.assertEqual(len(calls), 2)
 
     def test_fetch_retries_an_incomplete_or_silent_transfer_from_git_output(self):
         # #3798: the cause may follow another error line, or git says nothing.

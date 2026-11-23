@@ -166,6 +166,44 @@ class CoachAthleteRecordToolServiceTests(unittest.TestCase):
                 run(name, arguments, scope)
         self.assertEqual(4, len(pushed))
 
+    def test_the_zone_tools_refuse_without_scope_or_action(self):
+        # #3956: authorization, scope and the action are checked before any
+        # zone or threshold service is reached.
+        zones, first, second = Mock(), Mock(), Mock()
+        service = CoachAthleteRecordToolService(
+            Mock(), Mock(), Mock(),
+            athlete=Mock(zones=lambda: zones, first_threshold=lambda: first),
+            second_threshold=lambda: second, step_test=Mock(),
+        )  # fmt: skip
+        for name, arguments, operation, scope, status in (
+            ("save_zones", {"action": "save", "sport": "run"}, "save_checkin", "local_zones", 403),
+            ("save_zones", {"action": "save", "sport": "run"}, "save_zones", "local_profile", 403),
+            ("delete_zones", {"key": "k"}, "save_zones", "local_zones", 403),
+            ("save_zones", {"action": "remove", "key": "k"}, "save_zones", "local_zones", 400),
+            ("save_zones", {}, "save_zones", "local_zones", 400),
+        ):  # fmt: skip
+            with self.subTest(name=name, arguments=arguments, operation=operation):
+                with self.assertRaises(AppError) as refused:
+                    service.execute(
+                        name,
+                        arguments,
+                        {"operation": operation, "authorization_scope": [scope]},
+                    )
+                self.assertEqual(status, refused.exception.status)
+        for mock in (zones, first, second):
+            self.assertEqual([], mock.method_calls)
+        # The removal is the route's confirmed removal by key.
+        zones.remove.return_value = {"configuration": None, "change": None}
+        removed = service.execute(
+            "delete_zones",
+            {"key": "run|heart_rate"},
+            {"operation": "delete_zones", "authorization_scope": ["local_zones"]},
+        )
+        zones.remove.assert_called_once_with(
+            {"key": "run|heart_rate", "confirmed": True}
+        )
+        self.assertEqual("remove", removed["action"])
+
     def test_a_purpose_marking_reaches_the_feedback_service(self):
         for purpose in ("commute", None):
             with self.subTest(purpose=purpose):
@@ -188,7 +226,7 @@ class CoachAthleteRecordToolServiceTests(unittest.TestCase):
         sessions = Mock()
         receipt = {"status": "ok", "change": {"id": "c1"}}
         sessions.confirm.return_value = sessions.split.return_value = receipt
-        sessions.merge.return_value = receipt
+        sessions.merge.return_value = sessions.delete.return_value = receipt
         service = CoachAthleteRecordToolService(
             self.checkins,
             self.feedback,
@@ -214,6 +252,13 @@ class CoachAthleteRecordToolServiceTests(unittest.TestCase):
                 sessions.merge,
                 ("act_1", "act_3"),
             ),
+            # #3957: the local delete of the session details.
+            (
+                "delete_activity_session",
+                {"payload": {"activity_id": "act_1"}},
+                sessions.delete,
+                ("act_1",),
+            ),
         )
         for name, arguments, method, expected in cases:
             with self.subTest(name=name):
@@ -231,6 +276,50 @@ class CoachAthleteRecordToolServiceTests(unittest.TestCase):
                         name, arguments, {**intent, "authorization_scope": []}
                     )
                 self.assertEqual(raised.exception.reason, "intent_scope_denied")
+
+    def test_a_rule_set_without_its_item_or_an_unknown_action_changes_nothing(self):
+        # #3957: a missing equipment_id must not clear the kind's default.
+        equipment = Mock()
+        service = CoachAthleteRecordToolService(
+            Mock(), Mock(), Mock(), equipment=equipment
+        )
+        intent = {
+            "operation": "set_equipment_rule",
+            "authorization_scope": ["local_equipment"],
+        }
+        for payload in (
+            {"action": "set", "kind": "run:easy", "expected_revision": 1},
+            {"action": "clear", "kind": "run:easy"},
+        ):
+            with self.subTest(payload=payload), self.assertRaises(AppError) as refused:
+                service.execute("set_equipment_rule", {"payload": payload}, intent)
+            self.assertEqual("tool_arguments_invalid", refused.exception.reason)
+        self.assertEqual([], equipment.method_calls)
+
+    def test_the_product_tools_refuse_without_scope_or_action(self):
+        # #3958: authorization, scope and the action are checked before any
+        # product, clean-up or re-check is reached.
+        cleanup, refresh = Mock(), Mock()
+        service = CoachAthleteRecordToolService(
+            Mock(), Mock(), Mock(), self.nutrition, self.nutrition,
+            nutrition_services=Mock(product_cleanup=lambda: cleanup, product_refresh=refresh),
+        )  # fmt: skip
+        for name, payload, operation, scope, status in (
+            ("manage_nutrition_products", {"action": "archive", "id": "p"}, "save_nutrition_entry", "local_nutrition", 403),
+            ("manage_nutrition_products", {"action": "cleanup", "days": 90}, "manage_nutrition_products", "local_profile", 403),
+            ("refresh_nutrition_products", {"all": True}, "manage_nutrition_products", "local_nutrition", 403),
+            ("manage_nutrition_products", {"action": "delete", "id": "p"}, "manage_nutrition_products", "local_nutrition", 400),
+        ):  # fmt: skip
+            with self.subTest(name=name, payload=payload, operation=operation):
+                with self.assertRaises(AppError) as refused:
+                    service.execute(
+                        name,
+                        {"payload": payload},
+                        {"operation": operation, "authorization_scope": [scope]},
+                    )
+                self.assertEqual(status, refused.exception.status)
+        self.assertEqual([], self.nutrition.method_calls)
+        self.assertEqual([], cleanup.method_calls + refresh.method_calls)
 
     def test_operation_and_scope_denials_block_each_tool(self):
         cases = (

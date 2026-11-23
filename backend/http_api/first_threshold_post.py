@@ -5,7 +5,6 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import Any
 
-from backend.athlete.profile import ProfileService
 from backend.http_api.route_table import Access, Route, RouteRequest
 from backend.performance.first_threshold_service import FirstThresholdService
 
@@ -18,14 +17,10 @@ class FirstThresholdPostRoutes:
     def __init__(
         self,
         first_threshold_service: Callable[[], FirstThresholdService],
-        profile_service: Callable[[], ProfileService],
-        database_manager: Callable[[], Any],
         step_test: Callable[[str], Any] | None = None,
     ) -> None:
         self._step_test = step_test
         self._first_threshold_service = first_threshold_service
-        self._profile_service = profile_service
-        self._database_manager = database_manager
 
     def routes(self) -> list[Route]:
         return [Route("POST", ADOPT_PATH, Access.SESSION_CSRF, self._adopt)]
@@ -64,9 +59,5 @@ class FirstThresholdPostRoutes:
             if key is None or self._step_test is None
             else self._step_test(str(key))
         )
-        with (
-            self._profile_service().mutation_coordinator,
-            self._database_manager().unit_of_work(),
-        ):
-            result = self._first_threshold_service().adopt(payload, tested)
+        result = self._first_threshold_service().adopt(payload, tested)
         handler.send_json(200, result)

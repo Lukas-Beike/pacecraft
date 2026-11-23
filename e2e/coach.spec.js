@@ -246,7 +246,7 @@ test.describe("critical browser states", { tag: "@responsive" }, () => {
     await expect(page).toHaveURL(/#more$/);
     await page.locator("#profilePanel .more-segment-nav").getByRole("link", { name: "Coach & Modell", exact: true }).click();
     await expect(page).toHaveURL(/#more\/coach$/);
-    await expect(page.locator('[data-more-segment-panel="coach"]')).toHaveCount(3);
+    await expect(page.locator('[data-more-segment-panel="coach"]')).toHaveCount(4);
     await expect(page.locator('[data-more-segment-panel="coach"]').first()).toBeVisible();
     await expect(page.locator("#usageSummary")).toContainText("Anfragen");
     await page.locator("#usageSummary").click();

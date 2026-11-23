@@ -1,3 +1,4 @@
+restoreAnalysisPeriods();
 const confirmationDialog = $("#confirmationDialog");
 const confirmationForm = $("#confirmationDialogForm");
 const confirmationInput = $("#confirmationDialogInput");

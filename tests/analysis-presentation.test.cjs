@@ -30,6 +30,20 @@ test("analysis popovers stay inside the viewport on narrow screens and flip abov
   assert.equal(right.left, 148, "anchor near the right edge pulls the popover back inside");
 });
 
+
+test("an explanation opens in place under its button and closes again (A-08)", () => {
+  const { bindAnalysisPopover } = extractFunctions("analysis.js", ["bindAnalysisPopover"]);
+  const listeners = { button: {}, info: {} };
+  const attrs = {};
+  const button = { removeAttribute() {}, setAttribute: (name, value) => { attrs[name] = value; }, addEventListener: (type, handler) => { listeners.button[type] = handler; }, focus() {} };
+  const info = { id: "info-1", hidden: false, removeAttribute() {}, setAttribute() {}, addEventListener: (type, handler) => { listeners.info[type] = handler; } };
+  bindAnalysisPopover(button, info);
+  assert.deepEqual([info.hidden, attrs["aria-expanded"], attrs["aria-controls"]], [true, "false", "info-1"]);
+  listeners.button.click();
+  assert.deepEqual([info.hidden, attrs["aria-expanded"]], [false, "true"]);
+  listeners.info.keydown({ key: "Escape" });
+  assert.deepEqual([info.hidden, attrs["aria-expanded"]], [true, "false"]);
+});
 test("ratio units such as W/bpm keep significant digits and small efficiencies are not rounded to zero", () => {
   const { analysisValue } = extractFunctions("analysis.js", ["analysisRatioUnit", "analysisCountUnit", "analysisNumber", "analysisValue"], { AppFormat: require("../public/format.js") });
   assert.equal(analysisValue(0.0234, "(m/s)/bpm"), "0,0234 (m/s)/bpm");
@@ -733,11 +747,11 @@ test("the seven-day ln(RMSSD) note shows the back-transformed mean, range and sp
   const { recoveryRollingNote } = extractFunctions("analysis.js", ["analysisRatioUnit", "analysisCountUnit", "analysisNumber", "analysisValue", "recoveryRollingNote"], { AppFormat: require("../public/format.js") });
   assert.equal(
     recoveryRollingNote({ status: "ok", mean_ms: 51.9, lower_ms: 53, upper_ms: 62.2, position: "below", cv_pct: 3, window_nights: 5 }),
-    "7-Tage-Mittel 51,9 ms (5 Nächte) · unter deinem Bereich 53 ms–62,2 ms · Schwankung 3,0 %",
+    "7-Tage-Mittel 51,9 ms (5 Nächte) · unter dem Bereich deiner früheren Werte (53 ms–62,2 ms) · Schwankung 3,0 %",
   );
   assert.equal(
     recoveryRollingNote({ status: "provisional", mean_ms: 57, lower_ms: 53, upper_ms: 62.2, position: "within", cv_pct: null, window_nights: 3 }),
-    "7-Tage-Mittel 57 ms (3 Nächte) · in deinem Bereich 53 ms–62,2 ms · vorläufig",
+    "7-Tage-Mittel 57 ms (3 Nächte) · im Bereich deiner früheren Werte (53 ms–62,2 ms) · vorläufig",
   );
   assert.equal(
     recoveryRollingNote({ status: "insufficient_data", reason: "Mindestens 3 Nächte in den letzten 7 Tagen erforderlich." }),

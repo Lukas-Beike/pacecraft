@@ -360,8 +360,15 @@ h2 {
 .analysis-chart-stack { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; }
 .analysis-subchart { min-width: 0; padding-top: 12px; border-top: 1px solid var(--line); }
 .analysis-subchart h4 { margin: 0; color: var(--ink); font-size: .9rem; }
+.coach-setup { display: grid; gap: 10px; justify-items: start; text-align: left; }
+.coach-setup ol { display: grid; gap: 6px; margin: 0; padding: 0; list-style: none; }
+.coach-setup li { display: flex; align-items: center; gap: 8px; }
+.coach-setup small { color: var(--muted); }
+.coach-setup-mark { display: inline-grid; place-items: center; flex: none; width: 20px; height: 20px; border: 1.5px solid var(--line-strong); border-radius: 50%; font-size: .72rem; }
+.coach-setup-mark.is-done { border-color: var(--accent); background: var(--accent); color: var(--on-accent); }
+.coach-setup-done { color: var(--muted); text-decoration: line-through; }
 .analysis-period-controls { display: flex; flex-wrap: wrap; gap: 4px; }
-.analysis-period-controls button { flex: 1 1 0; min-width: 4.5rem; min-height: 44px; }
+.analysis-period-controls button { flex: 1 1 0; min-width: 4.5rem; min-height: 44px; padding-inline: 4px; }
 .analysis-trend-controls { display: grid; gap: 8px; }
 /* The theme attribute lifts the pressed state above the later light-theme .secondary-button surface rule. */
 .analysis-chart-stack .analysis-chart-legend { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 7.5rem), 1fr)); gap: 12px; margin: 8px 0 12px; }
@@ -386,8 +393,11 @@ h2 {
 .link-button { min-height: 44px; padding: 0; border: 0; background: none; color: var(--link); font: inherit; text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
 .estimate-chip, .source-chip { margin-left: 4px; vertical-align: middle; border: 1px dashed var(--muted); color: var(--muted); background: var(--transparent); font-weight: 700; }
 /* One popover surface family: the analysis tooltip and the quick-action menu. */
-.analysis-info-tooltip, .quick-action-menu { position: fixed; inset: auto; margin: 0; max-height: calc(100dvh - 24px); border: 1px solid var(--line); border-radius: var(--radius-md); background: var(--surface); color: var(--ink); box-shadow: 0 8px 24px var(--tooltip-shadow); }
-.analysis-info-tooltip { width: min(340px, calc(100vw - 24px)); overflow: auto; padding: 12px; font-size: .8rem; line-height: 1.5; }
+.analysis-info-tooltip[popover], .quick-action-menu { position: fixed; inset: auto; margin: 0; max-height: calc(100dvh - 24px); border: 1px solid var(--line); border-radius: var(--radius-md); background: var(--surface); color: var(--ink); box-shadow: 0 8px 24px var(--tooltip-shadow); }
+.analysis-info-tooltip[popover] { width: min(340px, calc(100vw - 24px)); overflow: auto; padding: 12px; font-size: .8rem; line-height: 1.5; }
+/* An explanation opens in place under its button (athlete decision, #3929 A-08). */
+.analysis-info-tooltip:not([popover]) { margin: 6px 0; padding: 10px 12px; border: 1px solid var(--line); border-radius: var(--radius-md); background: var(--surface-raised); color: var(--ink); font-size: .8rem; line-height: 1.5; overflow-wrap: anywhere; }
+.analysis-info-tooltip:not([popover]) p { margin: 0 0 6px; }
 .analysis-chart-legend li::before { content: ""; display: inline-block; width: 16px; height: 3px; margin: 0 8px 3px 0; background: var(--accent-bright); }
 .analysis-chart-legend [data-color="1"]::before { background: var(--chart-series-1); }
 .analysis-chart-legend [data-color="2"]::before { background: var(--chart-series-2); }
@@ -999,6 +1009,7 @@ output.planned-move-status { display: block; }
 .planned-move-day { display: grid; min-width: 44px; min-height: 44px; place-items: center; padding: 4px 6px; border: 1px solid var(--line-strong); border-radius: var(--radius-sm); color: var(--ink); background: var(--surface-input); font-size: .72rem; line-height: 1.2; }
 .planned-move-day b { font-size: .9rem; }
 .planned-move-day:disabled { opacity: .45; }
+.planned-move-day.is-blocked { border-style: dashed; text-decoration: line-through; }
 .planned-move-picker:not(.is-shown) { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
 .planned-week-sync { display: flex; padding: 6px 0 2px; }
 .planned-week-sync .planned-sync-button { position: relative; display: inline-flex; min-height: 32px; padding: 2px 12px; border-radius: 10px; font-size: .72rem; line-height: 1.2; }
@@ -1069,6 +1080,11 @@ output.planned-move-status { display: block; }
 .planned-month-marks { display: flex; flex-wrap: wrap; justify-content: center; gap: 3px; }
 .planned-month-mark { --session-color: var(--planned-session-default); --session-on-color: var(--planned-session-default-on); width: 6px; height: 6px; overflow: hidden; border-radius: 50%; color: var(--session-on-color); background: var(--session-color); font-size: 0; }
 .planned-month-mark:is(.is-planned, .is-today) { color: var(--ink); background: none; box-shadow: inset 0 0 0 1.5px var(--session-color); }
+.planned-month-totals { margin: 8px 0 0; font-size: .85rem; font-variant-numeric: tabular-nums; }
+.planned-month-legend { display: flex; flex-wrap: wrap; gap: 4px 14px; margin: 6px 0 0; color: var(--muted); font-size: .72rem; }
+.planned-month-legend span { display: inline-flex; align-items: center; gap: 5px; }
+.planned-month-legend .planned-month-mark { display: inline-block; flex: none; width: 8px; height: 8px; padding: 0; }
+.planned-month-blocked { display: inline-block; width: 12px; height: 0; border-bottom: 2px solid var(--danger); }
 .planned-month-mark.is-skipped { color: var(--muted); background: none; box-shadow: inset 0 0 0 1.5px var(--line-strong); }
 .planned-month-mark.is-missed { color: var(--danger-ink); background: var(--danger); box-shadow: none; }
 @media (min-width: 1100px) {
@@ -1187,7 +1203,8 @@ output.planned-move-status { display: block; }
 @media (prefers-reduced-motion: reduce) { .competition-summary-main::before { transition: none; } }
 .competition-card > summary .message-action { margin: -2px -6px -2px 0; }
 #competitionDialog [hidden] { display: none; }
-#competitionDialogConfirm { display: grid; gap: 15px; }
+#competitionDialogForm .dialog-actions { position: sticky; bottom: -24px; margin-bottom: -24px; padding-block: 12px 24px; background: var(--surface-raised); }
+#competitionDialogDurationStatus:empty { display: none; }
 .confirmation-dialog :is(select, textarea) { width: 100%; }
 .competition-summary-facts { display: block; margin-top: 6px; color: var(--muted); font-size: .82rem; line-height: 1.6; }
 .competition-archive { min-width: 0; }

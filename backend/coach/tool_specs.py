@@ -50,6 +50,7 @@ EXECUTION = "CoachStructuredToolExecutionService"
 ATHLETE_SESSION_CORRECTIONS = (
     "activity-ingestion-and-storage/Athlete session corrections"
 )
+AP9 = "athlete-profile-and-checkins/AP9"
 CA1 = "coach-tool-authority/CA1"
 CA2 = "coach-tool-authority/CA2"
 CA4 = "coach-tool-authority/CA4"
@@ -126,7 +127,7 @@ TOOL_SPECS: tuple[ToolSpec, ...] = (
         "read_training_records",
         requirements=(
             "athlete-profile-and-checkins/AP8",
-            "athlete-profile-and-checkins/AP9",
+            AP9,
             "athlete-profile-and-checkins/AP10",
         ),
     ),
@@ -248,6 +249,24 @@ TOOL_SPECS: tuple[ToolSpec, ...] = (
         requirements=(CA6, "coach-tool-authority/CA10"),
     ),
     ToolSpec(
+        "manage_nutrition_products",
+        ATHLETE_RECORDS,
+        domain=NUTRITION,
+        done="Produkte geändert",
+        action="Produkte ändern",
+        requirements=("food-catalog-and-meal-library/Coach product management", CA4),
+    ),
+    ToolSpec(
+        "refresh_nutrition_products",
+        ATHLETE_RECORDS,
+        domain=NUTRITION,
+        done="Produkte aktualisiert",
+        action="Produkte aktualisieren",
+        # The food database answers outside the turn's write transaction.
+        external_food_lookup=True,
+        requirements=("food-catalog-and-meal-library/Coach product management",),
+    ),
+    ToolSpec(
         "fill_nutrition_product_gaps",
         ATHLETE_RECORDS,
         domain=NUTRITION,
@@ -326,6 +345,25 @@ TOOL_SPECS: tuple[ToolSpec, ...] = (
         requirements=("athlete-profile-and-checkins/Coach body entries", CA4),
     ),
     ToolSpec(
+        "save_zones",
+        ATHLETE_RECORDS,
+        domain=PROFILE,
+        done="Zonen gespeichert",
+        action="Zonen speichern",
+        # Adopting the first threshold saves the profile: its lock comes first.
+        mutates_profile=True,
+        requirements=("athlete-profile-and-checkins/Coach zone changes",),
+    ),
+    ToolSpec(
+        "delete_zones",
+        ATHLETE_RECORDS,
+        domain=PROFILE,
+        done="Zonen entfernt",
+        action="Zonen entfernen",
+        deletes=True,
+        requirements=("athlete-profile-and-checkins/Coach zone changes", CA4),
+    ),
+    ToolSpec(
         "save_equipment",
         ATHLETE_RECORDS,
         domain=PROFILE,
@@ -339,7 +377,7 @@ TOOL_SPECS: tuple[ToolSpec, ...] = (
         domain=PROFILE,
         done="Ausrüstung zugeordnet",
         action="Ausrüstung zuordnen",
-        requirements=("athlete-profile-and-checkins/AP9", CA2),
+        requirements=(AP9, CA2),
     ),
     ToolSpec(
         "confirm_activity_session",
@@ -373,6 +411,34 @@ TOOL_SPECS: tuple[ToolSpec, ...] = (
             ATHLETE_SESSION_CORRECTIONS,
             CA2,
         ),
+    ),
+    ToolSpec(
+        "delete_activity_session",
+        ATHLETE_RECORDS,
+        domain=PROFILE,
+        done="Aktivität gelöscht",
+        action="Aktivität löschen",
+        deletes=True,
+        requirements=(ATHLETE_SESSION_CORRECTIONS, CA4),
+    ),
+    ToolSpec(
+        "rename_activity_route",
+        ATHLETE_RECORDS,
+        domain=PROFILE,
+        done="Strecke umbenannt",
+        action="Strecke umbenennen",
+        requirements=(
+            "activity-analysis-and-feedback/Recognised routes of outdoor sessions",
+            CA2,
+        ),
+    ),
+    ToolSpec(
+        "set_equipment_rule",
+        ATHLETE_RECORDS,
+        domain=PROFILE,
+        done="Ausrüstungsregel gespeichert",
+        action="Ausrüstungsregel speichern",
+        requirements=(AP9, CA4),
     ),
     ToolSpec(
         "log_equipment_maintenance",

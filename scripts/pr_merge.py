@@ -15,7 +15,8 @@ polls every 20 s in the same turn until the PR is merged or closed, a check
 fails or new feedback arrives, at most MINUTES (#2795): the host's PR watcher
 does not reliably wake on the merge itself. Feedback is a person's comment or
 review, a status bot's review that requests changes, or any unresolved review
-thread; Gitar's and SonarCloud's status comments are not (#3034). The develop
+thread; Gitar's and SonarCloud's status comments are not (#3034), nor a comment
+that only says "gitar review" (#4064). The develop
 check runs at arming, as the lane rule asks; develop moving during CI is accepted.
 Before arming it also refuses while a review thread is unresolved, disarming
 too, with or without --allow-behind; new feedback during --wait disarms as
@@ -48,7 +49,7 @@ import time
 from collections.abc import Callable
 from typing import Any
 
-from gh_cli import CliError, gh, gh_json, git, positive_int
+from gh_cli import TRANSIENT_GH, CliError, gh, gh_json, git, positive_int
 from pr_state import base_overlap, check_outcome, unresolved_threads
 
 FIELDS = "state,baseRefName,headRefName,headRefOid,autoMergeRequest,mergeCommit,statusCheckRollup,comments,reviews,mergeStateStatus"
@@ -92,11 +93,15 @@ STATUS_BOTS = {"gitar-bot", "sonarqubecloud"}
 
 def feedback(pr: dict[str, Any]) -> int:
     """Comments and reviews that ask for something: every person's, and a status
-    bot's review only when it requests changes. Threads are checked on their own."""
+    bot's review only when it requests changes. Threads are checked on their own.
+    A comment that only says "gitar review" asks Gitar, not the PR (#4064)."""
     return sum(
         1
         for item in [*(pr.get("comments") or []), *(pr.get("reviews") or [])]
-        if (item.get("author") or {}).get("login") not in STATUS_BOTS
+        if (
+            (item.get("author") or {}).get("login") not in STATUS_BOTS
+            and str(item.get("body") or "").strip().lower() != "gitar review"
+        )
         or item.get("state") == "CHANGES_REQUESTED"
     )
 
@@ -138,8 +143,14 @@ def gitar_gate(sha: str, minutes: int) -> int | None:
     saying why: 1 for a failed check or no wait, 3 when the wait ended first.
     The lane rule arms only a head Gitar reviewed (#3308)."""
     polls = max(minutes, 0) * POLLS_PER_MINUTE + 1
+    failed = ""
     for poll in range(polls):
-        verdict, conclusion = gitar_verdict(sha)
+        try:
+            verdict, conclusion = gitar_verdict(sha)
+            failed = ""
+        except CliError as exc:
+            failed = poll_failed(failed, exc, last=poll == polls - 1)
+            verdict, conclusion = "pending", ""
         if verdict == "passed":
             return None
         if verdict == "failing":
@@ -149,6 +160,17 @@ def gitar_gate(sha: str, minutes: int) -> int | None:
             time.sleep(60 / POLLS_PER_MINUTE)
     print(f"refused: Gitar has not reviewed {sha[:10]} yet; run again once it has")
     return 3 if minutes > 0 else 1
+
+
+def poll_failed(before: str, exc: CliError, *, last: bool) -> str:
+    """A transient failed read inside a wait (a dropped connection, #4059) is
+    said once and read again at the next poll; any other error, or one in the
+    last poll, ends the wait."""
+    if last or not TRANSIENT_GH.search(exc.stderr or str(exc)):
+        raise exc
+    if not before:
+        print(f"a read failed, polling on: {exc}")
+    return str(exc)
 
 
 class GateRefused(Exception):
@@ -321,28 +343,44 @@ def ci_round_rebase(
     return False
 
 
+def settled(
+    number: int, pr: dict[str, Any], checks: list[tuple[str, str]]
+) -> int | None:
+    """0 once merged, 1 once closed or a check failed, else None, saying which."""
+    if pr.get("state") == "MERGED":
+        oid = (pr.get("mergeCommit") or {}).get("oid") or "?"
+        print(f"PR #{number} merged: {oid[:10]}")
+        return 0
+    failing = [name for name, outcome in checks if outcome == "failing"]
+    if pr.get("state") == "CLOSED" or failing:
+        print(f"PR #{number} {pr.get('state')}; failing: {failing}; read pr-state")
+        return 1
+    return None
+
+
 def wait(number: int, minutes: int, seen: int, rebased: str = "") -> int:
     polls = minutes * POLLS_PER_MINUTE + 1
     rechecked = False
+    failed = ""
     for poll in range(polls):
-        pr = view(number)
-        if pr.get("state") == "MERGED":
-            oid = (pr.get("mergeCommit") or {}).get("oid") or "?"
-            print(f"PR #{number} merged: {oid[:10]}")
-            return 0
+        if poll:
+            time.sleep(60 / POLLS_PER_MINUTE)
+        try:
+            pr = view(number)
+        except CliError as exc:
+            failed = poll_failed(failed, exc, last=poll == polls - 1)
+            continue
+        failed = ""
         checks = [check_outcome(check) for check in pr.get("statusCheckRollup") or []]
-        failing = [name for name, outcome in checks if outcome == "failing"]
-        if pr.get("state") == "CLOSED" or failing:
-            print(f"PR #{number} {pr.get('state')}; failing: {failing}; read pr-state")
-            return 1
+        code = settled(number, pr, checks)
+        if code is not None:
+            return code
         # An armed auto-merge would not wait for either (#2947); arming needed no thread.
         if feedback(pr) > seen or thread_open(number):
             refuse(number, pr, f"new feedback on PR #{number}; read pr-state")
             return 1
         # Once, after the first CI round finished: develop may have moved during it (#3872).
         rechecked = rechecked or ci_round_rebase(number, pr, checks, rebased)
-        if poll < polls - 1:
-            time.sleep(60 / POLLS_PER_MINUTE)
     print(f"PR #{number} still open after {minutes} min")
     return 3
 

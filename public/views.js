@@ -393,10 +393,10 @@ function profilePreferencesLine(profile) {
 // One line per profile section: what the athlete finds inside before opening it.
 function profileSummaries(profile) {
   const lines = {
-    profileSummary: [profile.name, profileSportsLabel(profile.sports)],
+    profileSummary: [profile.name, profileSportsLabel(profile.sports), profile.timezone, profile.weather_location],
     profileGoalsSummary: [profile.typical_weekly_volume, profileGoalsLine(profile.goals)],
     profileTrainingSummary: [PROFILE_TRAINING_MODEL_LABELS[profile.training_model], profilePreferencesLine(profile)],
-    profileSourcesSummary: [profile.timezone, profile.weather_location],
+    profileSourcesSummary: [profile.sleep_target_hours ? `Schlafziel ${String(profile.sleep_target_hours).replace(".", ",")} h` : "", profileGoalsLine(profile.coaching_style)],
   };
   return Object.fromEntries(Object.entries(lines).map(([id, parts]) => [id, parts.filter(Boolean).join(" · ") || PROFILE_SUMMARY_EMPTY]));
 }
@@ -419,6 +419,17 @@ function renderProfile(profile) {
   if (form.elements.coaching_style?.value === "Supportive, direct, and evidence-aware") form.elements.coaching_style.value = "Unterstützend, direkt und evidenzbasiert";
   state.profileBaseline = profileFormValues(form);
   renderProfileSummary(profile);
+  renderProfileEquipmentNote(profile.equipment);
+}
+
+// The profile no longer offers the free equipment text; what is stored stays, read-only, under Ausrüstung und
+// Wartung so the athlete can carry it over (athlete decision, #3936 M-04). The Coach keeps reading it.
+function renderProfileEquipmentNote(text) {
+  const note = document.getElementById("profileEquipmentNote");
+  const value = String(text || "").trim();
+  if (!note) return;
+  note.hidden = !value;
+  document.getElementById("profileEquipmentText").textContent = value;
 }
 
 const FIRST_THRESHOLD_QUALITY_LABELS = { good: "gut", low: "niedrig" };
@@ -734,7 +745,7 @@ function renderSettingsUsage(data) {
   const usage = data.usage || {};
   const rateLimits = usage.rate_limits || {};
   const number = (value) => Number(value || 0).toLocaleString("de-DE");
-  const optionalNumber = (value) => (value == null ? "Noch nicht bekannt" : number(value));
+  const optionalNumber = (value) => (value == null ? "–" : number(value));
   const lastRequest = usage.last_request_at ? new Date(usage.last_request_at) : null;
   const values = {
     usageSummary: `${number(usage.requests)} Anfragen · ${number(usage.total_tokens)} Tokens heute`,
@@ -752,6 +763,11 @@ function renderSettingsUsage(data) {
   for (const [id, text] of Object.entries(values)) {
     const node = document.getElementById(id);
     if (node) node.textContent = text;
+  }
+  // A remaining quota the provider did not report is left out instead of "Noch nicht bekannt" (#3936 M-07).
+  for (const [id, value] of [["usageRemainingRequests", rateLimits.remaining_requests], ["usageRemainingTokens", rateLimits.remaining_tokens]]) {
+    const row = document.getElementById(id)?.parentElement;
+    if (row) row.hidden = value == null;
   }
 }
 

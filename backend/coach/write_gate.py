@@ -672,8 +672,12 @@ def _removes_records(tool_name: str, arguments: Mapping[str, Any] | None) -> boo
     if not isinstance(arguments, Mapping):
         return False
     # Replacing a day's entered weight or body fat removes the old value (#3640).
-    if tool_name == "save_body_entry":
+    # So does replacing a measured or entered threshold (#3956).
+    if tool_name in {"save_body_entry", "save_zones"}:
         return arguments.get("replace") is True
+    # Archiving, forgetting or cleaning up products removes them (#3958).
+    if tool_name == "manage_nutrition_products":
+        return _payload_action(arguments) in {"archive", "forget", "cleanup"}
     if tool_name in {"save_equipment", "update_training_plan"}:
         payload = arguments.get("payload")
         return isinstance(payload, Mapping) and (
@@ -686,6 +690,22 @@ def _removes_records(tool_name: str, arguments: Mapping[str, Any] | None) -> boo
         for key in RECORD_LISTS.get(tool_name, ())
         for item in _items(arguments, key)
     )
+
+
+def _applies_equipment_rule(
+    tool_name: str, arguments: Mapping[str, Any] | None
+) -> bool:
+    payload = arguments.get("payload") if isinstance(arguments, Mapping) else None
+    return (
+        tool_name == "set_equipment_rule"
+        and isinstance(payload, Mapping)
+        and _canonical(payload.get("action")) == "apply"
+    )
+
+
+def _payload_action(arguments: Mapping[str, Any] | None) -> str:
+    payload = arguments.get("payload") if isinstance(arguments, Mapping) else None
+    return _canonical(payload.get("action")) if isinstance(payload, Mapping) else ""
 
 
 def _new_records(
@@ -746,6 +766,13 @@ def call_impact(
     bulk_from = BULK_FROM.get(tool_name)
     if (
         tool_name in WHOLE_PLAN_TOOLS
+        # A rule applied to earlier sessions changes them all at once (#3957).
+        or _applies_equipment_rule(tool_name, arguments)
+        # A product clean-up removes many products at once (#3958).
+        or (
+            tool_name == "manage_nutrition_products"
+            and _payload_action(arguments) == "cleanup"
+        )
         or (records and records_so_far + records > BULK_THRESHOLD)
         or (bulk_from and tool_records_so_far + records >= bulk_from)
     ):
@@ -966,7 +993,8 @@ CLASSIFIER_INSTRUCTIONS = (
     "athlete asks to delete, remove, archive or cancel records of that domain. "
     "bulk: true only when the athlete asks to create, replace or rework a whole "
     "plan, a period such as a week, or many records of that domain at once; "
-    "filling missing values of two or more products is bulk in nutrition. "
+    "filling missing values of two or more products is bulk in nutrition, and "
+    "a clean-up of unused products is delete and bulk in nutrition. "
     "Questions, discussion, advice, thanks and refusals such as 'don't delete "
     "anything' yield an empty list; a request phrased as a question ('Kannst "
     "du ...?') still counts. A reply that clearly accepts the change proposed "
@@ -984,11 +1012,13 @@ CLASSIFIER_INSTRUCTIONS = (
     "anything else, including doubts, a plain training request, or mentioning "
     "the illness without asking to train through it. Domains: planning "
     "(training plan, workouts, schedule, templates), profile (athlete profile, "
-    "FTP, goals, availability, equipment), competition (races, events), "
+    "FTP, zones, thresholds, goals, availability, equipment and its default "
+    "rules, recorded activity sessions and routes), competition (races, events), "
     "checkin (sleep, health, mood, symptoms, activity feedback), nutrition "
     "(meals, food, products, templates), body (weight, body fat, skinfolds), "
     "undo (revert an earlier change). Changing a weight or body fat already "
-    "entered for a day is a delete in body."
+    "entered for a day is a delete in body; replacing a measured or entered "
+    "threshold is a delete in profile."
 )
 
 CLASSIFIER_SCHEMA: dict[str, Any] = {

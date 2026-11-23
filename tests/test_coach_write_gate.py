@@ -24,6 +24,8 @@ _DELETE_TOOLS = (
     "delete_nutrition_entry",
     "delete_nutrition_template",
     "delete_body_entry",
+    "delete_zones",
+    "delete_activity_session",
 )
 
 
@@ -405,6 +407,22 @@ class DestructiveTierTests(unittest.TestCase):
                     classifier=_Classifier(verdict), arguments=replace,
                 )  # fmt: skip
                 self.assertEqual(allowed, decision.allowed, decision)
+        # #3956: replacing a measured or entered threshold is a delete in profile.
+        adopt = {"action": "adopt_lt2", "sport": "run", "shown": 172}
+        self.assertEqual(gate.call_impact("save_zones", adopt), frozenset())
+        self.assertEqual(
+            gate.call_impact("save_zones", {**adopt, "replace": True}), {"delete"}
+        )
+        for verdict, allowed in (
+            (_verdict(["profile"], True), True),
+            (_verdict(["body"], True), False),
+        ):
+            with self.subTest(verdict=verdict):
+                decision = _check(
+                    "save_zones", "ersetze meine Schwelle",
+                    classifier=_Classifier(verdict), arguments={**adopt, "replace": True},
+                )  # fmt: skip
+                self.assertEqual(allowed, decision.allowed, decision)
 
     def test_delete_confirmation_is_bound_to_its_domain(self):
         verdict = gate.ImpactVerdict(
@@ -546,6 +564,56 @@ class DestructiveTierTests(unittest.TestCase):
                         classifier=_Classifier(_verdict(["planning"], bulk=True)),
                     ).allowed
                 )
+        # #3957: a default rule applied to earlier sessions is bulk in profile;
+        # setting or previewing it is not.
+        rule = {"kind": "run:easy"}
+        for action, impact in (("set", set()), ("preview", set()), ("apply", {"bulk"})):
+            with self.subTest(action=action):
+                payload = {"payload": {**rule, "action": action}}
+                self.assertEqual(
+                    gate.call_impact("set_equipment_rule", payload), impact
+                )
+        apply = {"payload": {**rule, "action": "apply"}}
+        for verdict, allowed in (
+            (_verdict(["profile"], bulk=True), True),
+            (_verdict(["profile"]), False),
+        ):
+            with self.subTest(verdict=verdict):
+                decision = _check(
+                    "set_equipment_rule", "ja, auch die früheren",
+                    classifier=_Classifier(verdict), arguments=apply,
+                )  # fmt: skip
+                self.assertEqual(allowed, decision.allowed, decision)
+
+    def test_product_removals_are_deletes_and_the_cleanup_also_bulk(self):
+        # #3958: archive, forget and the clean-up remove products; the
+        # clean-up removes many at once; a favourite and the preview do not.
+        for action, impact in (
+            ("favorite", set()),
+            ("cleanup_preview", set()),
+            ("archive", {"delete"}),
+            ("forget", {"delete"}),
+            ("cleanup", {"delete", "bulk"}),
+        ):
+            with self.subTest(action=action):
+                self.assertEqual(
+                    gate.call_impact(
+                        "manage_nutrition_products", {"payload": {"action": action}}
+                    ),
+                    impact,
+                )
+        cleanup = {"payload": {"action": "cleanup", "days": 90}}
+        for verdict, allowed in (
+            (_verdict(["nutrition"], True, bulk=True), True),
+            (_verdict(["nutrition"], True), False),
+            (_verdict(["profile"], True, bulk=True), False),
+        ):
+            with self.subTest(verdict=verdict):
+                decision = _check(
+                    "manage_nutrition_products", "ja, räum auf",
+                    classifier=_Classifier(verdict), arguments=cleanup,
+                )  # fmt: skip
+                self.assertEqual(allowed, decision.allowed, decision)
 
     def test_many_records_in_one_turn_need_a_confirmed_bulk_change(self):
         week = {"changes": [{"action": "update"}] * gate.BULK_THRESHOLD}

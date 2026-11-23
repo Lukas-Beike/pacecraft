@@ -226,9 +226,9 @@ for (const provider of ["openai", "anthropic"]) {
     const section = page.locator("details", { has: page.locator("#modelSelect") });
     await section.locator("summary").click();
     await expect(page.locator("#modelSelect")).toHaveValue(`${provider}-fixture`);
-    // Claude hides the OpenAI-only speed row; the reset stays.
+    // Claude hides the OpenAI-only speed row; the reset stays, in its own section "Gespräch" (#3936 M-04).
     await expect(page.locator("#serviceTierRow")).toHaveJSProperty("hidden", provider === "anthropic");
-    const button = section.getByRole("button", { name: "Chat zurücksetzen", exact: true });
+    const button = page.locator("details", { has: page.locator("#coachChatResetButton") }).getByRole("button", { name: "Chat zurücksetzen", exact: true });
     await expect(button).toBeVisible();
     await expect(page.locator("#connection-openai").getByRole("button", { name: "Chat zurücksetzen" })).toHaveCount(0);
     await button.click();
@@ -792,7 +792,7 @@ test("analysis charts preserve sources, gaps and dated values", { tag: "@respons
   await expect(cycling).not.toContainText("%");
   await expect(cycling.locator(".analysis-coverage")).toHaveCount(0);
   await cycling.getByRole("button", { name: "Erklärung zu FTP", exact: true }).click();
-  await expect(cycling.locator(".analysis-info-tooltip:popover-open")).toContainText(/Daten für \d+ von \d+ Tagen vorhanden\./);
+  await expect(cycling.locator(".analysis-info-tooltip:not([popover]):not([hidden])")).toContainText(/Daten für \d+ von \d+ Tagen vorhanden\./);
   await page.keyboard.press("Escape");
   expect((await cycling.locator('path[data-series="0"]').first().getAttribute("d")).match(/M/g)).toHaveLength(1);
   const details = cycling.locator("details:not([data-analysis-section])").filter({ has: page.getByText("Werte ansehen", { exact: true }) }).first();

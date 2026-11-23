@@ -11,7 +11,13 @@ from backend.activities.hr_cap import (
     SOURCES,
     cap_table_text,
 )
-from backend.athlete.checkins import COMPLAINT_AREAS, COMPLAINT_SIDES, MAX_COMPLAINTS
+from backend.athlete.checkins import (
+    COMPLAINT_AREAS,
+    COMPLAINT_SIDES,
+    MAX_COMPLAINTS,
+    SYMPTOM_LABELS,
+)
+from backend.athlete.equipment import RULE_KINDS
 from backend.athlete.profile import BODY_FIELDS, COACH_READ_ONLY_FIELDS
 from backend.canonical.vocabulary import Sport
 from backend.db.repositories import NUTRIENT_COLUMNS
@@ -909,6 +915,12 @@ def build_structured_tool_schemas(
                             },
                             "description": "Pain or niggles the athlete named in this message, one per body area and side (none for a midline area), severity 0-10 as stated; keep the words in pain. Never infer an area, side or severity the athlete did not give. A supplied list replaces the day's complaints; [] removes them. Omission keeps them.",
                         },
+                        "symptoms": {
+                            "type": "array",
+                            "uniqueItems": True,
+                            "items": {"type": "string", "enum": list(SYMPTOM_LABELS)},
+                            "description": "Named in this message; [] clears.",
+                        },
                         **{
                             field: {"type": "string", "maxLength": limit}
                             for field, limit in CHECKIN_TEXT_LIMITS.items()
@@ -1429,12 +1441,68 @@ def build_structured_tool_schemas(
         ),
         (
             "assign_activity_equipment",
-            "Explicitly assign a canonical completed activity to matching active equipment. If sport_pending or parent_pending is true, ask the athlete for the missing equipment detail before assignment. Reassignment recalculates both usage counters. equipment_id=null explicitly clears assignment. activity_id accepts the local ID (act_...) or the provider activity ID. Never infer a favorite bike/shoe.",
+            "Explicitly assign a canonical completed activity, or a planned unit, to matching active equipment. If sport_pending or parent_pending is true, ask the athlete for the missing equipment detail before assignment. Reassignment recalculates both usage counters. equipment_id=null explicitly clears assignment (for a planned unit: Keiner). Send exactly one of activity_id (the local ID act_... or the provider activity ID) and planned_unit_id (a local_id from list_planned_workouts). Never infer a favorite bike/shoe.",
             {
                 "activity_id": {"type": "string"},
+                "planned_unit_id": {"type": "string"},
                 "equipment_id": {"type": ["string", "null"]},
             },
-            ["activity_id", "equipment_id"],
+            ["equipment_id"],
+        ),
+        (
+            "set_equipment_rule",
+            "Default equipment per kind of session, as Ausrüstung sets it, only on the athlete's explicit request. action set: from today on, equipment_id required (null for none), expected_revision from read_training_records rules (0 before its first save); earlier sessions keep theirs. action preview: count the earlier sessions without an own choice the rule would give its item; tell the athlete the count. action apply: give them the item, only after the athlete confirmed that count in a later message.",
+            {
+                "action": {"type": "string", "enum": ["set", "preview", "apply"]},
+                "kind": {"type": "string", "enum": list(RULE_KINDS)},
+                "equipment_id": {"type": ["string", "null"]},
+                "expected_revision": {"type": "integer", "minimum": 0},
+            },
+            ["action", "kind"],
+        ),
+        (
+            "delete_activity_session",
+            "Local only: delete one activity session and every provider copy in it, as the session details do; nothing is deleted at a provider. Only on the athlete's explicit request to delete it. activity_id is the local session ID (act_...).",
+            {"activity_id": {"type": "string", "minLength": 1}},
+            ["activity_id"],
+        ),
+        (
+            "rename_activity_route",
+            "Local only: rename one recognised route (route.route_id of get_activity_details) on the athlete's explicit request; name 1 to 60 characters.",
+            {
+                "route_id": {"type": "string", "minLength": 1},
+                "name": {"type": "string", "minLength": 1, "maxLength": 60},
+            },
+            ["route_id", "name"],
+        ),
+        (
+            "manage_nutrition_products",
+            "Produkte's card actions, only on the athlete's explicit request; id from read_nutrition or lookup_food. action favorite: set favorite true or false. action archive: archive an own product. action forget: remove a stored database food. action cleanup_preview: count the products not used for days (30, 90, 180 or 365; never favourites or products a saved meal uses); tell the athlete the count. action cleanup: remove them, only after the athlete confirmed that count in a later message.",
+            {
+                "action": {
+                    "type": "string",
+                    "enum": [
+                        "favorite",
+                        "archive",
+                        "forget",
+                        "cleanup_preview",
+                        "cleanup",
+                    ],
+                },
+                "id": {"type": "string"},
+                "favorite": {"type": "boolean"},
+                "days": {"type": "integer", "enum": [30, 90, 180, 365]},
+            },
+            ["action"],
+        ),
+        (
+            "refresh_nutrition_products",
+            "Re-check products online as Produkte does, only on the athlete's explicit request: one own product (by its EAN) or stored database food by id, or every product with all true (a background run). Only empty values fill; known and own values stay.",
+            {
+                "id": {"type": "string"},
+                "all": {"type": "boolean"},
+            },
+            [],
         ),
         (
             "confirm_activity_session",
@@ -1722,5 +1790,56 @@ def build_structured_tool_schemas(
             },
         )
     )
+    # Zonen & Schwellen, with its fields at the top level (#3956).
+    zone_limits = {
+        "type": "array",
+        "minItems": 3,
+        "maxItems": 7,
+        "items": {"type": "number", "exclusiveMinimum": 0},
+    }
+    zone_tools = (
+        (
+            "save_zones",
+            "Change Zonen & Schwellen as its editor does, only on the athlete's own request in this message; read_coach_context shows training_zones, first_threshold_estimate and lt2_estimates in current_performance first. action save: one local zone configuration of sport and metric (environment null or indoor), exactly one of limits (absolute upper limits: bpm, W, or m/s for pace) or percent_limits (percent of the threshold), threshold for heart_rate and power, maximum for heart_rate, valid_from (not in the future, default today) or from_beginning for the first configuration. action adopt_first_threshold: shown is the estimate's percent_lthr, or with activity_id the run step test's good LT1 heart rate in bpm. action adopt_lt2: sport, source, value and shown as read (bpm, s/km or W); with source step_test also activity_id; confirm_deviation only when the athlete accepts a value more than 5 % from the one in effect. replace only when the athlete asks to replace a measured or self-entered value.",
+            {
+                "action": {
+                    "type": "string",
+                    "enum": ["save", "adopt_first_threshold", "adopt_lt2"],
+                },
+                "sport": {"type": "string", "enum": ["ride", "run", "swim"]},
+                "metric": {"type": "string", "enum": ["heart_rate", "power", "pace"]},
+                "environment": {"type": ["string", "null"], "enum": ["indoor", None]},
+                "limits": zone_limits,
+                "percent_limits": zone_limits,
+                "threshold": {"type": "number", "exclusiveMinimum": 0},
+                "maximum": {"type": "number", "exclusiveMinimum": 0},
+                "valid_from": {"type": "string", "format": "date"},
+                "from_beginning": {"type": "boolean"},
+                "source": {
+                    "type": "string",
+                    "enum": [
+                        "dfa_alpha1",
+                        "critical_speed",
+                        "critical_power",
+                        "step_test",
+                    ],
+                },
+                "value": {"type": "string", "enum": ["heart_rate", "pace", "power"]},
+                "shown": {"type": "number"},
+                "activity_id": {"type": "string", "minLength": 1},
+                "confirm_deviation": {"type": "boolean"},
+                "replace": {"type": "boolean"},
+            },
+        ),
+        (
+            "delete_zones",
+            "Remove one local zone configuration, only on the athlete's explicit request to remove it; key is the key of a local entry of training_zones in read_coach_context.",
+            {"key": {"type": "string", "minLength": 1}},
+        ),
+    )
+    for zone_name, zone_description, zone_fields in zone_tools:
+        zone_tool = _canonical_coach_tool(zone_name, zone_description, zone_fields)
+        zone_tool["parameters"]["required"] = [next(iter(zone_fields))]
+        COACH_STRUCTURED_TOOLS.append(zone_tool)
 
     return COACH_STRUCTURED_TOOLS

@@ -35,10 +35,12 @@ and repair details remain with the provider capabilities.
 | `commit_training_plan` | canonical_and_dialogue / local_write | planning | CoachPlanArtifactToolService | `training-plans-and-adaptation / TP2 Atomic revision-checked plan commit`; `coach-tool-authority / CA4 Domain-confirmed destructive and bulk effects` | `test_requested_draft_commit_and_metadata_lifecycle` |
 | `confirm_activity_session` | canonical_and_dialogue / local_write | profile | CoachAthleteRecordToolService | `activity-ingestion-and-storage / Athlete session corrections`; `coach-tool-authority / CA2 Athlete-message provenance and exact effect scope` | `test_session_tools_correct_the_bundle_and_leave_a_change_receipt` |
 | `delete_activity_feedback` | canonical_and_dialogue / local_write | checkin | CoachAthleteRecordToolService | `athlete-profile-and-checkins / AP7 Exact completed-activity feedback`; `coach-tool-authority / CA4 Domain-confirmed destructive and bulk effects` | `test_daily_feedback_and_activity_feedback_are_separate_from_profile` |
+| `delete_activity_session` | canonical_and_dialogue / local_write | profile | CoachAthleteRecordToolService | `activity-ingestion-and-storage / Athlete session corrections`; `coach-tool-authority / CA4 Domain-confirmed destructive and bulk effects` | `test_session_tools_correct_the_bundle_and_leave_a_change_receipt` |
 | `delete_body_entry` | canonical_and_dialogue / local_write | body | CoachAthleteRecordToolService | `athlete-profile-and-checkins / Coach body entries`; `coach-tool-authority / CA4 Domain-confirmed destructive and bulk effects` | `test_the_coach_records_weight_and_body_fat_in_koerper` |
 | `delete_competition` | canonical_and_dialogue / local_write | competition | CoachAthleteRecordToolService | `competitions-and-seasons / CS4 Competition removal and remote tombstone retention`; `coach-tool-authority / CA4 Domain-confirmed destructive and bulk effects` | `test_competition_lifecycle_syncs_only_after_explicit_followup` |
 | `delete_nutrition_entry` | canonical_and_dialogue / local_write | nutrition | CoachAthleteRecordToolService | `coach-tool-authority / CA2 Athlete-message provenance and exact effect scope`; `coach-tool-authority / CA4 Domain-confirmed destructive and bulk effects` | `test_nutrition_entries_can_be_saved_read_and_deleted` |
 | `delete_nutrition_template` | canonical_and_dialogue / local_write | nutrition | CoachAthleteRecordToolService | `coach-tool-authority / CA2 Athlete-message provenance and exact effect scope`; `coach-tool-authority / CA4 Domain-confirmed destructive and bulk effects` | `test_saved_meals_run_through_authorized_coach_and_receipts` |
+| `delete_zones` | canonical_and_dialogue / local_write | profile | CoachAthleteRecordToolService | `athlete-profile-and-checkins / Coach zone changes`; `coach-tool-authority / CA4 Domain-confirmed destructive and bulk effects` | `test_the_coach_saves_and_adopts_zones_like_the_zone_editor` |
 | `fill_nutrition_product_gaps` | canonical_and_dialogue / local_write | nutrition | CoachAthleteRecordToolService | `food-catalog-and-meal-library / Coach fills empty product fields`; `coach-tool-authority / Tool-specific bulk threshold`; `coach-tool-authority / CA4 Domain-confirmed destructive and bulk effects` | `test_incomplete_products_are_listed_and_filled_by_authorized_coach_turn` |
 | `get_activity_details` | canonical_and_dialogue / read | read | CoachReadToolService | `coach-context-and-provenance / CP7 Bounded local reads and analysis parity` | `test_read_tools_return_seeded_objects_without_mutating_them` |
 | `get_sync_job` | canonical_and_dialogue / read | read | CoachSyncToolService | `coach-context-and-provenance / CP6 Explicit provider refresh and current results` | `test_provider_reads_and_job_status_use_correct_provider` |
@@ -53,6 +55,7 @@ and repair details remain with the provider capabilities.
 | `log_equipment_maintenance` | canonical_and_dialogue / local_write | profile | CoachAthleteRecordToolService | `athlete-profile-and-checkins / AP10 Maintenance events without invented material diagnosis`; `coach-tool-authority / CA2 Athlete-message provenance and exact effect scope` | `test_training_records_and_equipment_tools_use_confirmed_local_state` |
 | `log_nutrition_template` | canonical_and_dialogue / local_write | nutrition | CoachAthleteRecordToolService | `coach-tool-authority / CA2 Athlete-message provenance and exact effect scope`; `coach-tool-authority / CA9 Truthful durable receipts and supported undo` | `test_saved_meals_run_through_authorized_coach_and_receipts` |
 | `lookup_food` | canonical_and_dialogue / read | read | CoachReadToolService | `coach-tool-authority / CA1 Complete owned tool capability catalog`; `coach-context-and-provenance / CP8 External text is evidence only` | `test_food_database_read_tools_calculate_without_writing` |
+| `manage_nutrition_products` | canonical_and_dialogue / local_write | nutrition | CoachAthleteRecordToolService | `food-catalog-and-meal-library / Coach product management`; `coach-tool-authority / CA4 Domain-confirmed destructive and bulk effects` | `test_the_coach_manages_products_like_produkte` |
 | `manage_training_templates` | canonical_and_dialogue / local_write | planning | TrainingTemplateToolService | `training-library / TL1 Undated local training templates`; `training-library / TL2 Atomic template lifecycle`; `coach-tool-authority / CA4 Domain-confirmed destructive and bulk effects` | `test_template_lifecycle_and_scheduling_preserve_the_scheduled_copy` |
 | `merge_activity_sessions` | canonical_and_dialogue / local_write | profile | CoachAthleteRecordToolService | `activity-ingestion-and-storage / Athlete session corrections`; `coach-tool-authority / CA2 Athlete-message provenance and exact effect scope` | `test_session_tools_correct_the_bundle_and_leave_a_change_receipt` |
 | `preview_adaptive_replan` | canonical_and_dialogue / local_write | planning | CoachPlanningActionToolService | `training-plans-and-adaptation / TP8 Persisted adaptive previews with trigger evidence` | `test_adaptive_preview_requires_later_acceptance_before_changing_workout` |
@@ -62,6 +65,8 @@ and repair details remain with the provider capabilities.
 | `read_profile` | canonical_and_dialogue / read | read | CoachReadToolService | `athlete-profile-and-checkins / AP1 Normalized durable profile and athlete-local dates`; `athlete-profile-and-checkins / AP2 Partial profile edits and optimistic Coach conflicts` | `test_permanent_profile_acceptance_reads_and_preserves_existing_facts` |
 | `read_training_records` | canonical_and_dialogue / read | read | CoachReadToolService | `athlete-profile-and-checkins / AP8 Versioned local equipment records`; `athlete-profile-and-checkins / AP9 Explicit equipment assignments and honest usage`; `athlete-profile-and-checkins / AP10 Maintenance events without invented material diagnosis` | `test_training_records_and_equipment_tools_use_confirmed_local_state` |
 | `read_training_state` | canonical_and_dialogue / read | read | CoachReadToolService | `training-library / TL6 Bounded library browsing and revision-bound plan enumeration` | `test_read_tools_return_seeded_objects_without_mutating_them` |
+| `refresh_nutrition_products` | canonical_and_dialogue / local_write | nutrition | CoachAthleteRecordToolService | `food-catalog-and-meal-library / Coach product management` | `test_the_coach_manages_products_like_produkte` |
+| `rename_activity_route` | canonical_and_dialogue / local_write | profile | CoachAthleteRecordToolService | `activity-analysis-and-feedback / Recognised routes of outdoor sessions`; `coach-tool-authority / CA2 Athlete-message provenance and exact effect scope` | `test_session_tools_correct_the_bundle_and_leave_a_change_receipt` |
 | `replace_training_plan` | canonical_and_dialogue / local_write | planning | CoachPlanningChangeToolService | `training-plans-and-adaptation / TP6 Inclusive bounded local plan replacement`; `coach-tool-authority / CA4 Domain-confirmed destructive and bulk effects` | `test_replacement_changes_only_requested_period` |
 | `resolve_training_sync_conflict` | canonical_and_dialogue / conditional_remote_write | remote_intervals | CoachSyncToolService | `training-library / TL10 Exact explicit sync selection and complete repair manifests`; `coach-tool-authority / CA5 Named remote synchronization and explicit proposals` | `test_conflict_choices_and_failed_job_retries` |
 | `save_activity_feedback` | canonical_and_dialogue / local_write | checkin | CoachAthleteRecordToolService | `athlete-profile-and-checkins / AP7 Exact completed-activity feedback` | `test_daily_feedback_and_activity_feedback_are_separate_from_profile` |
@@ -72,7 +77,9 @@ and repair details remain with the provider capabilities.
 | `save_nutrition_entry` | canonical_and_dialogue / local_write | nutrition | CoachAthleteRecordToolService | `coach-tool-authority / CA2 Athlete-message provenance and exact effect scope`; `coach-tool-authority / CA3 Direct local writes with impact checks`; `coach-tool-authority / CA9 Truthful durable receipts and supported undo` | `test_nutrition_entries_can_be_saved_read_and_deleted` |
 | `save_nutrition_product` | canonical_and_dialogue / local_write | nutrition | CoachAthleteRecordToolService | `coach-tool-authority / CA6 Session-bound immutable approval contents`; `coach-tool-authority / CA10 Validated repair dependencies and exceptional approvals` | `test_confirmed_product_is_saved_locally_through_authorized_coach_receipt` |
 | `save_nutrition_template` | canonical_and_dialogue / local_write | nutrition | CoachAthleteRecordToolService | `coach-tool-authority / CA6 Session-bound immutable approval contents`; `coach-tool-authority / CA10 Validated repair dependencies and exceptional approvals` | `test_saved_meals_run_through_authorized_coach_and_receipts` |
+| `save_zones` | canonical_and_dialogue / local_write | profile | CoachAthleteRecordToolService | `athlete-profile-and-checkins / Coach zone changes` | `test_the_coach_saves_and_adopts_zones_like_the_zone_editor` |
 | `search_web_for_product_values` | canonical_and_dialogue / read | read | CoachReadToolService | `food-catalog-and-meal-library / Coach web search for missing product values`; `coach-tool-authority / CA1 Complete owned tool capability catalog` | `test_web_search_returns_cited_values_and_degrades_to_unavailable` |
+| `set_equipment_rule` | canonical_and_dialogue / local_write | profile | CoachAthleteRecordToolService | `athlete-profile-and-checkins / AP9 Explicit equipment assignments and honest usage`; `coach-tool-authority / CA4 Domain-confirmed destructive and bulk effects` | `test_training_records_and_equipment_tools_use_confirmed_local_state` |
 | `split_activity_session` | canonical_and_dialogue / local_write | profile | CoachAthleteRecordToolService | `activity-ingestion-and-storage / Athlete session corrections`; `coach-tool-authority / CA2 Athlete-message provenance and exact effect scope` | `test_session_tools_correct_the_bundle_and_leave_a_change_receipt` |
 | `stage_training_plan` | canonical_and_dialogue / local_write | planning | CoachPlanArtifactToolService | `training-plans-and-adaptation / TP1 Validated durable local plan drafts` | `test_requested_draft_commit_and_metadata_lifecycle` |
 | `start_intervals_plan_sync` | canonical_and_dialogue / remote_write | remote_intervals | CoachSyncToolService | `training-library / TL10 Exact explicit sync selection and complete repair manifests`; `training-library / TL11 Planned-calendar upsert identity and in-flight local changes`; `training-library / TL12 Guarded explicit removal of a linked planned event`; `training-library / TL13 Exact repair ownership and bounded duplicate cleanup`; `training-library / TL14 Repair identity retention and final collection verification`; `training-library / TL15 Selected execution reports mixed outcomes and failed-object retry scope`; `coach-tool-authority / CA5 Named remote synchronization and explicit proposals`; `coach-tool-authority / CA6 Session-bound immutable approval contents` | `test_new_plan_sync_and_later_selected_sync_use_real_ids` |
@@ -262,7 +269,8 @@ effect `local_write`; gate domain `planning`; plan checked; records counted from
 effect `local_write`; gate domain `profile`; receipt „Ausrüstung zugeordnet“; proposal card „Ausrüstung zuordnen“; fully tracked by change history.
 
 - `payload` (object)
-- `payload.activity_id`* (string)
+- `payload.activity_id` (string)
+- `payload.planned_unit_id` (string)
 - `payload.equipment_id`* (string/null)
 - `_request`* (the envelope above)
 
@@ -332,6 +340,14 @@ effect `local_write`; gate domain `checkin`; needs a confirmed delete request; r
 - `activity_id` (string)
 - `_request`* (the envelope above)
 
+### `delete_activity_session`
+
+effect `local_write`; gate domain `profile`; needs a confirmed delete request; receipt „Aktivität gelöscht“; proposal card „Aktivität löschen“; fully tracked by change history.
+
+- `payload` (object)
+- `payload.activity_id`* (string; ≥1 chars)
+- `_request`* (the envelope above)
+
 ### `delete_body_entry`
 
 effect `local_write`; gate domain `body`; needs a confirmed delete request; receipt „Körperwert entfernt“; proposal card „Körperwert entfernen“; fully tracked by change history.
@@ -359,6 +375,13 @@ effect `local_write`; gate domain `nutrition`; needs a confirmed delete request;
 effect `local_write`; gate domain `nutrition`; needs a confirmed delete request; receipt „Mahlzeitvorlage entfernt“; proposal card „Mahlzeitvorlage entfernen“; fully tracked by change history.
 
 - `id` (string)
+- `_request`* (the envelope above)
+
+### `delete_zones`
+
+effect `local_write`; gate domain `profile`; needs a confirmed delete request; receipt „Zonen entfernt“; proposal card „Zonen entfernen“; fully tracked by change history.
+
+- `key`* (string; ≥1 chars)
 - `_request`* (the envelope above)
 
 ### `fill_nutrition_product_gaps`
@@ -490,6 +513,17 @@ effect `read`; may call the food database.
 - `barcode` (string; pattern `^[0-9]{8,14}$`)
 - `source` (string; one of `"bls"`, `"open_food_facts"`, `"yazio"`)
 
+### `manage_nutrition_products`
+
+effect `local_write`; gate domain `nutrition`; receipt „Produkte geändert“; proposal card „Produkte ändern“; not fully tracked (no turn undo).
+
+- `payload` (object)
+- `payload.action`* (string; one of `"favorite"`, `"archive"`, `"forget"`, `"cleanup_preview"`, `"cleanup"`)
+- `payload.id` (string)
+- `payload.favorite` (boolean)
+- `payload.days` (integer; one of `30`, `90`, `180`, `365`)
+- `_request`* (the envelope above)
+
 ### `manage_training_templates`
 
 effect `local_write`; gate domain `planning`; records counted from `templates`; receipt „Trainingsvorlagen bearbeitet“; proposal card „Trainingsvorlagen bearbeiten“; fully tracked by change history.
@@ -591,6 +625,24 @@ effect `read`.
 - `cursor` (string)
 - `limit` (integer; ≥1; ≤366)
 
+### `refresh_nutrition_products`
+
+effect `local_write`; gate domain `nutrition`; may call the food database; receipt „Produkte aktualisiert“; proposal card „Produkte aktualisieren“; not fully tracked (no turn undo).
+
+- `payload` (object)
+- `payload.id` (string)
+- `payload.all` (boolean)
+- `_request`* (the envelope above)
+
+### `rename_activity_route`
+
+effect `local_write`; gate domain `profile`; receipt „Strecke umbenannt“; proposal card „Strecke umbenennen“; not fully tracked (no turn undo).
+
+- `payload` (object)
+- `payload.route_id`* (string; ≥1 chars)
+- `payload.name`* (string; ≥1 chars; ≤60 chars)
+- `_request`* (the envelope above)
+
 ### `replace_training_plan`
 
 effect `local_write`; gate domain `planning`; whole-plan change; plan checked; receipt „Trainingsplan ersetzt“; proposal card „Trainingsplan vollständig ersetzen“; not fully tracked (no turn undo).
@@ -681,6 +733,7 @@ effect `local_write`; gate domain `checkin`; receipt „Tages-Check-in gespeiche
 - `payload.complaints[].area`* (string; one of `"foot"`, `"ankle"`, `"achilles"`, `"calf"`, `"shin"`, `"knee"`, `"thigh_front"`, `"thigh_back"`, `"hip"`, `"groin"`, `"lower_back"`, `"upper_back_neck"`, `"shoulder"`, `"arm_elbow"`, `"hand_wrist"`, `"other"`)
 - `payload.complaints[].side`* (string; one of `"left"`, `"right"`, `"both"`, `"none"`)
 - `payload.complaints[].severity`* (integer; ≥0; ≤10)
+- `payload.symptoms` (array of string; unique items; each one of `"schnupfen"`, `"halsschmerzen"`, `"husten"`, `"kopfschmerzen"`, `"fieber"`, `"gliederschmerzen"`, `"muedigkeit"`, `"brust_atemnot"`, `"magen_darm"`)
 - `payload.day_form` (string; ≤2000 chars)
 - `payload.illness` (string; ≤1000 chars)
 - `payload.pain` (string; ≤1000 chars)
@@ -847,11 +900,44 @@ effect `local_write`; gate domain `nutrition`; may call the food database; recei
 - `payload.id` (string)
 - `_request`* (the envelope above)
 
+### `save_zones`
+
+effect `local_write`; gate domain `profile`; receipt „Zonen gespeichert“; proposal card „Zonen speichern“; fully tracked by change history.
+
+- `action`* (string; one of `"save"`, `"adopt_first_threshold"`, `"adopt_lt2"`)
+- `sport` (string; one of `"ride"`, `"run"`, `"swim"`)
+- `metric` (string; one of `"heart_rate"`, `"power"`, `"pace"`)
+- `environment` (string/null; one of `"indoor"`, `null`)
+- `limits` (array of number; ≥3 items; ≤7 items; each >0)
+- `percent_limits` (array of number; ≥3 items; ≤7 items; each >0)
+- `threshold` (number; >0)
+- `maximum` (number; >0)
+- `valid_from` (string; date)
+- `from_beginning` (boolean)
+- `source` (string; one of `"dfa_alpha1"`, `"critical_speed"`, `"critical_power"`, `"step_test"`)
+- `value` (string; one of `"heart_rate"`, `"pace"`, `"power"`)
+- `shown` (number)
+- `activity_id` (string; ≥1 chars)
+- `confirm_deviation` (boolean)
+- `replace` (boolean)
+- `_request`* (the envelope above)
+
 ### `search_web_for_product_values`
 
 effect `read`; may call the food database.
 
 - `products` (array of string; ≥1 items; ≤5 items)
+
+### `set_equipment_rule`
+
+effect `local_write`; gate domain `profile`; receipt „Ausrüstungsregel gespeichert“; proposal card „Ausrüstungsregel speichern“; fully tracked by change history.
+
+- `payload` (object)
+- `payload.action`* (string; one of `"set"`, `"preview"`, `"apply"`)
+- `payload.kind`* (string; one of `"run:intervals"`, `"run:long"`, `"run:easy"`, `"run:race"`, `"ride:indoor"`, `"ride:outdoor"`)
+- `payload.equipment_id` (string/null)
+- `payload.expected_revision` (integer; ≥0)
+- `_request`* (the envelope above)
 
 ### `split_activity_session`
 

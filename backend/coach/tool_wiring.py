@@ -178,6 +178,17 @@ def build_coach_command_tools(
             equipment=athlete.equipment(),
             session_corrections=athlete.session_corrections(),
             body_entries=body_entries,
+            athlete=athlete,
+            second_threshold=lambda: athlete.second_threshold(
+                ctx.performance.curve_records
+            ),
+            step_test=lambda activity_id: (
+                ctx.activity_reads.activity_read().step_test_for(
+                    activity_id, ctx.clock.now().date()
+                )
+            ),
+            activity_routes=lambda: ctx.activity_routes,
+            nutrition_services=nutrition,
         )
 
     def profile_update_service() -> CoachProfileUpdateService:

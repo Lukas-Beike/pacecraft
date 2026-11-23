@@ -26,6 +26,8 @@ CHECKIN_FIELDS = (
     "notes",
     # Structured complaints by area, side and severity (#3766).
     "complaints",
+    # The symptoms selected with the illness report (#3919).
+    "symptoms",
 )
 WEATHER_FIELDS = (
     "date",

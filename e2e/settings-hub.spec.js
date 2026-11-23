@@ -122,9 +122,9 @@ test("@responsive the eight connections start collapsed and name their status in
   await expect(page.locator("#providerCredentials, #providerFreshnessTimeline, #connectionsSummary")).toHaveCount(0);
   await expandConnections(page, ["garmin"]);
   const lines = page.locator("#garminSourceLines li");
-  await expect(lines).toHaveCount(2);
-  await expect(lines.nth(0)).toContainText("Personal API:");
-  await expect(lines.nth(1)).toContainText("SDK-Login:");
+  // The fixture's Garmin is not set up: its chip says so and no line repeats it (#3936 M-03).
+  await expect(page.locator("#garminConnectionStatus")).toHaveText("Nicht eingerichtet");
+  await expect(lines).toHaveCount(0);
 });
 
 test("@responsive an open card holds only its own provider's status, access, settings and actions", async ({ page }) => {
@@ -194,4 +194,19 @@ test("@responsive the Intervals.icu card sends the competitions once per press a
   expect(posts).toEqual(["POST"]);
   await page.waitForLoadState("networkidle");
   await page.unrouteAll({ behavior: "ignoreErrors" });
+});
+
+test("@responsive a stored equipment text shows read-only under Ausrüstung und Wartung and no field offers it (#3936 M-04)", async ({ page }) => {
+  await openMore(page, "profile");
+  await expect(page.locator('#profileForm [name="equipment"]')).toHaveCount(0);
+  await expect(page.locator('#profileForm [name="timezone"]')).toHaveCount(1);
+  await expect(page.locator("#profileForm details").first().locator('[name="weather_location"]')).toHaveCount(1);
+  await page.evaluate(() => renderProfileEquipmentNote("Rad, Smarttrainer, Gym"));
+  await openMore(page, "equipment");
+  const note = page.locator("#profileEquipmentNote");
+  await expect(note).toBeVisible();
+  await note.locator("summary").click();
+  await expect(page.locator("#profileEquipmentText")).toHaveText("Rad, Smarttrainer, Gym");
+  await page.evaluate(() => renderProfileEquipmentNote(""));
+  await expect(note).toBeHidden();
 });

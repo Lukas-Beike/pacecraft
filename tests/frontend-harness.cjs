@@ -106,6 +106,7 @@ class FakeElement {
   append(...items) { this.children.push(...items); }
   replaceChildren(...items) { this._text = ""; this.children = items; }
   setAttribute(name, value) { this.attributes[name] = value; }
+  removeAttribute(name) { delete this.attributes[name]; }
   addEventListener(type, handler) { this.listeners[type] = handler; this._listenerCounts[type] = (this._listenerCounts[type] || 0) + 1; }
   focus() { this.focused = true; }
   fire(type, event = {}) { return this.listeners[type]({ preventDefault() {}, ...event }); }

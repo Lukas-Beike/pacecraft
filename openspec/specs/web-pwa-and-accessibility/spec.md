@@ -160,7 +160,7 @@ The client SHALL show at most one status strip above every screen: the most seve
 - **THEN** only a critical notice is announced as `alert`, others as `status`, and an unchanged strip is not rendered again; the dismissed hint stays hidden for the browser session and focus moves to the main region.
 
 #### Scenario: Several notices at once
-- **WHEN** the browser is offline, the Coach reports an error and an optional provider key is missing
+- **WHEN** the browser is offline, the Coach reports an error and a provider needs attention
 - **THEN** one strip shows the offline notice with a "+N Hinweise" button ("+1 Hinweis" for one further notice), and the button lists the Coach error.
 
 #### Scenario: Due equipment
@@ -182,7 +182,7 @@ The client SHALL show the settings areas under the fixed title "Mehr" as one swi
 
 #### Scenario: Status without colour
 - **WHEN** the athlete opens Anbindungen
-- **THEN** the seven cards (Garmin, Wahoo, Intervals.icu, OpenAI, Yazio, Gemeinsamer Kalender, Open-Meteo) are collapsed and each shows only its name and a text chip with a coloured dot, and the Garmin card names the Personal API key and the SDK login in words.
+- **THEN** the seven cards (Garmin, Wahoo, Intervals.icu, OpenAI, Yazio, Gemeinsamer Kalender, Open-Meteo) are collapsed and each shows only its name and a text chip with a coloured dot, and the Garmin card names the Personal API key and the SDK login in words once one is set up (an unset card shows its chip alone).
 
 #### Scenario: One card per connection
 - **WHEN** the athlete opens a card or follows a setup link for one provider
@@ -257,7 +257,7 @@ The client SHALL keep history reading independent of live announcements, preserv
 
 #### Scenario: Turn changes line and empty chat
 - **WHEN** a Coach reply carries recorded changes, or the chat has no messages
-- **THEN** the reply shows its changes in one line with a visible "Rückgängig" action that asks for confirmation and undoes the whole turn locally (shown as "Zurückgenommen" afterwards, absent when not undoable); an empty chat shows one empty state with a "Profil ausfüllen" action that starts a normal Coach turn.
+- **THEN** the reply shows its changes in one line with a visible "Rückgängig" action that asks for confirmation and undoes the whole turn locally (shown as "Zurückgenommen" afterwards, absent when not undoable); an empty chat shows one empty state with the list "Einrichten · n von 3" (Profil ausfüllen, Datenquelle verbinden, Modell wählen) and the next open step as its one action, "Profil ausfüllen" starting a normal Coach turn; the list is gone once every step is done.
 
 Evidence:
 - `e2e/coach-history-anchor.spec.js::older chat history keeps the reading position without moving focus @responsive`
@@ -368,14 +368,14 @@ The client SHALL present domain-provided planning, performance, activity, and eq
 
 #### Scenario: Move a planned unit
 - **WHEN** the athlete opens a planned unit that is not a completed session and taps "Verschieben"
-- **THEN** a strip of the next seven days from today (the unit's own day disabled) and "…" for the system date picker appear, both ending with the last day the calendar shows; one tap moves the local unit, the opened card follows it to its new week with "Verschoben auf <Tag, Datum>" and "Rückgängig", and undo puts it back with "Zurückgenommen."; a unit already sent shows its pending sync and nothing is written remotely.
+- **THEN** a strip of the next seven days from today (the unit's own day disabled, and a day the calendar rules refuse marked "belegt" with the blocking entry's name from `GET /api/planned-units/{id}/blocked-days`) and "…" for the system date picker appear, both ending with the last day the calendar shows; one tap moves the local unit, the opened card follows it to its new week with "Verschoben auf <Tag, Datum>" and "Rückgängig", and undo puts it back with "Zurückgenommen."; a unit already sent shows its pending sync and nothing is written remotely.
 #### Scenario: Delete a planned unit
 - **WHEN** the athlete taps the red "Löschen" at the end of an opened planned unit's actions
 - **THEN** the unit is deleted at once, no question (the receipt adds "<provider names>: weg beim nächsten Sync" when an upcoming unit has a copy there); the tap posts `confirmed` with the unit's content hash to `POST /api/planned-units/{id}/delete`, which refuses an unconfirmed delete with 409, deletes the local unit as one Coach change batch and writes nothing remotely; an outdated hash answers 409, the calendar reloads and the card names the reason; the day shows "Gelöscht: <Name>" with "Rückgängig" while its week is shown, and undo restores the unit's content unchanged, waiting for the next sync like any local edit (#3027).
 
-#### Scenario: Add, edit and archive a planned unit
-- **WHEN** the athlete taps "+ Einheit hinzufügen" under a day from today on, "Bearbeiten" on an opened planned unit or "Archivieren"
-- **THEN** the unit editor opens (a dialog: sport, name, day and time, "Art der Einheit", target, the steps of an endurance unit as rows of minutes and zone or percent with "+ Schritt" and "+ Wiederholung" and the computed duration, or the exercises of a strength unit; "Aus Bibliothek" fills it from an entry) and saves through the Coach's change batch with `POST /api/planned-units` or `.../{id}/update` (with the unit's content hash), saving a from-scratch unit's library entry too; the card or the new unit's day shows "Angelegt:" or "Gespeichert: <Name>" with "Rückgängig"; an illness check offers "Trotzdem speichern" (`accept_plan_findings`); "Archivieren" posts `confirmed` to `.../{id}/archive` at once and the day shows "Archiviert: <Name>" with "Rückgängig"; a workout text the rows cannot show opens as text; nothing is written remotely.
+#### Scenario: Edit and archive a planned unit
+- **WHEN** the athlete taps "Bearbeiten" or "Archivieren" on an opened planned unit (a new unit is planned from the Bibliothek with "Einplanen"; the calendar has no add button)
+- **THEN** "Bearbeiten" opens the unit editor (a dialog: sport, name, day and time, "Art der Einheit", target, the steps of an endurance unit as rows of minutes and zone or percent with "+ Schritt" and "+ Wiederholung" and the computed duration, or the exercises of a strength unit) and saves through the Coach's change batch with `POST /api/planned-units/{id}/update` (with the unit's content hash); the card shows "Gespeichert: <Name>" with "Rückgängig"; an illness check offers "Trotzdem speichern" (`accept_plan_findings`); "Archivieren" posts `confirmed` to `.../{id}/archive` at once and the day shows "Archiviert: <Name>" with "Rückgängig"; a workout text the rows cannot show opens as text; nothing is written remotely.
 
 #### Scenario: Planned steps as a list
 - **WHEN** the athlete opens a planned unit whose workout has structured steps
@@ -440,7 +440,7 @@ Evidence:
 - `e2e/calendar-detail-pane.spec.js::@responsive a planned unit lists its steps with zone and target range instead of the workout notation`
 - `e2e/calendar-detail-pane.spec.js::@responsive Löschen acts at once, deletes a planned unit and Rückgängig brings it back`
 - `e2e/calendar-detail-pane.spec.js::@responsive Mit Coach besprechen puts the planned unit into the Coach field without sending`
-- `e2e/unit-editor.spec.js::@responsive the calendar adds, edits and archives a unit`
+- `e2e/unit-editor.spec.js::@responsive the calendar edits and archives a unit`
 - `e2e/calendar-detail-pane.spec.js::@responsive Verschieben moves a planned unit to a tapped day and Rückgängig puts it back`
 - `e2e/calendar-week-compact.spec.js::@responsive compact calendar week shows one week, groups repeats and keeps one conflict style`
 - `e2e/calendar-week-compact.spec.js::@responsive the Monat switch shows the month grid and the calendar returns to the week`
@@ -864,9 +864,9 @@ Every analysis chart SHALL pad its value axis by 12 % of the span (at least a un
 - **WHEN** a period of 3, 6 or 12 months is shown
 - **THEN** each chart plots one value per week: the last value for acute and smoothed load, fitness and threshold pace, the sum for training time and session-RPE load, the mean for steps and floors, the median for VO2max, and every dated value for FTP
 
-#### Scenario: Info popover
+#### Scenario: Info explanation in place
 - **WHEN** the info control of a series is opened
-- **THEN** it states "Daten für N von M Tagen|Wochen vorhanden." and, below three readings, "Wenige Messungen · kein belastbarer Trend."; the popover stays inside the viewport
+- **THEN** it states "Daten für N von M Tagen|Wochen vorhanden." and, below three readings, "Wenige Messungen · kein belastbarer Trend."; it opens in place under its control, pushes the content down and covers nothing, states value, date and source once, and closes with Escape
 
 #### Scenario: One reading
 - **WHEN** a series has a single reading

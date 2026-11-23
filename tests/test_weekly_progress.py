@@ -57,6 +57,20 @@ class WeeklyProgressTests(unittest.TestCase):
         rows = options.pop("rows", ())
         return self._service(rows, **options).progress(values or {"days": 28}, "UTC")
 
+    def test_a_session_without_moving_time_counts_its_elapsed_time(self):
+        # The calendar header sums the same time, so header and review agree (#4061).
+        rows = [
+            _summary("a", "2026-09-22T08:00:00", sport="run", moving_duration_s=1800),
+            _summary("b", "2026-09-23T08:00:00", sport="run", elapsed_duration_s=1200),
+        ]
+        week = next(
+            w
+            for w in self._progress(rows=rows)["week_list"]
+            if w["week_start"] == "2026-09-21"
+        )
+        self.assertEqual(3000, week["sports"]["run"]["duration_s"]["value"])
+        self.assertEqual(2, week["sports"]["run"]["duration_s"]["measured_sessions"])
+
     def test_weekly_aggregation_per_sport_and_intensity_mapping(self):
         rows = [
             _summary(

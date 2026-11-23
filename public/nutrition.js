@@ -2,6 +2,10 @@
 let nutritionLoadSequence = 0;
 let nutritionHistoryPeriod = "28d";
 
+function restoreNutritionPeriod() {
+  nutritionHistoryPeriod = storedAnalysisPeriod("nutrition", nutritionHistoryPeriod);
+}
+
 const MAX_NUTRITION_IMAGE_EDGE = 1600;
 const MAX_NUTRITION_IMAGE_BYTES = 1_200_000;
 
@@ -67,6 +71,8 @@ function renderNutritionSegments(route) {
   document.querySelector("#nutritionDiary").hidden = week || products || body;
   document.querySelector("#bodyAnalysisCharts").hidden = !body;
   document.querySelector("#nutritionStatus").hidden = week || products || body;
+  // The diary's message to the Coach belongs to the diary alone.
+  if (week || products || body) document.querySelector("#nutritionTellCoach").hidden = true;
   document.querySelector("#nutritionWeek").hidden = !week;
   document.querySelector("#nutritionProductsPanel").hidden = !products;
   document.querySelectorAll("[data-nutrition-segment]").forEach((link) => {
@@ -277,7 +283,7 @@ function nutritionEstimateChip(item) {
 
 // A logged meal's ingredients, its estimate mark and its removal.
 function nutritionEntryActions(item) {
-  const estimate = h("button", { type: "button", className: "secondary-button" }, item.estimate_uncertain ? "Nicht geschätzt" : "Als geschätzt markieren");
+  const estimate = h("button", { type: "button", className: "secondary-button" }, item.estimate_uncertain ? "Markierung entfernen" : "Als geschätzt markieren");
   estimate.addEventListener("click", () => void markNutritionEstimate(item));
   const remove = h("button", { type: "button", className: "secondary-button danger-button", "aria-label": `Mahlzeit löschen: ${item.description}` }, "Löschen");
   remove.addEventListener("click", async () => {
@@ -342,7 +348,7 @@ function renderNutritionHistoryPeriod() {
     root.append(analysisPeriodControls("Zeitraum für Ernährung", nutritionHistoryPeriod, (period) => {
       nutritionHistoryPeriod = period;
       void loadNutrition();
-    }));
+    }, { remember: "nutrition" }));
   }
   root.querySelectorAll("button").forEach((button, index) => {
     button.setAttribute("aria-pressed", String(ANALYSIS_PERIODS[index].key === nutritionHistoryPeriod));
@@ -600,6 +606,12 @@ function nutritionIntakeKey(day) {
   return JSON.stringify([day.date, day.total_kcal, day.entries || []]);
 }
 
+// The message the empty diary hands to the Coach: only written into the composer, never sent.
+function nutritionCoachDraft(date, today) {
+  const when = date === today ? "heute" : `am ${dateLabel(date)}`;
+  return `Ich habe ${when} gegessen: `;
+}
+
 function renderNutritionDay(day) {
   document.querySelector("#nutritionDate").value = day.date;
   const intake = nutritionIntakeKey(day);
@@ -609,9 +621,15 @@ function renderNutritionDay(day) {
   energyIntakeKey = intake;
   renderDiaryEnergy();
   document.querySelector("#nutritionStatus").textContent = day.entry_count ? "" : "Noch keine Mahlzeiten erfasst.";
+  // An empty day shows no row of "nicht erfasst" tiles; meals are entered through the Coach, so the empty
+  // view says that and offers the message (athlete decisions, #3936 G-13, G-14).
+  const tellCoach = document.querySelector("#nutritionTellCoach");
+  tellCoach.hidden = Boolean(day.entry_count);
+  tellCoach.dataset.date = day.date;
   const totals = document.querySelector("#nutritionTotals");
   totals.replaceChildren();
-  appendNutritionTotals(totals, day);
+  totals.hidden = !day.entry_count;
+  if (day.entry_count) appendNutritionTotals(totals, day);
   appendNutritionMacroNote(totals, Number(day.entries_without_macros) || 0);
   document.querySelector("#nutritionEntries").replaceChildren(...day.entries.map((item) => nutritionCard(item, false, day.sessions || [])));
 }
@@ -661,6 +679,7 @@ async function loadNutrition({ preserve = false, expectedRoute = null, expectedD
 }
 
 document.querySelector("#nutritionDate").addEventListener("change", () => void loadNutrition());
+document.querySelector("#nutritionTellCoach").addEventListener("click", (event) => void globalThis.askCoach?.(nutritionCoachDraft(event.currentTarget.dataset.date, todayIso())));
 for (const [id, offset] of [["nutritionPrevious", -1], ["nutritionNext", 1]]) {
   document.getElementById(id).addEventListener("click", () => {
     const input = document.querySelector("#nutritionDate");
@@ -1151,6 +1170,16 @@ let nutritionProductSearchShown = "";
 // What was open before a search; clearing the search restores it.
 let nutritionProductSectionsBeforeSearch = null;
 
+// Without any product the refresh and clean-up buttons have nothing to act on, and the status line says "Keine
+// Produkte gefunden." once, so the list stays empty (#3936 G-13).
+function showNutritionProductActions(targetId, products, search) {
+  if (targetId === "#nutritionProducts") document.querySelector("#nutritionProductActions")?.toggleAttribute("hidden", !products?.length && !search);
+}
+
+function noNutritionProductsText(targetId) {
+  return targetId === "#nutritionProducts" ? "" : "Keine Produkte gefunden.";
+}
+
 function renderNutritionProducts(products, { local = true, targetId = "#nutritionProducts", search = "" } = {}) {
   const target = document.querySelector(targetId);
   if (!target) return;
@@ -1159,7 +1188,8 @@ function renderNutritionProducts(products, { local = true, targetId = "#nutritio
     for (const node of target.children) if (Object.hasOwn(nutritionProductSectionsOpen, node.dataset?.section ?? "")) nutritionProductSectionsOpen[node.dataset.section] = node.open;
   }
   target.replaceChildren();
-  if (!products?.length) { target.textContent = "Keine Produkte gefunden."; return; }
+  showNutritionProductActions(targetId, products, search);
+  if (!products?.length) { target.textContent = noNutritionProductsText(targetId); return; }
   const items = products.map(normalizeNutritionProduct);
   if (!local || targetId !== "#nutritionProducts") { target.append(...items.map((product) => nutritionProductCard(product, local))); return; }
   const newSearch = Boolean(search) && search !== nutritionProductSearchShown;

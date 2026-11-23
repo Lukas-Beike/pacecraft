@@ -7,6 +7,8 @@ from datetime import date
 from typing import Any
 
 from backend.activities.zone_settings import ZoneSettings
+from backend.athlete.checkins import SYMPTOM_LABELS, normalize_symptoms
+from backend.errors import AppError
 from backend.planning import illness_return, plan_checks
 from backend.planning.plan_guard_service import PlanGuardService
 from backend.planning.planned_unit_load import estimate_planned_unit
@@ -41,6 +43,173 @@ def _decide(
         {**GOOD_CHECKIN, "checkin_date": today, **(checkin or {})},
         GOOD_NIGHT if night is None else night,
     )
+
+
+class SymptomReturnTests(unittest.TestCase):
+    """#3919: after any selected symptom the return waits at stage 0, rest only."""
+
+    def _state(self) -> dict[str, Any]:
+        state = illness_return.current_state(
+            {**PAUSE, "symptoms_reported": True}, None, date(2026, 11, 2)
+        )
+        assert state is not None
+        return state
+
+    @staticmethod
+    def _days(*answers: tuple[str, list[str]]) -> list[dict[str, Any]]:
+        return [
+            {
+                "checkin_date": day,
+                "illness": "x" if symptoms else "",
+                "symptoms": symptoms,
+            }
+            for day, symptoms in answers
+        ]
+
+    def test_return_starts_at_stage_zero_with_a_symptom_and_nothing_is_allowed(
+        self,
+    ) -> None:
+        state = self._state()
+
+        self.assertEqual(0, state["stage"])
+        self.assertEqual(0, illness_return.enforced_stage(state))
+        self.assertLess(illness_return.STAGE_MAX_LEVEL[0], 0)
+
+    def test_an_empty_symptom_list_keeps_stage_one(self) -> None:
+        state = illness_return.current_state(
+            {**PAUSE, "symptoms_reported": False}, None, date(2026, 11, 2)
+        )
+
+        assert state is not None
+        self.assertEqual(1, state["stage"])
+
+    def test_two_check_ins_without_symptoms_start_stage_one(self) -> None:
+        history = self._days(
+            ("2026-10-27", ["fieber"]),
+            ("2026-11-03", []),
+            ("2026-11-04", []),
+        )
+
+        held = illness_return.decide(
+            self._state(), date(2026, 11, 3), history[1], GOOD_NIGHT, history[:2]
+        )
+        advanced = illness_return.decide(
+            self._state(), date(2026, 11, 4), history[2], GOOD_NIGHT, history
+        )
+
+        self.assertEqual(
+            ("hold", ["symptoms_reported"]), (held["action"], held["reasons"])
+        )
+        self.assertEqual(("advance", 1), (advanced["action"], advanced["stage"]))
+
+    def test_a_later_symptom_restarts_the_count(self) -> None:
+        history = self._days(
+            ("2026-10-27", ["fieber"]),
+            ("2026-11-02", []),
+            ("2026-11-03", ["muedigkeit"]),
+            ("2026-11-04", []),
+        )
+
+        decision = illness_return.decide(
+            self._state(), date(2026, 11, 4), history[3], GOOD_NIGHT, history
+        )
+
+        self.assertEqual(("hold", 0), (decision["action"], decision["stage"]))
+
+    def test_every_symptom_holds_the_return(self) -> None:
+        for symptom in SYMPTOM_LABELS:
+            with self.subTest(symptom=symptom):
+                history = self._days(
+                    ("2026-11-02", [symptom]), ("2026-11-03", [symptom])
+                )
+
+                decision = illness_return.decide(
+                    self._state(), date(2026, 11, 3), history[1], GOOD_NIGHT, history
+                )
+
+                self.assertEqual("hold", decision["action"])
+
+    def test_a_symptom_check_in_during_the_pause_starts_stage_zero(self) -> None:
+        history = self._days(("2026-10-29", ["husten"]))
+
+        state = illness_return.current_state(PAUSE, None, date(2026, 11, 2), history)
+        before = illness_return.current_state(PAUSE, None, date(2026, 11, 2), [])
+
+        assert state is not None and before is not None
+        self.assertEqual((0, 1), (state["stage"], before["stage"]))
+
+    def test_a_symptom_check_in_in_stage_two_steps_back_to_zero(self) -> None:
+        history = self._days(("2026-11-05", ["fieber"]))
+
+        decision = illness_return.decide(
+            _state(2), date(2026, 11, 5), history[0], GOOD_NIGHT, history
+        )
+
+        self.assertEqual(
+            ("step_back", 0, ["symptoms_reported"]),
+            (decision["action"], decision["stage"], decision["reasons"]),
+        )
+
+    def test_clean_check_ins_inside_the_pause_do_not_end_stage_zero(self) -> None:
+        history = self._days(
+            ("2026-10-27", ["fieber"]),
+            ("2026-10-28", []),
+            ("2026-10-29", []),
+            ("2026-11-02", []),
+        )
+
+        decision = illness_return.decide(
+            self._state(), date(2026, 11, 2), history[3], GOOD_NIGHT, history
+        )
+
+        self.assertEqual(("hold", 0), (decision["action"], decision["stage"]))
+
+    def test_a_check_in_still_reporting_illness_is_not_clean(self) -> None:
+        history = self._days(("2026-11-02", []), ("2026-11-03", []))
+        history[0]["illness"] = "Husten"
+
+        decision = illness_return.decide(
+            self._state(), date(2026, 11, 3), history[1], GOOD_NIGHT, history
+        )
+
+        self.assertEqual("hold", decision["action"])
+
+    def test_leaving_stage_zero_still_needs_the_usual_signs(self) -> None:
+        history = self._days(
+            ("2026-10-27", ["fieber"]), ("2026-11-03", []), ("2026-11-04", [])
+        )
+        # Below the M14 margin of the 50-60 range (45, #3920).
+        poor_hrv = {
+            **GOOD_NIGHT,
+            "hrv": {**GOOD_NIGHT["hrv"], "value": 44, "position": "below"},
+        }
+
+        poor = illness_return.decide(
+            self._state(), date(2026, 11, 4), history[2], poor_hrv, history
+        )
+        sore = illness_return.decide(
+            self._state(),
+            date(2026, 11, 4),
+            {**history[2], "pain": "Knie"},
+            GOOD_NIGHT,
+            history,
+        )
+
+        self.assertEqual(("hold", 0), (poor["action"], poor["stage"]))
+        self.assertEqual(("hold", 0), (sore["action"], sore["stage"]))
+
+    def test_symptom_lists_are_validated(self) -> None:
+        self.assertEqual(
+            ["schnupfen", "fieber"],
+            normalize_symptoms(["fieber", "schnupfen", "fieber"]),
+        )
+        with self.assertRaises(AppError):
+            normalize_symptoms(["fieber", "unbekannt"])
+        # An object or list item is a 400, not a server error (Gitar, #3919).
+        bad: tuple[object, ...] = ({}, [], 3)
+        for item in bad:
+            with self.subTest(item=item), self.assertRaises(AppError):
+                normalize_symptoms([item])
 
 
 class ReturnStateTests(unittest.TestCase):

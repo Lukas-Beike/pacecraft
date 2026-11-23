@@ -8,7 +8,7 @@ import functools
 import json
 import sys
 import unittest
-from datetime import timedelta
+from datetime import date, timedelta
 from pathlib import Path
 from unittest.mock import Mock, patch
 
@@ -21,14 +21,23 @@ from test_coach_dialogue import DialogueHarness, server
 from test_feedback_session_identity import ZONE, ingest_wahoo, wahoo_row
 
 from backend.activities.hr_cap import effective_caps
+from backend.activities.route_store import save_index
+from backend.canonical.vocabulary import DfaQuality
+from backend.coach.outcomes import coach_effect_label
 from backend.coach.receipt_compaction import compact_receipt
+from backend.coach.tool_specs import PROFILE_MUTATING_TOOLS
 from backend.coach.training_patch import CoachTrainingPatchService
 from backend.coach.write_gate import CLASSIFIER_DOMAINS, TOOL_DOMAIN
 from backend.errors import AppError
+from backend.nutrition.product_refresh import ProductRefreshRunner
+from backend.performance.first_threshold_estimate import FirstThresholdEstimate
+from backend.performance.first_threshold_service import FirstThresholdService
+from backend.performance.second_threshold_service import SecondThresholdService
 from backend.planning import library as planning_library
 from backend.planning.planned_units import plan_push_payload_hash
 from backend.providers import http as provider_http
 from backend.providers import openai_requests
+from backend.providers.open_food_facts import OpenFoodFactsClient
 from backend.providers.openai_responses_adapter import model_turn, request_payload
 from backend.sync import canonical_ingest
 from backend.sync.adaptive import IllnessPauseSyncService
@@ -83,6 +92,17 @@ REQUIRED_VARIANTS = {
     "apply_adaptive_replan": {"local", "intervals"},
     "sync_nutrition": {"date", "pending"},
     "push_strength_to_garmin": {"push", "remove"},
+    "save_zones": {"save", "adopt_first_threshold", "adopt_lt2"},
+    "assign_activity_equipment": {"activity", "planned_unit"},
+    "set_equipment_rule": {"set", "preview", "apply"},
+    "manage_nutrition_products": {
+        "favorite",
+        "archive",
+        "forget",
+        "cleanup_preview",
+        "cleanup",
+    },
+    "refresh_nutrition_products": {"one", "all"},
 }
 
 
@@ -121,6 +141,18 @@ def variants(name, arguments, result):
         return {"intervals" if arguments.get("sync_illness_to_intervals") else "local"}
     if name == "sync_nutrition":
         return {"date" if arguments.get("date") else "pending"}
+    if name == "save_zones":
+        return {arguments["action"]}
+    if name == "assign_activity_equipment":
+        return {
+            "planned_unit" if "planned_unit_id" in arguments["payload"] else "activity"
+        }
+    if name == "set_equipment_rule":
+        return {arguments["payload"]["action"]}
+    if name == "manage_nutrition_products":
+        return {arguments["payload"]["action"]}
+    if name == "refresh_nutrition_products":
+        return {"all" if arguments["payload"].get("all") else "one"}
     if name == "push_strength_to_garmin":
         return {
             "remove" if entry.get("remove") else "push"
@@ -1567,6 +1599,8 @@ class CoachToolCoverageTests(DialogueHarness, unittest.TestCase):
         "confirm_activity_session:success",
         "split_activity_session:success",
         "merge_activity_sessions:success",
+        "rename_activity_route:success",
+        "delete_activity_session:success",
     )
     def test_session_tools_correct_the_bundle_and_leave_a_change_receipt(self):
         self.seed_duplicate_pair()
@@ -1603,6 +1637,38 @@ class CoachToolCoverageTests(DialogueHarness, unittest.TestCase):
         )
         self.assertEqual(merged["status"], "merged")
         self.assertEqual(len(sessions.bundle(first)["members"]), 2)
+        # #3957: a recognised route is renamed and the session deleted locally.
+        with server.database_manager().unit_of_work() as db:
+            save_index(
+                server.KEY_VALUE_REPOSITORY,
+                db,
+                {
+                    "next": 2,
+                    "routes": {"r1": {"name": None, "ref": ""}},
+                    "sessions": {},
+                },
+            )
+        renamed = self.run_tool(
+            "rename_activity_route",
+            {"payload": {"route_id": "r1", "name": "  Deichrunde "}},
+            ["local_activity_session"],
+            message="Nenn die Strecke Deichrunde.",
+        )
+        self.assertEqual(("r1", "Deichrunde"), (renamed["route_id"], renamed["label"]))
+        deleted = self.run_tool(
+            "delete_activity_session",
+            {"payload": {"activity_id": first}},
+            ["local_activity_session"],
+            message="Lösch diese Aktivität.",
+        )
+        self.assertEqual("deleted", deleted["status"])
+        with server.database_manager().read_snapshot() as db:
+            self.assertEqual(
+                [],
+                db.execute(
+                    "SELECT activity_id FROM activity_sessions WHERE state='active'"
+                ).fetchall(),
+            )
 
     @covers("clarify_coach_request:success", "cancel_coach_request:success")
     def test_clarification_and_cancellation_preserve_athlete_data(self):
@@ -2584,17 +2650,235 @@ class CoachToolCoverageTests(DialogueHarness, unittest.TestCase):
         self.assertEqual({"entries": []}, server.ATHLETE_DATA.weight_entries().read())
 
     @covers(
+        "save_zones:save",
+        "save_zones:adopt_lt2",
+        "save_zones:adopt_first_threshold",
+        "delete_zones:success",
+    )
+    def test_the_coach_saves_and_adopts_zones_like_the_zone_editor(self):
+        # #3956: the Coach saves, adopts and removes through the zone editor's
+        # use cases. The estimates are fixed; their derivation is tested apart.
+        estimate = FirstThresholdEstimate(
+            88.0, 5, DfaQuality.GOOD, date(2026, 8, 1), date(2026, 9, 1), 2.0
+        )
+        lt2 = {"status": "ok", "heart_rate_bpm": 172}
+        zones = server.ATHLETE_DATA.zones
+        with (
+            patch.object(
+                FirstThresholdService,
+                "_estimate",
+                autospec=True,
+                return_value=(estimate, lambda _day: 170.0),
+            ),
+            patch.object(
+                SecondThresholdService,
+                "estimates",
+                autospec=True,
+                return_value={"run": {"dfa_alpha1": lt2}, "ride": {}},
+            ),
+        ):
+            saved = self.run_tool(
+                "save_zones",
+                {
+                    "action": "save",
+                    "sport": "run",
+                    "metric": "heart_rate",
+                    "environment": None,
+                    "percent_limits": [81, 89, 94, 100, 106],
+                    "threshold": 168,
+                    "maximum": 192,
+                    "from_beginning": True,
+                },
+                ["local_zones"],
+                message="Speichere meine Laufpulszonen mit Schwelle 168.",
+            )
+            self.assertEqual(168, saved["configuration"]["threshold"])
+            # The entered threshold is replaced only on the athlete's request.
+            adopted = self.run_tool(
+                "save_zones",
+                {
+                    "action": "adopt_lt2",
+                    "sport": "run",
+                    "source": "dfa_alpha1",
+                    "value": "heart_rate",
+                    "shown": 172,
+                    "replace": True,
+                },
+                ["local_zones"],
+                message="Ersetze meine Schwelle durch die DFA-Schätzung von 172.",
+            )
+            self.assertEqual(
+                (172, "dfa_alpha1"),
+                (
+                    adopted["configuration"]["threshold"],
+                    adopted["configuration"]["threshold_origin"],
+                ),
+            )
+            # The same adoption again records nothing and shows no receipt.
+            repeated = self.run_tool(
+                "save_zones",
+                {
+                    "action": "adopt_lt2",
+                    "sport": "run",
+                    "source": "dfa_alpha1",
+                    "value": "heart_rate",
+                    "shown": 172,
+                },
+                ["local_zones"],
+                message="Übernimm die DFA-Schätzung von 172 noch einmal.",
+            )
+            self.assertEqual(
+                ("unchanged", None), (repeated["status"], repeated["change"])
+            )
+            # Its first-threshold adoption saves the profile: the profile lock
+            # is taken before the turn's writer lease.
+            self.assertIn("save_zones", PROFILE_MUTATING_TOOLS)
+            first = self.run_tool(
+                "save_zones",
+                {"action": "adopt_first_threshold", "shown": 88.0},
+                ["local_zones"],
+                message="Übernimm die geschätzte erste Schwelle.",
+            )
+            # 88 % of 170 bpm, stored in bpm (#3915).
+            self.assertEqual(
+                ("150", None), (first["first_threshold_bpm"], first.get("status"))
+            )
+            again = self.run_tool(
+                "save_zones",
+                {"action": "adopt_first_threshold", "shown": 88.0},
+                ["local_zones"],
+                message="Übernimm die geschätzte erste Schwelle.",
+            )
+            self.assertEqual("unchanged", again["status"])
+        removed = self.run_tool(
+            "delete_zones",
+            {"key": adopted["configuration"]["key"]},
+            ["local_zones"],
+            message="Entferne die übernommene Schwelle wieder.",
+        )
+        self.assertIsNone(removed["configuration"])
+        effective = [
+            entry
+            for entry in zones().read()["configurations"]
+            if entry["source"] == "local"
+        ]
+        self.assertEqual([168], [entry["threshold"] for entry in effective])
+        self.assertEqual(
+            "150", server.ATHLETE_DATA.profile().get()["first_threshold_hr"]
+        )
+
+    @covers(
+        "manage_nutrition_products:favorite",
+        "manage_nutrition_products:archive",
+        "manage_nutrition_products:forget",
+        "manage_nutrition_products:cleanup_preview",
+        "manage_nutrition_products:cleanup",
+        "refresh_nutrition_products:one",
+        "refresh_nutrition_products:all",
+    )
+    def test_the_coach_manages_products_like_produkte(self):
+        # #3958: Produkte's card and list actions through the routes' use cases;
+        # only the food database and the background run are stubbed.
+        catalog = server.NUTRITION_SERVICES.meal_library_service().product_catalog
+        mirror = server.NUTRITION_SERVICES.food_mirror()
+
+        def own(name):
+            return catalog.save_product(
+                {"name": name, "basis_amount": 100, "basis_unit": "g", "kcal": 63,
+                 "source": "manual"}
+            )  # fmt: skip
+
+        kept, unused = own("Synthetic skyr"), own("Synthetic unused")
+        food = {
+            "id": "off:4006381333931",
+            "name": "Synthetic bar",
+            "basis_amount": 100,
+            "basis_unit": "g",
+            "per_100": {"kcal": 500},
+        }
+        mirror.refresh([food])
+
+        def manage(payload, message):
+            return self.run_tool(
+                "manage_nutrition_products",
+                {"payload": payload},
+                ["local_nutrition"],
+                message=message,
+            )
+
+        favorite = manage(
+            {"action": "favorite", "id": kept["id"], "favorite": True},
+            "Markier den Skyr als Favorit.",
+        )
+        self.assertTrue(favorite["product"]["favorite"])
+        fresh = {**food, "per_100": {"kcal": 500, "salt_g": 0.3}}
+        with (
+            patch.object(OpenFoodFactsClient, "product", return_value=fresh),
+            patch.object(
+                ProductRefreshRunner, "start", return_value={"running": True}
+            ) as started,
+        ):
+            refreshed = self.run_tool(
+                "refresh_nutrition_products",
+                {"payload": {"id": food["id"]}},
+                ["local_nutrition"],
+                message="Prüf den Riegel online nach.",
+            )
+            everything = self.run_tool(
+                "refresh_nutrition_products",
+                {"payload": {"all": True}},
+                ["local_nutrition"],
+                message="Aktualisiere alle Produkte.",
+            )
+        self.assertEqual(0.3, refreshed["food"]["per_100"]["salt_g"])
+        # Starting the background run changes nothing yet: no receipt.
+        self.assertEqual(
+            ({"running": True}, "unchanged"), (everything["run"], everything["status"])
+        )
+        started.assert_called_once_with()
+        manage({"action": "forget", "id": food["id"]}, "Vergiss den Riegel.")
+        self.assertIsNone(mirror.get(food["id"]))
+        preview = manage(
+            {"action": "cleanup_preview", "days": 30},
+            "Welche Produkte würde Aufräumen löschen?",
+        )
+        # Never used, whatever its age; a favourite always stays.
+        self.assertEqual(
+            ("unchanged", [unused["id"]]),
+            (preview["status"], [item["id"] for item in preview["products"]]),
+        )
+        cleaned = manage(
+            {"action": "cleanup", "days": 30}, "Ja, lösch dieses eine Produkt."
+        )
+        self.assertEqual(1, cleaned["count"])
+        self.assertIsNotNone(cleaned["change"])
+        archived = manage(
+            {"action": "archive", "id": kept["id"]}, "Archivier den Skyr."
+        )
+        self.assertEqual(
+            ("archived", "archived"),
+            (
+                archived["product"]["status"],
+                catalog.get_product(unused["id"])["status"],
+            ),
+        )
+
+    @covers(
         "read_training_records:success",
         "save_equipment:success",
-        "assign_activity_equipment:success",
+        "assign_activity_equipment:activity",
+        "assign_activity_equipment:planned_unit",
         "log_equipment_maintenance:success",
         "read_nutrition:success",
+        "set_equipment_rule:set",
+        "set_equipment_rule:preview",
+        "set_equipment_rule:apply",
     )
     def test_training_records_and_equipment_tools_use_confirmed_local_state(
         self,
     ):
         self.seed_activity()
-        server.PLANNING_WORKFLOWS.local_plan_creation_service().save(
+        unit = server.PLANNING_WORKFLOWS.local_plan_creation_service().save(
             [
                 {
                     "date": "2026-10-03",
@@ -2681,6 +2965,62 @@ class CoachToolCoverageTests(DialogueHarness, unittest.TestCase):
         )
         self.assertTrue(maintenance["stored_locally"])
         self.assertTrue(self.run_tool("read_nutrition", {})["ok"])
+        # #3957: a planned unit's equipment and a kind's default rule.
+        planned = self.run_tool(
+            "assign_activity_equipment",
+            {
+                "payload": {
+                    "planned_unit_id": unit["id"],
+                    "equipment_id": equipment["id"],
+                }
+            },
+            ["local_equipment"],
+            message="Nimm die Laufschuhe für die geplante Einheit.",
+        )
+        self.assertEqual(
+            (unit["id"], equipment["id"]),
+            (
+                planned["assignment"]["planned_unit_id"],
+                planned["assignment"]["equipment_id"],
+            ),
+        )
+        rule = self.run_tool(
+            "set_equipment_rule",
+            {
+                "payload": {
+                    "action": "set",
+                    "kind": "run:easy",
+                    "equipment_id": equipment["id"],
+                    "expected_revision": 0,
+                }
+            },
+            ["local_equipment"],
+            message="Lockere Läufe immer mit diesen Schuhen.",
+        )
+        self.assertEqual(1, rule["rule"]["revision"])
+        preview = self.run_tool(
+            "set_equipment_rule",
+            {"payload": {"action": "preview", "kind": "run:easy"}},
+            ["local_equipment"],
+            message="Wie viele frühere Läufe wären das?",
+        )
+        self.assertEqual(
+            ("unchanged", equipment["id"]), (preview["status"], preview["equipment_id"])
+        )
+        applied = self.run_tool(
+            "set_equipment_rule",
+            {"payload": {"action": "apply", "kind": "run:easy"}},
+            ["local_equipment"],
+            message="Ja, gib sie auch den früheren Läufen.",
+        )
+        self.assertEqual(preview["count"], applied["count"])
+        # The receipt names how many earlier sessions the apply changed.
+        self.assertEqual(
+            "Ausrüstungsregel gespeichert (12)",
+            coach_effect_label(
+                {"tool": "set_equipment_rule", "result": {"ok": True, "count": 12}}
+            ),
+        )
 
     def test_every_mutating_tool_rejects_missing_user_authorization_without_effect(
         self,

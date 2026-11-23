@@ -287,6 +287,7 @@ CHECKIN_FIELDS = (
     "day_status",
     "tag_answers",
     "complaints",
+    "symptoms",
 )
 # One equipment item, with the fields the athlete or Coach edits; the revision, the
 # update time and the Garmin-owned mileage are left out so a provider sync keeps undo.
@@ -481,7 +482,7 @@ _FIELDS_ADDED_TO_AUDIT: dict[str, tuple[tuple[str, ...], ...]] = {
     "planned_unit": (("starts_at_local",), FOCUS_KEYS, (TEMPLATE_ID,)),
     "workout_library": (FOCUS_KEYS,),
     # #3766: structured complaints beside the check-in.
-    "checkin": (("complaints",),),
+    "checkin": (("complaints",), ("symptoms",)),
     # Competitions gained their location with schema v29 (#2803).
     "competition": (("location",),),
     # Gap fills of stored foods were recorded before the origin marks were.

@@ -69,6 +69,11 @@ test("empty coach chat does not promise quick actions and keeps the composer gap
   await expect(empty).toBeVisible();
   await expect(empty).not.toContainText("Schnellaktion");
   await expect(page.locator("#chatJumpToComposer")).toBeHidden();
+  // A first start lists the three setup steps and offers the first open one (#3936 G-13).
+  await expect(empty.locator(".coach-setup")).toContainText("Einrichten ·");
+  await expect(empty.locator(".coach-setup li")).toHaveCount(3);
+  await page.evaluate(() => { state.data.profile = {}; renderMessages([]); });
+  await expect(empty.locator('li[data-step="profile"]')).toHaveAttribute("data-done", "false");
   // The one action asks the Coach to fill the profile; the request is caught before it is sent.
   await page.evaluate(() => document.querySelector("#chatForm").addEventListener("submit", (event) => {
     globalThis.e2eProfileRequest = document.querySelector("#messageInput").value;

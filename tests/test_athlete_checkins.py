@@ -623,6 +623,38 @@ class AthleteCheckinHistoryTests(unittest.TestCase):
         reported = self.service.report_illness(TODAY.isoformat())["checkin"]
         self.assertEqual(reported["illness"], INFECTION_HINT_ILLNESS)
 
+    def test_symptoms_are_stored_with_the_check_in_and_undo_removes_them(self):
+        # #3919: the selected symptoms ride with the illness report.
+        with change_history.collect_changes() as changes:
+            reported = self.service.report_illness(
+                TODAY.isoformat(), ["fieber", "schnupfen"]
+            )
+        self.assertEqual(reported["checkin"]["symptoms"], ["schnupfen", "fieber"])
+        self.assertEqual(self.service.list(365)[0]["symptoms"], ["schnupfen", "fieber"])
+        _undo(self.manager, self.service, changes)
+        self.assertEqual(self.service.list(365), [])
+
+    def test_an_empty_or_missing_selection_stores_no_symptoms_and_unknown_ids_are_refused(
+        self,
+    ):
+        for selection in (None, []):
+            self.service.report_illness(TODAY.isoformat(), selection)
+            self.assertNotIn("symptoms", self.service.list(365)[0])
+        for bad in (["unbekannt"], "fieber", [1]):
+            with self.assertRaises(AppError) as raised:
+                self.service.report_illness(TODAY.isoformat(), bad)
+            self.assertEqual(raised.exception.status, 400)
+
+    def test_the_coach_sets_and_clears_symptoms_with_the_same_validation(self):
+        saved = self.service.save_coach({"illness": "krank", "symptoms": ["husten"]})
+        self.assertEqual(saved["checkin"]["symptoms"], ["husten"])
+        kept = self.service.save_coach({"notes": "müde"})
+        self.assertEqual(kept["checkin"]["symptoms"], ["husten"])
+        cleared = self.service.save_coach({"symptoms": []})
+        self.assertNotIn("symptoms", cleared["checkin"])
+        with self.assertRaises(AppError):
+            self.service.save_coach({"symptoms": ["unbekannt"]})
+
     def test_an_answer_from_a_stale_day_is_refused(self):
         # A view left open past midnight must not answer the next day's hint.
         yesterday = (TODAY - timedelta(days=1)).isoformat()

@@ -165,6 +165,10 @@ The system SHALL preserve unknown versus confirmed day status and yes/no tags, c
 - **WHEN** a supplied tag is unknown or has a nonboolean answer
 - **THEN** it is rejected rather than interpreted as false or inferred from illness or missing activity data.
 
+#### Scenario: Illness symptoms
+- **WHEN** an illness report ("Ich bin krank" on the infection hint, `POST /api/infection-hint/ill`) or a Coach check-in save supplies `symptoms`, a list of the ids schnupfen, halsschmerzen, husten, kopfschmerzen, fieber, gliederschmerzen, muedigkeit, brust_atemnot, magen_darm
+- **THEN** they are stored beside the day's row (key-value, no schema change), omission keeps them, an empty list removes them, undo restores them, an unknown id is rejected, and a Coach save writes them only from the athlete's own message; any selected symptom means rest only for planning and the Coach.
+
 #### Scenario: Structured complaints
 - **WHEN** a check-in supplies `complaints`, each with a body area from the fixed list (foot, ankle, achilles, calf, shin, knee, thigh_front, thigh_back, hip, groin, lower_back, upper_back_neck, shoulder, arm_elbow, hand_wrist, other), a side (left, right, both, none) and a severity of 0 to 10, at most 8 and each area and side once
 - **THEN** they are stored beside the day's row with the free pain text unchanged, omission keeps them, an empty list removes them, a Coach save shows a receipt whose undo restores the day's complaints, and an unknown area or side, a missing or out-of-range severity or a repeated area and side is rejected without a write (#3766)
@@ -232,7 +236,7 @@ Detailed contract: the records are JSON values under the keys `equipment:<uuid>`
 Evidence: `backend/athlete/equipment.py:_equipment_amounts`, `backend/athlete/equipment.py:_equipment_identity`, `backend/athlete/equipment.py:_equipment_parent`, `backend/athlete/equipment.py:EquipmentService.read`, `backend/athlete/equipment.py:EquipmentService.save`, `backend/athlete/equipment.py:EquipmentService.sync_garmin_snapshot`; `backend/coach/tool_schemas.py:build_structured_tool_schemas` (equipment fields); `tests/test_coach_tool_coverage.py:test_training_records_and_equipment_tools_use_confirmed_local_state`; `tests/test_training_record_features.py:test_empty_initial_gear_snapshot_does_not_finalize_import`, `tests/test_training_record_features.py:test_equipment_requires_initial_values_and_prevents_component_cycles`, `tests/test_training_record_features.py:test_open_sport_is_derived_at_three_quarters_with_three_activities`, `tests/test_training_record_features.py:test_legacy_empty_import_recovers_once_and_preserves_local_equipment`; `tests/test_coach_write_gate.py:test_archiving_equipment_is_a_delete`.
 
 ### Requirement: Estimated first threshold from chest-strap RR intervals
-The system SHALL show an estimated first threshold heart rate, derived from stored chest-strap RR results, as an estimate and SHALL store it only when the athlete explicitly adopts it. The Coach SHALL have no tool that adopts it.
+The system SHALL show an estimated first threshold heart rate, derived from stored chest-strap RR results, as an estimate and SHALL store it only when the athlete explicitly adopts it, in Zonen & Schwellen or through the Coach on the athlete's own request (Coach zone changes).
 
 #### Scenario: Athlete-level estimate
 - **WHEN** at least three good-quality run sessions of the last 60 days hold a DFA-a1 result
@@ -293,6 +297,10 @@ The system SHALL assign only resolved canonical completed activities to compatib
 #### Scenario: Default equipment per kind of session
 - **WHEN** the athlete posts `{"kind", "equipment_id", "expected_revision"}` to `POST /api/equipment/rules` (session and CSRF, body at most 16 KiB) for one of `run:intervals`, `run:long`, `run:easy`, `run:race`, `ride:indoor` and `ride:outdoor`, `null` meaning no default
 - **THEN** the choice takes effect from today and is appended to the kind's dated history under `equipment_rule:<kind>` (a second choice on the same day replaces that day's), tracked with receipt and undo as entity `equipment_rule`; a stale revision answers 409 "Regel geändert; neu lesen." and an item that is not active main equipment of the kind's sport 400; a run's kind follows its focus (tempo, threshold, VO₂max, anaerobic and test are intervals, long is long, a race focus or purpose is race, anything else easy), a ride's whether it took place indoors (virtual counts as indoors).
+
+#### Scenario: Coach planned choice and default rules
+- **WHEN** the athlete asks the Coach to choose a planned unit's equipment or to set, count or apply a kind's default (#3957)
+- **THEN** `assign_activity_equipment` with `planned_unit_id` and `set_equipment_rule` (`set`, `preview`, `apply`) use the same service calls as the routes under scope `local_equipment`; `preview` changes nothing and shows no receipt, `set` needs `equipment_id` (null for none), and `apply` is a bulk change that needs the athlete's confirmed request in `profile`, runs inside the turn's one transaction and names its count on the receipt.
 
 #### Scenario: Rule applied to earlier sessions
 - **WHEN** the athlete previews a rule with `GET /api/equipment/rules/preview?kind=` and confirms with `{"kind", "confirmed": true}` at `POST /api/equipment/rules/apply`
@@ -520,6 +528,24 @@ The Coach SHALL record the athlete's weight and body fat as Körper entries thro
 - **THEN** each day is put back as it was (the previous value, or no entry), the day is left pending for Garmin's next refresh and, for a weight, the Wahoo profile weight is left pending for Wahoo's next refresh; the undo itself writes to no provider.
 
 Evidence: `backend/coach/athlete_record_tools.py:CoachAthleteRecordToolService._execute_body`, `backend/athlete/body_entry.py:BodyEntryHistory`, `backend/coach/write_gate.py:_removes_records`; `tests/test_coach_athlete_record_tools.py::test_the_body_tools_record_through_the_koerper_entries`, `tests/test_body_entry.py::test_each_change_is_recorded_and_undo_puts_the_day_back`.
+
+### Requirement: Coach zone changes
+
+The Coach SHALL change Zonen & Schwellen through the same use cases as its routes (#3949): `save_zones` saves zones (`save`) or adopts the LT1 estimate or a step test's LT1 (`adopt_first_threshold`) or an LT2 estimate (`adopt_lt2`); `delete_zones` removes a local configuration by its `training_zones` `key`. Both run only in a turn started by the athlete's own message, under scope `local_zones` and write-gate domain `profile`.
+
+#### Scenario: Ask the Coach to change zones
+- **WHEN** the athlete asks the Coach to save zones, adopt a shown estimate or remove a local configuration
+- **THEN** the Coach calls `save_zones` or `delete_zones` with the values it read, and the change appears in Zonen & Schwellen as a save there would.
+
+#### Scenario: Save or adopt
+- **WHEN** the athlete asks to save zones or to adopt a shown estimate
+- **THEN** the route's validation and refusals apply unchanged (an estimate changed since it was read, a deviation over 5 % without `confirm_deviation`), and the turn shows a receipt with whole-turn undo; an adoption already stored writes nothing and shows no receipt.
+
+#### Scenario: Replacing or removing
+- **WHEN** the call would remove a configuration or replace a measured or self-entered value (`replace: true`)
+- **THEN** the write gate needs the athlete's confirmed request to delete in `profile`; without `replace` such a value is refused as in the UI.
+
+Evidence: `backend/coach/athlete_record_tools.py:CoachAthleteRecordToolService._execute_zones`, `backend/coach/write_gate.py:_removes_records`; `tests/test_coach_tool_coverage.py:test_the_coach_saves_and_adopts_zones_like_the_zone_editor`, `tests/test_coach_athlete_record_tools.py:test_the_zone_tools_refuse_without_scope_or_action`.
 
 ### Requirement: Profile form save contract
 

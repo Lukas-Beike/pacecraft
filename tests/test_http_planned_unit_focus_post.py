@@ -186,29 +186,21 @@ class PlannedUnitFocusPostRoutesTests(unittest.TestCase):
         edit = Mock()
         change = {"id": "c3", "entity_type": "planned_unit", "after_hash": "h"}
 
-        def created(*_args, **_kwargs):
+        def updated(*_args, **_kwargs):
             change_history._collected_changes.get().append(change)
             return {"status": "local", "local_id": LOCAL_ID, "plan_check_notes": []}
 
-        edit.create.side_effect = created
-        edit.update.return_value = {"status": "local", "plan_check_notes": []}
+        edit.update.side_effect = updated
         edit.set_archived.return_value = {"status": "local", "plan_check_notes": []}
         routes = PlannedUnitFocusPostRoutes(
             lambda: self.service, lambda: MagicMock(), None, lambda: edit
         )
 
-        handler = self.handler(
-            {
-                "date": "2026-11-14",
-                "name": "x",
-                "plan_id": "p1",
-                "accept_plan_findings": ["a"],
-            }
+        handler = self.handler({"name": "y", "expected_payload_hash": "abc"})
+        dispatch_route(
+            routes, handler, f"/api/planned-units/{LOCAL_ID}/update", method="POST"
         )
-        dispatch_route(routes, handler, "/api/planned-units", method="POST")
-        edit.create.assert_called_once_with(
-            {"date": "2026-11-14", "name": "x"}, plan_id="p1", accept=["a"]
-        )
+        edit.update.assert_called_once_with(LOCAL_ID, {"name": "y"}, "abc", accept=None)
         handler.send_json.assert_called_once_with(
             200,
             {
@@ -218,12 +210,6 @@ class PlannedUnitFocusPostRoutesTests(unittest.TestCase):
                 "change": change,
             },
         )
-
-        handler = self.handler({"name": "y", "expected_payload_hash": "abc"})
-        dispatch_route(
-            routes, handler, f"/api/planned-units/{LOCAL_ID}/update", method="POST"
-        )
-        edit.update.assert_called_once_with(LOCAL_ID, {"name": "y"}, "abc", accept=None)
 
         path = f"/api/planned-units/{LOCAL_ID}/archive"
         with self.assertRaises(AppError) as raised:

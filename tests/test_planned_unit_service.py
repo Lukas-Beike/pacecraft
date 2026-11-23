@@ -582,6 +582,26 @@ class PlannedUnitServiceTests(unittest.TestCase):
             self.service.move(str(self.id), "2026-09-22", archived["payload_hash"])
         self.assertEqual(404, caught.exception.status)
 
+    def test_blocked_days_name_the_entries_a_move_would_be_refused_for(self):
+        # #4060: the day strip asks the move's own calendar rules before it offers a day.
+        self.service.create(self.workout(starts_at_local="2026-09-21T18:30:00"))
+        self.calendar_conflicts.constraint_results = [{"name": "Reise"}]
+        self.calendar_conflicts.results = [{"name": "Zahnarzt"}, {"name": "Reise"}]
+        blocked = self.service.blocked_days(
+            str(self.id).upper(),
+            ["2026-09-19", "2026-09-21", "2026-09-22", "kein Datum", None],
+        )
+        # The past, the unit's own day and unreadable dates are left out.
+        self.assertEqual({"2026-09-22": ["Reise", "Zahnarzt"]}, blocked)
+        self.calendar_conflicts.constraint_results = []
+        self.calendar_conflicts.results = []
+        self.assertEqual({}, self.service.blocked_days(str(self.id), ["2026-09-22"]))
+        self.assertEqual({}, self.service.blocked_days(str(self.id), "2026-09-22"))
+        self.service.update(str(self.id), {"action": "archive"})
+        with self.assertRaises(AppError) as caught:
+            self.service.blocked_days(str(self.id), ["2026-09-22"])
+        self.assertEqual(404, caught.exception.status)
+
     def test_a_deleted_sent_unit_leaves_its_copies_to_the_next_sync(self):
         # #3027: the calendar names the copies before the Coach's delete path
         # runs; the copies at Intervals.icu and Garmin go only with the next sync.
