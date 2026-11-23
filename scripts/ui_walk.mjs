@@ -264,7 +264,7 @@ export const STEPS = [
   { view: "plan", name: "Kalender: Schuh/Rad geplant", covers: "#3011 planned equipment chip", each: PLANNED, ...LATER, ready: '.planned-entry[open] .planned-equipment-chip[aria-label*=": "]', kind: "text", optional: true },
   { view: "plan", name: "Kalender: geplante Einheit", covers: "#2189 planned session", pre: ['button[aria-label="Nächste Woche"]'], each: PLANNED, ready: ".planned-entry[open] .planned-entry-details", kind: "text", optional: true, post: ['button[aria-label="Vorherige Woche"]'] },
   // Read-only: the walk checks that "Löschen" is there, it never presses it (#3027).
-  { view: "plan", name: "Kalender: Löschen", covers: "#3027 calendar delete", each: PLANNED, ...LATER, ready: ".planned-entry[open] .planned-activity-actions .danger-button", kind: "text", optional: true },
+  { view: "plan", name: "Kalender: Löschen", covers: "#3027 calendar delete, #3950 unit editor and archive", each: PLANNED, ...LATER, ready: ".planned-entry[open] .planned-activity-actions .danger-button", kind: "text", optional: true },
   { view: "plan", name: "Kalender: Verpflegung", covers: "#2921 fuelling", each: PLANNED, ...LATER, ready: ".planned-entry[open] .planned-fuelling", kind: "numbers", optional: true },
   // Only a planned running step test carries its precondition note, so the step is optional (#3833).
   { view: "plan", name: "Kalender: Stufentest geplant", covers: "#3833 running step test", each: ".planned-entry:is(.is-planned, .is-today)[data-sport='Laufen'] > summary", ...LATER, ready: ".planned-entry[open] [data-step-test-note]", kind: "text", optional: true },
@@ -278,8 +278,6 @@ export const STEPS = [
   { view: "plan", name: "Bibliothek: Einheit anlegen, bearbeiten", covers: "#3951 library editor", pre: [tab("plan", "library")], opens: ["#library details.library-sport > summary"], ready: "#library .library-toolbar:not(.library-plans-head) .secondary-button", kind: "text", post: [tab("plan", "overview")] },
   // Read-only: the walk checks that the plans block with "+ Plan" is there, it opens no form (#3950).
   { view: "plan", name: "Bibliothek: Pläne", covers: "#3950 training plans", pre: [tab("plan", "library")], ready: "#library .library-toolbar > strong", kind: "text", post: [tab("plan", "overview")] },
-  // Read-only: the walk checks that "+ Einheit hinzufügen" and "Bearbeiten" are there and opens no editor (#3950).
-  { view: "plan", name: "Kalender: Einheit hinzufügen, bearbeiten", covers: "#3950 unit editor", pre: ['.planned-view-switch button[data-view="week"]'], ready: ".planned-day .planned-add", kind: "text" },
   // Read-only: the walk checks that "Hinzufügen" is there, it opens no dialog and saves nothing (#3837).
   { view: "plan", name: "Wettkämpfe: Hinzufügen", covers: "#3837 competition entry", pre: [tab("plan", "season")], ready: "#competitionAdd", kind: "text", post: [tab("plan", "overview")] },
   // Completed units: on a Monday the current week has none yet, so each step looks back for a unit that

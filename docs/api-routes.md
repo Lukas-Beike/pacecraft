@@ -134,7 +134,6 @@ handler's docstring. Regenerate it with
 | GET | `/api/nutrition/yazio/status` | Session | no | Last local Yazio authentication check, without contacting Yazio. |
 | GET | `/api/performance` | Session | no | Performance projection. |
 | GET | `/api/plan` | Session | no | Planning projection. |
-| POST | `/api/planned-units` | Session + CSRF | after access | Plan a new unit on a day, from scratch or from a library entry, without a remote write. |
 | POST | `/api/planned-units/{id}/archive` | Session + CSRF | after access | Archive a planned unit out of the calendar; its receipt offers the undo. |
 | POST | `/api/planned-units/{id}/date` | Session + CSRF | after access | Move a planned unit to another day without a remote write. |
 | POST | `/api/planned-units/{id}/delete` | Session + CSRF | after access | Delete a planned unit from the calendar without a remote write (#3027). |
@@ -1867,26 +1866,6 @@ Response: 200 with `plans`, `planned`, `training_calendar`, `calendar`,
 from one database snapshot.
 
 Errors: none beyond the common ones.
-
-### `POST /api/planned-units`
-
-Request: JSON body with `date` (not before today), `starts_at_local`,
-`sport`, `environment`, `name`, `description`, `duration_minutes`,
-`target`, `session_focus`, `strength_intensity`, `strength_structure`,
-`hr_cap`, `template_id` (the library entry it comes from; without it the
-unit's entry is saved to the library too), `plan_id` (an active training
-plan to join) and `accept_plan_findings` (the codes of blocking plan
-checks the athlete accepts, e.g. `illness_hard`). It runs the Coach's
-change batch with the same checks; the next explicit sync exports it.
-
-Response: 200 `{"status": "local", "local_id", "plan_check_notes",
-"change"}`; `change` is the undo reference of the unit.
-
-Errors: 400 for a missing field, a bad date or duration or workout text
-whose steps miss the duration; 409 `plan_date_conflict` for a day the
-calendar rules out; 409 `illness_hard` for a hard or long unit within
-days of a reported illness (resend with `accept_plan_findings`); 409
-`plan_not_available` for an archived plan.
 
 ### `POST /api/planned-units/{id}/archive`
 

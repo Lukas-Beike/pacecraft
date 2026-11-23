@@ -106,7 +106,7 @@ function unitEditorFrom({ kind, entry, dateKey }) {
     target: entry?.target || "POWER", text: entry?.description || "", rows: parsed || [], textMode: parsed === null,
     exercises: (entry?.strength_structure || []).map(unitExerciseRow),
     duration: entry ? String(Math.round(Number(entry.duration_minutes) || (entry.planned_duration_s || 0) / 60) || "") : "45",
-    accept: false, templateId: "", planId: "",
+    accept: false, templateId: "",
   };
 }
 
@@ -126,7 +126,6 @@ function unitPlacementFields(editor) {
   const body = { date: editor.date };
   if (editor.time || editor.originalTime) body.starts_at_local = `${editor.date}T${editor.time || "00:00"}:00`;
   if (editor.templateId) body.template_id = editor.templateId;
-  if (editor.planId && !editor.entry) body.plan_id = editor.planId;
   return body;
 }
 
@@ -279,17 +278,11 @@ function renderUnitEditor(form, onSaved) {
     const pick = h("select", null, h("option", { value: "" }, "Neu"), templates.map((item) => h("option", { value: item.id, selected: item.id === editor.templateId }, item.name || "Bibliothekseinheit")));
     pick.addEventListener("change", () => {
       const template = templates.find((item) => item.id === pick.value);
-      const { date, time, planId } = editor;
-      Object.assign(editor, unitEditorFrom({ kind: "unit", entry: template || null, dateKey: date }), { entry: null, date, time, planId, templateId: template?.id || "" });
+      const { date, time } = editor;
+      Object.assign(editor, unitEditorFrom({ kind: "unit", entry: template || null, dateKey: date }), { entry: null, date, time, templateId: template?.id || "" });
       redraw();
     });
     parts.push(unitField("Aus Bibliothek", pick));
-  }
-  const plans = (state.data?.plans || []).filter((item) => item.id && !["archived", "completed", "cancelled"].includes(item.status));
-  if (editor.kind === "unit" && !editor.entry && plans.length) {
-    const plan = h("select", null, h("option", { value: "" }, "Ohne Plan"), plans.map((item) => h("option", { value: item.id, selected: item.id === editor.planId }, item.name)));
-    plan.addEventListener("change", () => { editor.planId = plan.value; });
-    parts.push(unitField("Plan", plan));
   }
   if (editor.kind === "unit") {
     // A past unit keeps its own day as the earliest choice, so a rename saves.

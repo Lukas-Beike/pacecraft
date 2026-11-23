@@ -30,7 +30,6 @@ class PlannedUnitFocusPostRoutes:
 
     def routes(self) -> list[Route]:
         return [
-            Route("POST", "/api/planned-units", Access.SESSION_CSRF, self._create),
             Route(
                 "POST",
                 "/api/planned-units/{id}/update",
@@ -68,46 +67,6 @@ class PlannedUnitFocusPostRoutes:
                 self._delete,
             ),
         ]
-
-    def _create(self, handler: Any, _request: RouteRequest) -> None:
-        """Plan a new unit on a day, from scratch or from a library entry, without a remote write.
-
-        Request: JSON body with `date` (not before today), `starts_at_local`,
-        `sport`, `environment`, `name`, `description`, `duration_minutes`,
-        `target`, `session_focus`, `strength_intensity`, `strength_structure`,
-        `hr_cap`, `template_id` (the library entry it comes from; without it the
-        unit's entry is saved to the library too), `plan_id` (an active training
-        plan to join) and `accept_plan_findings` (the codes of blocking plan
-        checks the athlete accepts, e.g. `illness_hard`). It runs the Coach's
-        change batch with the same checks; the next explicit sync exports it.
-
-        Response: 200 `{"status": "local", "local_id", "plan_check_notes",
-        "change"}`; `change` is the undo reference of the unit.
-
-        Errors: 400 for a missing field, a bad date or duration or workout text
-        whose steps miss the duration; 409 `plan_date_conflict` for a day the
-        calendar rules out; 409 `illness_hard` for a hard or long unit within
-        days of a reported illness (resend with `accept_plan_findings`); 409
-        `plan_not_available` for an archived plan.
-        """
-        payload = _read_object(handler)
-        plan_id = payload.get("plan_id")
-        accept = payload.get("accept_plan_findings")
-        fields = {
-            key: value
-            for key, value in payload.items()
-            if key not in {"plan_id", "accept_plan_findings"}
-        }
-        edit = self._unit_edit
-        assert edit is not None
-        self._send_unit_change(
-            handler,
-            lambda: edit().create(
-                fields,
-                plan_id=plan_id if isinstance(plan_id, str) else None,
-                accept=accept if isinstance(accept, list) else None,
-            ),
-        )
 
     def _update(self, handler: Any, request: RouteRequest) -> None:
         """Change a unit's content or day without a remote write.
