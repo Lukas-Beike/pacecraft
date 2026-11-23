@@ -263,7 +263,7 @@ function nutritionCard(item, template, sessions = []) {
     template ? title : h("div", "nutrition-card-head", title, nutritionEditButton(item)),
     template ? null : nutritionSessionBlock(item, sessions),
     h("p", null, item.description),
-    h("p", null, `${nutritionNumber(item.kcal)} kcal · Kohlenhydrate ${nutritionNumber(item.carbs_g, "g")} g · Protein ${nutritionNumber(item.protein_g, "g")} g · Fett ${nutritionNumber(item.fat_g, "g")} g${template ? " / Portion" : ""}${volume}`),
+    h("p", "nutrition-macros", `${nutritionNumber(item.kcal)} kcal · Kohlenhydrate ${nutritionNumber(item.carbs_g, "g")} g · Protein ${nutritionNumber(item.protein_g, "g")} g · Fett ${nutritionNumber(item.fat_g, "g")} g${template ? " / Portion" : ""}${volume}`),
     sourceText ? h("small", null, sourceText) : null);
   if (!template) card.append(...nutritionEntryActions(item));
   return card;
