@@ -203,12 +203,14 @@ def gitar_waits(rollup: list[dict[str, Any]], cutoff: str) -> tuple[str, bool]:
 
 
 def gitar_silence(now: datetime) -> str:
-    """One line when at least two open PRs wait for Gitar an hour after their CI
+    """One line when no Gitar run finished on any recent PR (open or merged) for
+    an hour while at least two open PRs wait for it an hour after their CI
     finished, else "". Drafts and bot PRs (Dependabot, the release app) are left
-    out: Gitar's ruleset does not cover them, so they never get its check."""
+    out: Gitar's ruleset does not cover them, so they never get its check. A PR
+    that merged keeps its Gitar run, so a busy hour of merges is no silence."""
     prs = gh_json(
-        "pr", "list", "--base", "develop", "--state", "open", "--limit", "100",
-        "--json", "number,isDraft,author,statusCheckRollup",
+        "pr", "list", "--base", "develop", "--state", "all", "--limit", "100",
+        "--json", "number,state,isDraft,author,statusCheckRollup",
     ) or []  # fmt: skip
     prs = [
         pr for pr in prs
@@ -221,9 +223,11 @@ def gitar_silence(now: datetime) -> str:
     for pr in prs:
         done, waits = gitar_waits(pr.get("statusCheckRollup") or [], cutoff)
         last = max(last, done)
-        if waits:
+        if waits and pr.get("state") == "OPEN":
             waiting.append(f"#{pr.get('number')}")
-    if len(waiting) < 2:
+    # A Gitar run that finished within the hour means Gitar works; only the
+    # waiting PRs hang (orchestrator, 2026-11-23: four reviews in 20 minutes).
+    if len(waiting) < 2 or last > cutoff:
         return ""
     return (
         f"Gitar silent repo-wide since {last or 'unknown'}: {', '.join(waiting)} wait"
