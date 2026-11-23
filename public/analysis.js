@@ -1940,7 +1940,7 @@ function updateEnergyGoalDialog() {
   form.elements.kcal.required = goal !== "hold";
   document.querySelector("#energyGoalDialogKcalLabel").textContent = ENERGY_GOAL_KCAL_LABELS[goal] || "";
   const density = energyRead?.deficit?.kcal_per_kg || PRIOR_KCAL_PER_KG;
-  const week = (kcal * 7 / density).toLocaleString("de-DE", { maximumFractionDigits: 2 });
+  const week = deficitDecimal(kcal * 7 / density);
   document.querySelector("#energyGoalDialogWeek").textContent = goal !== "hold" && kcal > 0 ? `≈ ${week} kg Körpergewicht pro Woche` : "";
 }
 

@@ -460,6 +460,8 @@ test("@responsive Open Food Facts lookup can be explicitly saved into the local 
   await page.goto("/#nutrition/products");
   await page.locator("#nutritionBarcodeButton").click();
   await expect(page.locator("#nutritionBarcodeDialog")).toBeVisible();
+  // Without scanning support the dialog keeps no empty camera box (#4037).
+  await expect(page.locator("#nutritionBarcodeVideo")).toBeHidden();
   await page.locator("#nutritionBarcodeManual").fill("4006381333931");
   await page.locator("#nutritionBarcodeLookup").click();
   await expect(page.locator("#nutritionExtraction")).toBeVisible();
