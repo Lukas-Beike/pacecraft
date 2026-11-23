@@ -396,6 +396,36 @@ class QualityBaselineTests(unittest.TestCase):
         )
         self.assertIsNone(quality_baseline.aligned_baseline(aligned, requirements))
 
+    def test_openspec_alignment_records_only_the_generated_skill_sizes(self):
+        # #4107: an OpenSpec regeneration records its skills' sizes, nothing else.
+        grown = ".agents/skills/openspec-archive-change/SKILL.md"
+        gone = ".agents/skills/openspec-old/SKILL.md"
+        recorded = {
+            "AGENTS.md": 100,
+            grown: 221,
+            gone: 50,
+            ".agents/skills/pr/SKILL.md": 200,
+        }
+        baseline = {**self.baseline, "instruction_lines": recorded}
+        sizes = {
+            "AGENTS.md": 130, grown: 227, ".agents/skills/pr/SKILL.md": 260,
+            ".agents/skills/openspec-new/SKILL.md": 40,
+        }  # fmt: skip
+        aligned = quality_baseline.openspec_sized_baseline(
+            json.dumps(baseline, indent=2) + "\n", sizes
+        )
+        self.assertEqual(
+            json.loads(aligned)["instruction_lines"],
+            {
+                "AGENTS.md": 100, grown: 227, ".agents/skills/pr/SKILL.md": 200,
+                ".agents/skills/openspec-new/SKILL.md": 40,
+            },
+        )  # fmt: skip
+        self.assertEqual(json.loads(aligned)["versions"], self.baseline["versions"])
+        self.assertIsNone(quality_baseline.openspec_sized_baseline(aligned, sizes))
+        with self.assertRaisesRegex(RuntimeError, "not supported"):
+            quality_baseline.openspec_sized_baseline(json.dumps(self.baseline), sizes)
+
     def test_alignment_requires_both_pins_and_a_supported_baseline(self):
         text = json.dumps(self.baseline)
         with self.assertRaisesRegex(RuntimeError, "pinned mypy"):

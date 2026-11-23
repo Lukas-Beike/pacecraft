@@ -928,6 +928,36 @@ def aligned_baseline(baseline_text: str, requirements: str) -> str | None:
     return json.dumps(baseline, indent=2) + "\n"
 
 
+# The skills `openspec update` generates; their size follows the pinned CLI (#4107).
+OPENSPEC_SKILL = re.compile(r"\.agents/skills/openspec-[a-z0-9-]+/SKILL\.md")
+
+
+def openspec_sized_baseline(baseline_text: str, sizes: dict[str, int]) -> str | None:
+    """Return the baseline with the generated OpenSpec skills' line counts, or None
+    when they already match. No other instruction file's entry changes."""
+    baseline = json.loads(baseline_text)
+    recorded = baseline.get("instruction_lines")
+    if baseline.get("schema") != 1 or not isinstance(recorded, dict):
+        raise RuntimeError(
+            "Quality baseline schema or instruction sizes are not supported"
+        )
+    generated = {
+        path: lines for path, lines in sizes.items() if OPENSPEC_SKILL.fullmatch(path)
+    }
+    stale = {path for path in recorded if OPENSPEC_SKILL.fullmatch(path)} - set(
+        generated
+    )
+    if (
+        all(recorded.get(path) == lines for path, lines in generated.items())
+        and not stale
+    ):
+        return None
+    for path in stale:
+        del recorded[path]
+    recorded.update(generated)
+    return json.dumps(baseline, indent=2) + "\n"
+
+
 def finding(item: dict) -> str:
     location = f"{item['path']}:{item['line']}" if "line" in item else item["path"]
     return f"{item['tool']} {location} {item['code']}"
@@ -1004,7 +1034,20 @@ def main() -> int:
         action="store_true",
         help="record the requirements-dev.txt tool pins without running the tools",
     )
+    parser.add_argument(
+        "--align-openspec-sizes",
+        action="store_true",
+        help="record the generated openspec-* skills' line counts, nothing else",
+    )
     args = parser.parse_args()
+    if args.align_openspec_sizes:
+        sized = openspec_sized_baseline(
+            BASELINE.read_text(encoding="utf-8"), instruction_lines(ROOT)
+        )
+        if sized is not None:
+            BASELINE.write_text(sized, encoding="utf-8", newline="\n")
+        print("aligned" if sized is not None else "unchanged")
+        return 0
     if args.align_versions:
         aligned = aligned_baseline(
             BASELINE.read_text(encoding="utf-8"),
