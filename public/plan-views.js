@@ -563,6 +563,27 @@ function complaintLabel(item) {
   return [COMPLAINT_AREA_LABELS[item.area] || item.area, COMPLAINT_SIDE_LABELS[item.side] ?? ""].filter(Boolean).join(" ");
 }
 
+// The last day of the pause that runs on from dateKey: the consecutive pause days of the day contexts, or the
+// end of the approved illness pause that covers the day (#3932 K-03).
+function plannedPauseEnd(dateKey, contexts, illnessPause) {
+  const statuses = new Map((Array.isArray(contexts) ? contexts : []).map((day) => [String(day?.date || "").slice(0, 10), day?.day_status]));
+  let end = dateKey;
+  while (statuses.get(addDateKey(end, 1)) === "pause") end = addDateKey(end, 1);
+  const covered = illnessPause?.approved && String(illnessPause.start_date || "") <= dateKey && String(illnessPause.end_date || "") >= dateKey;
+  return covered && String(illnessPause.end_date).slice(0, 10) > end ? String(illnessPause.end_date).slice(0, 10) : end;
+}
+
+// A pause day names how long the pause runs and hands the way back to the Coach.
+function plannedPauseDecorate(notes, dayContext, dateKey) {
+  if (dayContext.day_status !== "pause") return;
+  const end = plannedPauseEnd(dateKey, state.data?.daily_planning_context, state.data?.planning?.latest_replan?.illness_pause);
+  const status = notes.querySelector(".planned-day-day-status");
+  if (status && end > dateKey) status.textContent = `Trainingspause bis ${dateLabel(end)}`;
+  const button = h("button", { type: "button", className: "secondary-button" }, "Mit Coach besprechen");
+  button.addEventListener("click", () => void globalThis.askCoach?.(`Ich bin am ${dateLabel(dateKey)} in der Trainingspause. Wie plane ich die Rückkehr zum Training?`));
+  notes.append(button);
+}
+
 function plannedDayNotes(dayContext, competitions, dateKey, hasSession = false) {
   const notes = h("div", "planned-day-notes");
   for (const { kind, icon, text } of plannedDayNoteSpecs(dayContext, competitions, dateKey, hasSession)) {
@@ -585,6 +606,7 @@ function plannedDayNotes(dayContext, competitions, dateKey, hasSession = false) 
   }
   const hint = infectionHintNote(dayContext.infection_hint, dateKey, reportsComplaint(illness));
   if (hint) notes.append(hint);
+  plannedPauseDecorate(notes, dayContext, dateKey);
   return notes;
 }
 
