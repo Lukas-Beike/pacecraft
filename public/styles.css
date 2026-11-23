@@ -361,7 +361,7 @@ h2 {
 .analysis-subchart { min-width: 0; padding-top: 12px; border-top: 1px solid var(--line); }
 .analysis-subchart h4 { margin: 0; color: var(--ink); font-size: .9rem; }
 .analysis-period-controls { display: flex; flex-wrap: wrap; gap: 4px; }
-.analysis-period-controls button { flex: 1 1 0; min-width: 4.5rem; min-height: 44px; }
+.analysis-period-controls button { flex: 1 1 0; min-width: 0; min-height: 44px; padding-inline: 4px; white-space: nowrap; }
 .analysis-trend-controls { display: grid; gap: 8px; }
 /* The theme attribute lifts the pressed state above the later light-theme .secondary-button surface rule. */
 .analysis-chart-stack .analysis-chart-legend { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 7.5rem), 1fr)); gap: 12px; margin: 8px 0 12px; }
@@ -386,8 +386,11 @@ h2 {
 .link-button { min-height: 44px; padding: 0; border: 0; background: none; color: var(--link); font: inherit; text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
 .estimate-chip, .source-chip { margin-left: 4px; vertical-align: middle; border: 1px dashed var(--muted); color: var(--muted); background: var(--transparent); font-weight: 700; }
 /* One popover surface family: the analysis tooltip and the quick-action menu. */
-.analysis-info-tooltip, .quick-action-menu { position: fixed; inset: auto; margin: 0; max-height: calc(100dvh - 24px); border: 1px solid var(--line); border-radius: var(--radius-md); background: var(--surface); color: var(--ink); box-shadow: 0 8px 24px var(--tooltip-shadow); }
-.analysis-info-tooltip { width: min(340px, calc(100vw - 24px)); overflow: auto; padding: 12px; font-size: .8rem; line-height: 1.5; }
+.analysis-info-tooltip[popover], .quick-action-menu { position: fixed; inset: auto; margin: 0; max-height: calc(100dvh - 24px); border: 1px solid var(--line); border-radius: var(--radius-md); background: var(--surface); color: var(--ink); box-shadow: 0 8px 24px var(--tooltip-shadow); }
+.analysis-info-tooltip[popover] { width: min(340px, calc(100vw - 24px)); overflow: auto; padding: 12px; font-size: .8rem; line-height: 1.5; }
+/* An explanation opens in place under its button (athlete decision, #3929 A-08). */
+.analysis-info-tooltip:not([popover]) { margin: 6px 0; padding: 10px 12px; border: 1px solid var(--line); border-radius: var(--radius-md); background: var(--surface-raised); color: var(--ink); font-size: .8rem; line-height: 1.5; overflow-wrap: anywhere; }
+.analysis-info-tooltip:not([popover]) p { margin: 0 0 6px; }
 .analysis-chart-legend li::before { content: ""; display: inline-block; width: 16px; height: 3px; margin: 0 8px 3px 0; background: var(--accent-bright); }
 .analysis-chart-legend [data-color="1"]::before { background: var(--chart-series-1); }
 .analysis-chart-legend [data-color="2"]::before { background: var(--chart-series-2); }
@@ -1809,7 +1812,7 @@ button:focus-visible, a:focus-visible, summary:focus-visible {
 .swap-result small { color: var(--muted); }
 .swap-result .origin { color: var(--accent-bright); font-size: .78rem; font-weight: 650; }
 
-#nutritionPanel .analysis-period-controls button { min-width: 4.5rem; }
+#nutritionPanel .analysis-period-controls button { min-width: 0; }
 #nutritionPanel .push-button { padding: 12px 16px; }
 .nutrition-total span, .nutrition-card small { color: var(--muted); }
 .nutrition-components { margin-top: 12px; border-top: 1px solid var(--line); padding-top: 10px; }

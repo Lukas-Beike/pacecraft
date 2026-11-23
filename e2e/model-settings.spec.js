@@ -51,20 +51,18 @@ test("each task names its rejected model and a keyless planning model locks only
   await expect(page.locator("#sendButton")).toBeEnabled();
 });
 
-test("each task block names in an info popover when its model is used @responsive", async ({ page }, testInfo) => {
+test("each task block names in an inline info when its model is used @responsive", async ({ page }, testInfo) => {
   await page.goto("/");
   await page.evaluate(() => AppRouter.navigate("more/coach", { historyMode: "replace" }));
   await page.locator("#modelSettingsTarget").evaluate((el) => { el.closest("details").open = true; });
   const pair = page.locator(".task-model-pair").first();
   await expect(page.locator("#modelSelect")).toHaveValue("gpt-6-luna");
-  const offset = () => pair.evaluate((node) => [node.offsetTop, node.offsetHeight]);
-  const before = await offset();
   for (const [task, text] of [
     ["Conversation", "auch den Morgen-Check-in, und für „Mit Coach besprechen“ an geplanten Einheiten im Kalender"],
     ["Planning", "„Analyse & Plan“ und im „+“-Menü sowie „Mit Coach besprechen“ an abgeschlossenen Einheiten im Kalender"],
     ["Nutrition", "„Nährwerttabelle fotografieren“ und die Websuche nach fehlenden Nährwerten"],
   ]) {
-    const button = page.locator(`[popovertarget="modelInfo${task}"]`);
+    const button = page.locator(`[data-model-info][aria-controls="modelInfo${task}"]`);
     const info = page.locator(`#modelInfo${task}`);
     await button.focus();
     await page.keyboard.press("Enter");
@@ -75,8 +73,7 @@ test("each task block names in an info popover when its model is used @responsiv
     await page.keyboard.press("Escape");
     await expect(info).toBeHidden();
   }
-  // Opening them moves nothing, and the "i" does not make a heading taller than its text.
-  expect(await offset()).toEqual(before);
+  // The "i" does not make a heading taller than its text.
   for (const heading of await page.locator(".task-model-heading").all()) {
     const [row, text] = await heading.evaluate((node) => [node.offsetHeight, node.querySelector("h3").offsetHeight]);
     expect(row).toBeLessThanOrEqual(text + 1);

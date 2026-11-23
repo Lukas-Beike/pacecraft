@@ -3,23 +3,19 @@
     "Laufpace"
   <ul class="analysis-chart-legend">
     <li data-color="0" data-line="solid">
-      <button aria-describedby="analysis-info-1" aria-expanded="false" aria-label="Erklärung zu Schwellenpace" class="analysis-legend-info" popovertarget="analysis-info-1" type="button">
+      <button aria-controls="analysis-info-1" aria-describedby="analysis-info-1" aria-expanded="false" aria-label="Erklärung zu Schwellenpace" class="analysis-legend-info" on:click="1" on:keydown="1" type="button">
         "Schwellenpace"
-      <div class="analysis-info-tooltip" data-series="0" id="analysis-info-1" on:toggle="1" popover="auto" role="tooltip">
+      <div class="analysis-info-tooltip" data-series="0" hidden="true" id="analysis-info-1" on:keydown="1" role="note">
         "Schwellenpace: 4:50 /km · 08.10.2026 · Quelle: Garmin Connect. Pace aus Garmin."
-        <span class="analysis-metric-meta">
-          "08.10.2026 · Garmin Connect"
         <span class="analysis-metric-meta">
           "Daten für 3 von 4 Tagen vorhanden."
         <span class="analysis-metric-change">
           "Seit 05.10.2026: −0:10 /km"
     <li data-color="1" data-line="dashed">
-      <button aria-describedby="analysis-info-2" aria-expanded="false" aria-label="Erklärung zu Zielpace" class="analysis-legend-info" popovertarget="analysis-info-2" type="button">
+      <button aria-controls="analysis-info-2" aria-describedby="analysis-info-2" aria-expanded="false" aria-label="Erklärung zu Zielpace" class="analysis-legend-info" on:click="1" on:keydown="1" type="button">
         "Zielpace"
-      <div class="analysis-info-tooltip" data-series="1" id="analysis-info-2" on:toggle="1" popover="auto" role="tooltip">
+      <div class="analysis-info-tooltip" data-series="1" hidden="true" id="analysis-info-2" on:keydown="1" role="note">
         "Zielpace: 5:05 /km · 08.10.2026. Pace aus Garmin."
-        <span class="analysis-metric-meta">
-          "08.10.2026"
         <span class="analysis-metric-meta">
           "Daten für 2 von 2 Tagen vorhanden."
         <span class="analysis-metric-change">

@@ -864,9 +864,9 @@ Every analysis chart SHALL pad its value axis by 12 % of the span (at least a un
 - **WHEN** a period of 3, 6 or 12 months is shown
 - **THEN** each chart plots one value per week: the last value for acute and smoothed load, fitness and threshold pace, the sum for training time and session-RPE load, the mean for steps and floors, the median for VO2max, and every dated value for FTP
 
-#### Scenario: Info popover
+#### Scenario: Info explanation in place
 - **WHEN** the info control of a series is opened
-- **THEN** it states "Daten für N von M Tagen|Wochen vorhanden." and, below three readings, "Wenige Messungen · kein belastbarer Trend."; the popover stays inside the viewport
+- **THEN** it states "Daten für N von M Tagen|Wochen vorhanden." and, below three readings, "Wenige Messungen · kein belastbarer Trend."; it opens in place under its control, pushes the content down and covers nothing, states value, date and source once, and closes with Escape
 
 #### Scenario: One reading
 - **WHEN** a series has a single reading

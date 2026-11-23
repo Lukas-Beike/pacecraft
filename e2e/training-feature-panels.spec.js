@@ -145,8 +145,8 @@ test("@responsive recovery, power, training focus, season and calendar profiles 
   await expect(report.locator(".training-focus-share")).toBeVisible();
   const focusInfo = report.locator(".analysis-legend-info").first();
   await focusInfo.click();
-  await expect(report.locator(".analysis-info-tooltip:popover-open")).toContainText("3 erfasste Garmin-Einheiten");
-  await expect(report.locator(".analysis-info-tooltip:popover-open")).toContainText("erfasste Daten");
+  await expect(report.locator(".analysis-info-tooltip:not([popover]):not([hidden])")).toContainText("3 erfasste Garmin-Einheiten");
+  await expect(report.locator(".analysis-info-tooltip:not([popover]):not([hidden])")).toContainText("erfasste Daten");
   await page.keyboard.press("Escape");
   const zones = page.locator("#trainingZoneCharts");
   // Power counts in the local zones from the streams; the fixture has no threshold
@@ -175,7 +175,7 @@ test("@responsive recovery, power, training focus, season and calendar profiles 
   expect(periods.titles.length).toBeGreaterThan(0);
   await expect(page.locator("#analysisHistoryCharts .analysis-sparse-note:visible")).toHaveCount(0);
   await page.locator("#analysisHistoryCharts").getByRole("button", { name: "Erklärung zu FTP", exact: true }).click();
-  await expect(page.locator("#analysisHistoryCharts .analysis-info-tooltip:popover-open")).toContainText(/Seit .+: \+\d+(?:,\d+)? W/);
+  await expect(page.locator("#analysisHistoryCharts .analysis-info-tooltip:not([popover]):not([hidden])")).toContainText(/Seit .+: \+\d+(?:,\d+)? W/);
   await page.keyboard.press("Escape");
   for (const title of periods.titles) {
     expect(title).toContain(title.startsWith("Rad-Leistung pro Gewicht") ? periods.expectedBody : periods.expected);

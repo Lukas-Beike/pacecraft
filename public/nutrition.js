@@ -342,7 +342,7 @@ function renderNutritionHistoryPeriod() {
     root.append(analysisPeriodControls("Zeitraum für Ernährung", nutritionHistoryPeriod, (period) => {
       nutritionHistoryPeriod = period;
       void loadNutrition();
-    }));
+    }, { remember: "nutrition" }));
   }
   root.querySelectorAll("button").forEach((button, index) => {
     button.setAttribute("aria-pressed", String(ANALYSIS_PERIODS[index].key === nutritionHistoryPeriod));
