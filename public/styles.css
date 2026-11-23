@@ -993,6 +993,7 @@ a.message-retry { display: grid; place-items: center; text-decoration: none; }
 .planned-entry-details { display: grid; gap: 10px; padding: 12px; border-top: 1px solid var(--line); overflow-wrap: anywhere; }
 .planned-activity-actions { display: flex; flex-wrap: wrap; gap: 8px; }
 .planned-activity-actions > button { flex: 1 1 auto; }
+.planned-move-group { display: grid; flex: 1 1 auto; gap: 8px; }
 .planned-actual-facts { display: flex; flex-wrap: wrap; gap: 7px 13px; color: var(--muted); font-size: .75rem; }
 .planned-actual-facts strong { color: var(--subtle); font-size: inherit; font-weight: 500; }
 .planned-comparison { display: grid; gap: 4px; padding: 10px; border-radius: 10px; color: var(--muted); background: var(--translucent-surface); font-size: .75rem; line-height: 1.5; }
