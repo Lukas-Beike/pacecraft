@@ -137,3 +137,19 @@ test("@responsive an empty calendar without a source is one empty state with the
   await page.evaluate(() => { AppState.state.data.garmin = { ...AppState.state.data.garmin, configured: true }; renderPlanned([]); });
   await expect(page.locator(".planned-week")).toHaveCount(1);
 });
+
+test("@responsive the shared calendar without an address says what to do and refuses an unsafe one (#3936 M-03)", async ({ page }) => {
+  await page.goto("/#more/connections");
+  await expect(page.locator("#appShell")).toBeVisible();
+  await waitForSettledState(page);
+  const configured = await page.evaluate(() => Boolean(AppState.state.data?.external_calendar?.configured));
+  test.skip(configured, "the fixture has a calendar address");
+  await page.locator("#connection-calendar > summary").click();
+  await expect(page.locator("#externalCalendarSyncButton")).toBeDisabled();
+  await expect(page.locator("#externalCalendarConnectionDetail")).toHaveText("Adresse speichern, dann synchronisieren.");
+  await page.locator("#cred-calendar_ical_url").fill("http://calendar.example.invalid/feed.ics");
+  await page.locator("#cred-submit-calendar").click();
+  await expect(page.locator("#cred-error-calendar")).toHaveText("Die Kalenderadresse muss eine HTTPS-URL ohne Zugangsdaten sein.");
+  await expect(page.locator("#cred-calendar_ical_url")).toHaveValue("");
+  await expect(page.locator("#externalCalendarSyncButton")).toBeDisabled();
+});
