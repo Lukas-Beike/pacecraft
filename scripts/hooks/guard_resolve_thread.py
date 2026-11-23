@@ -386,7 +386,9 @@ QUOTED = re.compile(r"'[^']*'|\"[^\"]*\"")
 # `sed` is inert in one shape only (#3982): print lines N or N to M; it is
 # replaced by SED_LINES before the words are read, and every later word of
 # that command must be a plain word that is no option (GNU sed permutes them).
-SED_PRINT = re.compile(r"(?:^|(?<=[\s;&|(]))sed[ \t]+-n[ \t]+'\d+(?:,\d+)?p'(?=[\s;&|)]|$)")
+SED_PRINT = re.compile(
+    r"(?:^|(?<=[\s;&|(]))sed[ \t]+-n[ \t]+'\d+(?:,\d+)?p'(?=[\s;&|)]|$)"
+)
 SED_LINES = "\x00sed"
 # Shell tokens: a quoted run, a separator, blanks, plain characters; a lone
 # quote never closes.
@@ -402,7 +404,10 @@ def inert(words: list[str]) -> bool:
     """One simple command starts with an inert program."""
     name, after = words[0], words[1:2]
     if name == SED_LINES:
-        return all(PLAIN_WORD.fullmatch(word) and not word.startswith("-") for word in words[1:])
+        return all(
+            PLAIN_WORD.fullmatch(word) and not word.startswith("-")
+            for word in words[1:]
+        )
     if not PROGRAM.fullmatch(name):
         return False
     if name in INERT_SUBCOMMANDS:
@@ -451,7 +456,8 @@ def only_inert_programs(raw: str) -> bool:
         or RAW_UNREADABLE.search(raw)
         or UNREADABLE.search(QUOTED.sub(single_quoted_blank, raw))
         or any(
-            RUNS_ARGUMENTS.search(form) for form in (QUOTED.sub(" ", raw), unquoted(raw))
+            RUNS_ARGUMENTS.search(form)
+            for form in (QUOTED.sub(" ", raw), unquoted(raw))
         )
     ):
         return False

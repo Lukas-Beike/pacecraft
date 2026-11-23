@@ -473,12 +473,14 @@ class GuardHookTests(unittest.TestCase):
             "uni'x' scripts/r*.py",
             # #3982 advisor: a heredoc named like an inert program, whose body's
             # lone quote pairs across lines in this reading.
-            "cat <<true\necho '\ntrue\npython scripts/resolve_review_threa?.py 1 PRRT_x\n"
-            "cat <<true\necho '\ntrue",
+            (
+                "cat <<true\necho '\ntrue\npython scripts/resolve_review_threa?.py 1 PRRT_x\n"
+                "cat <<true\necho '\ntrue"
+            ),
             # #3982: a single-quoted inside is read literally, nothing else is.
             "grep 'x’ ; python scripts/r*.py 1 PRRT_x ; grep ‘y' f",
             "grep $'\\x27' f; python scripts/r*.py 1 PRRT_x; grep $'\\x27' f",
-            "grep \"'\" f; python scripts/r*.py 1 PRRT_x; grep \"'\" f",
+            'grep "\'" f; python scripts/r*.py 1 PRRT_x; grep "\'" f',
             # A single-quoted run glued to a word keeps its inside read (fuzz).
             "cat scripts/RESOLV~1.p'\\'y",
             "echo 'a\\' ; python scripts/r*.py 1 PRRT_x ; echo '\\'",
