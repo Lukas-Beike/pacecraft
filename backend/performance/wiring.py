@@ -50,6 +50,7 @@ from backend.performance.report_service import (
     TrainingSeasonReadService,
 )
 from backend.performance.second_threshold_service import SecondThresholdService
+from backend.performance.threshold_offers import threshold_values
 from backend.weather.cache import invalidate_for_location_change
 
 _PROVIDER_IDS = frozenset(provider.value for provider in ProviderId)
@@ -296,6 +297,19 @@ def build_athlete_data(
     def profile() -> ProfileService:
         return profile_for(database_manager())
 
+    def first_threshold() -> FirstThresholdService:
+        return FirstThresholdService(
+            database_manager(),
+            profile(),
+            lambda: run_lthr().day_resolver(),
+            local_date,
+        )
+
+    def lt2_values() -> dict[str, Any]:
+        with database_manager().reader() as db:
+            configurations = table_reader().zone_configurations(db)
+            return threshold_values(activity_rows(), db, local_date(), configurations)
+
     def zones() -> ZoneConfigurationService:
         return ZoneConfigurationService(
             database_manager(),
@@ -336,12 +350,7 @@ def build_athlete_data(
             database_manager(), utc_now, event_buffer, on_change=load_inputs_changed
         ),
         checkin=lambda: CheckinService(database_manager(), checkins, local_date),
-        first_threshold=lambda: FirstThresholdService(
-            database_manager(),
-            profile(),
-            lambda: run_lthr().day_resolver(),
-            local_date,
-        ),
+        first_threshold=first_threshold,
         second_threshold=lambda curve_records: SecondThresholdService(
             database_manager(),
             profile(),
@@ -350,6 +359,8 @@ def build_athlete_data(
             local_date,
             zones=zones,
             key_values=key_values,
+            lt1_estimate=lambda: first_threshold().estimate(),
+            threshold_values=lt2_values,
         ),
         profile=profile,
         profile_for=profile_for,

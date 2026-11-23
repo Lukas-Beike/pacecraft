@@ -16,7 +16,7 @@ read. A new key needs no entry: it appears here when its write is added.
   `profile` is only set when absent.
 
 <!-- BEGIN GENERATED KEYS -->
-107 keys and 25 key patterns; `<value>` stands for a value the code computes.
+108 keys and 25 key patterns; `<value>` stands for a value the code computes.
 
 | Key | Written by | Deleted by | Export | Reset at start | Purge |
 | --- | --- | --- | --- | --- | --- |
@@ -143,6 +143,7 @@ read. A new key needs no entry: it appears here when its write is added.
 | `sync_operation_started_at` | backend/sync/garmin_service.py:GarminSyncLifecycleState.record_sync_started | - | yes | - | - |
 | `sync_operation_status` | backend/sync/state.py:settle_interrupted_sync_state<br>backend/sync/status.py:SyncOperationStateWriter._set_values | - | no | - | - |
 | `sync_wahoo_last_success_at` | backend/sync/daily.py:mark_daily_sync | - | yes | - | - |
+| `threshold_offer_dismissals` | backend/performance/second_threshold_service.py:SecondThresholdService.dismiss_offer | - | yes | - | - |
 | `wahoo_activity_detail_state` | backend/sync/wahoo_activity_details.py:WahooActivityDetailImport._save_state | - | yes | - | - |
 | `wahoo_full_resync_running` | backend/sync/state.py:settle_interrupted_sync_state | - | no | - | - |
 | `wahoo_full_resync_status` | backend/sync/state.py:settle_interrupted_sync_state | - | no | - | - |

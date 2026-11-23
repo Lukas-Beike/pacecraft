@@ -6,7 +6,9 @@ that heart rate from the athlete's own steady runs, card M9) and critical speed
 or power over 42 days (card M4). The profile and the Coach read them; only the
 athlete's explicit adoption (``adopt``) writes, one value at a time (F8), as a
 local zone configuration valid from today with its origin, through the zone
-save path with its receipt and undo. Nothing is adopted automatically.
+save path with its receipt and undo. Nothing is adopted automatically. The
+open offers of a new LT1 or LT2 (``offers``, #4135) and their dismissal live here
+too; Garmin's LT2 value is adopted the same way, as a local value.
 """
 
 from __future__ import annotations
@@ -32,6 +34,12 @@ from backend.performance.second_threshold_estimate import (
     dfa_second_threshold,
 )
 from backend.performance.threshold_evidence import EFFORT_WINDOW_DAYS
+from backend.performance.threshold_offers import (
+    DISMISSED_KEY,
+    GARMIN_SOURCE,
+    MAX_DISMISSED,
+    open_offers,
+)
 
 RUNS_ONLY = {"status": "unknown", "reason": "nur aus Läufen", "sessions": 0}
 # Above this share of the value in effect an adoption needs a second confirmation (F9).
@@ -57,8 +65,8 @@ NOTICE_VALUES: dict[str, tuple[str, ...]] = {
 # The run step test's LT2 (#3833), adopted with the DFA-a1 origin.
 STEP_TEST_SOURCE = "step_test"
 _SOURCES = {
-    "run": ("dfa_alpha1", "critical_speed"),
-    "ride": ("critical_power",),
+    "run": ("dfa_alpha1", "critical_speed", GARMIN_SOURCE),
+    "ride": ("critical_power", GARMIN_SOURCE),
 }
 
 
@@ -74,7 +82,12 @@ class SecondThresholdService:
         today: Callable[[], date],
         zones: Callable[[], Any] | None = None,
         key_values: Any = None,
+        lt1_estimate: Callable[[], Mapping[str, Any] | None] | None = None,
+        threshold_values: Callable[[], Mapping[str, Any]] | None = None,
     ) -> None:
+        # The LT1 estimate as shown and ``threshold_offers.threshold_values`` (#4135).
+        self._lt1_estimate = lt1_estimate
+        self._threshold_values = threshold_values
         self._zones = zones
         self._key_values = key_values
         self._manager = manager
@@ -147,6 +160,56 @@ class SecondThresholdService:
             )
         return stored
 
+    def _values(self) -> Mapping[str, Any]:
+        """The LT2 values in effect and Garmin's (``threshold_values``), or none."""
+        return {} if self._threshold_values is None else self._threshold_values()
+
+    def offers(
+        self, lt2_estimates: Mapping[str, Any] | None = None
+    ) -> list[dict[str, Any]]:
+        """The open LT1 and LT2 offers (#4135); ``lt2_estimates`` when already read."""
+        dismissed: list[str] = []
+        if self._key_values is not None:
+            with self._manager.reader() as db:
+                dismissed = _dismissed(self._key_values.get(db, DISMISSED_KEY))
+        return open_offers(
+            self.estimates() if lt2_estimates is None else lt2_estimates,
+            None if self._lt1_estimate is None else self._lt1_estimate(),
+            self._first_threshold_bpm(),
+            self._values(),
+            dismissed,
+        )
+
+    def dismiss_offer(self, payload: Mapping[str, Any]) -> list[dict[str, Any]]:
+        """Dismiss one open offer for its exact value; returns the offers still open."""
+        if self._key_values is None:
+            raise AppError(503, "Die Angebote sind nicht verfügbar.")
+        key = payload.get("key")
+        if not isinstance(key, str) or key not in {
+            offer["key"] for offer in self.offers()
+        }:
+            raise AppError(
+                409,
+                "Dieses Angebot liegt nicht mehr vor. Bitte die Anzeige aktualisieren.",
+                reason="offer_unknown",
+            )
+        with self._manager.unit_of_work() as db:
+            stored = _dismissed(self._key_values.get(db, DISMISSED_KEY))
+            kept = [*stored, key][-MAX_DISMISSED:]
+            self._key_values.set(db, DISMISSED_KEY, json.dumps(kept))
+        return self.offers()
+
+    def _shown_value(
+        self, sport: str, source: str, value: str, field: str
+    ) -> Mapping[str, Any]:
+        """The estimate an adoption checks, or Garmin's LT2 value as offered (#4135)."""
+        if source != GARMIN_SOURCE:
+            return self.estimates()[sport][source]
+        known = ((self._values().get("garmin") or {}).get(sport) or {}).get(value)
+        return (
+            {"status": "ok", field: known["value"]} if known else {"status": "unknown"}
+        )
+
     def _first_threshold_bpm(self) -> float | None:
         """The stored LT1 heart rate of runs today, or None."""
         return stored_bpm(self._profile_service.get())
@@ -165,6 +228,8 @@ class SecondThresholdService:
         ``confirm_deviation``; a value the athlete entered needs ``replace_local``.
         ``step_test`` takes the good LT2 of the run step test ``activity_id``
         (#3833), read by ``step_test``; it is stored with the origin ``dfa_alpha1``.
+        ``garmin`` takes Garmin's LT2 value as its offer shows it (#4135) and stores
+        it as a local value with the origin ``garmin``.
         """
         if self._zones is None:
             raise AppError(503, "Die Zonen sind nicht verfügbar.")
@@ -180,7 +245,7 @@ class SecondThresholdService:
         estimate = (
             _step_test_value(payload, step_test)
             if tested
-            else self.estimates()[sport][source]
+            else self._shown_value(sport, source, value, field)
         )
         number = _shown_number(payload, estimate, field)
         zones = self._zones()
@@ -231,6 +296,19 @@ def _shown_number(
             reason="lt2_changed",
         )
     return number
+
+
+def _dismissed(text: str | None) -> list[str]:
+    """The stored dismissed offer keys; unreadable text reads as none."""
+    try:
+        stored = json.loads(text) if text else []
+    except ValueError:
+        return []
+    return (
+        [key for key in stored if isinstance(key, str)]
+        if isinstance(stored, list)
+        else []
+    )
 
 
 def _step_test_value(

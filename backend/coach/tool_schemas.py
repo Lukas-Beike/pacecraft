@@ -1818,7 +1818,7 @@ def build_structured_tool_schemas(
     zone_tools = (
         (
             "save_zones",
-            "Change Zonen & Schwellen as its editor does, only on the athlete's own request in this message; read_coach_context shows training_zones, first_threshold_estimate and lt2_estimates in current_performance first. action save: one local zone configuration of sport and metric (environment null or indoor), exactly one of limits (absolute upper limits: bpm, W, or m/s for pace) or percent_limits (percent of the threshold), threshold for heart_rate and power, maximum for heart_rate, valid_from (not in the future, default today) or from_beginning for the first configuration. action adopt_first_threshold: shown is the estimate's percent_lthr, or with activity_id the run step test's good LT1 heart rate in bpm. action adopt_lt2: sport, source, value and shown as read (bpm, s/km or W); with source step_test also activity_id; confirm_deviation only when the athlete accepts a value more than 5 % from the one in effect. replace only when the athlete asks to replace a measured or self-entered value.",
+            "Change Zonen & Schwellen as its editor does, only on the athlete's own request in this message; read_coach_context shows training_zones, first_threshold_estimate, lt2_estimates and threshold_offers in current_performance first. action save: one local zone configuration of sport and metric (environment null or indoor), exactly one of limits (absolute upper limits: bpm, W, or m/s for pace) or percent_limits (percent of the threshold), threshold for heart_rate and power, maximum for heart_rate, valid_from (not in the future, default today) or from_beginning for the first configuration. action adopt_first_threshold: shown is the estimate's percent_lthr, or with activity_id the run step test's good LT1 heart rate in bpm. action adopt_lt2: sport, source, value and shown as read (bpm, s/km or W); with source step_test also activity_id; source garmin only from a threshold_offers entry; confirm_deviation only when the athlete accepts a value more than 5 % from the one in effect. replace only when the athlete asks to replace a measured or self-entered value.",
             {
                 "action": {
                     "type": "string",
@@ -1840,6 +1840,7 @@ def build_structured_tool_schemas(
                         "critical_speed",
                         "critical_power",
                         "step_test",
+                        "garmin",
                     ],
                 },
                 "value": {"type": "string", "enum": ["heart_rate", "pace", "power"]},

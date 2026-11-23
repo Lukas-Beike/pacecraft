@@ -49,8 +49,11 @@ MAX_REPORTED_SLEEP_S: Final = 86_400.0
 MAX_ZONES: Final = 19
 # Percent limits keep a provider's open-top marker such as 999.
 ZONE_PERCENT_BOUNDS: Final = (1.0, 1_000.0)
-# Where an adopted local threshold comes from (#3273); None is entered by hand.
-THRESHOLD_ORIGINS: Final = frozenset({"dfa_alpha1", "critical_speed", "critical_power"})
+# Where an adopted local threshold comes from (#3273), Garmin's value confirmed
+# by the athlete included (#4135); None is entered by hand.
+THRESHOLD_ORIGINS: Final = frozenset(
+    {"dfa_alpha1", "critical_speed", "critical_power", "garmin"}
+)
 ZONE_VALUE_BOUNDS: Final = {
     ZoneConfigurationMetric.HEART_RATE: HEART_RATE_BOUNDS,
     ZoneConfigurationMetric.POWER: (1.0, MAX_ACTIVITY_POWER_W),

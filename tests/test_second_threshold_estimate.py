@@ -8,19 +8,27 @@ reference cases (CS 4 m/s, CP 250 W).
 
 import unittest
 from datetime import date, timedelta
+from typing import Any
 from unittest.mock import Mock
 
 from support import dispatch_route
 
 from backend.athlete.zones import local_configuration
 from backend.canonical.activity_detail import ActivityDfaAlpha1, DfaWindow
-from backend.canonical.vocabulary import DfaQuality
+from backend.canonical.vocabulary import DfaQuality, MetricKind, ProviderId, Sport
 from backend.coach.context import CoachStructuredContextService
 from backend.db.repositories import KeyValueRepository
 from backend.errors import AppError
 from backend.http_api.athlete_get import AthleteGetRoutes
+from backend.http_api.route_table import Access
+from backend.http_api.second_threshold_post import (
+    DISMISS_OFFER_PATH,
+    SecondThresholdPostRoutes,
+)
 from backend.performance import second_threshold_estimate as lt2
 from backend.performance.second_threshold_service import SecondThresholdService
+from backend.performance.threshold_offers import open_offers, threshold_values
+from tests.test_current_thresholds import ZoneSource, _obs
 from tests.test_first_threshold_estimate import add_run, open_database
 
 TODAY = date(2026, 11, 16)
@@ -389,6 +397,35 @@ class VisibilityTests(unittest.TestCase):
 
         self.assertNotIn("lt2_estimates", current(failing))
 
+    def test_the_profile_carries_the_offers_and_survives_a_failure(self) -> None:
+        service = Mock()
+        service.estimates.return_value = ESTIMATES
+        service.offers.return_value = [{"key": "lt2:run:pace:garmin:250"}]
+        payload = self.read_profile(lambda: service)
+        self.assertEqual(
+            payload["threshold_offers"], [{"key": "lt2:run:pace:garmin:250"}]
+        )
+        service.offers.assert_called_with(ESTIMATES)
+        service.offers.side_effect = RuntimeError("synthetic failure")
+        self.assertIsNone(self.read_profile(lambda: service)["threshold_offers"])
+
+    def test_the_coach_lists_the_offers_without_the_dismissal_key(self) -> None:
+        performance = Mock()
+        performance.current_performance.return_value = {"ftp": 260}
+        offers = [{"key": "k", "threshold": "lt2", "value": 170}]
+        current = CoachStructuredContextService(
+            Mock(),
+            Mock(),
+            Mock(),
+            Mock(),
+            performance,
+            lt2_estimates=lambda: ESTIMATES,
+            threshold_offers=lambda read: offers if read == ESTIMATES else [],
+        )._current_performance(None)
+        self.assertEqual(
+            current["threshold_offers"], [{"threshold": "lt2", "value": 170}]
+        )
+
 
 RUN_ESTIMATES = {
     "run": {
@@ -724,6 +761,248 @@ class NoticeBaselineTests(unittest.TestCase):
             with self.subTest(payload=payload), self.assertRaises(AppError) as raised:
                 self.service.save_notice_baseline(payload)
             self.assertEqual(raised.exception.status, 400)
+
+
+GOOD_DFA = {
+    "status": "ok",
+    "heart_rate_bpm": 170,
+    "pace_seconds_per_km": 256,
+    "sessions": 4,
+    "window_days": 60,
+    "spread_pct": 3.2,
+    "quality": "good",
+    "to": "2026-11-15",
+}
+GOOD_LT1 = {
+    "percent_lthr": 88.0,
+    "bpm": 150,
+    "sessions": 5,
+    "quality": "good",
+    "to": "2026-11-14",
+    "spread_pct": 2.0,
+}
+
+
+def offer_estimates(dfa=None, cs=None, cp=None):
+    unknown = {"status": "unknown", "reason": "x", "sessions": 0}
+    return {
+        "run": {"dfa_alpha1": dfa or unknown, "critical_speed": cs or unknown},
+        "ride": {"dfa_alpha1": unknown, "critical_power": cp or unknown},
+    }
+
+
+def offer_keys(offers):
+    return [offer["key"] for offer in offers]
+
+
+class OfferTests(unittest.TestCase):
+    """#4135: a known, good candidate at least the notice step from the value in effect."""
+
+    def test_new_values_are_offered_with_their_basis_and_adopt_body(self) -> None:
+        values = {
+            "in_effect": {"run": {"heart_rate": 165, "pace": 262}},
+            "garmin": {"ride": {"power": {"value": 280, "date": "2026-11-10"}}},
+        }
+        offers = open_offers(offer_estimates(dfa=GOOD_DFA), GOOD_LT1, 145.0, values, ())
+        self.assertEqual(
+            offer_keys(offers),
+            [
+                "lt1:run:heart_rate:dfa_alpha1:150",
+                "lt2:run:heart_rate:dfa_alpha1:170",
+                "lt2:run:pace:dfa_alpha1:256",
+                "lt2:ride:power:garmin:280",
+            ],
+        )
+        lt1, hr, _pace, garmin = offers
+        self.assertEqual(lt1["adopt"], {"percent_lthr": 88.0})
+        self.assertEqual((lt1["current"], lt1["window_days"]), (145.0, 60))
+        self.assertEqual(
+            hr["adopt"],
+            {
+                "sport": "run",
+                "source": "dfa_alpha1",
+                "value": "heart_rate",
+                "shown": 170,
+            },
+        )
+        self.assertEqual(
+            (hr["current"], hr["sessions"], hr["spread_pct"], hr["newest"]),
+            (165, 4, 3.2, "2026-11-15"),
+        )
+        # Garmin rates no quality and has no session basis; no value in effect is none.
+        self.assertEqual(
+            (garmin["quality"], garmin["sessions"], garmin["current"]),
+            (None, None, None),
+        )
+        self.assertEqual(garmin["newest"], "2026-11-10")
+
+    def test_changes_below_the_notice_step_are_no_offer(self) -> None:
+        cs = {"status": "ok", "pace_seconds_per_km": 250, "quality": "good"}
+        cp = {"status": "ok", "power_w": 284, "quality": "good"}
+        for in_effect, expected in (
+            # 2 bpm, 3 s/km and 5 W are the steps; one less is no change.
+            ({"run": {"heart_rate": 169, "pace": 252}, "ride": {"power": 280}}, []),
+            (
+                {"run": {"heart_rate": 168, "pace": 253}, "ride": {"power": 279}},
+                [
+                    "lt2:run:heart_rate:dfa_alpha1:170",
+                    "lt2:run:pace:critical_speed:250",
+                    "lt2:ride:power:critical_power:284",
+                ],
+            ),
+        ):
+            with self.subTest(in_effect=in_effect):
+                offers = open_offers(
+                    offer_estimates(
+                        dfa={**GOOD_DFA, "pace_seconds_per_km": None}, cs=cs, cp=cp
+                    ),
+                    None,
+                    None,
+                    {"in_effect": in_effect},
+                    (),
+                )
+                self.assertEqual(offer_keys(offers), expected)
+
+    def test_unknown_and_low_quality_candidates_are_no_offer(self) -> None:
+        offers = open_offers(
+            offer_estimates(
+                dfa={**GOOD_DFA, "quality": "low"},
+                cp={"status": "ok", "power_w": 300},
+            ),
+            {**GOOD_LT1, "quality": "low"},
+            None,
+            {"garmin": {"run": {"heart_rate": None}}},
+            (),
+        )
+        self.assertEqual(offers, [])
+        self.assertEqual(
+            open_offers(offer_estimates(), {**GOOD_LT1, "bpm": None}, None, {}, ()),
+            [],
+        )
+
+    def test_a_dismissed_value_stays_dismissed_and_a_new_value_is_offered(
+        self,
+    ) -> None:
+        dismissed = ("lt2:run:heart_rate:dfa_alpha1:170",)
+        same = open_offers(offer_estimates(dfa=GOOD_DFA), None, None, {}, dismissed)
+        self.assertNotIn(dismissed[0], offer_keys(same))
+        moved = open_offers(
+            offer_estimates(dfa={**GOOD_DFA, "heart_rate_bpm": 173}),
+            None,
+            None,
+            {},
+            dismissed,
+        )
+        self.assertIn("lt2:run:heart_rate:dfa_alpha1:173", offer_keys(moved))
+
+
+class ThresholdValueTests(unittest.TestCase):
+    """The values in effect and Garmin's own values the offers compare."""
+
+    def test_a_local_value_is_in_effect_and_garmin_keeps_its_own(self) -> None:
+        day = TODAY - timedelta(days=3)
+        observations = (
+            _obs(MetricKind.THRESHOLD_HR, 172.0, ProviderId.GARMIN, Sport.RUN, day),
+            # 4 m/s is 250 s per km.
+            _obs(MetricKind.THRESHOLD_PACE, 4.0, ProviderId.GARMIN, Sport.RUN, day),
+            _obs(MetricKind.FTP, 280.0, ProviderId.GARMIN, Sport.RIDE, day),
+        )
+        local = zone("heart_rate", 165, local=True, percent=[80, 89, 94, 100, 110])
+        values = threshold_values(ZoneSource(observations, ()), None, TODAY, [local])
+        self.assertEqual(
+            values["in_effect"],
+            {"run": {"heart_rate": 165, "pace": 250}, "ride": {"power": 280}},
+        )
+        self.assertEqual(
+            values["garmin"]["run"],
+            {
+                "heart_rate": {"value": 172, "date": day.isoformat()},
+                "pace": {"value": 250, "date": day.isoformat()},
+            },
+        )
+        self.assertEqual(values["garmin"]["ride"]["power"]["value"], 280)
+
+
+class OfferServiceTests(unittest.TestCase):
+    """Dismissal is stored per exact value; adoption of Garmin's value is local."""
+
+    manager: object
+    counter: int
+
+    def setUp(self) -> None:
+        open_database(self)
+        self.values: dict[str, Any] = {
+            "in_effect": {"run": {"heart_rate": 165}},
+            "garmin": {},
+        }
+        self.zones = FakeZones(
+            zone(
+                "heart_rate",
+                165,
+                local=True,
+                origin="dfa_alpha1",
+                percent=[80, 89, 94, 100, 110],
+            )
+        )
+        self.service = SecondThresholdService(
+            self.manager,
+            Mock(**{"get.return_value": {}}),
+            Mock(),
+            lambda _days: [],
+            lambda: TODAY,
+            zones=lambda: self.zones,
+            key_values=KeyValueRepository(lambda: "2026-11-16T18:00:00+00:00"),
+            threshold_values=lambda: self.values,
+        )
+        self.service.estimates = lambda: offer_estimates(dfa=GOOD_DFA)  # type: ignore[method-assign]
+
+    def test_a_dismissed_offer_is_gone_until_its_value_changes(self) -> None:
+        key = "lt2:run:heart_rate:dfa_alpha1:170"
+        self.assertIn(key, offer_keys(self.service.offers()))
+        left = self.service.dismiss_offer({"key": key})
+        self.assertNotIn(key, offer_keys(left))
+        self.assertNotIn(key, offer_keys(self.service.offers()))
+        with self.assertRaises(AppError) as raised:
+            self.service.dismiss_offer({"key": key})
+        self.assertEqual(raised.exception.reason, "offer_unknown")
+        self.service.estimates = lambda: offer_estimates(  # type: ignore[method-assign]
+            dfa={**GOOD_DFA, "heart_rate_bpm": 174}
+        )
+        self.assertIn(
+            "lt2:run:heart_rate:dfa_alpha1:174", offer_keys(self.service.offers())
+        )
+
+    def test_garmins_offered_value_is_adopted_as_a_local_value(self) -> None:
+        self.values["garmin"] = {
+            "run": {"heart_rate": {"value": 168, "date": "2026-11-12"}}
+        }
+        (offer,) = [
+            offer for offer in self.service.offers() if offer["source"] == "garmin"
+        ]
+        with self.assertRaises(AppError) as raised:
+            self.service.adopt({**offer["adopt"], "shown": 171})
+        self.assertEqual(raised.exception.reason, "lt2_changed")
+        self.service.adopt(offer["adopt"])
+        (saved,) = self.zones.saved
+        self.assertEqual(
+            (saved["threshold"], saved["threshold_origin"]), (168, "garmin")
+        )
+
+    def test_the_dismiss_route_needs_session_and_csrf_and_answers_the_offers(
+        self,
+    ) -> None:
+        service = Mock()
+        service.dismiss_offer.return_value = []
+        routes = SecondThresholdPostRoutes(lambda: service)
+        (route,) = [r for r in routes.routes() if r.path == DISMISS_OFFER_PATH]
+        self.assertEqual((route.method, route.access), ("POST", Access.SESSION_CSRF))
+        handler = Mock()
+        handler.read_json.return_value = {"key": "k"}
+        self.assertTrue(
+            dispatch_route(routes, handler, DISMISS_OFFER_PATH, method="POST")
+        )
+        service.dismiss_offer.assert_called_once_with({"key": "k"})
+        handler.send_json.assert_called_once_with(200, {"threshold_offers": []})
 
 
 if __name__ == "__main__":

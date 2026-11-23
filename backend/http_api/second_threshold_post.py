@@ -10,6 +10,7 @@ from backend.performance.second_threshold_service import SecondThresholdService
 
 ADOPT_PATH = "/api/zones/lt2/adopt"
 NOTICE_BASELINE_PATH = "/api/zones/lt2/notice-baseline"
+DISMISS_OFFER_PATH = "/api/zones/threshold-offers/dismiss"
 
 
 class SecondThresholdPostRoutes:
@@ -29,19 +30,22 @@ class SecondThresholdPostRoutes:
             Route(
                 "PUT", NOTICE_BASELINE_PATH, Access.SESSION_CSRF, self._notice_baseline
             ),
+            Route("POST", DISMISS_OFFER_PATH, Access.SESSION_CSRF, self._dismiss_offer),
         ]
 
     def _adopt(self, handler: Any, _request: RouteRequest) -> None:
         """Adopt one value of a local LT2 estimate as the threshold in effect.
 
         Request: JSON body `{"sport": "run" | "ride", "source": "dfa_alpha1" |
-        "critical_speed" | "critical_power" | "step_test", "value": "heart_rate" |
+        "critical_speed" | "critical_power" | "step_test" | "garmin", "value": "heart_rate" |
         "pace" | "power", "shown": number, "confirm_deviation": boolean,
         "replace_local": boolean, "activity_id": string}`. `shown` is the number
         `GET /api/profile` showed in `lt2_estimates` (bpm, s/km or W); for
         `step_test` (runs, #3833) it is `step_test.lt2` of `GET
         /api/activities/{activity_id}`, adopted only when good, with the origin
-        `dfa_alpha1`.
+        `dfa_alpha1`. `garmin` (#4135) adopts Garmin's LT2 value as its entry in
+        `threshold_offers` shows it (run `heart_rate` or `pace`, ride `power` or
+        `heart_rate`), stored with the origin `garmin`.
 
         Response: 200 `{"configuration": object, "change": object | null}`, the
         receipt of the local zone configuration saved from today with the zone
@@ -73,3 +77,17 @@ class SecondThresholdPostRoutes:
         """
         result = self._service().save_notice_baseline(handler.read_json())
         handler.send_json(200, {"lt2_notice_baselines": result})
+
+    def _dismiss_offer(self, handler: Any, _request: RouteRequest) -> None:
+        """Dismiss one open LT1 or LT2 offer for its exact value (#4135).
+
+        Request: JSON body `{"key": string}`, the `key` of an entry of
+        `threshold_offers` in `GET /api/profile`. The offer stays dismissed for
+        that value; a different value of the same source is a new offer.
+
+        Response: 200 `{"threshold_offers": array}`, the offers still open.
+
+        Errors: 409 with reason `offer_unknown` when the key names no open offer.
+        """
+        result = self._service().dismiss_offer(handler.read_json())
+        handler.send_json(200, {"threshold_offers": result})
