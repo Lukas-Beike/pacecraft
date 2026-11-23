@@ -475,6 +475,23 @@ class GuardHookTests(unittest.TestCase):
             # lone quote pairs across lines in this reading.
             "cat <<true\necho '\ntrue\npython scripts/resolve_review_threa?.py 1 PRRT_x\n"
             "cat <<true\necho '\ntrue",
+            # #3982: a single-quoted inside is read literally, nothing else is.
+            "grep 'x’ ; python scripts/r*.py 1 PRRT_x ; grep ‘y' f",
+            "grep $'\\x27' f; python scripts/r*.py 1 PRRT_x; grep $'\\x27' f",
+            "grep \"'\" f; python scripts/r*.py 1 PRRT_x; grep \"'\" f",
+            # A single-quoted run glued to a word keeps its inside read (fuzz).
+            "cat scripts/RESOLV~1.p'\\'y",
+            "echo 'a\\' ; python scripts/r*.py 1 PRRT_x ; echo '\\'",
+            'echo "x\\" \'y" ; python scripts/r*.py 1 PRRT_x ; echo "\' z"',
+            "grep '\r' f\rpython scripts/r*.py 1 PRRT_x",
+            # sed only as `sed -n 'N[,M]p'` with plain non-option words after it.
+            "sed -n '1p' -e 'e python scripts/r*.py 1 PRRT_x' f",
+            "sed -n '1p' --expression='e python scripts/r*.py' f",
+            "sed -ni '1p' f; python scripts/r*.py 1 PRRT_x",
+            "sed -n '1p;e python scripts/r*.py 1 PRRT_x' f",
+            "sed -n '1p' 'f' ; python scripts/r*.py 1 PRRT_x",
+            "sed -n '1p' f; python scripts/r*.py 1 PRRT_x",
+            "sed -n '1p' f\x00sed scripts/r*.py",
         ):
             with self.subTest(command):
                 self.assertEqual(self.decide(command), 2)
@@ -526,6 +543,11 @@ class GuardHookTests(unittest.TestCase):
             "ls */*.py",
             'gh run list -q \'.[] | .name+" "+(.conclusion//"-")\'',
             "echo '" + "[" * 4000 + "]'",
+            # #3982: quoted grep patterns and a printed line range are no paths.
+            "sed -n '10,40p' backend/performance/threshold_staleness.py | grep -n '\"[a-z_]*\":'",
+            "grep -n 'within the weeks ahead.\\s*$' docs/features.md",
+            "sed -n '1,80p' test.log | grep -v '^\\s*\\^*$\\|~~~'",
+            "sed -n '5p' scripts/*.py",
         ):
             with self.subTest(command):
                 self.assertEqual(self.decide(command), 0)
