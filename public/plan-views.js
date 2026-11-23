@@ -1219,7 +1219,7 @@ function actualCalendarFacts(actual) {
     "Ø Herzfrequenz": calendarMetricNumber(actual.avg_hr, " bpm"),
     "Ø Leistung": calendarMetricNumber(actual.avg_power, " W"),
     Pace: calendarPaceLabel(actual),
-    Anstieg: calendarMetricNumber(actual.elevation_gain_m, " m"),
+    Höhenmeter: calendarMetricNumber(actual.elevation_gain_m, " m"),
   };
   const sport = activitySportLabel(calendarSportType(actual));
   if (sport === "Laufen") {
@@ -1229,7 +1229,7 @@ function actualCalendarFacts(actual) {
       ["Schrittfrequenz", Number(actual.avg_cadence) > 0 ? calendarRoundedNumber(Number(actual.avg_cadence) * 2, " spm") : null],
       ["Ø Leistung", values["Ø Leistung"]], ["Belastung", values.Belastung], ["RPE", values.RPE],
       ["Bodenkontaktzeit", calendarRoundedNumber(actual.ground_contact_time_ms, " ms")],
-      ["Anstieg", values.Anstieg],
+      ["Höhenmeter", values.Höhenmeter],
     ];
   }
   if (sport === "Radfahren" || sport === "Rad indoor") {
@@ -1239,7 +1239,7 @@ function actualCalendarFacts(actual) {
       ["Trittfrequenz", calendarRoundedNumber(actual.avg_cadence, " rpm")],
       ["Belastung", values.Belastung], ["RPE", values.RPE],
       ["Ø Geschwindigkeit", calendarSpeedLabel(actual)],
-      ["Anstieg", values.Anstieg],
+      ["Höhenmeter", values.Höhenmeter],
     ];
   }
   return Object.entries(values);
