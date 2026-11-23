@@ -1069,6 +1069,11 @@ output.planned-move-status { display: block; }
 .planned-month-marks { display: flex; flex-wrap: wrap; justify-content: center; gap: 3px; }
 .planned-month-mark { --session-color: var(--planned-session-default); --session-on-color: var(--planned-session-default-on); width: 6px; height: 6px; overflow: hidden; border-radius: 50%; color: var(--session-on-color); background: var(--session-color); font-size: 0; }
 .planned-month-mark:is(.is-planned, .is-today) { color: var(--ink); background: none; box-shadow: inset 0 0 0 1.5px var(--session-color); }
+.planned-month-totals { margin: 8px 0 0; font-size: .85rem; font-variant-numeric: tabular-nums; }
+.planned-month-legend { display: flex; flex-wrap: wrap; gap: 4px 14px; margin: 6px 0 0; color: var(--muted); font-size: .72rem; }
+.planned-month-legend span { display: inline-flex; align-items: center; gap: 5px; }
+.planned-month-legend .planned-month-mark { display: inline-block; flex: none; width: 8px; height: 8px; padding: 0; }
+.planned-month-blocked { display: inline-block; width: 12px; height: 0; border-bottom: 2px solid var(--danger); }
 .planned-month-mark.is-skipped { color: var(--muted); background: none; box-shadow: inset 0 0 0 1.5px var(--line-strong); }
 .planned-month-mark.is-missed { color: var(--danger-ink); background: var(--danger); box-shadow: none; }
 @media (min-width: 1100px) {
@@ -1187,7 +1192,8 @@ output.planned-move-status { display: block; }
 @media (prefers-reduced-motion: reduce) { .competition-summary-main::before { transition: none; } }
 .competition-card > summary .message-action { margin: -2px -6px -2px 0; }
 #competitionDialog [hidden] { display: none; }
-#competitionDialogConfirm { display: grid; gap: 15px; }
+#competitionDialogForm .dialog-actions { position: sticky; bottom: -24px; margin-bottom: -24px; padding-block: 12px 24px; background: var(--surface-raised); }
+#competitionDialogDurationStatus:empty { display: none; }
 .confirmation-dialog :is(select, textarea) { width: 100%; }
 .competition-summary-facts { display: block; margin-top: 6px; color: var(--muted); font-size: .82rem; line-height: 1.6; }
 .competition-archive { min-width: 0; }
