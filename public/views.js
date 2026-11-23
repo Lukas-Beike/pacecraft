@@ -751,10 +751,8 @@ function renderSettingsUsage(data) {
   const lastRequest = usage.last_request_at ? new Date(usage.last_request_at) : null;
   const values = {
     usageSummary: `${number(usage.requests)} Anfragen · ${number(usage.total_tokens)} Tokens heute`,
-    usageRequests: number(usage.requests),
     usageInputTokens: number(usage.input_tokens),
     usageOutputTokens: number(usage.output_tokens),
-    usageTotalTokens: number(usage.total_tokens),
     usageRemainingRequests: optionalNumber(rateLimits.remaining_requests),
     usageRemainingTokens: optionalNumber(rateLimits.remaining_tokens),
     usageLastRequest: lastRequest && !Number.isNaN(lastRequest.getTime())
