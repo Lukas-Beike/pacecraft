@@ -39,7 +39,7 @@ async function loadChangeHistory(more = false) {
 }
 
 async function undoChangeHistoryEntry(change, button) {
-  const confirmed = await requestConfirmation(`Die Änderung „${change.line}“ wird zurückgenommen. Anbieter bleiben unverändert.`, {
+  const confirmed = await requestConfirmation(`Die Änderung „${change.line || "Änderung"}“ wird zurückgenommen. Anbieter bleiben unverändert.`, {
     title: "Änderung zurücknehmen?", confirmLabel: "Zurücknehmen",
   });
   if (!confirmed) return;
