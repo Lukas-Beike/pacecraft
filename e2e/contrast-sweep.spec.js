@@ -62,12 +62,13 @@ async function finishAnimations(page) {
 
 // The dark page background is a flat colour under two soft radial glows (at most 15 % alpha) that axe cannot flatten
 // and reports every text on as undecided. The scan measures against the flat colour instead; the light theme has no glow.
-// The sticky save bar stays in the flow: where axe scrolls a node to, it can sit over the node and make its backdrop
-// undecidable. Its own contrast is measured at its place in the form.
+// The sticky save bar and the bottom navigation stay in the flow: a line of text that straddles their edge, at the
+// scroll position the scan has, makes its backdrop undecidable, and a few pixels of layout decide that (#3930).
+// Their own contrast is measured at their place in the page.
 async function flattenPageGlow(page) {
   await page.evaluate(() => {
     const sheet = new CSSStyleSheet();
-    sheet.replaceSync("body { background-image: none !important; } .save-bar { position: static !important; }");
+    sheet.replaceSync("body { background-image: none !important; } .save-bar, .bottom-nav { position: static !important; }");
     document.adoptedStyleSheets = [...document.adoptedStyleSheets, sheet];
   });
 }
