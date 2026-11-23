@@ -45,11 +45,34 @@ Cause = Literal["salt", "carbs", "carbs_after_session"]
 # What the Coach says with the hint (athlete decision, #4047): the cause, no kilogram
 # figure, and that salt never builds tissue or fat. It travels with the hint, as the
 # Coach prompt and its playbooks are at their size budgets.
-COACH_NOTE: Final = (
-    "Nenne die Ursache, keine Kilogrammzahl: Das Plus von heute früh passt zu viel Salz "
-    "und Kohlenhydraten gestern. Das ist Wasser, kein Fett und kein Gewebe: Salz bindet "
-    "nur kurz Wasser und lässt dich nicht zunehmen."
+_NAME_THE_CAUSE: Final = "Nenne die Ursache, keine Kilogrammzahl: "
+_UP_CAUSES: Final = {
+    frozenset({"salt", "carbs"}): "viel Salz und Kohlenhydraten",
+    frozenset({"salt"}): "viel Salz",
+    frozenset({"carbs"}): "vielen Kohlenhydraten",
+}
+_NO_TISSUE: Final = "Das ist Wasser, kein Fett und kein Gewebe"
+_SALT_BINDS_WATER: Final = (
+    ": Salz bindet nur kurz Wasser und lässt dich nicht zunehmen."
 )
+
+
+def coach_note(direction: Direction, causes: Sequence[Cause]) -> str:
+    """The sentence the Coach says for this hint: its direction and its causes only."""
+    if direction == "down":
+        return (
+            f"{_NAME_THE_CAUSE}Das Minus von heute früh passt zu wenig Kohlenhydraten "
+            "gestern nach einer langen Einheit. Das ist Wasser, kein Fett- und kein "
+            "Gewebeverlust."
+        )
+    named = _UP_CAUSES[frozenset(causes)]
+    ending = _SALT_BINDS_WATER if "salt" in causes else "."
+    return (
+        f"{_NAME_THE_CAUSE}Das Plus von heute früh passt zu {named} gestern. "
+        f"{_NO_TISSUE}{ending}"
+    )
+
+
 Direction = Literal["up", "down"]
 
 
@@ -151,7 +174,7 @@ def water_hint_for_today(
         "date": today.isoformat(),
         "direction": hint.direction,
         "causes": list(hint.causes),
-        "coach_note": COACH_NOTE,
+        "coach_note": coach_note(hint.direction, hint.causes),
     }
 
 

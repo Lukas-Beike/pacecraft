@@ -8,9 +8,9 @@ from datetime import date, timedelta
 from backend.nutrition.energy_balance import DayInputs
 from backend.nutrition.intake_totals import salt_totals
 from backend.nutrition.water_hint import (
-    COACH_NOTE,
     DayIntake,
     WaterHint,
+    coach_note,
     water_hint,
     water_hint_for_today,
     weight_step,
@@ -174,11 +174,30 @@ class WaterHintTests(unittest.TestCase):
                 "date": DAY.isoformat(),
                 "direction": "up",
                 "causes": ["salt", "carbs"],
-                "coach_note": COACH_NOTE,
+                "coach_note": coach_note("up", ("salt", "carbs")),
             },
         )
         # Without this morning's weigh-in there is nothing to explain.
         self.assertIsNone(water_hint_for_today(days, None, DAY, None))
+
+    def test_the_coachs_sentence_follows_the_direction_and_the_causes(self) -> None:
+        both = coach_note("up", ("salt", "carbs"))
+        self.assertIn(
+            "Das Plus von heute früh passt zu viel Salz und Kohlenhydraten gestern. "
+            "Das ist Wasser, kein Fett und kein Gewebe: Salz bindet nur kurz Wasser "
+            "und lässt dich nicht zunehmen.",
+            both,
+        )
+        # Carbohydrates alone never blame salt; a drop never speaks of a plus or of salt.
+        carbs = coach_note("up", ("carbs",))
+        self.assertIn("vielen Kohlenhydraten", carbs)
+        self.assertNotIn("Salz", carbs)
+        down = coach_note("down", ("carbs_after_session",))
+        self.assertIn("Das Minus von heute früh", down)
+        self.assertNotIn("Plus", down)
+        self.assertNotIn("Salz", down)
+        for note in (both, carbs, down):
+            self.assertIn("keine Kilogrammzahl", note)
 
     def test_only_completely_logged_days_speak(self) -> None:
         weights = steady(STEP, 1.6)
