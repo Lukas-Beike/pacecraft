@@ -1558,6 +1558,40 @@ function plannedActivityActions(actual, dateKey, title, entryKey) {
   return [more, h("div", "planned-activity-actions", coach, feedback)];
 }
 
+// "Aus Garmin entfernen" (#4022): the Garmin workouts the app made for this unit go after a confirmation card; the unit
+// stays. It is the athlete's own Garmin sync job, the one the week sync runs for a leftover, so it asks first and
+// writes nothing else. Null: the unit has no copy there or Garmin cannot write.
+function plannedGarminRemoval(entry) {
+  const garmin = providerIds().garmin;
+  if (!entry.remote_copies?.includes(garmin) || !plannedProviderConfiguration()[garmin]) return null;
+  const open = h("button", { type: "button", className: "secondary-button planned-garmin-remove" }, "Aus Garmin entfernen");
+  const confirm = h("button", { type: "button", className: "secondary-button danger-button" }, "Entfernen");
+  const cancel = h("button", { type: "button", className: "secondary-button" }, "Abbrechen");
+  const status = h("p", { className: "planned-delete-note", role: "status" });
+  const ask = h("div", { className: "library-card", hidden: true },
+    h("h4", null, "Aus Garmin entfernen"), h("p", null, `Die Garmin-Trainings von „${entry.name || "Einheit"}“ werden entfernt.\nDie Einheit bleibt in Pacecraft.`),
+    h("div", "planned-activity-actions", confirm, cancel));
+  open.addEventListener("click", () => { ask.hidden = false; confirm.focus(); });
+  cancel.addEventListener("click", () => { ask.hidden = true; open.focus(); });
+  confirm.addEventListener("click", async () => {
+    [confirm, cancel].forEach((button) => { button.disabled = true; });
+    status.textContent = "";
+    try {
+      const done = await runPlanPush(garmin, [{ library_workout_id: String(entry.local_id), remove: true }]);
+      if (done.status !== "completed") throw new Error(globalThis.providerJobErrorDetail?.(done) || "Entfernen fehlgeschlagen");
+    } catch (error) {
+      [confirm, cancel].forEach((button) => { button.disabled = false; });
+      status.textContent = error.message;
+      return;
+    }
+    // The copy is gone: a failed reload must not re-arm "Entfernen" or blame the removal.
+    globalThis.toast?.("Aus Garmin entfernt");
+    await globalThis.load?.().catch(() => {});
+    announcePlanChange("Aus Garmin entfernt");
+  });
+  return [open, ask, status];
+}
+
 // "Verschieben" (#2194): the next seven days from today with the unit's own day dimmed, and "…" for a
 // later date. One tap moves the local unit; its open card follows it to the new week with the receipt.
 function plannedUnitActions(entry, dateKey, todayKey) {
@@ -1596,7 +1630,8 @@ function plannedUnitActions(entry, dateKey, todayKey) {
   edit.addEventListener("click", () => openUnitEditor({ kind: "unit", entry, onSaved: plannedUnitSaved }));
   const [archive, archiveNote] = plannedArchiveControls(entry, dateKey);
   // The day strip opens right under "Verschieben", not below "Löschen" (#3932 K-11).
-  return [h("div", "planned-activity-actions", edit, h("div", "planned-move-group", toggle, days), coach, archive, remove), confirm, archiveNote, status];
+  const [garminOpen, garminAsk, garminStatus] = plannedGarminRemoval(entry) || [null, null, null];
+  return [h("div", "planned-activity-actions", edit, h("div", "planned-move-group", toggle, days), coach, garminOpen, archive, remove), confirm, archiveNote, garminAsk, garminStatus, status];
 }
 
 // "Bearbeiten" and "Archivieren" (#3950): the unit editor over the Coach's change batch; the card shows the receipt

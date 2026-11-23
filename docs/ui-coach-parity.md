@@ -104,7 +104,7 @@ added a row conflicted on it (#4092).
 | Syncs | Refresh calendars, Garmin, Wahoo and weather | Sync buttons `POST /api/external-calendar/sync`, `POST /api/garmin/sync`, `POST /api/wahoo/sync`, `POST /api/weather/sync`, `POST /api/analysis/refresh`, `POST /api/nutrition/refresh` | `start_provider_refresh` | — | both | |
 | Syncs | Read sync state and job results | Status strip `GET /api/sync/status`, `GET /api/sync/jobs/{id}` | `get_sync_job` | — | both | |
 | Syncs | Send planned units to Intervals.icu or Garmin | Kalender week sync `POST /api/sync/jobs` (`plan_push`) | `start_intervals_plan_sync`, `push_strength_to_garmin` (`push`) | named sync | both | |
-| Syncs | Remove the app's own Garmin workouts of a unit | — | `push_strength_to_garmin` (`remove`) | Garmin removal card | Coach only | #4022 |
+| Syncs | Remove the app's own Garmin workouts of a unit | Kalender card "Aus Garmin entfernen" `POST /api/sync/jobs` (`plan_push` with `remove`) | `push_strength_to_garmin` (`remove`) | Garmin removal card | both | |
 | Syncs | Resolve a training sync conflict | Kalender › Wettkämpfe card `POST /api/competitions/{id}/resolve`; a failed job runs again from its sync button | `resolve_training_sync_conflict` | confirmation for taking the remote values | both | |
 | Syncs | Start a full Garmin or Wahoo resync | Anbindungen `POST /api/garmin/full-resync`, `POST /api/wahoo/full-resync` | `start_provider_refresh` (`full_resync`) | confirmation; the Coach: the athlete's own request naming the provider | both | |
 | Syncs | Check a provider connection | Anbindungen `POST /api/providers/{provider}/check`, `POST /api/nutrition/yazio/check` | `check_provider_connection` | read-only | both | |

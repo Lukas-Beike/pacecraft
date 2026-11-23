@@ -329,3 +329,49 @@ test("@responsive a competition conflict is settled at its card", async ({ page,
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBeTruthy();
   await page.unrouteAll({ behavior: "ignoreErrors" });
 });
+
+// #4022: "Aus Garmin entfernen" asks first, then runs the athlete's own Garmin removal job; the unit stays.
+test("@responsive Aus Garmin entfernen asks first and removes only the Garmin copy", async ({ page, request }) => {
+  test.setTimeout(180_000);
+  const posts = [];
+  await openApp(page, request, "/#plan/overview");
+  // A unit is planned from the Bibliothek, through the routes "Einplanen" sends (the calendar has no add button).
+  await page.evaluate(async () => {
+    const made = await api("/api/library", { method: "POST", body: JSON.stringify({ name: "E2E Garmin", description: "- 10m 60%", sport: "Ride", duration_minutes: 10, target: "POWER" }) });
+    const today = timezoneDateKey(state.data.profile.timezone, new Date());
+    await api(`/api/library/${made.local_id}/schedule`, { method: "POST", body: JSON.stringify({ date: addDateKey(planWeekStart(today), 10) }) });
+    await globalThis.load();
+  });
+  await page.getByRole("button", { name: "Nächste Woche" }).click();
+  const entry = page.locator(".planned-entry", { hasText: "E2E Garmin" });
+  if (!(await entry.first().evaluate((node) => node.open))) await entry.locator("summary").first().click();
+  await expect(entry.getByRole("button", { name: "Bearbeiten" })).toBeVisible();
+  await expect(entry.getByRole("button", { name: "Aus Garmin entfernen" })).toHaveCount(0);
+
+  // The fixture has no Garmin copy; the control is built for a unit the read says has one, outside the calendar's redraws.
+  await page.route("**/api/sync/jobs", async (route) => {
+    posts.push(route.request().postDataJSON());
+    await route.fulfill({ json: { id: "j1" } });
+  });
+  await page.evaluate(() => {
+    state.data.garmin = { ...state.data.garmin, configured: true, can_write_workouts: true };
+    globalThis.waitForSyncJob = async () => ({ status: "completed" });
+    globalThis.load = async () => {};
+    const box = document.createElement("div");
+    box.id = "garminBox";
+    box.append(...plannedGarminRemoval({ local_id: "12345678-1234-5678-1234-567812345678", name: "E2E Garmin", remote_copies: [providerIds().garmin] }));
+    document.body.prepend(box);
+    window.scrollTo(0, 0);
+  });
+  const box = page.locator("#garminBox");
+  await box.getByRole("button", { name: "Aus Garmin entfernen" }).click();
+  await expect(box.getByText("Die Einheit bleibt in Pacecraft.")).toBeVisible();
+  expect(posts).toEqual([]);
+  await box.getByRole("button", { name: "Abbrechen" }).click();
+  await expect(box.getByText("Die Einheit bleibt in Pacecraft.")).toBeHidden();
+  await box.getByRole("button", { name: "Aus Garmin entfernen" }).click();
+  await box.getByRole("button", { name: "Entfernen", exact: true }).click();
+  await expect.poll(() => posts.length).toBe(1);
+  expect(posts[0]).toEqual({ provider: "garmin", type: "plan_push", payload: { entries: [{ library_workout_id: "12345678-1234-5678-1234-567812345678", remove: true }] } });
+  await page.unrouteAll({ behavior: "ignoreErrors" });
+});

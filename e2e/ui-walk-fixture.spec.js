@@ -12,7 +12,8 @@ const { pathToFileURL } = require("node:url");
 // The fixture stores no training plan, so "Einplanen" offers no plan choice (#4081).
 // The fixture stores no adaptive replan preview, so the calendar shows no replan card (#4020).
 // The fixture holds no competition with a sync conflict, so no card shows its choices (#4021).
-const FIXTURE_SKIPS = { "Wettkämpfe: Konflikt": /^skip \(none of 1 has it\)$/,"Kalender: Plananpassung": /^skip \(none of 1 has it\)$/,"Bibliothek: Einplanen, Trainingsplan": /^skip \(none of 1 has it\)$/,"Kalender: Laufdynamik": /^skip \(none of [1-9]\d* has it\)$/, "Kalender: Streckenhistorie": /^skip \(none of [1-9]\d* has it\)$/, "Mehr: Wettkämpfe senden": /^skip \(none of 1 has it\)$/ };
+// The fixture sends nothing to Garmin, so no planned unit has a Garmin copy to remove (#4022); how many units are tried depends on the day.
+const FIXTURE_SKIPS = { "Kalender: Aus Garmin entfernen": /^skip \(none of [1-9]\d* has it\)$/,"Wettkämpfe: Konflikt": /^skip \(none of 1 has it\)$/,"Kalender: Plananpassung": /^skip \(none of 1 has it\)$/,"Bibliothek: Einplanen, Trainingsplan": /^skip \(none of 1 has it\)$/,"Kalender: Laufdynamik": /^skip \(none of [1-9]\d* has it\)$/, "Kalender: Streckenhistorie": /^skip \(none of [1-9]\d* has it\)$/, "Mehr: Wettkämpfe senden": /^skip \(none of 1 has it\)$/ };
 
 test("@responsive every UI walk step passes on the fixture app", async ({ page, request }) => {
   // Every step of every view runs in one test; with the step test steps (#3833) it took 52 to 61 s in
