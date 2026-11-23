@@ -2495,7 +2495,7 @@ function renderPlannedDay(view, dateKey, weekHasPlan) {
     if (receipt.change?.id) status.append(...plannedMoveUndo(id, receipt, status, plannedDeleteReceipts));
     return status;
   });
-  const content = h("div", "planned-day-content", heading, ...deleted, notes.childElementCount ? notes : null,
+  const content = h("div", "planned-day-content", heading, ...deleted, checkinRow(dateKey, todayKey, dayContext.checkin), notes.childElementCount ? notes : null,
     dayEvents.length ? plannedEventBand(dayEvents) : null,
     dayEntries.length ? null : h("p", "planned-day-empty", emptyText));
   for (const group of plannedEntryGroups(dayEntries)) {

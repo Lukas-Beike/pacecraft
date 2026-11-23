@@ -98,7 +98,7 @@ added a row conflicted on it (#4092).
 | Body | Save or change body fat | Körper `PUT /api/body/body-fat` | `save_body_entry` (`body_fat`) | receipt; writes Garmin | both | |
 | Body | Remove weight or body fat | Körper `PUT /api/body/weight/remove`, `PUT /api/body/body-fat/remove` | `delete_body_entry` | confirmation | both | |
 | Body | Save or remove a skinfold measurement | Körper `PUT /api/body/skinfolds`, `PUT /api/body/skinfolds/remove` | `save_skinfolds`, `delete_skinfolds` | receipt; writes Garmin; delete confirmation | both | |
-| Check-ins | Enter or correct the daily check-in | — | `save_checkin` | receipt, undo | Coach only | #3953 |
+| Check-ins | Enter or correct the daily check-in | Kalender today "Check-in" `GET /api/checkins`, `POST /api/checkins` | `save_checkin` | receipt, undo | both | |
 | Check-ins | Report illness or wellness from the infection hint | Kalender day `POST /api/infection-hint/ill`, `POST /api/infection-hint/well` | `save_checkin` | receipt, undo | both | |
 | Calendar | Classify an external calendar event | Kalender "Einordnen" `POST /api/external-calendar/decisions` | `classify_calendar_event` | receipt | both | |
 | Syncs | Refresh calendars, Garmin, Wahoo and weather | Sync buttons `POST /api/external-calendar/sync`, `POST /api/garmin/sync`, `POST /api/wahoo/sync`, `POST /api/weather/sync`, `POST /api/analysis/refresh`, `POST /api/nutrition/refresh` | `start_provider_refresh` | — | both | |

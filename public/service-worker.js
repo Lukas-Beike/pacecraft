@@ -26,6 +26,7 @@ const ASSETS = [
   "/activity-details.js",
   "/activity-analysis.js",
   "/performance-view.js",
+  "/checkin-form.js",
   "/diagnostics.js",
   "/state-loader.js",
   "/sync-actions.js",

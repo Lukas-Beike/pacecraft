@@ -21,6 +21,7 @@ from backend.canonical.vocabulary import ProviderId
 from backend.performance.threshold_staleness import REASON_STALE, STALE_AFTER_DAYS
 from backend.push.events import (
     MISSING_FEEDBACK_HOUR,
+    checkin_event,
     maintenance_event,
     missing_feedback_event,
     morning_data_event,
@@ -118,6 +119,7 @@ class PushChecks:
                 *provider_problems(db, since),
                 *upcoming_competitions(db, today),
                 morning_data_event(db, today),
+                checkin_event(db, today),
                 new_activity_event(recent),
             ]
         if self._source(self._infection_hint):

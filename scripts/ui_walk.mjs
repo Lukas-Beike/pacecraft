@@ -268,6 +268,8 @@ export const STEPS = [
   // Shown only on a morning whose night values are clearly unusual (M14), so the step is optional. The values
   // come with the two answers, "Mir geht's gut" (neutral) and "Ich bin krank" (filled); they are never pressed.
   { view: "plan", name: "Kalender: Infekt-Hinweis", covers: "#3762 infection hint, #3821 answers", pre: ['.planned-view-switch button[data-view="week"]'], ready: ".planned-day.is-today [data-infection-hint]:has(.infection-hint-actions > button.secondary-button + button:not(.secondary-button))", kind: "numbers", optional: true },
+  // Read-only: the walk checks that today's day offers the check-in form, it opens none and saves nothing (#3953).
+  { view: "plan", name: "Kalender: Check-in", covers: "#3953 daily check-in", pre: ['.planned-view-switch button[data-view="week"]'], ready: ".planned-day.is-today [data-checkin] > button", kind: "text" },
   // A planned unit with equipment, with "Löschen" or with fuelling advice may lie in a later week (2.1.26).
   { view: "plan", name: "Kalender: Schuh/Rad geplant", covers: "#3011 planned equipment chip", each: PLANNED, ...LATER, ready: '.planned-entry[open] .planned-equipment-chip[aria-label*=": "]', kind: "text", optional: true },
   { view: "plan", name: "Kalender: geplante Einheit", covers: "#2189 planned session", pre: ['button[aria-label="Nächste Woche"]'], each: PLANNED, ready: ".planned-entry[open] .planned-entry-details", kind: "text", optional: true, post: ['button[aria-label="Vorherige Woche"]'] },
