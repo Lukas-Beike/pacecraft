@@ -382,7 +382,8 @@ function openPlanEditor({ plan = null, onSaved }) {
       const body = { name: values.name.trim(), goal: values.goal.trim(), start_date: values.start, end_date: values.end, status: values.status };
       const result = await api(plan ? `/api/training-plans/${encodeURIComponent(plan.id)}/update` : "/api/training-plans", { method: "POST", body: JSON.stringify(body) });
       dialog.close();
-      await onSaved(result, body);
+      // Saved: a failing reload is the caller's to show, never a second save.
+      void Promise.resolve(onSaved(result, body)).catch((error) => globalThis.toast?.(error.message, true));
     } catch (error) {
       status.textContent = error.message;
       save.disabled = false;

@@ -49,7 +49,11 @@ def _candidate(current: dict[str, Any], values: dict[str, Any]) -> dict[str, Any
     candidate = {
         "id": current["id"],
         "name": str(values.get("name") or current.get("name") or "").strip()[:200],
-        "goal": str(values.get("goal") or current.get("goal") or "").strip()[:2000],
+        "goal": str(
+            values["goal"]
+            if values.get("goal") is not None
+            else current.get("goal") or ""
+        ).strip()[:2000],
         "start_date": str(
             values.get("start_date") or current.get("start_date") or ""
         ).strip(),

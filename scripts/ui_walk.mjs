@@ -275,7 +275,7 @@ export const STEPS = [
   // Read-only as well: the library card offers "Einplanen" and "Löschen"; the walk presses neither (#3028).
   { view: "plan", name: "Bibliothek: Einplanen, Löschen", covers: "#3028 library actions", pre: [tab("plan", "library")], opens: ["#library details.library-sport > summary"], ready: "#library .library-card .planned-activity-actions .danger-button", kind: "text", optional: true, post: [tab("plan", "overview")] },
   // Read-only: the walk checks that "+ Einheit" and "Bearbeiten" are there, it opens no editor and saves nothing (#3951).
-  { view: "plan", name: "Bibliothek: Einheit anlegen, bearbeiten", covers: "#3951 library editor", pre: [tab("plan", "library")], opens: ["#library details.library-sport > summary"], ready: "#library .library-toolbar .secondary-button", kind: "text", post: [tab("plan", "overview")] },
+  { view: "plan", name: "Bibliothek: Einheit anlegen, bearbeiten", covers: "#3951 library editor", pre: [tab("plan", "library")], opens: ["#library details.library-sport > summary"], ready: "#library .library-toolbar:not(.library-plans-head) .secondary-button", kind: "text", post: [tab("plan", "overview")] },
   // Read-only: the walk checks that the plans block with "+ Plan" is there, it opens no form (#3950).
   { view: "plan", name: "Bibliothek: Pläne", covers: "#3950 training plans", pre: [tab("plan", "library")], ready: "#library .library-toolbar > strong", kind: "text", post: [tab("plan", "overview")] },
   // Read-only: the walk checks that "+ Einheit hinzufügen" and "Bearbeiten" are there and opens no editor (#3950).

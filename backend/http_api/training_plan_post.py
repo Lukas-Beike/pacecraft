@@ -66,7 +66,12 @@ class TrainingPlanPostRoutes:
         that is no UUID; 404 "Trainingsplan nicht gefunden.".
         """
         payload = _read_fields(handler, _FIELDS | {"confirmed"})
-        if payload.get("status") == "archived" and payload.get("confirmed") is not True:
+        # The service reads the status stripped, case-folded and by its German alias.
+        archives = str(payload.get("status") or "").strip().casefold() in {
+            "archived",
+            "archiviert",
+        }
+        if archives and payload.get("confirmed") is not True:
             raise AppError(
                 409,
                 "Das Archivieren muss bestätigt werden.",

@@ -3048,6 +3048,12 @@ function planPost(plan, path, body, text) {
   return async () => planChanged(text, await api(`/api/training-plans/${encodeURIComponent(plan.id)}/${path}`, { method: "POST", body: JSON.stringify(body) }));
 }
 
+// A restored plan runs again when today lies in its period, else it is planned.
+function planRestoredStatus(plan) {
+  const today = timezoneDateKey(state.data?.profile?.timezone, new Date());
+  return plan.start_date <= today && today <= plan.end_date ? "active" : "planned";
+}
+
 function planCard(plan) {
   const id = String(plan.id);
   const status = h("p", { className: "planned-move-status", role: "status" });
@@ -3058,7 +3064,7 @@ function planCard(plan) {
   const notes = [removeNote];
   if (plan.status === "archived") {
     const restore = h("button", { type: "button", className: "secondary-button" }, "Wiederherstellen");
-    restore.addEventListener("click", () => void planPost(plan, "update", { status: "planned" }, `Wiederhergestellt: ${plan.name}`)().catch((error) => { status.textContent = error.message; }));
+    restore.addEventListener("click", () => void planPost(plan, "update", { status: planRestoredStatus(plan) }, `Wiederhergestellt: ${plan.name}`)().catch((error) => { status.textContent = error.message; }));
     buttons.push(restore);
   } else {
     const edit = h("button", { type: "button", className: "secondary-button" }, "Bearbeiten");
@@ -3083,7 +3089,7 @@ function libraryPlans(archivedView) {
   if (!archivedView) {
     const add = h("button", { type: "button", className: "secondary-button" }, "+ Plan");
     add.addEventListener("click", () => openPlanForm());
-    head.push(h("div", "library-toolbar", h("strong", null, "Pläne"), add));
+    head.push(h("div", "library-toolbar library-plans-head", h("strong", null, "Pläne"), add));
   }
   // A deleted plan's card is gone, so its receipt leads the plans.
   const lost = [...planReceipts].filter(([id]) => !shown.has(id)).map(([id, receipt]) => libraryReceiptLine(h("p", { className: "planned-move-status", role: "status" }), id, receipt, planReceipts));
@@ -3096,6 +3102,8 @@ function libraryToolbar() {
     const input = h("input", { type: "radio", name: "libraryView", value, checked: libraryView === value });
     input.addEventListener("change", () => {
       libraryView = value;
+      // A receipt belongs to the view the change was made in.
+      planReceipts.clear();
       renderLibrary(state.data?.library || []);
       $("#library input[name=libraryView]:checked")?.focus();
     });

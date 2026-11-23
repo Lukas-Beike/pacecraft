@@ -59,9 +59,11 @@ class TrainingPlanPostRoutesTests(unittest.TestCase):
             "plan": {},
         }
 
-        with self.assertRaises(AppError) as raised:
-            self.post(path, {"status": "archived"})
-        self.assertEqual("confirmation_required", raised.exception.reason)
+        # The service reads the status stripped, case-folded and by alias, so the guard does too.
+        for spelling in ("archived", "Archiviert", " ARCHIVED "):
+            with self.assertRaises(AppError) as raised:
+                self.post(path, {"status": spelling})
+            self.assertEqual("confirmation_required", raised.exception.reason)
         self.service.update.assert_not_called()
 
         self.post(path, {"status": "archived", "confirmed": True})

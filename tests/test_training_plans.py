@@ -155,6 +155,18 @@ class TrainingPlanServiceTests(unittest.TestCase):
         self.assertEqual(1, len(self.repository.list(self.db)))
         self.assertEqual(self.revision(), 0)
 
+    def test_update_clears_the_goal_only_when_it_is_sent_empty(self):
+        with patch("backend.planning.training_plans.change_history.record_change"):
+            self.service.update(self.plan_id, {"goal": "Grundlage"})
+            self.service.update(self.plan_id, {"name": "Base 2"})
+            self.assertEqual(
+                "Grundlage", self.repository.get(self.db, self.plan_id)["goal"]
+            )
+
+            self.service.update(self.plan_id, {"goal": ""})
+
+        self.assertEqual("", self.repository.get(self.db, self.plan_id)["goal"])
+
     def test_failed_update_rolls_back_and_does_not_publish(self):
         with (
             patch(
