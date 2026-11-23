@@ -219,6 +219,8 @@ const OPENERS = [
   /^\.planned-view-switch button\[data-view="(week|month)"\]$/,
   /^\.planned-month-day:not\(\[disabled\]\)(:has\(\.planned-month-mark\.is-[a-z]+\))?$/,
   /^button\[aria-label="(Nächste|Vorherige) Woche"\]$/,
+  // The library card's "Einplanen" only unfolds the day strip; no day is pressed (#4081).
+  /^#library \.library-card \.planned-activity-actions \.secondary-button\[aria-expanded="false"\]$/,
 ];
 const FORBIDDEN = /speicher|synchronis|send|lösch|exportier|rückgängig|einstellung|herunterlad|undo|save|delete|export/i;
 export const isOpener = (selector) => OPENERS.some((pattern) => pattern.test(selector));
@@ -280,6 +282,11 @@ export const STEPS = [
   { view: "plan", name: "Bibliothek: Einplanen, Löschen", covers: "#3028 library actions", pre: [tab("plan", "library")], opens: ["#library details.library-sport > summary"], ready: "#library .library-card .planned-activity-actions .danger-button", kind: "text", optional: true, post: [tab("plan", "overview")] },
   // Read-only: the walk checks that "+ Einheit" and "Bearbeiten" are there, it opens no editor and saves nothing (#3951).
   { view: "plan", name: "Bibliothek: Einheit anlegen, bearbeiten", covers: "#3951 library editor", pre: [tab("plan", "library")], opens: ["#library details.library-sport > summary"], ready: "#library .library-toolbar:not(.library-plans-head) .secondary-button", kind: "text", post: [tab("plan", "overview")] },
+  { view: "plan", name: "Bibliothek: Bearbeiten", covers: "#4081 library card edit", pre: [tab("plan", "library")], opens: ["#library details.library-sport > summary"], ready: '#library .library-card .planned-activity-actions > .secondary-button:first-child', kind: "text", optional: true, post: [tab("plan", "overview")] },
+  // A unit is planned from the Bibliothek (#4053): "Einplanen" only opens its day strip, no day is pressed (#4081).
+  { view: "plan", name: "Bibliothek: Einplanen, Tagesauswahl", covers: "#4081 library Einplanen strip", pre: [tab("plan", "library")], opens: ["#library details.library-sport > summary", '#library .library-card .planned-activity-actions .secondary-button[aria-expanded="false"]'], ready: "#library .library-card .planned-move-days:not([hidden])", kind: "text", optional: true, post: [tab("plan", "overview")] },
+  // The plan choice shows only with an active training plan (#4054).
+  { view: "plan", name: "Bibliothek: Einplanen, Trainingsplan", covers: "#4054 Einplanen plan choice", pre: [tab("plan", "library")], opens: ["#library details.library-sport > summary", '#library .library-card .planned-activity-actions .secondary-button[aria-expanded="false"]'], ready: "#library .library-card .library-plan-field:not([hidden]) select", kind: "text", optional: true, post: [tab("plan", "overview")] },
   // Read-only: the walk checks that the plans block with "+ Plan" is there, it opens no form (#3950).
   { view: "plan", name: "Bibliothek: Pläne", covers: "#3950 training plans", pre: [tab("plan", "library")], ready: "#library .library-toolbar > strong", kind: "text", post: [tab("plan", "overview")] },
   // Read-only: the walk checks that "Hinzufügen" is there, it opens no dialog and saves nothing (#3837).
