@@ -70,17 +70,31 @@ PASSWORD_FILE = re.compile(
 )
 
 
+# What may come before such a run in the same command (#3940): nothing that could
+# change the directory, the interpreter's options, a function or alias named like
+# it, or the script itself. An allowlist: a status read, or one literal file read
+# into a pipe; everything else before the run blocks it.
+SAFE_BEFORE = re.compile(
+    r"|git\s+status(?:\s+(?:-s|--short))?|(?:get-content|cat|type)\s+[\w./\\:-]+",
+    re.IGNORECASE,
+)
+
+
 def names_secrets(text: str) -> bool:
     return bool(SECRETS.search(DOT_SEGMENT.sub("", QUOTES.sub("", text))))
 
 
 def secret_mention_allowed(command: str) -> bool:
-    """True when every secret-folder path is a prod script's --password-file value."""
-    for segment in SEGMENTS.split(CONTINUATION.sub(" ", command)):
+    """True when every secret-folder path is a prod script's --password-file value
+    and only SAFE_BEFORE segments come before that script's run."""
+    segments = SEGMENTS.split(CONTINUATION.sub(" ", command))
+    for index, segment in enumerate(segments):
         if not names_secrets(segment):
             continue
-        if not any(run.match(segment.strip()) for run in SECRET_RUN) or names_secrets(
-            PASSWORD_FILE.sub(" ", segment)
+        if (
+            not any(run.match(segment.strip()) for run in SECRET_RUN)
+            or names_secrets(PASSWORD_FILE.sub(" ", segment))
+            or not all(SAFE_BEFORE.fullmatch(item.strip()) for item in segments[:index])
         ):
             return False
     return True
