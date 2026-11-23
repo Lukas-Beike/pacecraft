@@ -224,7 +224,9 @@ class GarminRemoteReader:
         chunk_days: int,
         all_sync_days: int,
         garmin_tokens: Any | None = None,
+        sleep_keys: Callable[[str, Any], None] | None = None,
     ) -> None:
+        self._sleep_keys = sleep_keys
         self._config = config
         self._client_factory = client_factory
         self._state_service = state_service
@@ -608,6 +610,8 @@ class GarminRemoteReader:
                 operation_context=operation_context(),
             )
             self._raise_if_cancelled(cancel_event)
+            if self._sleep_keys is not None:
+                self._sleep_keys(operation, result)
             return result
 
         return call_external
@@ -1099,7 +1103,9 @@ class GarminMorningRemoteReader:
         diagnostic_capture: Any,
         logger: logging.Logger,
         garmin_tokens: Any | None = None,
+        sleep_keys: Callable[[str, Any], None] | None = None,
     ) -> None:
+        self._sleep_keys = sleep_keys
         self._config = config
         self._client_factory = client_factory
         self._profile_service = profile_service
@@ -1154,7 +1160,7 @@ class GarminMorningRemoteReader:
         callback: Callable[[], Any],
         details: dict[str, Any] | None,
     ) -> Any:
-        return provider_http.external_call(
+        result = provider_http.external_call(
             service,
             operation,
             callback,
@@ -1163,6 +1169,9 @@ class GarminMorningRemoteReader:
             diagnostic_capture=self._diagnostic_capture,
             operation_context=operation_context(),
         )
+        if self._sleep_keys is not None:
+            self._sleep_keys(operation, result)
+        return result
 
 
 class GarminSyncSource:
