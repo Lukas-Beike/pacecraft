@@ -2378,7 +2378,7 @@ function deficitText(card, deviceLabel) {
 // Without logged meals, the intake from weight and activity (#3604): an estimate, never "gegessen"
 // as logged, with its span and the last logged window it was calibrated on, or why there is none.
 const ESTIMATE_MISSING = {
-  calibration: "in den letzten 12 Wochen ist keine Woche vollständig erfasst",
+  calibration: "in den letzten 12 Wochen keine 4 Wochen mit genug erfassten Tagen und Wiegungen",
   calibration_age: "letzte Erfassung zu lange her",
   weight_change: "Gewicht seitdem zu stark verändert",
   activity_change: "Training seitdem zu stark verändert",
