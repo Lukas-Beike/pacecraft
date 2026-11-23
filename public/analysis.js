@@ -864,11 +864,11 @@ function cyclingPowerProfileTable(result) {
 }
 
 // One sport's experimental estimate: CS/D′ under the running best efforts, CP/W′ under the power profile (#2265).
-// Beside measured bests it also names missing estimates; alone, a line of only missing ones is dropped.
-function criticalPowerLine(result, sport, hasValues) {
+// Beside an estimate it also names the missing ones; a line of only missing ones holds no value and is dropped (#4037).
+function criticalPowerLine(result, sport) {
   const estimate = result?.critical_power;
   const fits = (estimate?.fits || []).filter((fit) => fit.sport === sport);
-  if (!fits.length || (!hasValues && !fits.some((fit) => fit.status === "ok"))) return null;
+  if (!fits.some((fit) => fit.status === "ok")) return null;
   const labels = { "ride:outdoor": "Rad outdoor", "ride:indoor": "Rad indoor", "run:outdoor": "Lauf" };
   const parts = fits.map((fit) => {
     const label = labels[`${fit.sport}:${fit.environment}`] || fit.sport;
@@ -1062,8 +1062,7 @@ function renderPowerProfile(result) {
 function renderCriticalLines(result) {
   for (const [id, sport] of CRITICAL_LINES) {
     const root = document.getElementById(id);
-    const hasValues = sport === "ride" ? cyclingPowerProfileHasValues(result) : (result?.all_time?.running?.distance || []).some((item) => item.seconds > 0);
-    const line = result && criticalPowerLine(result, sport, hasValues);
+    const line = result && criticalPowerLine(result, sport);
     root.replaceChildren(...(line ? [line] : []));
     root.dataset.analysisEmpty = result ? String(!line) : "failed";
   }
