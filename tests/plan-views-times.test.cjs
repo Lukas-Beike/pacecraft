@@ -92,7 +92,7 @@ test("a past week shows every tile with its change and source, in the approved o
     "Zeit|7:40 h|+12 % ggü. Vorwoche",
     "Belastung|412|+8 % ggü. Vorwoche",
     "Schlaf Ø|7:05 h|−0:10 ggü. Vorwoche|Garmin",
-    "Ruhepuls Ø|46 bpm|unter Normalbereich · Wahoo",
+    "Ruheherzfrequenz Ø|46 bpm|unter Normalbereich · Wahoo",
     "HRV Ø|62 ms|im Normalbereich · Garmin",
     "Check-ins|6 von 7|Ø Motivation 7 · Stress 3",
     "Besondere Einheiten|So Langer Lauf · höchste Belastung (120)Sa 10 km · Wettkampf",
@@ -149,7 +149,7 @@ test("structured complaints show one line per area with days and severity", () =
 });
 
 test("the calendar day names area, side and severity before the athlete's words", () => {
-  const { plannedDayNotes } = extractFunctions("plan-views.js", ["COMPLAINT_AREA_LABELS", "COMPLAINT_SIDE_LABELS", "complaintLabel", "infectionHintText", "infectionHintDismissed", "infectionHintReceipts", "infectionHintNote", "NO_COMPLAINT_ANSWERS", "reportsComplaint", "plannedDayNotes"], {
+  const { plannedDayNotes } = extractFunctions("plan-views.js", ["COMPLAINT_AREA_LABELS", "COMPLAINT_SIDE_LABELS", "complaintLabel", "plannedPauseDecorate", "infectionHintText", "infectionHintDismissed", "infectionHintReceipts", "infectionHintNote", "NO_COMPLAINT_ANSWERS", "reportsComplaint", "plannedDayNotes"], {
     document: fakeDocument(), plannedDayNoteSpecs: () => [],
   });
   const note = (checkin) => textOf(plannedDayNotes({ checkin }, [], "2026-11-17"));

@@ -36,6 +36,7 @@ from backend.http_api.chat_post import ChatPostRoutes
 from backend.http_api.chat_stream import CoachChatStreamTransport
 from backend.http_api.coach_actions_post import CoachActionsPostRoutes
 from backend.http_api.coach_get import CoachGetRoutes
+from backend.http_api.competition_conflict_post import CompetitionConflictPostRoutes
 from backend.http_api.credentials_put import CredentialsPutRoutes
 from backend.http_api.diagnostics_delete_post import DiagnosticsDeletePostRoutes
 from backend.http_api.diagnostics_get import DiagnosticsGetRoutes
@@ -48,6 +49,7 @@ from backend.http_api.handler import (
     HttpRequestHandlerDependencies,
     create_request_handler,
 )
+from backend.http_api.history_get import HistoryGetRoutes
 from backend.http_api.history_undo_post import HistoryUndoPostRoutes
 from backend.http_api.idempotency import IdempotencyStore
 from backend.http_api.library_page import LibraryPageService
@@ -508,6 +510,7 @@ def _read_routes(
                 ),
             ),
         ),
+        HistoryGetRoutes(ctx.history.change_history_service),
         DiagnosticsGetRoutes(
             ctx.diagnostics.recent_log_entries_service,
             ctx.diagnostics.report_service,
@@ -585,6 +588,7 @@ def _athlete_write_routes(
         ),
         LibraryPostRoutes(ctx.planning.workout_library, _unit_edit_service(ctx)),
         TrainingPlanPostRoutes(ctx.planning.training_plan, _unit_edit_service(ctx)),
+        CompetitionConflictPostRoutes(lambda: ctx.sync_commands.conflicts()),
         AdaptiveReplanPostRoutes(
             lambda: AdaptiveReplanActionService(
                 ctx.database(),
@@ -715,6 +719,7 @@ def build_http_api(
         sync_get,
         state_events_get,
         athlete_get,
+        history_get,
         diagnostics_get,
         analysis,
     ) = _read_routes(
@@ -734,6 +739,7 @@ def build_http_api(
         library_post,
         training_plan_post,
         adaptive_replan_post,
+        competition_conflict_post,
         credentials_put,
         equipment_post,
         first_threshold_post,
@@ -769,6 +775,7 @@ def build_http_api(
             state_events_get,
             coach_get,
             athlete_get,
+            history_get,
             diagnostics_get,
             privacy_get,
             nutrition_get,
@@ -792,6 +799,7 @@ def build_http_api(
             library_post,
             training_plan_post,
             adaptive_replan_post,
+            competition_conflict_post,
             credentials_put,
             wahoo_get,
             wahoo_post,

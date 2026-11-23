@@ -116,7 +116,7 @@ def run_document(unit: Mapping[str, Any], zones: ZoneSettings | None) -> dict[st
     if stored_cap(unit) is not None and not lthr:
         # The cap is percent of the threshold HR; without it the cap would be lost.
         raise garmin_run_workout.GarminRunMappingError(
-            "Die Pulsobergrenze braucht den Schwellenpuls, der nicht vorliegt."
+            "Die Pulsobergrenze braucht die LSHF, die nicht vorliegt."
         )
     capped = capped_description(description, unit, lthr=lthr)
     return garmin_run_workout.run_workout(

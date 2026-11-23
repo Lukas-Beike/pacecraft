@@ -159,7 +159,7 @@ every named number the code fixes. A test fails when it is out of date.
 | `CALIBRATION_TABLE_RPES` | `tuple(range(1, 11))` | `backend/performance/local_tss.py` | The RPE values of the detail table (factor per RPE of its +-1 band). |
 | `LOCAL_SOURCE` | `'local'` | `backend/performance/local_tss.py` |  |
 | `LOCAL_INDOOR_SOURCE` | `'local_indoor'` | `backend/performance/local_tss.py` |  |
-| `CURVE_FORMAT_VERSION` | `3` | `backend/performance/mean_max_curve.py` | The curve computation's own version (#2821): it covers the inputs without a method version of their own (merge_details, analysis_input, grade_adjustment) and the stored payload fields. Bump it whenever any of them changes the curves, so stored curves are computed again; the golden-curve test pins it. |
+| `CURVE_FORMAT_VERSION` | `4` | `backend/performance/mean_max_curve.py` | The curve computation's own version (#2821): it covers the inputs without a method version of their own (merge_details, analysis_input, grade_adjustment) and the stored payload fields. Bump it whenever any of them changes the curves, so stored curves are computed again; the golden-curve test pins it. |
 | `SLEEP_SECTION` | `'sleep'` | `backend/performance/morning_battery.py` |  |
 | `MORNING_RETRY_SECONDS` | `15 * 60` | `backend/performance/morning_battery_service.py` |  |
 | `MORNING_MAX_ATTEMPTS` | `3` | `backend/performance/morning_battery_service.py` |  |
@@ -169,7 +169,7 @@ every named number the code fixes. A test fails when it is out of date.
 | `MORNING_SOURCES` | `frozenset({'body_battery', 'sleep'})` | `backend/performance/morning_battery_service.py` |  |
 | `METHOD_ID` | `'morning_body_battery'` | `backend/performance/morning_battery_service.py` | The morning record's values are stored as local derived observations (#1686); the Garmin state view keeps only the refresh bookkeeping. |
 | `METHOD_VERSION` | `1` | `backend/performance/morning_battery_service.py` |  |
-| `METHOD` | `'pace-at-heart-rate-v2'` | `backend/performance/pace_at_hr.py` | v2: treadmill and virtual runs are flat and never grade-adjusted. |
+| `METHOD` | `'pace-at-heart-rate-v3'` | `backend/performance/pace_at_hr.py` | v2: treadmill and virtual runs are flat and never grade-adjusted. v3: the reasons name Herzfrequenz and Pace (#3981); the numbers are unchanged. |
 | `WARMUP_S` | `600` | `backend/performance/pace_at_hr.py` |  |
 | `MIN_DURATION_S` | `1800` | `backend/performance/pace_at_hr.py` |  |
 | `BIN_BPM` | `5` | `backend/performance/pace_at_hr.py` |  |
@@ -180,7 +180,7 @@ every named number the code fixes. A test fails when it is out of date.
 | `MAX_SPEED_CV` | `0.15` | `backend/performance/pace_at_hr.py` |  |
 | `MIN_SESSIONS` | `2` | `backend/performance/pace_at_hr.py` |  |
 | `SCOPE` | `'Pace in a fixed heart-rate band on steady, flat-ish outdoor or indoor runs after a 10-minute war... (sha256 7624bc98)` | `backend/performance/pace_at_hr.py` |  |
-| `POWER_METHOD` | `'power-at-heart-rate-v1'` | `backend/performance/pace_at_hr.py` |  |
+| `POWER_METHOD` | `'power-at-heart-rate-v2'` | `backend/performance/pace_at_hr.py` | v2: the reasons name Herzfrequenz (#3981); the numbers are unchanged. |
 | `POWER_SMOOTH_S` | `60` | `backend/performance/pace_at_hr.py` | The heart rate trails power by up to a minute: each heart-rate sample is paired with the mean power of the minute before it. |
 | `LT1_DAYS` | `60` | `backend/performance/pace_at_hr.py` |  |
 | `LT1_MIN_SESSIONS` | `3` | `backend/performance/pace_at_hr.py` |  |

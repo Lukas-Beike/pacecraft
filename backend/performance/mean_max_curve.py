@@ -75,7 +75,7 @@ _RETRY_AFTER_S: Final = 60.0
 # method version of their own (merge_details, analysis_input, grade_adjustment)
 # and the stored payload fields. Bump it whenever any of them changes the curves,
 # so stored curves are computed again; the golden-curve test pins it.
-CURVE_FORMAT_VERSION: Final = 3
+CURVE_FORMAT_VERSION: Final = 4
 
 
 @dataclass(frozen=True, slots=True)

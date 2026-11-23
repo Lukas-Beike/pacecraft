@@ -1,6 +1,6 @@
 // Headless read-only walk through the running app at phone and desktop width.
 //
-//   node scripts/ui_walk.mjs --url <app address> --password-file <secret file>
+//   node scripts/ui_walk.mjs {--url <app address> | --url-file <file>} --password-file <secret file>
 //     --out-dir <new scratchpad dir> [--compare <previous walk's out-dir or its ui-walk.json>]
 //
 // Logs in with the password read from the file (never printed or passed on a
@@ -94,6 +94,24 @@ export function baseUrl(text) {
   const url = new URL(text);
   if (!["http:", "https:"].includes(url.protocol)) throw new Error("the app address must be an http(s) URL");
   return url.origin;
+}
+
+// The app address from --url, or from --url-file's one line in the scratchpad (#4125): a file keeps the address out
+// of the command, which no substitution may bring in. The address is never printed.
+export function appUrl(values) {
+  if (Boolean(values.url) === Boolean(values["url-file"])) throw new Error("give exactly one of --url and --url-file");
+  if (values.url) return baseUrl(values.url);
+  const file = scratchPath(values["url-file"]);
+  let text;
+  try {
+    text = fs.readFileSync(file, "utf8");
+  } catch {
+    // A fixed message: the callers map an fs error to their own wording (secret, out-dir).
+    throw new Error("cannot read --url-file");
+  }
+  const lines = text.trim().split(/\r?\n/);
+  if (lines.length !== 1 || !lines[0].trim()) throw new Error("--url-file must hold one URL");
+  return baseUrl(lines[0].trim());
 }
 
 // The cache name and asset versions are content hashes the server stamps.
@@ -268,6 +286,8 @@ export const STEPS = [
   // Shown only on a morning whose night values are clearly unusual (M14), so the step is optional. The values
   // come with the two answers, "Mir geht's gut" (neutral) and "Ich bin krank" (filled); they are never pressed.
   { view: "plan", name: "Kalender: Infekt-Hinweis", covers: "#3762 infection hint, #3821 answers", pre: ['.planned-view-switch button[data-view="week"]'], ready: ".planned-day.is-today [data-infection-hint]:has(.infection-hint-actions > button.secondary-button + button:not(.secondary-button))", kind: "numbers", optional: true },
+  // Read-only: the walk checks that today's day offers the check-in form, it opens none and saves nothing (#3953).
+  { view: "plan", name: "Kalender: Check-in", covers: "#3953 daily check-in", pre: ['.planned-view-switch button[data-view="week"]'], ready: ".planned-day.is-today [data-checkin] > button", kind: "text" },
   // A planned unit with equipment, with "Löschen" or with fuelling advice may lie in a later week (2.1.26).
   { view: "plan", name: "Kalender: Schuh/Rad geplant", covers: "#3011 planned equipment chip", each: PLANNED, ...LATER, ready: '.planned-entry[open] .planned-equipment-chip[aria-label*=": "]', kind: "text", optional: true },
   { view: "plan", name: "Kalender: geplante Einheit", covers: "#2189 planned session", pre: ['button[aria-label="Nächste Woche"]'], each: PLANNED, ready: ".planned-entry[open] .planned-entry-details", kind: "text", optional: true, post: ['button[aria-label="Vorherige Woche"]'] },
@@ -291,6 +311,10 @@ export const STEPS = [
   { view: "plan", name: "Bibliothek: Einplanen, Trainingsplan", covers: "#4054 Einplanen plan choice", pre: [tab("plan", "library")], opens: ["#library details.library-sport > summary", '#library .library-card .planned-activity-actions .secondary-button[aria-expanded="false"]'], ready: "#library .library-card .library-plan-field:not([hidden]) select", kind: "text", optional: true, post: [tab("plan", "overview")] },
   // Read-only: the walk checks that the plans block with "+ Plan" is there, it opens no form (#3950).
   { view: "plan", name: "Bibliothek: Pläne", covers: "#3950 training plans", pre: [tab("plan", "library")], ready: "#library .library-toolbar > strong", kind: "text", post: [tab("plan", "overview")] },
+  // Only a unit with a Garmin copy offers "Aus Garmin entfernen" and the fixture sends nothing to Garmin, so the step is optional; it is never pressed (#4022).
+  { view: "plan", name: "Kalender: Aus Garmin entfernen", covers: "#4022 Garmin removal", each: PLANNED, ...LATER, ready: ".planned-entry[open] .planned-garmin-remove", kind: "text", optional: true },
+  // Only a competition with a sync conflict shows its choices and the fixture holds none, so the step is optional; neither is pressed (#4021).
+  { view: "plan", name: "Wettkämpfe: Konflikt", covers: "#4021 competition conflict", pre: [tab("plan", "season")], ready: ".competition-conflict .planned-activity-actions button", kind: "text", optional: true, post: [tab("plan", "overview")] },
   // Only a plan card offers "Zeitraum ersetzen" and the fixture holds no plan, so the step is optional; the dialog is never opened (#4024).
   { view: "plan", name: "Bibliothek: Zeitraum ersetzen", covers: "#4024 period replacement", pre: [tab("plan", "library")], ready: "#library .library-card .planned-activity-actions button:nth-child(2)", kind: "text", optional: true, post: [tab("plan", "overview")] },
   // Only a stored adaptive preview with changes shows the card, so the step is optional; "Übernehmen" is never pressed (#4020).
@@ -326,6 +350,8 @@ export const STEPS = [
   { view: "nutrition", name: "Ernährung: Zuletzt genutzt", covers: "#3444 product last use", pre: [tab("nutrition", "products")], opens: ['#nutritionProducts details[data-section="all"] > summary'], ready: "#nutritionProducts details[data-section='all'] .nutrition-last-use", kind: "text" },
   // Read-only: the walk checks that a meal card has its pencil, it opens no dialog and saves nothing (#3948).
   { view: "nutrition", name: "Ernährung: Mahlzeit bearbeiten", covers: "#3948 meal pencil", since: "2.2.15", pre: [tab("nutrition", "diary")], ready: ".nutrition-card:has(.nutrition-card-head button[aria-label^='Mahlzeit bearbeiten']) h3", kind: "text", optional: true },
+  // Read-only: the walk checks that the saved meals section is there, it opens no dialog and saves nothing (#3952).
+  { view: "nutrition", name: "Ernährung: Gespeicherte Mahlzeiten", covers: "#3952 saved meals", pre: [tab("nutrition", "products")], ready: "#nutritionTemplates > details > summary", kind: "text" },
   { view: "nutrition", name: "Ernährung: Körper", covers: "Body analysis", pre: [tab("nutrition", "body")], ready: "#bodyAnalysisCharts [data-body-metric] svg", kind: "chart" },
   { view: "nutrition", name: "Ernährung: Körperwerte", covers: "#3402 weight and body fat with their pencils", pre: [tab("nutrition", "body")], ready: "#bodyAnalysisCharts [data-body-overview] [data-metric='weight_kg'] th small", kind: "text" },
   { view: "nutrition", name: "Ernährung: Energieverbrauch", covers: "#3099 #3252 energy card in the diary, #3550 übriger Alltag, #3577 Übriger Alltag, #3703 one source, #3723 provisional Übriger Alltag", pre: [tab("nutrition", "diary")], ready: "#nutritionEnergy [data-energy] .energy-usage", kind: "text" },
@@ -337,6 +363,8 @@ export const STEPS = [
   { view: "more", name: "Mehr: Wettkämpfe senden", covers: "#3838 competition send button", since: "2.2.12", pre: [tab("more", "connections")], opens: ["#connection-intervals > summary"], ready: "#competitionSendButton", kind: "text", optional: true },
   // The App tab: colour scheme and the push row (#3914); the walk never presses "Benachrichtigungen aktivieren".
   { view: "more", name: "Mehr: App", covers: "#3914 App tab and push notifications", since: "2.2.15", pre: [tab("more", "app")], ready: "#notificationSettings #notificationStatus", kind: "text" },
+  // Read-only: the walk checks that the history section is there, it opens none and undoes nothing (#3954).
+  { view: "more", name: "Mehr: Verlauf der Änderungen", covers: "#3954 change history", pre: [tab("more", "operations")], ready: "#changeHistorySection > summary", kind: "text" },
   { view: "more", name: "Mehr: Betrieb, Änderungen", covers: "#2908 changelog", pre: [tab("more", "operations")], ready: ".release-changelog > ul > li, .release-changelog > .release-technical > summary", kind: "text", optional: true },
 ];
 
@@ -619,15 +647,15 @@ export function reportLines(result) {
 
 async function main() {
   const { values } = parseArgs({
-    options: { url: { type: "string" }, "password-file": { type: "string" }, "out-dir": { type: "string" }, compare: { type: "string" } },
+    options: { url: { type: "string" }, "url-file": { type: "string" }, "password-file": { type: "string" }, "out-dir": { type: "string" }, compare: { type: "string" } },
   });
   let url;
   let outDir;
   let password;
   let readingSecret = false;
   try {
-    if (!values.url || !values["password-file"] || !values["out-dir"]) throw new Error("--url, --password-file and --out-dir are required");
-    url = baseUrl(values.url);
+    if (!values["password-file"] || !values["out-dir"]) throw new Error("--url or --url-file, --password-file and --out-dir are required");
+    url = appUrl(values);
     outDir = scratchPath(values["out-dir"]);
     readingSecret = true;
     password = fs.readFileSync(secretPath(values["password-file"]), "utf8").trim();

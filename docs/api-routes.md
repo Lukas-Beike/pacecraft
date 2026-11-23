@@ -56,6 +56,7 @@ handler's docstring. Regenerate it with
 | PUT | `/api/body/weight` | Session + CSRF | before access | Save one weight the athlete entered; one of the same day is replaced. |
 | PUT | `/api/body/weight/remove` | Session + CSRF | before access | Remove the entered weight of one day. |
 | GET | `/api/bootstrap` | Session | no | Initial authenticated client state. |
+| GET | `/api/change-history` | Session | no | One newest-first page of the local change history. |
 | POST | `/api/change-history/undo` | Session + CSRF | after access | Apply an undo from the change history. |
 | POST | `/api/change-history/undo-batch` | Session + CSRF | after access | Undo the changes of one write together, as a period replacement returns them. |
 | POST | `/api/change-history/undo-turn` | Session + CSRF | after access | Undo every tracked write of one Coach turn. |
@@ -65,12 +66,15 @@ handler's docstring. Regenerate it with
 | POST | `/api/chat/reset` | Session + CSRF | after access | Reset the Coach conversation. |
 | GET | `/api/chat/status` | Session | no | Status of this session's Coach work. |
 | POST | `/api/chat/stream` | Session + CSRF | after access | Stream one Coach turn as server-sent events. |
+| GET | `/api/checkins` | Session | no | The stored check-in of one day, for the check-in form. |
+| POST | `/api/checkins` | Session + CSRF | after access | Enter or correct the daily check-in of one day. |
 | POST | `/api/coach/actions/cancel` | Session + CSRF | after access | Cancel a Coach proposal. |
 | POST | `/api/coach/actions/confirm` | Session + CSRF | after access | Confirm a Coach proposal. |
 | POST | `/api/coach/actions/execute` | Session + CSRF | after access | Execute a confirmed Coach proposal. |
 | PUT | `/api/competitions` | Session + CSRF | before access | Create or update one local competition the athlete entered. |
 | PUT | `/api/competitions/remove` | Session + CSRF | before access | Delete one local competition. |
 | GET | `/api/competitions/{id}/race-plan` | Session | no | Race plan of one stored competition, computed from local data. |
+| POST | `/api/competitions/{id}/resolve` | Session + CSRF | after access | Keep the local competition or take the Intervals.icu one; nothing is sent. |
 | GET | `/api/context-preview` | Session | no | Preview of the context the Coach receives. |
 | GET | `/api/diagnostics` | Session | no | Diagnostic report. |
 | POST | `/api/diagnostics/delete` | Session + CSRF | after access | Clear the stored diagnostics. |
@@ -131,6 +135,11 @@ handler's docstring. Regenerate it with
 | POST | `/api/nutrition/products/refresh-all` | Session + CSRF | after access | Re-check every product in the background; gaps fill, known values stay. |
 | POST | `/api/nutrition/refresh` | Session + CSRF | after access | Run a targeted nutrition refresh. |
 | GET | `/api/nutrition/session-fuelling` | Session | no | Drinking and carbohydrates for a long planned run or ride (#2804). |
+| GET | `/api/nutrition/templates` | Session | no | The saved meals, each for one portion. |
+| POST | `/api/nutrition/templates` | Session + CSRF | after access | Create or change a saved meal, with the server's nutrient values. |
+| POST | `/api/nutrition/templates/delete` | Session + CSRF | after access | Delete a saved meal; logged diary entries stay as they are. |
+| POST | `/api/nutrition/templates/from-entry` | Session + CSRF | after access | Keep a logged meal as a saved meal. |
+| POST | `/api/nutrition/templates/log` | Session + CSRF | after access | Log a saved meal on a day, for a number of portions. |
 | GET | `/api/nutrition/week` | Session | no | Nutrition week summary of the closed days before today. |
 | POST | `/api/nutrition/yazio/check` | Session + CSRF | after access | Explicitly check Yazio authentication; the result is kept in memory. |
 | GET | `/api/nutrition/yazio/status` | Session | no | Last local Yazio authentication check, without contacting Yazio. |
@@ -639,6 +648,25 @@ keys include `state_versions`, `app`, `messages`, `planned`, `calendar`,
 
 Errors: none beyond the common ones.
 
+### `GET /api/change-history`
+
+Request: optional query `limit` (1 to 100, default 30) and `cursor` (the
+`next_cursor` of the previous page; an unreadable one starts at the
+newest entry). Only the last 180 days are kept, at most 1,000 entries.
+
+Response: 200 `{"changes", "next_cursor", "limit"}`. Each change holds
+`id`, `entity_type`, `entity_id`, `action` (`create`, `update`, `delete`
+or `undo`), `source` (`coach` for a change a Coach tool round
+records, `local` for the app's own, `undo` for an undo, other values name
+their producer; entries from before this field was set read `local`), `created_at`, the hashes, `diff.fields` (changed field names
+only), `remote_sync`, `line` (the readable change), `can_undo` (a
+create, update or delete that is still its record's newest entry) and
+`undoable: false` for an entry that is never undone. `next_cursor` is
+`null` on the last page. The entry's `id` and `after_hash` are the
+`change_id` and `expected_current_hash` of `POST /api/change-history/undo`.
+
+Errors: none beyond the common ones.
+
 ### `POST /api/change-history/undo`
 
 Request: JSON body `{"change_id": string, "expected_current_hash": string,
@@ -800,6 +828,37 @@ Sitzung."; `attachment_storage_quota` "Der lokale Speicher für Chat-Anhänge
 ist ausgeschöpft. Entferne alte Chat-Daten, bevor du weitere Bilder
 sendest."; `internal_error` "Interner Serverfehler.".
 
+### `GET /api/checkins`
+
+Request: query `date` (`YYYY-MM-DD`, required).
+
+Response: 200 `{"checkin"}`; `checkin` is the stored day (scores, texts,
+`day_status`, `tag_answers`, `complaints`), `null` when the day has none.
+
+Errors: 400 "Das Datum des lokalen Feedbacks ist ungültig." for a missing
+or malformed `date`.
+
+### `POST /api/checkins`
+
+Request: JSON body like the Coach tool `save_checkin`: `checkin_date`
+(`YYYY-MM-DD`, default today, never later than today), `day_status`
+(`unknown`, `rest` or `pause`), `tag_answers` (`travel`, `late_meal`,
+`high_stress`, each `true` or `false`), `complaints` (up to 8 of `area`,
+`side` and `severity` 0 to 10; an empty list removes them), the whole
+numbers `soreness`, `stress`, `motivation`, `session_rpe` (0 to 10) and
+`available_minutes` (0 to 1440), and the texts `day_form`, `illness`,
+`pain`, `availability_notes`, `notes`. An omitted field keeps its stored
+value; `clear_fields` lists the fields (scores, minutes and texts) to
+empty. Nothing is written remotely; planning reads illness and rest from
+the check-in as before.
+
+Response: 200 `{"status": "ok", "stored_locally": true, "checkin",
+"change"}`; `checkin` is the stored day, `change` the undo reference
+(`null` when nothing changed).
+
+Errors: 400 for a value outside its limits or an unknown field value,
+with the German text of the Coach tool.
+
 ### `POST /api/coach/actions/cancel`
 
 Request: JSON body `{"proposal_id": string}`, as for confirming.
@@ -917,6 +976,23 @@ provider: only the weather sync job fetches race-day forecasts.
 
 Errors: 404 `competition_not_found` "Dieser Wettkampf ist lokal nicht
 vorhanden." when the id is unknown.
+
+### `POST /api/competitions/{id}/resolve`
+
+Request: path `{id}`, the competition's local id; JSON body `{"strategy":
+"keep_local" | "adopt_remote", "confirmed": true}` and no other field.
+`adopt_remote` replaces the local values with the remote ones for good, so
+it needs `confirmed: true`; `keep_local` marks the local values to win at
+the next explicit send.
+
+Response: 200 `{"ok": true, "status": "resolved", "strategy",
+"competition", "competitions"}`.
+
+Errors: 400 "Ungültige Konfliktstrategie." or "Unbekannte Felder: …"; 409
+`confirmation_required` "Das Übernehmen muss bestätigt werden." for
+`adopt_remote` without `confirmed`; 404 "Wettkampf nicht gefunden."; 409
+"Für diesen Wettkampf liegt kein offener Synchronisierungskonflikt vor."; 409
+"Das Remote-Event kann nicht übernommen werden." when the event is gone.
 
 ### `GET /api/context-preview`
 
@@ -1340,7 +1416,9 @@ Errors: 400 "Die Anfrage muss ein Objekt sein." or "Unbekannte Felder: …"
 for another body; 400 for an id that is no UUID or a date that is no
 JJJJ-MM-TT date; 404 "Bibliothekseinheit nicht gefunden." or
 "Trainingsplan nicht gefunden."; 409 "Planung wegen bestehender
-Kalendereinheiten nicht möglich: …" for a day the calendar rules out; 409
+Kalendereinheiten nicht möglich: …" for a day the calendar rules out (reason
+`calendar_event_open` when an appointment that still waits for its
+classification is in the way); 409
 `plan_not_available` for an archived plan; 409 `illness_hard` for a hard or
 long unit within days of a reported illness (resend with
 `accept_plan_findings`).
@@ -1839,6 +1917,69 @@ Verpflegungsempfehlung." for a missing or invalid query value; 404
 `session_not_found` "Einheit nicht gefunden." for an unknown, hidden or
 deleted `session_id`.
 
+### `GET /api/nutrition/templates`
+
+Request: no query, no body.
+
+Response: 200 `{"templates"}`; each template has `id`, `name`,
+`description`, `meal_type`, `kcal`, `carbs_g`, `protein_g`, `fat_g`,
+`source`, `nutrition_basis` and `updated_at`.
+
+Errors: none beyond the common ones.
+
+### `POST /api/nutrition/templates`
+
+Request: JSON body of the Coach tool `save_nutrition_template`: `name` (1 to 120
+characters, unique), optional `id` (changes that saved meal), `description`,
+`meal_type` and either `components` (1 to 20 items as in `POST
+/api/nutrition/entry`, calculated by the server) or `food_ingredients`, or
+the values `kcal`, `carbs_g`, `protein_g`, `fat_g`. A saved meal never
+changes diary entries already logged.
+
+Response: 200 `{"ok": true, "template", "change"}`; `change` is the undo
+reference of the saved meal.
+
+Errors: 400 "Mahlzeitname muss 1 bis 120 Zeichen enthalten."; 409 "Dieser
+Mahlzeitname ist bereits vergeben. Lies die Vorlage und ändere sie
+gezielt."; 400 "Maximal 200 gespeicherte Mahlzeiten sind möglich."; 404
+"Gespeicherte Mahlzeit nicht gefunden." for an unknown `id`; the component
+errors of `POST /api/nutrition/entry`.
+
+### `POST /api/nutrition/templates/delete`
+
+Request: JSON body `{"id": string, "confirmed": true}`.
+
+Response: 200 `{"ok": true, "deleted_id", "change"}`.
+
+Errors: 409 "Das Löschen muss bestätigt werden." without `confirmed: true`;
+404 "Gespeicherte Mahlzeit nicht gefunden.".
+
+### `POST /api/nutrition/templates/from-entry`
+
+Request: JSON body `{"id": string, "name": string}`; `id` is the diary
+entry, `name` the saved meal's name (1 to 120 characters, unique). The
+entry's values and basis are copied as stored for one portion; a meal in a
+session slot becomes a snack.
+
+Response: 200 `{"ok": true, "template", "change"}`.
+
+Errors: 404 "Ernährungseintrag nicht gefunden." for an unknown entry; the
+name errors of `POST /api/nutrition/templates`.
+
+### `POST /api/nutrition/templates/log`
+
+Request: JSON body `{"id": string, "portions": number, "meal_date": string,
+"meal_time": string, "meal_type": string, "volume_ml": number}`; `portions`
+is above 0 up to 20 (default 1), the other fields are optional and as in
+`POST /api/nutrition/entry`. The values are the saved meal's, scaled by the
+server.
+
+Response: 200 `{"ok": true, "entry", "change"}`.
+
+Errors: 404 "Gespeicherte Mahlzeit nicht gefunden."; 400 "Ungültige
+Portionsanzahl." or "Portionsanzahl muss größer als 0 und höchstens 20
+sein."; the date, time and type errors of `POST /api/nutrition/entry`.
+
 ### `GET /api/nutrition/week`
 
 Request: query `days` (integer, default `7`; `7`, `28`, `91`, `182` or `365`).
@@ -1941,9 +2082,11 @@ Errors: 400 "Ungültige lokale Planungs-ID." for an id that is no UUID; 404
 missing or outdated `expected_payload_hash`; 400 "Das Planungsdatum muss das
 Format JJJJ-MM-TT haben."; 400 "Eine Einheit in der Vergangenheit wird nicht
 geplant." for a day before today; 409 `plan_date_conflict` when an external
-calendar marker rules out the day; 409 "Die lokale Einheit kann wegen einer
-bestehenden Kalendereinheit nicht verschoben werden." for an overlapping
-calendar entry.
+calendar marker rules out the day; 409 "Die lokale Einheit kann wegen „…“ nicht
+verschoben werden." (or "… wegen einer bestehenden Kalendereinheit …" when
+no entry has a name) for an overlapping calendar entry, with the reason
+`calendar_event_open` when one of them is an appointment that still waits for
+its classification.
 
 ### `POST /api/planned-units/{id}/delete`
 
@@ -2231,7 +2374,7 @@ Schätzung hat sich geändert. Bitte die Anzeige aktualisieren." when
 ist gespeichert. Zum Ersetzen bitte bestätigen." without
 `replace_measured`; 409 "Dieser Stufentest liefert keinen guten Wert der
 ersten Schwelle."; 409 "Der Wert der ersten Schwelle ist nicht
-plausibel."; 409 "Ohne Schwellenpuls lässt sich der Wert nicht
+plausibel."; 409 "Ohne LSHF lässt sich der Wert nicht
 speichern."; 404 for an unknown session.
 
 ### `GET /api/providers/connections`
@@ -2622,8 +2765,8 @@ Response: 200 `{"configuration": object, "change": object | null}`;
 Errors: 400 "Die Zonen sind ungültig: {reason}." with the invalid field
 named in German ("Sportart", "Messgröße", "Umgebung", "Obergrenzen oder
 Prozentgrenzen", "3 bis 7 {field} erforderlich", "Schwelle", "Maximum",
-"Schwellenpuls (LSHF) fehlt", "FTP fehlt", "Gültig ab"); 400 "Die maximale Herzfrequenz darf nicht unter dem
-Schwellenpuls liegen."; 400 "Die Zonenobergrenzen dürfen nicht über der
+"LSHF fehlt", "FTP fehlt", "Gültig ab"); 400 "Die maximale Herzfrequenz darf nicht unter der
+LSHF liegen."; 400 "Die Zonenobergrenzen dürfen nicht über der
 maximalen Herzfrequenz liegen."; 400 "Das Datum „Gilt ab“ darf nicht in der
 Zukunft liegen.".
 

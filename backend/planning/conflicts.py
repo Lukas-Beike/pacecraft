@@ -173,9 +173,27 @@ def calendar_conflicts_for_items(
     return conflicts
 
 
+OPEN_EVENT_REASON = "calendar_event_open"
+
+
+def open_event_reason(conflicts: list[dict[str, Any]]) -> str | None:
+    """The refusal reason when an appointment that still waits for its classification is in the way."""
+    return OPEN_EVENT_REASON if any(item.get("open") for item in conflicts) else None
+
+
+def conflict_names(conflicts: list[dict[str, Any]], limit: int = 3) -> str:
+    """The first entries in the way, quoted and joined; empty when none has a name."""
+    names = [str(item["name"]) for item in conflicts if item.get("name")]
+    unique = list(dict.fromkeys(names))
+    return ", ".join(f"„{name}“" for name in unique[:limit])
+
+
 __all__ = [
+    "OPEN_EVENT_REASON",
     "calendar_conflicts_for_items",
     "calendar_item_window",
     "calendar_items_conflict",
     "calendar_items_share_local_day",
+    "conflict_names",
+    "open_event_reason",
 ]

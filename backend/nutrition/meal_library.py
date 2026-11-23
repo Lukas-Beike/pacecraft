@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import uuid
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from datetime import datetime
 from typing import Any
 
@@ -295,6 +295,46 @@ class NutritionMealLibraryService:
             )
         if not existing and len(templates) >= 200:
             raise AppError(400, "Maximal 200 gespeicherte Mahlzeiten sind möglich.")
+
+    def save_template_from_meal(
+        self, entry: Mapping[str, Any], name: Any
+    ) -> dict[str, Any]:
+        """Keep a logged meal as a saved meal, as it was logged (#3952).
+
+        The meal's values and basis are copied as stored, so a meal logged for
+        two portions is one portion of the saved meal; only the name comes from
+        the athlete, so no nutrient value is sent by a client. A meal in a
+        session slot becomes a snack, as a saved meal belongs to no session; any
+        other type is the saved meal's own.
+        """
+        template_name = str(name or "").strip()
+        meal_type = str(entry.get("meal_type") or "snack")
+        template: dict[str, Any] = {
+            key: entry.get(key)
+            for key in (
+                "description",
+                "kcal",
+                "carbs_g",
+                "protein_g",
+                "fat_g",
+                "source",
+                "nutrition_basis",
+            )
+        }
+        template.update(
+            id=uuid.uuid4().hex,
+            name=template_name,
+            meal_type="snack" if meal_type in SESSION_MEAL_TYPES else meal_type,
+            meal_type_explicit=meal_type not in SESSION_MEAL_TYPES,
+            updated_at=self._utc_now(),
+        )
+        with self._database_manager.unit_of_work() as db:
+            self._validate_template_name(db, template_name, "", None)
+            self._templates.save(db, template)
+            change_history.record_change(
+                db, TEMPLATE_ENTITY_TYPE, template["id"], "create", None, template
+            )
+        return template
 
     def delete_template(self, template_id: str) -> dict[str, Any]:
         with self._database_manager.unit_of_work() as db:

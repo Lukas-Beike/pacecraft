@@ -36,6 +36,8 @@ class FeedbackPostRoutes:
                 Route(
                     "POST", "/api/infection-hint/well", Access.SESSION_CSRF, self._well
                 ),
+                Route("GET", "/api/checkins", Access.SESSION, self._read_checkin),
+                Route("POST", "/api/checkins", Access.SESSION_CSRF, self._checkin),
             ]
         if self._session_corrections is not None:
             routes.append(
@@ -89,6 +91,46 @@ class FeedbackPostRoutes:
         handler.send_json(
             200, self._correct_session(request.params["id"], handler.read_json())
         )
+
+    def _read_checkin(self, handler: Any, request: RouteRequest) -> None:
+        """The stored check-in of one day, for the check-in form.
+
+        Request: query `date` (`YYYY-MM-DD`, required).
+
+        Response: 200 `{"checkin"}`; `checkin` is the stored day (scores, texts,
+        `day_status`, `tag_answers`, `complaints`), `null` when the day has none.
+
+        Errors: 400 "Das Datum des lokalen Feedbacks ist ungültig." for a missing
+        or malformed `date`.
+        """
+        assert self._checkin_service is not None
+        given = request.query.get("date") or [""]
+        handler.send_json(200, {"checkin": self._checkin_service().day(given[0])})
+
+    def _checkin(self, handler: Any, _request: RouteRequest) -> None:
+        """Enter or correct the daily check-in of one day.
+
+        Request: JSON body like the Coach tool `save_checkin`: `checkin_date`
+        (`YYYY-MM-DD`, default today, never later than today), `day_status`
+        (`unknown`, `rest` or `pause`), `tag_answers` (`travel`, `late_meal`,
+        `high_stress`, each `true` or `false`), `complaints` (up to 8 of `area`,
+        `side` and `severity` 0 to 10; an empty list removes them), the whole
+        numbers `soreness`, `stress`, `motivation`, `session_rpe` (0 to 10) and
+        `available_minutes` (0 to 1440), and the texts `day_form`, `illness`,
+        `pain`, `availability_notes`, `notes`. An omitted field keeps its stored
+        value; `clear_fields` lists the fields (scores, minutes and texts) to
+        empty. Nothing is written remotely; planning reads illness and rest from
+        the check-in as before.
+
+        Response: 200 `{"status": "ok", "stored_locally": true, "checkin",
+        "change"}`; `checkin` is the stored day, `change` the undo reference
+        (`null` when nothing changed).
+
+        Errors: 400 for a value outside its limits or an unknown field value,
+        with the German text of the Coach tool.
+        """
+        assert self._checkin_service is not None
+        handler.send_json(200, self._checkin_service().save_coach(handler.read_json()))
 
     def _ill(self, handler: Any, _request: RouteRequest) -> None:
         """Answer today's infection hint with "Ich bin krank" (#3821).

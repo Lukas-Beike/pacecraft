@@ -58,6 +58,7 @@ Former routes that open another view:
 - `#analysis/sessions` opens `#plan/overview`
 - `#analysis/week` opens `#plan/overview`
 - `#more/appearance` opens `#more/app`
+- `#plan/checkin` opens `#plan/overview`
 <!-- END GENERATED VIEWS -->
 
 ## State texts
@@ -143,7 +144,17 @@ fails when the client source holds a word on the right.
 | Cadence | Trittfrequenz (bike), Schrittfrequenz (run) | Kadenz |
 | Speed | Geschwindigkeit | Tempo (Pace stays for pace sports) |
 | Power zones | Leistungszonen | Power-Zonen |
-| Training load (TSS, Garmin) | Belastung | Trainingsbelastung |
+| Local training load (TSS) | Belastung | Trainingsbelastung |
+| Garmin's training load | Garmin-Belastung, akute Garmin-Belastung | Belastung (for Garmin's value), Trainingsbelastung, akute Belastung |
+| Garmin training effect and load focus | Trainingseffekt, Belastungsfokus | Training Effect, Load-Focus |
+| Elevation gain | Höhenmeter | Anstieg |
+| Threshold heart rate | LSHF (Laktatschwellen-Herzfrequenz) | Schwellenpuls, LTHR |
+| Resting heart rate | Ruheherzfrequenz | Ruhepuls |
+| Garmin training readiness | Trainingsbereitschaft | Readiness |
+| Pace (running, also in server sentences) | Pace | Tempo |
+| Coach thinking level and speed tiers | Denktiefe; Standard, Schnell, Sehr schnell | Thinking; Fast, Ultrafast |
+| Garmin key and login | API-Schlüssel, Garmin-Anmeldung | Personal API, SDK-Login |
+| Negative number | Minus sign "−" (U+2212) | Hyphen |
 | Session-RPE metric | RPE-Belastung, in RPE-Punkten | Session-RPE-Last, Kurzzeitbelastung, Langzeitbelastung, AU |
 | Value the athlete entered | Eingetragen | Lokal |
 | Strength | Kraft | Krafttraining |
@@ -168,6 +179,7 @@ texts.
 | `public/auth.js` `logout` | Abmelden? | (computed) `` `Du wirst auf diesem Gerät abgemeldet. Deine Daten bleiben verschlüsselt gespeichert.${outboxLossNote()}` `` | Abmelden |
 | `public/coach.js` `resetCoachChat` | Coach-Chat zurücksetzen? | Der Verlauf dieses Chats wird gelöscht, eine neue Unterhaltung beginnt. Profil, Pläne und Einträge bleiben. | Zurücksetzen |
 | `public/coach.js` `undoCoachTurn` | Änderungen zurücknehmen? | Alle lokalen Änderungen dieser Coach-Antwort werden zurückgenommen. Intervals.icu bleibt unverändert. | Zurücknehmen |
+| `public/diagnostics.js` `undoChangeHistoryEntry` | Änderung zurücknehmen? | (computed) `` `Die Änderung „${change.line \|\| "Änderung"}“ wird zurückgenommen. Anbieter bleiben unverändert.` `` | Zurücknehmen |
 | `public/diagnostics.js` `deleteServerLogs` | Server-Logs löschen? | Alle gespeicherten Server-Logs werden gelöscht. | Löschen |
 | `public/diagnostics.js` `deleteDiagnostics` | Diagnose löschen? | Alle gespeicherten Diagnosedaten werden gelöscht. | Löschen |
 | `public/nutrition-meal-edit.js` `saveNutritionMealEdit` | Mahlzeit löschen? | (computed) `` `Die Mahlzeit „${item.description}“ wird gelöscht, weil keine Zutat übrig ist.` `` | Löschen |

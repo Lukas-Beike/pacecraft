@@ -40,6 +40,7 @@ TYPES: Final = (
     "upcoming",
     "new_activity",
     "morning_data",
+    "checkin",
     "maintenance",
     "personal_best",
     "missing_feedback",

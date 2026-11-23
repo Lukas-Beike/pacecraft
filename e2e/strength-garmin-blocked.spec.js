@@ -60,13 +60,17 @@ test("@responsive a strength unit says why it does not reach Garmin and offers t
   const unmapped = page.locator(".planned-garmin-blocked").filter({ hasText: "Keine Garmin-Übung: Kabelrudern eng" }).first();
   await unmapped.scrollIntoViewIfNeeded();
   await expect(unmapped.getByRole("button", { name: "Andere…" })).toBeVisible();
-  const card = unmapped.locator("xpath=ancestor::details[contains(@class,'planned-entry')]");
+  const card = unmapped.locator("xpath=ancestor::div[contains(@class,'planned-card')]/details");
   const wasOpen = await card.evaluate((element) => element.open);
   await unmapped.getByRole("button", { name: "V-grip Cable Row" }).click();
   await expect.poll(() => posted.length).toBe(1);
   expect(posted[0]).toMatchObject({ exercise_index: 0, garmin_exercise: "V-grip Cable Row" });
   expect(posted[0].expected_payload_hash).toBeTruthy();
-  // A chip in the card summary must not toggle the card.
+  // The week is rebuilt after the pick; keyboard focus stays in the card, not on the page body.
+  await expect.poll(() => page.evaluate(() => Boolean(document.activeElement?.closest(".planned-card")))).toBe(true);
+  // Focus returns to the picked chip or the summary, never to another exercise's chip.
+  expect(["", "garmin:0:V-grip Cable Row"]).toContain(await page.evaluate(() => document.activeElement?.dataset.action || ""));
+  // A chip beside the card keeps the card as it was.
   expect(await card.evaluate((element) => element.open)).toBe(wasOpen);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBeTruthy();
   await page.unrouteAll({ behavior: "ignoreErrors" });

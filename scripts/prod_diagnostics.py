@@ -1,10 +1,10 @@
 """Read named fields and counts from a running app's health and diagnostics.
 
-    python scripts/prod_diagnostics.py --url <app address> --password-file <secret file>
+    python scripts/prod_diagnostics.py {--url <app address> | --url-file <file>} --password-file <secret file>
         [--expect-version 2.1.2] [--expect-schema 27] [--out result.json]
         [--compare previous.json] [--ca-file ca.pem] [--require-current]
         [--check-docs]
-    python scripts/prod_diagnostics.py --url <app address> --password-file <secret file>
+    python scripts/prod_diagnostics.py {--url <app address> | --url-file <file>} --password-file <secret file>
         --section <name> [--section <name> ...]
     Either form takes [--wait-ready <seconds>]: before it reads the report it
     waits until `curve_build.status` is `ready`; exit 3 when the time runs out,
@@ -43,6 +43,7 @@ from prod_client import (
     ROOT,
     ProdError,
     Session,
+    app_url,
     checkout_current,
     read_result,
     write_result,
@@ -871,7 +872,9 @@ def wait_ready(session: Session, seconds: float) -> int:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("--url", required=True)
+    target = parser.add_mutually_exclusive_group(required=True)
+    target.add_argument("--url")
+    target.add_argument("--url-file")
     parser.add_argument("--password-file", required=True)
     parser.add_argument("--expect-version")
     parser.add_argument("--expect-schema", type=int)
@@ -902,7 +905,7 @@ def main(argv: list[str] | None = None) -> int:
         parser.error("--section prints sections; it runs no checks or results")
     try:
         previous = read_result(args.compare)
-        session = Session(args.url, args.ca_file)
+        session = Session(app_url(args.url, args.url_file), args.ca_file)
         health = session.get_json("/api/health")
         healthy = isinstance(health, dict) and health.get("status") == "ok"
         print(f"{'ok' if healthy else 'FAIL'} health")

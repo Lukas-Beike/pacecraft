@@ -298,7 +298,7 @@ function providerRequiresManualAttention(entry) {
 }
 
 
-const GARMIN_KEY_RENEWAL = "in Garmin Connect Web erneuern und in der Garmin-Karte unter Personal API speichern";
+const GARMIN_KEY_RENEWAL = "in Garmin Connect Web erneuern und in der Garmin-Karte unter API-Schlüssel speichern";
 
 function garminKeyDaysLeft(days) {
   if (days === 0) return "heute";

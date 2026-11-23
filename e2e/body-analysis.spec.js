@@ -52,9 +52,10 @@ test("@responsive Body plots measurements and W/kg appears only in the cycling t
   await expect(overview.locator("tbody tr")).toHaveCount(3);
   await expect(overview.locator("[data-metric='energy_goal'] td").first()).toHaveText("nicht gesetzt");
   await expect(overview.locator("[data-metric='weight_kg'] td").first()).toHaveText("71,8 kg");
-  // #3336, #3402: KFA comes from the athlete's own values only; the fixture has none.
-  await expect(overview.locator("[data-metric='body_fat_pct'] td").first()).toHaveText("—");
-  await expect(overview.locator("th small")).toHaveText(["Garmin Connect · 06.10.2026"]);
+  // #3336, #3402, #3930: the fixture has no own value, so the row shows the device value in use with its source.
+  await expect(overview.locator("[data-metric='body_fat_pct'] td").first()).toHaveText("19,8 %");
+  await expect(overview.locator("th small")).toHaveText(["Garmin Connect · 06.10.2026", "Garmin Connect · 06.10.2026"]);
+  await expect(overview.locator("tbody tr")).toHaveCount(3);
   // The skinfold and energy reads re-render the view, so the check re-resolves the overview.
   await expect.poll(() => overview.evaluate((element) => element.closest("section")?.parentElement?.firstElementChild.contains(element) ?? false)).toBe(true);
   // The body charts name no provider; only the energy cards label the Garmin estimate (#3099),
@@ -76,9 +77,9 @@ test("@responsive Body plots measurements and W/kg appears only in the cycling t
     state.data.profile.body_fat_pct = "17.5";
     renderBodyAnalysis(state.data.performance.history.body);
   });
-  // A profile body fat is not KFA (#3252, #3336): the row still has no value.
-  await expect(root.locator("[data-body-overview] [data-metric='body_fat_pct'] td").first()).toHaveText("—");
-  await expect(root.locator("[data-body-overview] [data-metric='body_fat_pct'] th small")).toHaveCount(0);
+  // A profile body fat is not KFA (#3252, #3336): the row keeps the device value, not the profile's 17,5 %.
+  await expect(root.locator("[data-body-overview] [data-metric='body_fat_pct'] td").first()).toHaveText("19,8 %");
+  await expect(root.locator("[data-body-overview] [data-metric='body_fat_pct'] th small")).toHaveText("Garmin Connect · 06.10.2026");
   await expect(root.locator("[data-body-metric='body_fat_pct'] circle[data-series='0']")).toHaveCount(28);
   await page.evaluate(() => { state.data.profile.body_fat_pct = ""; });
   await page.evaluate(() => {
@@ -124,12 +125,12 @@ test("@responsive Body keeps old measurements dated and long gaps empty", async 
   await page.goto("/#nutrition/body");
   const root = page.locator("#bodyAnalysisCharts");
   await expect(root.locator("[data-body-overview] caption")).toHaveText("Körperwerte");
-  await expect(root.locator("[data-body-overview] th small")).toHaveText(["Garmin Connect · 14.08.2026"]);
+  await expect(root.locator("[data-body-overview] th small")).toHaveText(["Garmin Connect · 14.08.2026", "Garmin Connect · 14.08.2026"]);
   await expect(root.locator("[data-body-metric='weight_kg'] circle[data-series='0']")).toHaveCount(2);
   await root.getByRole("button", { name: "4 Wochen", exact: true }).click();
   await expect(root.locator("[data-body-metric]")).toHaveCount(0);
   await expect(root).not.toContainText("Keine Daten");
-  await expect(root.locator("[data-body-overview] th small")).toHaveText(["Garmin Connect · 14.08.2026"]);
+  await expect(root.locator("[data-body-overview] th small")).toHaveText(["Garmin Connect · 14.08.2026", "Garmin Connect · 14.08.2026"]);
 });
 
 

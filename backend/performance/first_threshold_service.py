@@ -135,7 +135,7 @@ def _estimate_bpm(percent: float, run_lthr: float | None) -> float:
     """The estimate's percent of LTHR in bpm of today's run threshold HR (#3915)."""
     bpm = None if not run_lthr else first_threshold_bpm(round(percent * run_lthr / 100))
     if bpm is None:
-        raise AppError(409, "Ohne Schwellenpuls lässt sich der Wert nicht speichern.")
+        raise AppError(409, "Ohne LSHF lässt sich der Wert nicht speichern.")
     return bpm
 
 

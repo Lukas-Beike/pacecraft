@@ -290,7 +290,7 @@ function toggleMetricExport(button) {
 
 async function configureAutomaticMetricExport(enabled, button) {
   const message = enabled
-    ? "Schwellenpuls (LSHF), maximale Herzfrequenz und Lauf-Schwellenpace werden künftig automatisch an Intervals.icu gesendet (lokale Zonen, sonst Garmin, sonst Wahoo). Abweichende Werte dort werden überschrieben, die Herzfrequenzzonen neu berechnet."
+    ? "LSHF, maximale Herzfrequenz und Lauf-Schwellenpace werden künftig automatisch an Intervals.icu gesendet (lokale Zonen, sonst Garmin, sonst Wahoo). Abweichende Werte dort werden überschrieben, die Herzfrequenzzonen neu berechnet."
     : "Schwellenwerte werden nicht mehr automatisch an Intervals.icu gesendet.";
   if (!await requestConfirmation(message, { title: enabled ? "Automatischen Abgleich aktivieren?" : "Automatischen Abgleich deaktivieren?", confirmLabel: enabled ? "Aktivieren" : "Deaktivieren" })) return;
   button.disabled = true;
@@ -537,8 +537,8 @@ function renderYazioStatus(result) {
     rate_limited: "Anfragen begrenzt – später erneut versuchen", unavailable: "Momentan nicht verfügbar – später erneut versuchen",
   };
   setConnectionChip("#yazioConnectionStatus", yazioConnectionKind(result?.status));
-  const date = result?.checked_at ? new Date(result.checked_at) : null;
-  const checked = date && !Number.isNaN(date.getTime()) ? `Geprüft: ${AppFormat.dateTime(date)}` : "";
+  const time = result?.checked_at ? AppFormat.dateTime(result.checked_at) : null;
+  const checked = time ? `Geprüft: ${time}` : "";
   const message = result ? messages[result.status] : "Status nicht verfügbar";
   setCredentialText("yazioConnectionDetail", [message, checked].filter(Boolean).join(" · "));
   const button = $("#yazioCheckButton");

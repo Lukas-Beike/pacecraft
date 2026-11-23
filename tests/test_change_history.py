@@ -302,6 +302,31 @@ class ChangeHistoryTests(unittest.TestCase):
         )
         self.assertNotIn("secret", row["diff"])
         self.assertEqual(row["before_hash"], record["before_hash"])
+        self.assertEqual(row["source"], "local")
+
+    def test_a_coach_collection_stamps_the_default_source_only(self):
+        # #3954: the history view tells a Coach change from the app's own.
+        with change_history.collect_changes("coach"):
+            for action, source in (("create", "local"), ("undo", "undo")):
+                change_history.record_change(
+                    self.db,
+                    "profile",
+                    action,
+                    action,
+                    {"name": "a"},
+                    {"name": "b"},
+                    source=source,
+                )
+        change_history.record_change(
+            self.db, "profile", "x", "update", {}, {"name": "c"}
+        )
+        sources = [
+            row["source"]
+            for row in self.db.execute(
+                "SELECT source FROM change_history ORDER BY created_at"
+            )
+        ]
+        self.assertEqual(sources, ["coach", "undo", "local"])
 
     def test_earlier_profile_body_fat_values_are_dated_measurements(self):
         # #3477: each saved profile body fat counts as an entered measurement

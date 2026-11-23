@@ -326,7 +326,7 @@ async function deletePrivacyData() {
 // Local zones win over provider zones; the editor shows both and saves local values only.
 const ZONE_METRIC_LABELS = {
   power: { threshold: "FTP (W)", limits: "Zonenobergrenzen (% der FTP)", key: "percent_limits" },
-  heart_rate: { threshold: "Schwellenpuls (LSHF, bpm)", limits: "Zonenobergrenzen (bpm)", key: "limits" },
+  heart_rate: { threshold: "Laktatschwellen-Herzfrequenz (LSHF, bpm)", limits: "Zonenobergrenzen (bpm)", key: "limits" },
   pace: { threshold: "", limits: "Zonenobergrenzen (% der Schwellenpace)", key: "percent_limits" },
 };
 // One page per sport with its zone kinds (#2262); the performance values name its thresholds.

@@ -171,6 +171,100 @@ class ChangeHistoryServiceTests(unittest.TestCase):
         self.assertEqual(listed[0]["id"], f"row-{change_history.MAX_ROWS:04d}")
         self.assertNotIn("row-0000", {row["id"] for row in listed})
 
+    def test_page_reads_lines_and_marks_only_the_newest_entry_undoable(self):
+        now = datetime.now(UTC)
+        fields = {"soreness": {"before": 3, "after": 5}}
+        rows = [
+            # id, type, entity, action, source, minutes ago, diff
+            ("a", "checkin", "2026-11-20", "create", "local", 50, {"fields": fields}),
+            ("b", "checkin", "2026-11-20", "update", "coach", 40, {"fields": fields}),
+            ("c", "profile", "profile", "update", "local", 30, {"fields": {}}),
+            ("d", "profile", "profile", "undo", "undo", 20, {"fields": {}}),
+            ("e", "competition", "x", "update", "local", 10, {"undoable": False}),
+        ]
+        with self.database_manager.unit_of_work() as db:
+            for row_id, kind, entity, action, source, minutes, diff in rows:
+                db.execute(
+                    "INSERT INTO change_history (id, entity_type, entity_id, action, "
+                    "source, created_at, before_hash, after_hash, diff) "
+                    "VALUES (?, ?, ?, ?, ?, ?, 'x', 'y', ?)",
+                    (
+                        row_id,
+                        kind,
+                        entity,
+                        action,
+                        source,
+                        (now - timedelta(minutes=minutes)).isoformat(),
+                        json.dumps({"fields": {}, **diff}),
+                    ),
+                )
+
+        first = self.service.page(limit=2)
+        self.assertEqual([row["id"] for row in first["changes"]], ["e", "d"])
+        self.assertEqual(first["limit"], 2)
+        second = self.service.page(limit=2, cursor=first["next_cursor"])
+        self.assertEqual([row["id"] for row in second["changes"]], ["c", "b"])
+        last = self.service.page(limit=2, cursor=second["next_cursor"])
+        self.assertEqual([row["id"] for row in last["changes"]], ["a"])
+        self.assertIsNone(last["next_cursor"])
+
+        by_id = {row["id"]: row for row in self.service.page(limit=100)["changes"]}
+        self.assertEqual(by_id["b"]["source"], "coach")
+        self.assertEqual(by_id["b"]["line"], "Check-in, Fr 20.11.: Muskelkater 3 → 5")
+        self.assertEqual(
+            {key: row["can_undo"] for key, row in by_id.items()},
+            {"a": False, "b": True, "c": False, "d": False, "e": False},
+        )
+        self.assertEqual(self.service.page(cursor="not-a-cursor")["limit"], 30)
+
+    def test_page_names_the_record_of_an_update_a_delete_and_an_unnamed_type(self):
+        now = datetime.now(UTC)
+        with self.database_manager.unit_of_work() as db:
+            db.execute(
+                "INSERT INTO competitions (id, name, event_date, sport, priority, "
+                "distance, target, course_profile, notes, created_at, updated_at) "
+                "VALUES ('c1', 'Fixture Race', '2026-11-20', 'Run', 'A', '', '', "
+                "'', '', 'x', 'x')"
+            )
+            for row_id, kind, entity, action, minutes, fields in (
+                (
+                    "u",
+                    "competition",
+                    "c1",
+                    "update",
+                    3,
+                    {"priority": {"before": "B", "after": "A"}},
+                ),
+                (
+                    "d",
+                    "competition",
+                    "gone",
+                    "delete",
+                    2,
+                    {"name": {"before": "Old Race", "after": None}},
+                ),
+                ("m", "metric_export", "garmin:1", "update", 1, {}),
+            ):
+                db.execute(
+                    "INSERT INTO change_history (id, entity_type, entity_id, action, "
+                    "source, created_at, before_hash, after_hash, diff) "
+                    "VALUES (?, ?, ?, ?, 'local', ?, 'x', 'y', ?)",
+                    (
+                        row_id,
+                        kind,
+                        entity,
+                        action,
+                        (now - timedelta(minutes=minutes)).isoformat(),
+                        json.dumps({"fields": fields}),
+                    ),
+                )
+
+        lines = {row["id"]: row["line"] for row in self.service.page()["changes"]}
+
+        self.assertEqual(lines["u"], "Fixture Race, Fr 20.11.: Priorität B → A")
+        self.assertEqual(lines["d"], "Old Race: gelöscht")
+        self.assertEqual(lines["m"], "Export zum Anbieter: geändert")
+
     def test_list_leaves_expired_rows_when_the_read_fails(self):
         expired_at = (datetime.now(UTC) - timedelta(days=181)).isoformat()
         self._insert_history("expired", expired_at)

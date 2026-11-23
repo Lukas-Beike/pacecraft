@@ -203,7 +203,7 @@ class TargetTests(unittest.TestCase):
     def test_missing_references_are_named(self) -> None:
         none: dict[str, Any] = {"power_limits": (55,)}
         self.assertIn("FTP", self.refused("90%", **none))
-        self.assertIn("Schwellenpuls", self.refused("60% LTHR", "hr", **none))
+        self.assertIn("LSHF", self.refused("60% LTHR", "hr", **none))
         self.assertIn("maximale Herzfrequenz", self.refused("80% HR", "hr", **none))
         self.assertIn("Schwellentempo", self.refused("90% PACE", "pace", **none))
         self.assertIn("FTP", self.refused("Z2", **none))

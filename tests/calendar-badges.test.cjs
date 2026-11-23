@@ -1,6 +1,6 @@
 const assert = require("node:assert/strict");
 const { test } = require("node:test");
-const { extractFunctions, FakeElement, fakeDocument, textOf } = require("./frontend-harness.cjs");
+const { extractFunctions, loadPublicScript, FakeElement, fakeDocument, textOf } = require("./frontend-harness.cjs");
 
 function helpers() {
   return extractFunctions("plan-views.js", [
@@ -251,4 +251,50 @@ test("a competition goal is shown as a duration only when it is a time", () => {
   assert.notEqual(competitionGoal("01:45:00"), "01:45:00");
   // Two parts are ambiguous (3:30 is hours and minutes for a marathon), so they stay as written.
   assert.equal(competitionGoal("3:30"), "3:30");
+});
+
+// WCAG 4.1.2: a <summary> holds no interactive content. The warning and its buttons sit beside the card's
+// details in an action row that stays shown while the card is closed.
+function renderedCards() {
+  const document = fakeDocument();
+  const globals = { document, state: { data: { garmin: { configured: true }, profile: {}, provider_labels: {} } }, console };
+  loadPublicScript(["format.js"], globals);
+  extractFunctions("views.js", ["timezoneDateKey", "dateFromKey", "addDateKey"], globals);
+  const context = loadPublicScript(["plan-views.js"], globals);
+  Object.assign(context, {
+    activitySportLabel: () => "Kraft",
+    providerIds: () => ({ intervals: "intervals", garmin: "garmin", wahoo: "wahoo" }),
+    messageActionButton: () => context.h("button", { type: "button" }, "Bearbeiten"),
+    openCompetitionDialog: () => {},
+    dateLabel: (value) => value,
+    distanceLabel: (value) => String(value),
+  });
+  return context;
+}
+
+const INTERACTIVE = new Set(["button", "a", "input", "select", "textarea"]);
+const interactiveInSummaries = (root) => [root, ...root.descendants()].filter((node) => node.tag === "summary")
+  .flatMap((summary) => summary.descendants().filter((node) => INTERACTIVE.has(node.tag)));
+
+test("a calendar card keeps its warning and buttons beside the details, not in the summary", () => {
+  const context = renderedCards();
+  const entry = {
+    local_id: "u1", name: "Kraft", sport: "strength", conflicts: [{ code: "no_training", label: "Kein Training" }],
+    push_blocked: { garmin: "unmapped" }, push_unmapped: [{ index: 0, name: "Rudern", suggestions: ["V-grip"] }],
+  };
+  const wrapper = context.renderPlannedEntry(entry, "2099-01-02", "2099-01-01", {}, true);
+  const [details, actions] = wrapper.children;
+  assert.equal(details.tag, "details");
+  assert.equal(actions.className, "planned-card-actions");
+  assert.deepEqual(interactiveInSummaries(wrapper), []);
+  const labels = actions.descendants().filter((node) => node.tag === "button").map((node) => node.textContent);
+  assert.deepEqual(labels, ["Mit Coach besprechen", "V-grip", "Andere…"]);
+});
+
+test("a competition's pencil and source sit beside its details, not in the summary", () => {
+  const context = renderedCards();
+  const card = context.competitionCard({ id: "a", name: "Test", event_date: "2099-01-02", priority: "A", sport: "run" }, "2099-01-01", new Set());
+  assert.deepEqual(interactiveInSummaries(card), []);
+  const row = card.children.find((node) => node.className === "competition-card-source");
+  assert.equal(row.descendants().filter((node) => node.tag === "button").length, 1);
 });

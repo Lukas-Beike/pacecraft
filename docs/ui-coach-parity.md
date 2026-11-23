@@ -53,7 +53,7 @@ added a row conflicted on it (#4092).
 | Planning | Preview and apply an adaptive replan | Kalender card "Plananpassung" shows the stored preview, "Übernehmen" `POST /api/planning/replan/apply` | `preview_adaptive_replan`, `apply_adaptive_replan` | approved preview, undo | both | |
 | Planning | Read the week review and training report | Analyse `GET /api/analysis/week-review` | `get_training_report` | — | both | |
 | History | Undo a change | receipt "Rückgängig" `POST /api/change-history/undo`, `POST /api/change-history/undo-turn`, `POST /api/change-history/undo-batch` | `undo_training_change` | bound preview, confirmation | both | |
-| History | Read the change history | — | `list_change_history` | — | Coach only | #3954 |
+| History | Read the change history | Mehr › Betrieb "Verlauf der Änderungen" `GET /api/change-history` | `list_change_history` | — | both | |
 | Library | List library workouts | Bibliothek `GET /api/library` | `list_workout_library` | — | both | |
 | Library | Create a library workout | Bibliothek "+ Einheit" `POST /api/library` | `manage_training_templates` (`create`) | receipt, undo | both | |
 | Library | Edit a library workout | Bibliothek "Bearbeiten" `POST /api/library/{id}/update` | `manage_training_templates` (`update`) | receipt, undo | both | |
@@ -76,15 +76,15 @@ added a row conflicted on it (#4092).
 | Equipment | Apply a rule to earlier sessions | Mehr › Ausrüstung `GET /api/equipment/rules/preview`, `POST /api/equipment/rules/apply` | `set_equipment_rule` (`preview`, `apply`) | preview count, confirmed bulk request | both | |
 | Nutrition | Read the diary day, week and energy | Ernährung `GET /api/nutrition/day`, `GET /api/nutrition/week`, `GET /api/body/energy` | `read_nutrition` | — | both | |
 | Nutrition | Log a saved product as a meal | Produkt dialog `POST /api/nutrition/entry` | `save_nutrition_entry` | receipt, undo | both | |
-| Nutrition | Log a composed meal from several foods | — | `save_nutrition_entry` | receipt, undo | Coach only | #3952 |
+| Nutrition | Log a composed meal from several foods | Produkte "Mahlzeit zusammenstellen" `POST /api/nutrition/entry` | `save_nutrition_entry` | receipt, undo | both | |
 | Nutrition | Add a saved product to a meal | Tagebuch card `POST /api/nutrition/entry/add-product` | `update_nutrition_entry` (`components`) | receipt, undo | both | |
 | Nutrition | Remove, resize or swap a meal component | Tagebuch card pencil `GET /api/nutrition/entry/components`, `POST /api/nutrition/entry/components` | `update_nutrition_entry` (`components`) | receipt, undo | both | |
 | Nutrition | Change a meal's date, time or type | Tagebuch card pencil `POST /api/nutrition/entry/components` (`meal`) | `update_nutrition_entry` | receipt, undo | both | |
 | Nutrition | Mark a meal as estimated | Tagebuch card `POST /api/nutrition/entry/estimate` | `update_nutrition_entry` (`estimate_uncertain`) | receipt, undo | both | |
 | Nutrition | Attach a session meal to its session | Tagebuch card `POST /api/nutrition/entry/session` | `update_nutrition_entry` (`session_id`) | receipt | both | |
 | Nutrition | Delete a meal | Tagebuch card `POST /api/nutrition/entry/delete` | `delete_nutrition_entry` | delete confirmation, undo | both | |
-| Nutrition | Create, edit or delete a saved meal | — | `save_nutrition_template`, `delete_nutrition_template` | receipt, confirmed delete | Coach only | #3952 |
-| Nutrition | Log a saved meal | — | `log_nutrition_template` | receipt, undo | Coach only | #3952 |
+| Nutrition | Create, edit or delete a saved meal | Produkte "Gespeicherte Mahlzeiten" `GET /api/nutrition/templates`, `POST /api/nutrition/templates`, `POST /api/nutrition/templates/from-entry`, `POST /api/nutrition/templates/delete` | `save_nutrition_template`, `delete_nutrition_template` | receipt, undo | both | |
+| Nutrition | Log a saved meal | Produkte "Eintragen" `POST /api/nutrition/templates/log` | `log_nutrition_template` | receipt, undo | both | |
 | Nutrition | Send daily totals to Intervals.icu | — | `sync_nutrition` | named sync | Coach only | #3952 |
 | Products | Search foods and products | Produkte `GET /api/nutrition/products`, `POST /api/nutrition/products/lookup` | `lookup_food`, `calculate_food_nutrition` | — | both | |
 | Products | Save a confirmed product, also from a label photo | Produkte `POST /api/nutrition/products`, `POST /api/nutrition/products/extract` | `save_nutrition_product` | receipt | both | |
@@ -98,14 +98,14 @@ added a row conflicted on it (#4092).
 | Body | Save or change body fat | Körper `PUT /api/body/body-fat` | `save_body_entry` (`body_fat`) | receipt; writes Garmin | both | |
 | Body | Remove weight or body fat | Körper `PUT /api/body/weight/remove`, `PUT /api/body/body-fat/remove` | `delete_body_entry` | confirmation | both | |
 | Body | Save or remove a skinfold measurement | Körper `PUT /api/body/skinfolds`, `PUT /api/body/skinfolds/remove` | `save_skinfolds`, `delete_skinfolds` | receipt; writes Garmin; delete confirmation | both | |
-| Check-ins | Enter or correct the daily check-in | — | `save_checkin` | receipt, undo | Coach only | #3953 |
+| Check-ins | Enter or correct the daily check-in | Kalender today "Check-in" `GET /api/checkins`, `POST /api/checkins` | `save_checkin` | receipt, undo | both | |
 | Check-ins | Report illness or wellness from the infection hint | Kalender day `POST /api/infection-hint/ill`, `POST /api/infection-hint/well` | `save_checkin` | receipt, undo | both | |
 | Calendar | Classify an external calendar event | Kalender "Einordnen" `POST /api/external-calendar/decisions` | `classify_calendar_event` | receipt | both | |
 | Syncs | Refresh calendars, Garmin, Wahoo and weather | Sync buttons `POST /api/external-calendar/sync`, `POST /api/garmin/sync`, `POST /api/wahoo/sync`, `POST /api/weather/sync`, `POST /api/analysis/refresh`, `POST /api/nutrition/refresh` | `start_provider_refresh` | — | both | |
 | Syncs | Read sync state and job results | Status strip `GET /api/sync/status`, `GET /api/sync/jobs/{id}` | `get_sync_job` | — | both | |
 | Syncs | Send planned units to Intervals.icu or Garmin | Kalender week sync `POST /api/sync/jobs` (`plan_push`) | `start_intervals_plan_sync`, `push_strength_to_garmin` (`push`) | named sync | both | |
-| Syncs | Remove the app's own Garmin workouts of a unit | — | `push_strength_to_garmin` (`remove`) | Garmin removal card | Coach only | #4022 |
-| Syncs | Resolve a training sync conflict | — | `resolve_training_sync_conflict` | receipt | Coach only | #4021 |
+| Syncs | Remove the app's own Garmin workouts of a unit | Kalender card "Aus Garmin entfernen" `POST /api/sync/jobs` (`plan_push` with `remove`) | `push_strength_to_garmin` (`remove`) | Garmin removal card | both | |
+| Syncs | Resolve a training sync conflict | Kalender › Wettkämpfe card `POST /api/competitions/{id}/resolve`; a failed job runs again from its sync button | `resolve_training_sync_conflict` | confirmation for taking the remote values | both | |
 | Syncs | Start a full Garmin or Wahoo resync | Anbindungen `POST /api/garmin/full-resync`, `POST /api/wahoo/full-resync` | `start_provider_refresh` (`full_resync`) | confirmation; the Coach: the athlete's own request naming the provider | both | |
 | Syncs | Check a provider connection | Anbindungen `POST /api/providers/{provider}/check`, `POST /api/nutrition/yazio/check` | `check_provider_connection` | read-only | both | |
 | Syncs | Switch the automatic metric export | Anbindungen `POST /api/metric-export/automatic` | — | consent per field; athlete decision #3960 | UI by rule | |

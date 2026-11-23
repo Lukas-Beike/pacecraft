@@ -15,7 +15,7 @@ needs a fresh output directory: a file already at one of its names stops the
 walk with exit 2.
 
 ```powershell
-node scripts/ui_walk.mjs --url <app address> --password-file <secret file> --out-dir <scratchpad>/walk [--compare <previous walk>]
+node scripts/ui_walk.mjs --url-file <scratchpad>/app-url.txt --password-file <secret file> --out-dir <scratchpad>/walk [--compare <previous walk>]
 ```
 
 To explore beyond the fixed steps, `scripts/ui_explore.mjs` takes the same three

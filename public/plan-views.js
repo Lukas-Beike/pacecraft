@@ -40,7 +40,6 @@ function plannedWeekSyncSummary(done, ids, providerLabel) {
   return [...reached, ...blocked].join(" · ");
 }
 
-// Controls sit in the card summary; a click must not toggle the card.
 // Before a rebuild: remember which cards are open and which control has focus.
 function rememberPlannedEntryState(root) {
   openPlannedEntries = new Set([...root.querySelectorAll(".planned-entry[data-entry-key]")].filter((card) => card.open).map((card) => card.dataset.entryKey));
@@ -49,16 +48,22 @@ function rememberPlannedEntryState(root) {
   for (const key of plannedFocusStatuses.keys()) if (!openPlannedEntries.has(key)) plannedFocusStatuses.delete(key);
   for (const key of plannedMoveReceipts.keys()) if (!openPlannedEntries.has(key)) plannedMoveReceipts.delete(key);
   const active = document.activeElement;
-  const card = active?.closest?.(".planned-entry[data-entry-key]");
+  // The action row stands beside the card's details, so its control is found through the wrapper.
+  const wrapper = active?.closest?.(".planned-card");
+  const card = active?.closest?.(".planned-entry[data-entry-key]") || wrapper?.querySelector(":scope > .planned-entry[data-entry-key]");
   if (!card || !root.contains(card)) return null;
-  return { key: card.dataset.entryKey, name: active.matches("select") ? active.name : "" };
+  // By its stable key, not its position: a pick removes its exercise's chips (Gitar, #3981).
+  const action = active.closest(".planned-card-actions") ? active.dataset.action || "" : "";
+  return { key: card.dataset.entryKey, name: active.matches("select") ? active.name : "", action };
 }
 
 function restorePlannedEntryFocus(root, focused) {
   if (!focused) return;
   const card = [...root.querySelectorAll(".planned-entry[data-entry-key]")].find((node) => node.dataset.entryKey === focused.key);
   const target = focused.name ? card?.querySelector(`select[name="${focused.name}"]`) : null;
-  (target || card?.querySelector("summary"))?.focus({ preventScroll: true });
+  const buttons = focused.action ? [...(card?.parentElement.querySelectorAll(".planned-card-actions button") || [])] : [];
+  const action = buttons.find((node) => node.dataset.action === focused.action) || null;
+  (target || action || card?.querySelector("summary"))?.focus({ preventScroll: true });
 }
 
 // The unit's description, or a placeholder when the card body would stay empty.
@@ -124,11 +129,6 @@ function plannedDescriptionText(text) {
   return String(text || "").split("\n").filter((line) => !step.test(line) && !repeat.test(line)).join("\n").trim();
 }
 
-function stopSummaryToggle(event) {
-  event.preventDefault();
-  event.stopPropagation();
-}
-
 // A request kind sends the prompt as that quick action, on the planning model (#2744); without a
 // planning key the button is off like the other planning entry points.
 function plannedCoachButton(label, prompt, className = "secondary-button planned-conflict-button", requestKind = null, purpose = null) {
@@ -136,7 +136,7 @@ function plannedCoachButton(label, prompt, className = "secondary-button planned
   // Several hand-over buttons of one card share the label; the name starts with it and says what each is for.
   if (purpose) button.setAttribute("aria-label", `${label}: ${purpose}`);
   button.disabled = Boolean(requestKind) && !coachConfigured(null, requestKind);
-  button.addEventListener("click", (event) => { stopSummaryToggle(event); void globalThis.askCoach?.(prompt, { requestKind }); });
+  button.addEventListener("click", () => { void globalThis.askCoach?.(prompt, { requestKind }); });
   return button;
 }
 
@@ -328,8 +328,13 @@ const CALENDAR_NAME_PREFIX = /^(.+?) [-–—] (\S.*)$/u;
 // The calendar shows a fixed range: one week back, four ahead (#3914).
 const CALENDAR_WEEKS = Object.freeze({ past: 1, future: 4 });
 
+// A provider that names a session after its type ("WeightTraining · 1:02:03") shows the German sport; the time is in the line below.
+const PROVIDER_TYPE_NAME = /^(Ride|VirtualRide|Run|Swim|Walk|Hike|WeightTraining)(?:\s*[·|-]\s*\d+(?::\d{2}){1,2})?$/;
+
 function calendarDisplayName(name, place = "") {
   const text = String(name || "").trim();
+  const typed = PROVIDER_TYPE_NAME.exec(text);
+  if (typed) return activitySportLabel({ type: typed[1] }) === "Andere" ? text : activitySportLabel({ type: typed[1] });
   const match = CALENDAR_NAME_PREFIX.exec(text);
   const city = String(place || "").split(",")[0].trim().toLocaleLowerCase("de");
   return match && city && match[1].trim().toLocaleLowerCase("de") === city ? match[2] : text;
@@ -563,6 +568,27 @@ function complaintLabel(item) {
   return [COMPLAINT_AREA_LABELS[item.area] || item.area, COMPLAINT_SIDE_LABELS[item.side] ?? ""].filter(Boolean).join(" ");
 }
 
+// The last day of the pause that runs on from dateKey: the consecutive pause days of the day contexts, or the
+// end of the approved illness pause that covers the day (#3932 K-03).
+function plannedPauseEnd(dateKey, contexts, illnessPause) {
+  const statuses = new Map((Array.isArray(contexts) ? contexts : []).map((day) => [String(day?.date || "").slice(0, 10), day?.day_status]));
+  let end = dateKey;
+  while (statuses.get(addDateKey(end, 1)) === "pause") end = addDateKey(end, 1);
+  const covered = illnessPause?.approved && String(illnessPause.start_date || "") <= dateKey && String(illnessPause.end_date || "") >= dateKey;
+  return covered && String(illnessPause.end_date).slice(0, 10) > end ? String(illnessPause.end_date).slice(0, 10) : end;
+}
+
+// A pause day names how long the pause runs and hands the way back to the Coach.
+function plannedPauseDecorate(notes, dayContext, dateKey) {
+  if (dayContext.day_status !== "pause") return;
+  const end = plannedPauseEnd(dateKey, state.data?.daily_planning_context, state.data?.planning?.latest_replan?.illness_pause);
+  const status = notes.querySelector(".planned-day-day-status");
+  if (status && end > dateKey) status.textContent = `Trainingspause bis ${dateLabel(end)}`;
+  const button = h("button", { type: "button", className: "secondary-button" }, "Mit Coach besprechen");
+  button.addEventListener("click", () => void globalThis.askCoach?.(`Ich bin am ${dateLabel(dateKey)} in der Trainingspause. Wie plane ich die Rückkehr zum Training?`));
+  notes.append(button);
+}
+
 function plannedDayNotes(dayContext, competitions, dateKey, hasSession = false) {
   const notes = h("div", "planned-day-notes");
   for (const { kind, icon, text } of plannedDayNoteSpecs(dayContext, competitions, dateKey, hasSession)) {
@@ -585,6 +611,7 @@ function plannedDayNotes(dayContext, competitions, dateKey, hasSession = false) 
   }
   const hint = infectionHintNote(dayContext.infection_hint, dateKey, reportsComplaint(illness));
   if (hint) notes.append(hint);
+  plannedPauseDecorate(notes, dayContext, dateKey);
   return notes;
 }
 
@@ -1125,23 +1152,14 @@ function plannedWeatherHint() {
   return h("p", "planned-weather-hint", "Wetter fehlt: Im Profil ist kein Wetterort hinterlegt. ", link);
 }
 
-function plannedWeekSummary(weekKey, weekEndKey, weekEntries, compliance, todayKey) {
-  const plannedEntryCount = weekEntries.filter((entry) => !entry.is_completed_activity).length;
-  const plannedUnits = Number.isFinite(Number(compliance?.planned_units))
-    ? Number(compliance.planned_units)
-    : plannedEntryCount;
-  const completedUnits = Number.isFinite(Number(compliance?.completed_units))
-    ? Number(compliance.completed_units)
-    : 0;
-  const isPast = weekEndKey < todayKey;
-  const units = isPast || completedUnits > 0
-    ? `${plannedUnits} geplant · ${completedUnits} absolviert`
-    : `${plannedUnits} geplant`;
-  if (compliance?.basis !== "training_load" || compliance.planned_value == null) return units;
+// The plan line of a week: its load. The week heading already counts the units (#3981).
+function plannedWeekSummary(weekEndKey, compliance, todayKey) {
+  if (compliance?.basis !== "training_load" || compliance.planned_value == null) return "";
+  const completedUnits = Number(compliance.completed_units) || 0;
   // One load figure: the done part of the plan once a unit is done, else the plan (#3932 K-13).
   const planned = formatWhole(compliance.planned_value);
-  const load = isPast || completedUnits > 0 ? `${formatWhole(compliance.actual_value || 0)} von ${planned}` : planned;
-  return `${units} · Belastung ${load}`;
+  const load = weekEndKey < todayKey || completedUnits > 0 ? `${formatWhole(compliance.actual_value || 0)} von ${planned}` : planned;
+  return `Belastung ${load}`;
 }
 
 // The pace of a run is the stored average speed, as the Details show it, else distance over moving time (#3932 K-04).
@@ -1201,7 +1219,7 @@ function actualCalendarFacts(actual) {
     "Ø Herzfrequenz": calendarMetricNumber(actual.avg_hr, " bpm"),
     "Ø Leistung": calendarMetricNumber(actual.avg_power, " W"),
     Pace: calendarPaceLabel(actual),
-    Anstieg: calendarMetricNumber(actual.elevation_gain_m, " m"),
+    Höhenmeter: calendarMetricNumber(actual.elevation_gain_m, " m"),
   };
   const sport = activitySportLabel(calendarSportType(actual));
   if (sport === "Laufen") {
@@ -1211,7 +1229,7 @@ function actualCalendarFacts(actual) {
       ["Schrittfrequenz", Number(actual.avg_cadence) > 0 ? calendarRoundedNumber(Number(actual.avg_cadence) * 2, " spm") : null],
       ["Ø Leistung", values["Ø Leistung"]], ["Belastung", values.Belastung], ["RPE", values.RPE],
       ["Bodenkontaktzeit", calendarRoundedNumber(actual.ground_contact_time_ms, " ms")],
-      ["Anstieg", values.Anstieg],
+      ["Höhenmeter", values.Höhenmeter],
     ];
   }
   if (sport === "Radfahren" || sport === "Rad indoor") {
@@ -1221,7 +1239,7 @@ function actualCalendarFacts(actual) {
       ["Trittfrequenz", calendarRoundedNumber(actual.avg_cadence, " rpm")],
       ["Belastung", values.Belastung], ["RPE", values.RPE],
       ["Ø Geschwindigkeit", calendarSpeedLabel(actual)],
-      ["Anstieg", values.Anstieg],
+      ["Höhenmeter", values.Höhenmeter],
     ];
   }
   return Object.entries(values);
@@ -1271,7 +1289,7 @@ function calendarWorkoutProfile(profile) {
   if (!total || !values.length) return null;
   const top = Math.max(...values, 1) * 1.1;
   const baseLabel = profile.source === "recorded" ? "Aufgezeichnetes Belastungsprofil" : "Geplantes Intervallprofil";
-  const label = profile.estimated ? `${baseLabel} (Zonen aus FTP oder Schwellenpuls)` : baseLabel;
+  const label = profile.estimated ? `${baseLabel} (Zonen aus FTP oder LSHF)` : baseLabel;
   const svg = svgNode("svg", { viewBox: "0 0 300 56", role: "img", "aria-label": label, class: "calendar-workout-profile", preserveAspectRatio: "none" });
   svg.append(svgNode("title", {}, `${label} · ${axis === "distance" ? "Distanzachse" : "Zeitachse"} · ${profile.unit || ""}`));
   svg.append(svgNode("line", { x1: 0, x2: 300, y1: 54, y2: 54, class: "calendar-profile-baseline" }));
@@ -1452,12 +1470,9 @@ function plannedConflict(entry, dateKey) {
   const labels = plannedConflictLabels(entry.conflicts);
   if (!labels.length) return null;
   const texts = plannedConflictTexts(entry.conflicts);
-  const button = h("button", { type: "button", className: "secondary-button planned-conflict-button" }, "Mit Coach besprechen");
+  const button = h("button", { type: "button", className: "secondary-button planned-conflict-button", dataset: { action: "conflict" } }, "Mit Coach besprechen");
   button.setAttribute("aria-label", "Mit Coach besprechen: Konflikt");
-  button.addEventListener("click", (event) => {
-    // The button sits in the card summary; a click must not toggle the card.
-    event.preventDefault();
-    event.stopPropagation();
+  button.addEventListener("click", () => {
     const session = [activitySportLabel(calendarSportType(entry)), plannedEntryDurationLabel(null, entry)].filter(Boolean).join(", ");
     void globalThis.askCoach?.(`Die geplante Einheit am ${dateLabel(dateKey)} (${session}) kollidiert mit: ${labels.join(", ")}. Schlage eine Anpassung vor.`);
   });
@@ -1477,7 +1492,9 @@ function plannedGarminBlocked(entry, dateKey, todayKey, actual) {
     return block;
   }
   if (reason !== "unmapped") {
-    block.append(h("span", null, plannedGarminBlockedText(entry)), plannedCoachButton("Mit Coach besprechen", `Strukturiere die Krafteinheit ${unit} für die Uhr: Übungen in Reihenfolge mit Sätzen, Wiederholungen, Last und Garmin-Übung. Frag nach, was fehlt.`, "secondary-button planned-conflict-button", null, "Kraftstruktur"));
+    const structure = plannedCoachButton("Mit Coach besprechen", `Strukturiere die Krafteinheit ${unit} für die Uhr: Übungen in Reihenfolge mit Sätzen, Wiederholungen, Last und Garmin-Übung. Frag nach, was fehlt.`, "secondary-button planned-conflict-button", null, "Kraftstruktur");
+    structure.dataset.action = "garmin-structure";
+    block.append(h("span", null, plannedGarminBlockedText(entry)), structure);
     return block;
   }
   const unmapped = Array.isArray(entry.push_unmapped) ? entry.push_unmapped : [];
@@ -1490,22 +1507,25 @@ function plannedGarminBlocked(entry, dateKey, todayKey, actual) {
 function plannedUnmappedExercise(entry, exercise, unit) {
   const row = h("span", "planned-garmin-exercise", h("span", null, `Keine Garmin-Übung: ${exercise.name}`));
   for (const suggestion of Array.isArray(exercise.suggestions) ? exercise.suggestions : []) {
-    const chip = h("button", { type: "button", className: "planned-suggestion-chip" }, suggestion);
-    chip.addEventListener("click", async (event) => {
-      stopSummaryToggle(event);
-      chip.disabled = true;
+    const chip = h("button", { type: "button", className: "planned-suggestion-chip", dataset: { action: `garmin:${exercise.index}:${suggestion}` } }, suggestion);
+    chip.addEventListener("click", async () => {
+      // Not `disabled`: a disabled button drops keyboard focus while the pick is saved.
+      if (chip.ariaDisabled === "true") return;
+      chip.ariaDisabled = "true";
       try {
         await api(`/api/planned-units/${encodeURIComponent(entry.local_id)}/garmin-exercise`, { method: "POST", body: JSON.stringify({ exercise_index: exercise.index, garmin_exercise: suggestion, expected_payload_hash: entry.payload_hash }) });
         await globalThis.load?.();
         announcePlanChange(`Garmin-Übung „${suggestion}“ zugeordnet`);
       } catch (error) {
-        chip.disabled = false;
+        chip.ariaDisabled = "false";
         globalThis.toast?.(error.message, true);
       }
     });
     row.append(chip);
   }
-  row.append(plannedCoachButton("Andere…", `Ordne in der Krafteinheit ${unit} der Übung „${exercise.name}“ die passende Garmin-Übung zu. Frag mich mit Vorschlägen aus dem Katalog.`));
+  const other = plannedCoachButton("Andere…", `Ordne in der Krafteinheit ${unit} der Übung „${exercise.name}“ die passende Garmin-Übung zu. Frag mich mit Vorschlägen aus dem Katalog.`);
+  other.dataset.action = `garmin-other:${exercise.index}`;
+  row.append(other);
   return row;
 }
 
@@ -1536,6 +1556,40 @@ function plannedActivityActions(actual, dateKey, title, entryKey) {
   return [more, h("div", "planned-activity-actions", coach, feedback)];
 }
 
+// "Aus Garmin entfernen" (#4022): the Garmin workouts the app made for this unit go after a confirmation card; the unit
+// stays. It is the athlete's own Garmin sync job, the one the week sync runs for a leftover, so it asks first and
+// writes nothing else. Null: the unit has no copy there or Garmin cannot write.
+function plannedGarminRemoval(entry) {
+  const garmin = providerIds().garmin;
+  if (!entry.remote_copies?.includes(garmin) || !plannedProviderConfiguration()[garmin]) return null;
+  const open = h("button", { type: "button", className: "secondary-button planned-garmin-remove" }, "Aus Garmin entfernen");
+  const confirm = h("button", { type: "button", className: "secondary-button danger-button" }, "Entfernen");
+  const cancel = h("button", { type: "button", className: "secondary-button" }, "Abbrechen");
+  const status = h("p", { className: "planned-delete-note", role: "status" });
+  const ask = h("div", { className: "library-card", hidden: true },
+    h("h4", null, "Aus Garmin entfernen"), h("p", null, `Die Garmin-Trainings von „${entry.name || "Einheit"}“ werden entfernt.\nDie Einheit bleibt in Pacecraft.`),
+    h("div", "planned-activity-actions", confirm, cancel));
+  open.addEventListener("click", () => { ask.hidden = false; confirm.focus(); });
+  cancel.addEventListener("click", () => { ask.hidden = true; open.focus(); });
+  confirm.addEventListener("click", async () => {
+    [confirm, cancel].forEach((button) => { button.disabled = true; });
+    status.textContent = "";
+    try {
+      const done = await runPlanPush(garmin, [{ library_workout_id: String(entry.local_id), remove: true }]);
+      if (done.status !== "completed") throw new Error(globalThis.providerJobErrorDetail?.(done) || "Entfernen fehlgeschlagen");
+    } catch (error) {
+      [confirm, cancel].forEach((button) => { button.disabled = false; });
+      status.textContent = error.message;
+      return;
+    }
+    // The copy is gone: a failed reload must not re-arm "Entfernen" or blame the removal.
+    globalThis.toast?.("Aus Garmin entfernt");
+    await globalThis.load?.().catch(() => {});
+    announcePlanChange("Aus Garmin entfernt");
+  });
+  return [open, ask, status];
+}
+
 // "Verschieben" (#2194): the next seven days from today with the unit's own day dimmed, and "…" for a
 // later date. One tap moves the local unit; its open card follows it to the new week with the receipt.
 function plannedUnitActions(entry, dateKey, todayKey) {
@@ -1564,7 +1618,8 @@ function plannedUnitActions(entry, dateKey, todayKey) {
       announcePlanChange(`Verschoben auf ${MOVE_DAY_FORMAT.format(dateFromKey(target))}`);
     } catch (error) {
       buttons.forEach((item) => { item.disabled = item.dataset.day === dateKey || item.classList.contains("is-blocked"); });
-      status.textContent = error.message;
+      const classify = plannedClassifyAction(error, target);
+      status.replaceChildren(error.message, ...(classify ? [" ", classify] : []));
     }
   };
   const receipt = plannedMoveReceipts.get(key);
@@ -1574,7 +1629,8 @@ function plannedUnitActions(entry, dateKey, todayKey) {
   edit.addEventListener("click", () => openUnitEditor({ kind: "unit", entry, onSaved: plannedUnitSaved }));
   const [archive, archiveNote] = plannedArchiveControls(entry, dateKey);
   // The day strip opens right under "Verschieben", not below "Löschen" (#3932 K-11).
-  return [h("div", "planned-activity-actions", edit, h("div", "planned-move-group", toggle, days), coach, archive, remove), confirm, archiveNote, status];
+  const [garminOpen, garminAsk, garminStatus] = plannedGarminRemoval(entry) || [null, null, null];
+  return [h("div", "planned-activity-actions", edit, h("div", "planned-move-group", toggle, days), coach, garminOpen, archive, remove), confirm, archiveNote, garminAsk, garminStatus, status];
 }
 
 // "Bearbeiten" and "Archivieren" (#3950): the unit editor over the Coach's change batch; the card shows the receipt
@@ -1891,7 +1947,7 @@ function plannedFuellingRows(drink) {
 
 function plannedFuellingBlock(plan) {
   const rate = plan.sweat_rate;
-  const band = rate?.similar && Array.isArray(rate.temperature_c) ? ` bei ${rate.temperature_c[0]}–${rate.temperature_c[1]} °C` : "";
+  const band = rate?.similar && Array.isArray(rate.temperature_c) ? ` bei ${AppFormat.number(rate.temperature_c[0], { digits: 1 })}–${AppFormat.number(rate.temperature_c[1], { digits: 1 })} °C` : "";
   const sessions = AppFormat.plural(rate?.sessions, "Einheit", "Einheiten");
   const basis = rate ? `Schweißrate ${FUELLING_LITRES.format(rate.l_per_h)} l/h · ${sessions}${band}` : "Startwert ohne eigene Daten";
   const rows = (items) => h("div", "race-plan-rows", items.filter(Boolean).map(([label, value]) => h("div", null, h("span", null, label), h("strong", null, value))));
@@ -1900,7 +1956,8 @@ function plannedFuellingBlock(plan) {
     racePlanHeading("Trinken", basis),
     rows(plannedFuellingRows(plan.drinking || {})),
     racePlanHeading("Kohlenhydrate", plan.carbohydrate_source),
-    rows([["Pro Stunde", racePlanDuring(plan.carbohydrates) || "–"]]),
+    // A step without grams is advice, not a number: it reads as a line, not in the value column (#3932 K-12).
+    ["none", "mouth_rinse"].includes(plan.carbohydrates?.step) ? h("p", "muted", racePlanDuring(plan.carbohydrates)) : rows([["Pro Stunde", racePlanDuring(plan.carbohydrates) || "–"]]),
   ];
 }
 
@@ -2142,9 +2199,7 @@ function renderPlannedEntry(entry, dateKey, todayKey, dayContext = {}, weekHasPl
       if (!slim) appendFocusChip(line, entry);
     }, slim),
     meta,
-    slim ? null : calendarWorkoutProfile(entry.workout_profile),
-    plannedConflict(entry, dateKey),
-    plannedGarminBlocked(entry, dateKey, todayKey, actual));
+    slim ? null : calendarWorkoutProfile(entry.workout_profile));
   const head = plannedDetailHead(entry, actual, title, dateKey, status, plannedDetailStatus(entry, dateKey, todayKey, restDayLabel, weekHasPlan), plannedDayWeather(dayContext, dateKey));
   const details = h("div", { className: "planned-entry-details", dataset: { dateKey } }, head);
   card.addEventListener("toggle", () => {
@@ -2157,9 +2212,11 @@ function renderPlannedEntry(entry, dateKey, todayKey, dayContext = {}, weekHasPl
   const focusForm = plannedFocusForm(entry, dateKey);
   if (focusForm) details.append(focusForm);
   // With the step list, the description keeps only its free text; the stored text is unchanged (#2447).
-  appendPlannedDescription(details, steps ? plannedDescriptionText(entry.description) : entry.description);
+  appendPlannedDescription(details, steps ? plannedDescriptionText(entry.description) : libraryDescriptionText(entry.description));
   card.append(cardSummary, details);
-  return card;
+  // The warning and its buttons sit beside the card's details, not in the summary (WCAG 4.1.2), so they stay shown while it is closed.
+  const actions = [plannedConflict(entry, dateKey), plannedGarminBlocked(entry, dateKey, todayKey, actual)].filter(Boolean);
+  return h("div", { className: `planned-card is-${status}`, dataset: { sport: card.dataset.sport } }, card, actions.length ? h("div", "planned-card-actions", actions) : null);
 }
 
 // Personal calendar events (#2620): a band of chips above the day's units. Event text is untrusted
@@ -2288,6 +2345,17 @@ function undecidedPlannedEvents() {
   const events = Array.isArray(state.data?.external_calendar?.events) ? state.data.external_calendar.events : [];
   return events.filter((event) => event?.uid && plannedEventImpact(event) === "open"
     && String(event.start_local || "").slice(0, 10) <= lastKey && String(event.end_local || event.start_local || "") > `${todayKey}T00:00:00`);
+}
+
+// A refusal because an appointment still waits for its classification offers the sheet of that day's
+// appointment; the redraw after the decision frees the day (#3932 K-01).
+function plannedClassifyAction(error, dayKey) {
+  if (error.reason !== "calendar_event_open") return null;
+  const open = undecidedPlannedEvents().find((event) => String(event.start_local || "").slice(0, 10) <= dayKey && dayKey <= String(event.end_local || event.start_local || "").slice(0, 10));
+  if (!open) return null;
+  const button = h("button", { type: "button", className: "secondary-button" }, "Termin einordnen");
+  button.addEventListener("click", () => openPlannedEventSheet(open));
+  return button;
 }
 
 function undecidedPlannedCount() {
@@ -2442,7 +2510,7 @@ function renderPlannedDay(view, dateKey, weekHasPlan) {
     if (receipt.change?.id) status.append(...plannedMoveUndo(id, receipt, status, plannedDeleteReceipts));
     return status;
   });
-  const content = h("div", "planned-day-content", heading, ...deleted, notes.childElementCount ? notes : null,
+  const content = h("div", "planned-day-content", heading, ...deleted, checkinRow(dateKey, todayKey, dayContext.checkin), notes.childElementCount ? notes : null,
     dayEvents.length ? plannedEventBand(dayEvents) : null,
     dayEntries.length ? null : h("p", "planned-day-empty", emptyText));
   for (const group of plannedEntryGroups(dayEntries)) {
@@ -2703,8 +2771,9 @@ function plannedWeekClosing(view, weekEntries, weekHasPlan) {
   const planned = weekEntries.length - extra;
   let planLine = null;
   if (weekEntries.length) {
-    const summary = plannedWeekSummary(weekKey, addDateKey(weekKey, 6), weekEntries, weeklyCompliance.get(weekKey), todayKey);
-    planLine = h("p", "planned-week-totals", extra && planned ? `${summary} · +${extra} zusätzlich` : summary);
+    const summary = plannedWeekSummary(addDateKey(weekKey, 6), weeklyCompliance.get(weekKey), todayKey);
+    const text = [summary, extra && planned ? `+${extra} zusätzlich` : ""].filter(Boolean).join(" · ");
+    planLine = text ? h("p", "planned-week-totals", text) : null;
   }
   const currentWeekKey = planWeekStart(todayKey);
   if (weekKey > currentWeekKey || weekKey < addDateKey(currentWeekKey, -7 * WEEK_REVIEW_WEEKS_BACK)) return planLine;
@@ -2773,7 +2842,7 @@ function weekReviewRecoveryTiles(recovery) {
     const change = minutes ? weekReviewChange(`${sign}${weekReviewHours(minutes * 60)} ggü. Vorwoche`, minutes > 0) : null;
     tiles.push(weekReviewTile("Schlaf Ø", `${weekReviewHours(sleep.mean * 3600)} h`, change, sleep.source));
   }
-  for (const [key, label] of [["resting_hr", "Ruhepuls Ø"], ["hrv", "HRV Ø"]]) {
+  for (const [key, label] of [["resting_hr", "Ruheherzfrequenz Ø"], ["hrv", "HRV Ø"]]) {
     const item = recovery?.[key];
     if (item) tiles.push(weekReviewTile(label, `${AppFormat.number(item.mean, { digits: 0 })} ${item.unit}`, null, [WEEK_REVIEW_POSITIONS[item.position], item.source].filter(Boolean).join(" · ")));
   }
@@ -2942,8 +3011,8 @@ function openDefaultPlannedEntry(week) {
   if (!wideCalendar?.matches || !week || shownPlannedEntry(week)) return;
   const todayKey = timezoneDateKey(state.data?.profile?.timezone, new Date());
   const upcoming = (cards) => cards.find((item) => item.closest(".planned-day").dataset.date >= todayKey) || cards.at(-1);
-  const single = upcoming([...week.querySelectorAll(".planned-day-content > .planned-entry")]);
-  const card = single || upcoming([...week.querySelectorAll(".planned-group-items > .planned-entry")]);
+  const single = upcoming([...week.querySelectorAll(".planned-day-content > .planned-card > .planned-entry")]);
+  const card = single || upcoming([...week.querySelectorAll(".planned-group-items > .planned-card > .planned-entry")]);
   if (!card) return;
   if (!single) card.closest(".planned-group").open = true;
   card.open = true;
@@ -3183,7 +3252,8 @@ function libraryActions(workout) {
       announcePlanChange(text);
     } catch (error) {
       buttons.forEach((item) => { item.disabled = false; });
-      status.textContent = error.message;
+      const classify = plannedClassifyAction(error, day);
+      status.replaceChildren(error.message, ...(classify ? [" ", classify] : []));
       libraryOpenStrips.add(id);
       if (error.reason === "illness_hard") { blockedDay = day; again.hidden = false; }
     }
@@ -3395,14 +3465,33 @@ function libraryStepLine(line) {
   const words = text.split(/\s+/).filter(Boolean).map((word) => {
     const size = /^(\d+(?:[.,]\d+)?)(h|m|s|km|mtr)$/.exec(word);
     if (size) return `${size[1].replace(".", ",")} ${LIBRARY_STEP_UNITS[size[2]]}`;
-    if (/^\d+(?:[.,]\d+)?%$/.test(word)) return `${word.slice(0, -1).replace(".", ",")} %`;
+    const percent = /^(\d+(?:[.,]\d+)?)(?:-(\d+(?:[.,]\d+)?))?%$/.exec(word);
+    if (percent) return `${[percent[1], percent[2]].filter(Boolean).join("–").replaceAll(".", ",")} %`;
+    if (/^\d+W$/.test(word)) return `${word.slice(0, -1)} W`;
     return word === "HR" ? "Herzfrequenz" : word;
   });
   return words.length > 1 ? [words[0], words.slice(1).join(" ")].join(" · ") : words.join("");
 }
 
+// The section and repeat headers of the stored text ("Warmup", "Main Set 5x", "5x", "Warmup | Cooldown") in German.
+const LIBRARY_SECTION_NAMES = { warmup: "Einlaufen", "main set": "Hauptteil", cooldown: "Auslaufen" };
+
+function libraryHeaderLine(line) {
+  // A header ends with its repeat count ("Main Set 5x", "5x") after a known section or nothing;
+  // a prose line such as "Bergsprints 6x" stays as written.
+  const last = line.trim().split(" ").at(-1);
+  if (/^\d{1,3}x$/i.test(last)) {
+    const section = line.trim().slice(0, -last.length).trim();
+    const known = LIBRARY_SECTION_NAMES[section.toLowerCase()];
+    if (section && !known) return line;
+    return [known, `${last.slice(0, -1)}×`].filter(Boolean).join(" · ");
+  }
+  const names = line.split("|").map((part) => LIBRARY_SECTION_NAMES[part.trim().toLowerCase()]);
+  return names.every(Boolean) ? names.join(" und ") : line;
+}
+
 function libraryDescriptionText(text) {
-  return String(text || "").split("\n").map((line) => (/^\s*-/.test(line) ? libraryStepLine(line) : line)).join("\n");
+  return String(text || "").split("\n").map((line) => (/^\s*-/.test(line) ? libraryStepLine(line) : libraryHeaderLine(line))).join("\n");
 }
 
 // `archivedFresh`: the archived list was just read; every other render of that view reads it again.
@@ -3535,7 +3624,7 @@ function racePlanWeather(weather) {
     return text ? [racePlanHeading("Wetter"), h("p", "race-plan-gap", text)] : [];
   }
   const place = [weather.name, weather.country].filter(Boolean).join(", ");
-  const number = (value) => RACE_PLAN_KM.format(Math.round(value));
+  const number = (value) => AppFormat.number(Math.round(value), { digits: 0 });
   const facts = [
     `${day.icon || ""} ${day.condition || ""}`.trim(),
     day.temperature_min != null && day.temperature_max != null ? `${number(day.temperature_min)}–${number(day.temperature_max)} °C` : null,
@@ -3577,21 +3666,54 @@ function loadRacePlan(section, competition) {
   });
 }
 
+// A competition whose Intervals.icu event changed or vanished (#4021): keep the local values, or take the remote ones
+// after a confirmation card (they replace the local values for good). Nothing is sent to Intervals.icu.
+function competitionConflict(competition) {
+  let conflict = competition.sync_conflict;
+  try { if (typeof conflict === "string") conflict = JSON.parse(conflict || "{}"); } catch { conflict = {}; }
+  const gone = conflict?.type === "remote_missing";
+  const status = h("p", { className: "planned-delete-note", role: "status" });
+  const settle = async (strategy, buttons, confirmed = false) => {
+    buttons.forEach((button) => { button.disabled = true; });
+    status.textContent = "";
+    try {
+      await api(`/api/competitions/${encodeURIComponent(competition.id)}/resolve`, { method: "POST", body: JSON.stringify({ strategy, ...(confirmed ? { confirmed: true } : {}) }) });
+    } catch (error) {
+      buttons.forEach((button) => { button.disabled = false; });
+      status.textContent = error.message;
+      // Settled elsewhere meanwhile: the card is stale, so the view reads the competition again.
+      if (error.status === 409) await globalThis.load?.().catch(() => {});
+      return;
+    }
+    await globalThis.load?.();
+    announcePlanChange(strategy === "keep_local" ? "Lokal behalten" : "Von Intervals.icu übernommen");
+  };
+  const keep = h("button", { type: "button", className: "secondary-button" }, "Lokal behalten");
+  const buttons = [keep];
+  const ask = h("div", { className: "library-card", hidden: true }, h("p", null, "Deine lokalen Werte werden durch die von Intervals.icu ersetzt."));
+  if (!gone) {
+    const adopt = h("button", { type: "button", className: "secondary-button" }, "Von dort übernehmen");
+    const confirm = h("button", { type: "button", className: "secondary-button danger-button" }, "Ersetzen");
+    const cancel = h("button", { type: "button", className: "secondary-button" }, "Abbrechen");
+    adopt.addEventListener("click", () => { ask.hidden = false; confirm.focus(); });
+    cancel.addEventListener("click", () => { ask.hidden = true; });
+    confirm.addEventListener("click", () => void settle("adopt_remote", [keep, adopt, confirm, cancel], true));
+    ask.append(h("div", "planned-activity-actions", confirm, cancel));
+    buttons.push(adopt);
+  }
+  keep.addEventListener("click", () => void settle("keep_local", buttons));
+  return h("div", "competition-conflict", h("p", null, gone ? "Bei Intervals.icu gelöscht" : "Bei Intervals.icu geändert"), h("div", "planned-activity-actions", ...buttons), ask, status);
+}
+
 function competitionCard(competition, todayKey, openIds) {
   const sport = competition.sport_detail || competitionSportLabel(competition.sport, competition.environment);
   const when = AppFormat.relativeDay(competition.event_date, todayKey);
   const edit = messageActionButton("edit", "Wettkampf bearbeiten");
-  edit.addEventListener("click", (event) => {
-    // The pencil sits in the summary: it must not open or close the card.
-    event.preventDefault();
-    event.stopPropagation();
-    openCompetitionDialog(competition);
-  });
+  edit.addEventListener("click", () => openCompetitionDialog(competition));
   const summary = h("summary", null,
     h("span", "competition-summary-main",
       h("strong", null, `${competitionDate(competition, todayKey) ? dateLabel(competition.event_date) : "Datum unbekannt"} · ${competition.name || "Wettkampf"}`),
-      h("span", "competition-summary-facts", [sport, competitionDistance(competition.distance), `Priorität ${competition.priority || "B"}`, when].filter(Boolean).join(" · "))),
-    edit);
+      h("span", "competition-summary-facts", [sport, competitionDistance(competition.distance), `Priorität ${competition.priority || "B"}`, when].filter(Boolean).join(" · "))));
   const source = h("small", "competition-sync-state", competition.external_id ? "Intervals.icu" : "Nicht an Intervals.icu gesendet");
   if (competition.sync_state === "local_override") source.textContent = "Lokal geändert";
   // A conflict names itself: the local and the Intervals.icu entry differ and nothing is overwritten (#3932 K-15).
@@ -3610,13 +3732,14 @@ function competitionCard(competition, todayKey, openIds) {
   const facts = optional.filter(([, value]) => value != null && String(value).trim() !== "").map(([label, value]) => competitionFact(label, value));
   const upcoming = competitionDate(competition, todayKey) && competition.event_date >= todayKey;
   const plan = upcoming ? h("section", "race-plan") : null;
-  const card = h("details", { className: "competition-card", dataset: { competitionId: String(competition.id) }, open: openIds.has(String(competition.id)) },
-    summary, source, facts.length ? h("div", "competition-card-facts", facts) : null, plan);
+  const card = h("details", { className: "competition-card", dataset: { competitionId: String(competition.id) }, open: openIds.has(String(competition.id)) || competition.sync_state === "conflict" },
+    summary, competition.sync_state === "conflict" ? competitionConflict(competition) : null, facts.length ? h("div", "competition-card-facts", facts) : null, plan);
   if (plan) {
     card.addEventListener("toggle", () => { if (card.open) loadRacePlan(plan, competition); });
     if (card.open) loadRacePlan(plan, competition);
   }
-  return card;
+  // The source and the pencil sit beside the details, not in the summary (WCAG 4.1.2), so they stay shown while it is closed.
+  return h("div", { className: "competition-item", dataset: { competitionItem: String(competition.id) } }, card, h("div", "competition-card-source", source, edit));
 }
 
 function renderCompetitions(competitions) {
@@ -3626,7 +3749,9 @@ function renderCompetitions(competitions) {
   const snapshot = JSON.stringify([competitions, todayKey]);
   if (root.dataset.snapshot === snapshot) return;
   const openIds = new Set([...root.querySelectorAll("details[data-competition-id][open]")].map((node) => node.dataset.competitionId));
-  const focusedId = document.activeElement?.closest("details[data-competition-id]")?.dataset.competitionId;
+  const focused = document.activeElement?.closest("[data-competition-id], [data-competition-item]");
+  const focusedId = focused?.dataset.competitionId || focused?.dataset.competitionItem;
+  const pencilFocused = Boolean(focused) && document.activeElement.matches(".competition-card-source button");
   const archiveOpen = root.querySelector(".competition-archive")?.open || false;
   root.dataset.snapshot = snapshot;
   root.replaceChildren();
@@ -3654,7 +3779,8 @@ function renderCompetitions(competitions) {
     archive.append(...past.map((event) => competitionCard(event, todayKey, openIds)));
     root.append(archive);
   }
-  if (focusedId) [...root.querySelectorAll("details[data-competition-id]")].find((node) => node.dataset.competitionId === focusedId)?.querySelector("summary")?.focus();
+  const item = focusedId ? [...root.querySelectorAll(".competition-item")].find((node) => node.dataset.competitionItem === focusedId) : null;
+  (pencilFocused ? item?.querySelector(".competition-card-source button") : item?.querySelector("summary"))?.focus();
 }
 
 function renderCompetitionReadStatus(status) {

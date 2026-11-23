@@ -602,7 +602,7 @@ test("@responsive provider metrics render as charts without raw text", async ({ 
   const performance = page.locator("#analysisHistoryCharts");
   await expect(performance.getByRole("heading", { name: "Trainingsbereitschaft" })).toHaveCount(0);
   await expect(page.locator("#analysisLoadCharts").getByRole("heading", { name: "Trainingsbereitschaft" })).toHaveCount(0);
-  await expect(page.getByRole("heading", { name: "Trainingsstatus · akute Belastung" })).toHaveCount(0);
+  await expect(page.getByRole("heading", { name: "Trainingsstatus · akute Garmin-Belastung" })).toHaveCount(0);
   await expect(page.locator("#performanceEnduranceCharts").getByRole("heading", { name: "Ausdauer-Score" })).toBeVisible();
   await expect(performance.getByRole("heading", { name: "Lauf-Belastbarkeit" })).toHaveCount(0);
   await expect(performance).not.toContainText("Garmin-Provider-Metriken");

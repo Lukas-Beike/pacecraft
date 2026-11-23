@@ -26,7 +26,7 @@ RUN_FTP_KEY: Final = "run_ftp"
 EXPORT_FIELDS: Final[dict[str, str]] = {
     MetricKind.WEIGHT.value: "Gewicht",
     MetricKind.BODY_FAT.value: "Körperfett",
-    MetricKind.RESTING_HR.value: "Ruhepuls",
+    MetricKind.RESTING_HR.value: "Ruheherzfrequenz",
     MetricKind.THRESHOLD_PACE.value: "Lauf-Schwellenpace",
     MetricKind.THRESHOLD_HR.value: "Schwellen-Herzfrequenz",
     MetricKind.MAX_HR.value: "Maximale Herzfrequenz",

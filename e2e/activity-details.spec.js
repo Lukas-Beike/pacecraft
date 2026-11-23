@@ -338,7 +338,7 @@ test("@responsive the lap table keeps every value and word on one line and scrol
   await renderCalendarSessions(page, [{ id: "act_laps", name: "Synthetic lap run", sport: "run", started_at_local: "2026-10-17T07:00:00", moving_duration_s: 4380 }]);
   const details = await openSessionDetails(page, "Synthetic lap run");
   const section = details.locator(".activity-analysis-laps");
-  await expect(section.locator("th[scope=col]")).toHaveText(["#", "Zeit", "Distanz", "Pace", "GAP Garmin", "Ø W", "Ø HF", "Anstieg"]);
+  await expect(section.locator("th[scope=col]")).toHaveText(["#", "Zeit", "Distanz", "Pace", "GAP Garmin", "Ø W", "Ø Herzfrequenz", "Höhenmeter"]);
   await section.scrollIntoViewIfNeeded();
   if (testInfo.project.name === "mobile") await section.screenshot({ path: testInfo.outputPath("Runden.png") });
   const layout = await section.evaluate((root) => {

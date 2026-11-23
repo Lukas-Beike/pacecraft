@@ -153,3 +153,18 @@ test("@responsive the shared calendar without an address says what to do and ref
   await expect(page.locator("#cred-calendar_ical_url")).toHaveValue("");
   await expect(page.locator("#externalCalendarSyncButton")).toBeDisabled();
 });
+
+test("@responsive a pause day names its end and hands the way back to the Coach (#3932 K-03)", async ({ page }) => {
+  await page.goto("/#plan/overview");
+  await expect(page.locator("#appShell")).toBeVisible();
+  await waitForSettledState(page);
+  await page.evaluate(() => {
+    const today = timezoneDateKey(AppState.state.data?.profile?.timezone, new Date());
+    AppState.state.data.garmin = { ...AppState.state.data.garmin, configured: true };
+    AppState.state.data.daily_planning_context = [today, addDateKey(today, 1), addDateKey(today, 2)].map((date) => ({ date, day_status: "pause", checkin: { illness: "Schnupfen" } }));
+    renderPlanned([]);
+  });
+  const day = page.locator(".planned-day.is-today");
+  await expect(day.locator(".planned-day-day-status")).toContainText(/Trainingspause bis /);
+  await expect(day.getByRole("button", { name: "Mit Coach besprechen" })).toBeVisible();
+});

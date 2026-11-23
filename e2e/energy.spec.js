@@ -1,11 +1,19 @@
 const { test, expect } = require("@playwright/test");
 
+// Playwright's messages for a request whose page went away (#3449).
+const GONE = /Response has been disposed|Target page, context or browser has been closed/;
+
 // The read is shaped here (the values come from the method tests); `shape` gets it and the diary day.
+// A read still in flight when its page goes away needs no answer (#4115, as #3449); any other error fails.
 async function shapeEnergy(page, shape) {
   await page.route("**/api/body/energy*", async (route) => {
-    const response = await route.fetch();
     const day = new URL(route.request().url()).searchParams.get("date");
-    await route.fulfill({ response, json: shape(await response.json(), day) });
+    try {
+      const response = await route.fetch();
+      await route.fulfill({ response, json: shape(await response.json(), day) });
+    } catch (error) {
+      if (!GONE.test(String(error))) throw error;
+    }
   });
 }
 
@@ -40,7 +48,7 @@ test("@responsive the diary shows Offene Kalorien and the outlined source's part
   await expect(card.locator(".energy-goal > p")).toHaveText("Offene Kalorien1.020 kcal");
   await expect(card.locator(".energy-goal progress")).toHaveAttribute("max", "2420");
   await expect(card.locator(".energy-goal-items li")).toHaveText(["gegessen 1.400", "Ziel heute 2.420 (300 Defizit)"]);
-  await expect(card.locator(".energy-usage h3")).toHaveText("Verbrauch heute · bis jetzt");
+  await expect(card.locator(".energy-usage h3")).toHaveText("Verbrauch heute (Stand jetzt)");
   await expect(card.locator(".energy-split [data-part]")).toHaveCount(5);
   await expect(card.locator(".energy-parts li")).toHaveText([
     // #3719: Schritte & Treppen and Verdauung show the number only; the "i" names the time and the estimate.
@@ -90,7 +98,7 @@ test("@responsive the diary card says Noch keine Quelle without an outlined sour
   await shapeEnergy(page, (data) => ({ ...data, day_partial: true, outlined: null, best: null }));
   await page.goto("/#nutrition/diary");
   const card = page.locator("#nutritionEnergy [data-energy]");
-  await expect(card.locator(".energy-usage h3")).toHaveText("Verbrauch heute · bis jetzt");
+  await expect(card.locator(".energy-usage h3")).toHaveText("Verbrauch heute (Stand jetzt)");
   await expect(card.locator(".energy-usage")).toContainText("Noch keine Quelle");
   await expect(card.locator(".energy-parts")).toHaveCount(0);
   await expect(page.locator("#nutritionEnergy table")).toHaveCount(0);
@@ -215,7 +223,7 @@ test("@responsive the energy card follows the diary date: sport per day, today b
   });
   await page.goto("/#nutrition/diary");
   const card = page.locator("#nutritionEnergy [data-energy]");
-  await expect(card.locator(".energy-usage h3")).toHaveText("Verbrauch heute · bis jetzt");
+  await expect(card.locator(".energy-usage h3")).toHaveText("Verbrauch heute (Stand jetzt)");
   await expect(card.locator(".energy-parts [data-part='sport']")).toHaveText(/^Sport0/);
   await expect(card.locator(".energy-parts [data-part='tef']")).toHaveText("Verdauungnicht erfasst");
   // #3530, #3719: where Garmin's day summary stands is in the "i", not on the row.
@@ -256,8 +264,6 @@ const fitScale = (days, ownDays, own, band) => ({
     { source: "device", label: "Garmin Connect", total_kcal: 3157 },
   ],
 });
-// Playwright's messages for a request whose page went away (#3449).
-const GONE = /Response has been disposed|Target page, context or browser has been closed/;
 for (const theme of ["light", "dark"]) {
   test(`@responsive the fit scale follows Verlauf's period without overlaps, and the diary card takes the outlined source (${theme})`, async ({ page }) => {
     await page.emulateMedia({ colorScheme: theme });

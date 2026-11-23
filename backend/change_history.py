@@ -62,17 +62,25 @@ _collected_changes: ContextVar[list[dict[str, Any]] | None] = ContextVar(
 )
 
 
+_change_source: ContextVar[str | None] = ContextVar("change_source", default=None)
+
+
 @contextmanager
-def collect_changes() -> Iterator[list[dict[str, Any]]]:
+def collect_changes(source: str | None = None) -> Iterator[list[dict[str, Any]]]:
     """Collect undo references for the changes recorded inside the block.
 
-    Undo rows are not collected because they cannot be undone again.
+    Undo rows are not collected because they cannot be undone again. A
+    ``source`` (the Coach tool round passes ``coach``) stamps the default-source
+    changes recorded inside the block.
     """
     collected: list[dict[str, Any]] = []
     token = _collected_changes.set(collected)
+    # A nested collection keeps the stamp of the block around it.
+    source_token = _change_source.set(source or _change_source.get())
     try:
         yield collected
     finally:
+        _change_source.reset(source_token)
         _collected_changes.reset(token)
 
 
@@ -589,6 +597,8 @@ def record_change(
     after_hash = audit_hash(after_projection)
     if before_hash == after_hash and action != "undo":
         return None
+    if source == "local":
+        source = _change_source.get() or source
     record = {
         "id": str(uuid.uuid4()),
         "entity_type": entity_type,

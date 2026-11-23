@@ -310,6 +310,17 @@ class CheckinService:
             if stored:
                 row[field] = json.loads(stored["value"])
 
+    def day(self, value: Any) -> dict[str, Any] | None:
+        """The stored check-in of one day, with its tags, status and complaints."""
+        try:
+            checkin_date = date.fromisoformat(str(value or "")).isoformat()
+        except ValueError as exc:
+            raise AppError(
+                400, "Das Datum des lokalen Feedbacks ist ungültig."
+            ) from exc
+        with self._manager.read_snapshot() as db:
+            return self._stored(db, checkin_date)
+
     def _stored(self, db: Any, checkin_date: str) -> dict[str, Any] | None:
         """The stored check-in of one day as change history records it."""
         row = self._repository.get(db, checkin_date)

@@ -94,11 +94,17 @@ class CalendarConflictService:
             event_matches, _match = calendar_items_conflict(workout, event)
             if not event_matches or not is_marked:
                 ordinary_events.append(event)
+        external = calendar_conflicts_for_items(
+            workout, ordinary_events, "external_calendar"
+        )
+        # An appointment without a classification is the one the athlete can still settle.
+        impacts = {event.get("id"): event.get("impact") for event in ordinary_events}
+        for record in external:
+            if impacts.get(record["id"]) == "open":
+                record["open"] = True
         return (
             constraint_conflicts
             + calendar_conflicts_for_items(workout, library_entries, "local_library")
             + calendar_conflicts_for_items(workout, competitions, "local_competition")
-            + calendar_conflicts_for_items(
-                workout, ordinary_events, "external_calendar"
-            )
+            + external
         )

@@ -323,7 +323,7 @@ class _Facts:
             return str(reason)
         speed_based = self.execution.get("output_unit") != "W"
         if speed_based and self.speed_quality not in (None, "ok"):
-            return f"Datenqualität Tempo: {self.speed_quality}."
+            return f"Datenqualität Geschwindigkeit: {self.speed_quality}."
         return None
 
 
@@ -593,7 +593,7 @@ def _decoupling(facts: _Facts) -> dict[str, Any]:
                 "peers": int(peers),
             },
             unit="%",
-            rule="Leistung bzw. Tempo pro Herzschlag, zweite gegen erste Hälfte, über dem oberen Quartil eigener vergleichbarer Einheiten und über 5 %",
+            rule="Leistung bzw. Pace pro Herzschlag, zweite gegen erste Hälfte, über dem oberen Quartil eigener vergleichbarer Einheiten und über 5 %",
             threshold=max(quartile, DECOUPLING_PCT),
             measure=value,
             basis="personal",
@@ -603,7 +603,7 @@ def _decoupling(facts: _Facts) -> dict[str, Any]:
         title,
         value={"decoupling_pct": round(value, 1)},
         unit="%",
-        rule="Leistung bzw. Tempo pro Herzschlag, zweite gegen erste Hälfte",
+        rule="Leistung bzw. Pace pro Herzschlag, zweite gegen erste Hälfte",
         threshold=DECOUPLING_PCT,
         measure=value,
         basis="fixed",
@@ -643,7 +643,7 @@ def _easy_time_above(facts: _Facts) -> dict[str, Any]:
             "limit_bpm": limit.get("bpm"),
         },
         unit="%",
-        rule="Anteil der Zeit über dem LT1-Puls, ohne die im Plan vorgesehene Zeit darüber",
+        rule="Anteil der Zeit über der LT1-Herzfrequenz, ohne die im Plan vorgesehene Zeit darüber",
         threshold=EASY_ABOVE_SHARE_PCT,
         measure=share,
         basis="fixed",
@@ -651,7 +651,7 @@ def _easy_time_above(facts: _Facts) -> dict[str, Any]:
 
 
 def _heart_rate_cap(facts: _Facts, cap: Mapping[str, Any]) -> dict[str, Any]:
-    title = "HF-Deckel"
+    title = "Herzfrequenz-Deckel"
     if reason := facts.heart_rate_unknown():
         return _unknown("heart_rate_cap", title, reason, basis="plan")
     share = _number(cap.get("time_above_cap_pct"))
@@ -674,7 +674,7 @@ def _heart_rate_cap(facts: _Facts, cap: Mapping[str, Any]) -> dict[str, Any]:
             "max_bpm": facts.metric("max_hr"),
         },
         unit="%",
-        rule="Mittel über dem geplanten HF-Deckel oder mehr als 10 % der Zeit darüber",
+        rule="Mittel über dem geplanten Herzfrequenz-Deckel oder mehr als 10 % der Zeit darüber",
         threshold=CAP_ABOVE_SHARE_PCT,
         measure=share,
         basis="plan",
@@ -741,7 +741,7 @@ def _interval_checks(facts: _Facts) -> list[dict[str, Any]]:
     ]
 
 
-_HEART_RATE_RISE_TITLE: Final = "Puls-Anstieg über die Wiederholungen"
+_HEART_RATE_RISE_TITLE: Final = "Herzfrequenz-Anstieg über die Wiederholungen"
 
 
 def _without_power(facts: _Facts) -> bool:
@@ -771,7 +771,7 @@ def _heart_rate_rise(
         return _unknown(
             "heart_rate_rise",
             title,
-            "nicht bewertbar: Puls folgt kurzen Belastungen zu träge (unter 3 min)",
+            "nicht bewertbar: Herzfrequenz folgt kurzen Belastungen zu träge (unter 3 min)",
         )
     first, last = long[0], long[-1]
     first_s, last_s = float(first["duration_s"]), float(last["duration_s"])
@@ -793,7 +793,7 @@ def _heart_rate_rise(
             "rise_pct": round(rise, 1),
         },
         unit="%",
-        rule="Puls am Ende der letzten gegen die erste gleich lange Arbeitsrunde ab 3 min; ohne Leistung bleibt offen, ob die Belastung oder die Ermüdung stieg",
+        rule="Herzfrequenz am Ende der letzten gegen die erste gleich lange Arbeitsrunde ab 3 min; ohne Leistung bleibt offen, ob die Belastung oder die Ermüdung stieg",
         threshold=CARDIAC_DRIFT_PCT,
         measure=rise,
         basis="fixed",
@@ -820,7 +820,7 @@ def _erg_heart_rate(facts: _Facts) -> dict[str, Any]:
     least 5 own sessions, else a value only; notable from 3 % higher (athlete,
     #3084, confirmed 2026-11-16).
     """
-    title = "Puls bei gleicher ERG-Leistung"
+    title = "Herzfrequenz bei gleicher ERG-Leistung"
     if reason := facts.heart_rate_unknown():
         return _unknown("erg_heart_rate", title, reason, basis="personal")
     same = _mapping(facts.comparable.get("at_same_output"))
@@ -830,7 +830,8 @@ def _erg_heart_rate(facts: _Facts) -> dict[str, Any]:
     share = f"±{SAME_OUTPUT_SHARE * 100:g} %"
     if own is None:
         reason = str(
-            facts.comparable.get("reason") or "Kein Puls am Ende der Wiederholungen."
+            facts.comparable.get("reason")
+            or "Keine Herzfrequenz am Ende der Wiederholungen."
         )
         return _unknown("erg_heart_rate", title, reason, basis="personal")
     if median is None or count < MIN_PERSONAL:
@@ -852,7 +853,7 @@ def _erg_heart_rate(facts: _Facts) -> dict[str, Any]:
             "peers": count,
         },
         unit="%",
-        rule=f"Puls am Ende der Wiederholungen gegen den Median eigener Einheiten bei gleicher Leistung ({share})",
+        rule=f"Herzfrequenz am Ende der Wiederholungen gegen den Median eigener Einheiten bei gleicher Leistung ({share})",
         threshold=ERG_HEART_RATE_PCT,
         measure=higher,
         basis="personal",
@@ -992,7 +993,7 @@ def _rep_fade(facts: _Facts, reps: Sequence[Mapping[str, Any]]) -> dict[str, Any
             ],
         },
         unit="%",
-        rule="Schwächste Wiederholung gegen den Median der etwa gleich langen Wiederholungen (Tempo als Geschwindigkeit bzw. Leistung)",
+        rule="Schwächste Wiederholung gegen den Median der etwa gleich langen Wiederholungen (Geschwindigkeit bzw. Leistung)",
         threshold=FADE_PCT,
         measure=-worst,
         basis="fixed",
@@ -1080,7 +1081,9 @@ def _cardiac_drift(facts: _Facts, reps: Sequence[Mapping[str, Any]]) -> dict[str
     ]
     if len(paired) < 2:
         return _unknown(
-            "cardiac_drift", title, "Weniger als zwei Wiederholungen ab 2 min mit Puls."
+            "cardiac_drift",
+            title,
+            "Weniger als zwei Wiederholungen ab 2 min mit Herzfrequenz.",
         )
     (first_rep, first_output, first_hr), (last_rep, last_output, last_hr) = (
         paired[0],
@@ -1090,7 +1093,7 @@ def _cardiac_drift(facts: _Facts, reps: Sequence[Mapping[str, Any]]) -> dict[str
         return _unknown(
             "cardiac_drift",
             title,
-            "Erste und letzte Wiederholung liefen nicht mit gleicher Leistung bzw. gleichem Tempo.",
+            "Erste und letzte Wiederholung liefen nicht mit gleicher Leistung bzw. gleicher Pace.",
         )
     drift = (last_hr / first_hr - 1) * 100
     return _judged(
@@ -1103,7 +1106,7 @@ def _cardiac_drift(facts: _Facts, reps: Sequence[Mapping[str, Any]]) -> dict[str
             "drift_pct": round(drift, 1),
         },
         unit="%",
-        rule="Puls am Ende der letzten gegen die erste Wiederholung bei gleicher Leistung (±3 %)",
+        rule="Herzfrequenz am Ende der letzten gegen die erste Wiederholung bei gleicher Leistung (±3 %)",
         threshold=CARDIAC_DRIFT_PCT,
         measure=drift,
         basis="fixed",
@@ -1156,7 +1159,7 @@ def _recovery_duration(facts: _Facts) -> dict[str, Any] | None:
 
 def _recovery_heart_rate_drop(facts: _Facts) -> dict[str, Any]:
     """Mean HR drop 60 s into the recoveries against the athlete's own median."""
-    title = "Puls-Erholung nach 60 s"
+    title = "Herzfrequenz-Erholung nach 60 s"
     if reason := facts.heart_rate_unknown():
         return _unknown("recovery_heart_rate_drop", title, reason, basis="personal")
     # Read from the recoveries themselves, so a ride without output (no power,
@@ -1189,7 +1192,7 @@ def _recovery_heart_rate_drop(facts: _Facts) -> dict[str, Any]:
                 facts.comparable.get("reason")
                 if facts.comparable.get("status") != "ok"
                 and facts.comparable.get("reason")
-                else f"Weniger als {MIN_PERSONAL} eigene vergleichbare Einheiten mit Pausen-Puls."
+                else f"Weniger als {MIN_PERSONAL} eigene vergleichbare Einheiten mit Pausen-Herzfrequenz."
             ),
             basis="personal",
             value={"mean_drop_bpm": own},
@@ -1204,7 +1207,7 @@ def _recovery_heart_rate_drop(facts: _Facts) -> dict[str, Any]:
             "peers": int(peers),
         },
         unit="bpm",
-        rule="Mittlerer Pulsabfall 60 s nach Pausenbeginn gegen den eigenen Median",
+        rule="Mittlerer Herzfrequenzabfall 60 s nach Pausenbeginn gegen den eigenen Median",
         threshold=HEART_RATE_DROP_BELOW_BPM,
         measure=below,
         basis="personal",
@@ -1259,7 +1262,7 @@ def _form_drift(facts: _Facts) -> dict[str, Any] | None:
             "metrics": metrics,
         },
         unit="%",
-        rule="Bodenkontaktzeit vom ersten zum letzten Drittel bei gleichem Tempo (Form-Drift)",
+        rule="Bodenkontaktzeit vom ersten zum letzten Drittel bei gleicher Pace (Form-Drift)",
         threshold=CONTACT_TIME_RISE_PCT,
         measure=rise or 0.0,
         basis="fixed",
@@ -1272,7 +1275,7 @@ def _pace_at_heart_rate(facts: _Facts) -> dict[str, Any] | None:
     data = _mapping(facts.result.get("pace_at_heart_rate"))
     if not data:
         return None
-    title = "Tempo bei gleichem Puls"
+    title = "Pace bei gleicher Herzfrequenz"
     if reason := facts.heart_rate_unknown():
         return _unknown("pace_at_heart_rate", title, reason, basis="personal")
     if data.get("status") != "ok":
@@ -1301,7 +1304,7 @@ def _pace_at_heart_rate(facts: _Facts) -> dict[str, Any] | None:
             "peers": count,
         },
         unit="%",
-        rule="Tempo im Pulsband der Einheit gegen den Median eigener vergleichbarer Läufe (positiv: langsamer)",
+        rule="Pace im Herzfrequenzband der Einheit gegen den Median eigener vergleichbarer Läufe (positiv: langsamer)",
         threshold=PACE_AT_HR_PCT,
         measure=slower,
         basis="personal",
@@ -1444,7 +1447,7 @@ def _dynamics_bands(facts: _Facts) -> dict[str, Any] | None:
         return None
     return {
         "id": "running_dynamics_bands",
-        "title": "Laufdynamik je Tempobereich gegen eigene Läufe",
+        "title": "Laufdynamik je Pace-Bereich gegen eigene Läufe",
         "value": {key: rating[key] for key in ("bands", "metrics") if key in rating},
         "unit": None,
         "basis": "personal",
@@ -2057,7 +2060,7 @@ def _condition_checks(facts: _Facts) -> list[dict[str, Any]]:
                 _unknown(
                     "grade_adjusted_pace",
                     title,
-                    "Keine Tempo-, Steigungs- oder Höhendaten.",
+                    "Keine Pace-, Steigungs- oder Höhendaten.",
                 )
             )
         elif reason := facts.output_unknown():
@@ -2353,7 +2356,7 @@ def _data_quality(quality: Mapping[str, Any]) -> dict[str, Any]:
             "doubted": sorted(doubted),
         },
         f"Herzfrequenz: Spitzen über {HR_SPIKE_BPM:.0f} bpm in mehr als "
-        f"{HR_SPIKE_SHARE * 100:.0f} % der Paare oder Kadenz-Kopplung; Tempo: "
+        f"{HR_SPIKE_SHARE * 100:.0f} % der Paare oder Schritt-/Trittfrequenz-Kopplung; Geschwindigkeit: "
         f"Sprünge über {SPEED_JUMP_MPS:g} m/s in mehr als "
         f"{SPEED_JUMP_SHARE * 100:.0f} % der Paare; beide: Lücken über "
         f"{MAX_GAP_S:g} s in mehr als {GAP_SHARE * 100:.0f} % der aufgezeichneten "
@@ -2482,7 +2485,7 @@ def _recovery_before(
     ``explains`` names notable heart-rate checks only when a value of that very
     night lies on its unfavourable side: less sleep, lower HRV, higher resting HR.
     """
-    title = "Die Nacht davor (Schlaf, HRV, Ruhepuls)"
+    title = "Die Nacht davor (Schlaf, HRV, Ruheherzfrequenz)"
     day = str(_mapping(facts.session).get("started_at_local") or "")[:10]
     nights = []
     for baseline in baselines:
@@ -2509,7 +2512,9 @@ def _recovery_before(
         )
     if not nights:
         return _unknown(
-            "recovery_before", title, "Keine Werte zu Schlaf, HRV oder Ruhepuls."
+            "recovery_before",
+            title,
+            "Keine Werte zu Schlaf, HRV oder Ruheherzfrequenz.",
         )
     unfavourable = any(
         night["that_night"]

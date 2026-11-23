@@ -58,6 +58,7 @@ def _database() -> sqlite3.Connection:
         "area TEXT NOT NULL, started_at TEXT NOT NULL, finished_at TEXT, status TEXT NOT NULL, "
         "error_code TEXT);"
         "CREATE TABLE competitions (id TEXT PRIMARY KEY, event_date TEXT NOT NULL);"
+        "CREATE TABLE athlete_checkins (checkin_date TEXT PRIMARY KEY);"
         "CREATE TABLE planned_units (local_id TEXT PRIMARY KEY, payload TEXT NOT NULL);"
         "CREATE TABLE activity_sessions (activity_id TEXT PRIMARY KEY, "
         "primary_provider TEXT NOT NULL, state TEXT NOT NULL, "
@@ -622,6 +623,24 @@ class PushChecksTests(unittest.TestCase):
         self._announced(
             "Morgenwerte", "Die Werte der Nacht sind da.", "#analysis/recovery"
         )
+
+    def test_the_check_in_reminder_follows_tonights_sleep_and_never_a_stored_check_in(
+        self,
+    ):
+        # #3953: sleep dated today and no check-in of today: once, opening the form.
+        insert = "INSERT INTO observations (metric, observed_on, state) VALUES (?, ?, 'active')"
+        self.connection.execute(insert, ("sleep_score", "2026-11-21"))
+        self.connection.execute(insert, ("hrv_rmssd", "2026-11-22"))
+        self.checks.check()
+        self.assertEqual(self._titled("Check-in"), [])  # yesterday's sleep, today's HRV
+        self.connection.execute(insert, ("sleep_duration", "2026-11-22"))
+        self._announced("Check-in", "Wie fühlst du dich heute?", "#plan/checkin")
+        # The next day has sleep and a check-in already: no reminder.
+        self.local["now"] = datetime(2026, 11, 23, 9, 0, tzinfo=UTC)
+        self.connection.execute(insert, ("sleep_score", "2026-11-23"))
+        self.connection.execute("INSERT INTO athlete_checkins VALUES ('2026-11-23')")
+        self.checks.check()
+        self.assertEqual(len(self._titled("Check-in")), 1)
 
     def test_equipment_at_its_interval_is_announced_once_per_maintenance(self):
         def item(ident, due, *done, status="active"):

@@ -144,6 +144,14 @@ const TEXT_FORMATS = [
   [/\bPortion\(en\)/, "an either-or plural"],
   [/\b[A-Z][A-Z0-9]+_[A-Z0-9_]+\b/, "an internal setting name"],
   [/\b(Ø Puls|Pulszonen|HF-Zonen|Kadenz|Power-Zonen|Kurzzeitbelastung|Session-RPE-Last|Athletenkontext|Nicht gesetzt|nicht konfiguriert)\b/, "a word the term list replaced"],
+  // #3981: the two loads, the English names and the stored step notation.
+  [/\b(Trainingsbelastung|Training Effect|Load-Focus|Thinking|Personal API|SDK-Login|Ultrafast|Ruhepuls|Schwellenpuls)\b/, "a word the term list replaced"],
+  [/^\s*-\s*\d+(h|m|s|km|mtr)\b/, "raw step notation"],
+  [/^\s*\d+x\s*$/, "a raw repeat header"],
+  [/\b(Main Set|Warmup|Cooldown)\b/, "a raw step section name"],
+  [/\bWeightTraining · \d/, "a sport type with a time"],
+  [/\b\d{4}-\d{2}-\d{2}T\d{2}:|\|\s*active\b|Datensätze in \d+ Zeitfenstern/, "an internal timestamp or status"],
+  [/(^|[^\d.])\d{2}\.\d{2}\.\d{2}($|[^\d.])/, "a two-digit year"],
 ];
 
 async function expectTextFormats(page, view) {
@@ -160,9 +168,8 @@ async function expectTextFormats(page, view) {
 }
 
 // #3935 X-02: the structural rules axe found on the fixture views; none may come back.
-// Controls inside a summary (the competition pencil, the sync, conflict and Garmin buttons of a calendar card) are
-// still nested interactive content (#3981); a closed details hides everything outside its summary, so they cannot just move.
-const STRUCTURE_RULES = ["label-content-name-mismatch", "scrollable-region-focusable", "page-has-heading-one", "heading-order", "landmark-unique"];
+// No control sits inside a summary: the competition pencil and the conflict and Garmin buttons of a calendar card stand beside the details (#3981).
+const STRUCTURE_RULES = ["nested-interactive", "label-content-name-mismatch", "scrollable-region-focusable", "page-has-heading-one", "heading-order", "landmark-unique"];
 
 async function expectStructure(page, view) {
   const { violations } = await new AxeBuilder({ page }).withRules(STRUCTURE_RULES).analyze();
@@ -286,6 +293,30 @@ test.describe("colour contrast sweep", () => {
         expect(contrastRatio(label.fill, label.card), `${segment} ${theme} ${label.text} on card`).toBeGreaterThanOrEqual(4.5);
         expect(contrastRatio(label.fill, label.halo), `${segment} ${theme} ${label.text} on halo`).toBeGreaterThanOrEqual(4.5);
       }
+    }
+  });
+
+  // #3981 X-05: a secondary button's outline is a non-text component and keeps 3:1 against the white or grey card it sits on.
+  test("@responsive secondary button borders keep 3:1 against their card in the light theme", async ({ page, request }) => {
+    expect((await request.get("/api/fixture/demo")).ok()).toBeTruthy();
+    await page.goto("/");
+    await page.waitForFunction(() => state.initialStateLoaded);
+    // A border mid-transition after the theme switch is no resting colour.
+    await page.evaluate(() => {
+      const sheet = new CSSStyleSheet();
+      sheet.replaceSync("*, *::before, *::after { transition: none !important; }");
+      document.adoptedStyleSheets = [...document.adoptedStyleSheets, sheet];
+    });
+    for (const route of ["plan/season", "more/connections", "more/operations", "nutrition/diary"]) {
+      await showView(page, route);
+      await applyTheme(page, "light");
+      const buttons = await page.locator(".panel.active .secondary-button:visible").evaluateAll((nodes) => nodes.map((node) => {
+        let holder = node.parentElement;
+        while (holder && /rgba\([^)]*,\s*0\)|transparent/.test(getComputedStyle(holder).backgroundColor)) holder = holder.parentElement;
+        return { text: node.textContent.trim().slice(0, 24), border: getComputedStyle(node).borderTopColor, card: getComputedStyle(holder || document.body).backgroundColor };
+      }));
+      expect(buttons.length, route).toBeGreaterThan(0);
+      for (const button of buttons) expect(contrastRatio(button.border, button.card), `${route} ${button.text} ${button.border} on ${button.card}`).toBeGreaterThanOrEqual(3);
     }
   });
 

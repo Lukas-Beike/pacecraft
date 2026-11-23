@@ -34,7 +34,7 @@ test("a nutrition entry without a recorded basis is labelled by its source and l
 });
 
 function contextValueNodeFor() {
-  return extractFunctions("coach.js", ["CONTEXT_PREVIEW_MAX_DEPTH", "CONTEXT_PREVIEW_MAX_ITEMS", "CONTEXT_HIDDEN_KEYS", "CONTEXT_KEY_LABELS", "contextScalarText", "contextPreNode", "contextTextNode", "contextListNode", "contextObjectNode", "contextValueNode"], {
+  return extractFunctions("coach.js", ["CONTEXT_PREVIEW_MAX_DEPTH", "CONTEXT_PREVIEW_MAX_ITEMS", "CONTEXT_HIDDEN_KEYS", "CONTEXT_KEY_LABELS", "CONTEXT_ENVIRONMENTS", "contextWallTime", "contextScalarText", "contextPreNode", "contextTextNode", "contextListNode", "contextObjectNode", "contextValueNode"], {
     document: fakeDocument(),
     formatTime: (value) => value,
     profileSportsLabel: extractFunctions("views.js", ["PROFILE_SPORT_LABELS", "profileSportsLabel"]).profileSportsLabel,
@@ -55,6 +55,11 @@ test("the context preview shows readable values and keeps deeply nested provider
   // The profile's own keys and sports read in German (#3933).
   const profile = contextValueNode({ goals: "Marathon", training_background: "Lauf", availability: "Abends", sports: "Cycling, Running" });
   assert.deepEqual(profile.children.map((node) => node.textContent), ["Ziele", "Marathon", "Trainingshintergrund", "Lauf", "Verfügbarkeit", "Abends", "Sportarten", "Radfahren, Laufen"]);
+  // A competition row: no ids or sync flags, German keys, readable dates and categories (#3981).
+  const race = contextValueNode({ id: 7, local_id: "x", sync_dirty: 1, name: "Rennen", event_date: "2026-11-21", category: "RACE_A", sport: "ride", environment: "virtual", starts_at_local: "2026-11-21T10:00" });
+  assert.deepEqual(race.children.map((node) => node.textContent), ["Name", "Rennen", "Datum", "21.11.2026", "Kategorie", "Wettkampf A", "Sportart", "Radfahren", "Umgebung", "Indoor", "Beginn", "21.11.2026, 10:00"]);
+  // A local wall time is shown as stored, never converted between zones (Gitar, #3981).
+  assert.equal(contextValueNode({ starts_at_local: "2026-11-21T23:30:00" }).children[1].textContent, "21.11.2026, 23:30");
   assert.equal(contextValueNode("Langer Text", "content").tag, "pre");
   const longList = contextValueNode(Array.from({ length: 30 }, (_, index) => index));
   assert.equal(longList.children.length, 26);
@@ -83,10 +88,13 @@ test("release changes are grouped as Neu, Verbessert, Behoben and the rest, with
 });
 
 test("a library card shows its stored step lines in German words (#3933)", () => {
-  const { libraryDescriptionText } = extractFunctions("plan-views.js", ["LIBRARY_STEP_UNITS", "libraryStepLine", "libraryDescriptionText"]);
+  const { libraryDescriptionText } = extractFunctions("plan-views.js", ["LIBRARY_STEP_UNITS", "libraryStepLine", "LIBRARY_SECTION_NAMES", "libraryHeaderLine", "libraryDescriptionText"]);
   assert.equal(libraryDescriptionText("Locker\n- 20m 55%\n- 20m Z1 HR\n- 400mtr"), "Locker\n20 min · 55 %\n20 min · Z1 Herzfrequenz\n400 m");
+  // Section and repeat headers and watt targets, as the Intervals.icu workout text writes them.
+  assert.equal(libraryDescriptionText("Warmup\n- 10m 55-65%\nMain Set 5x\n- 5m 250W\n- 3m 55%\n3x\nWarmup | Cooldown"), "Einlaufen\n10 min · 55–65 %\nHauptteil · 5×\n5 min · 250 W\n3 min · 55 %\n3×\nEinlaufen und Auslaufen");
   assert.equal(libraryDescriptionText(""), "");
   assert.equal(libraryDescriptionText("- Locker einlaufen"), "- Locker einlaufen", "a prose bullet stays as written");
+  assert.equal(libraryDescriptionText("Bergsprints 6x"), "Bergsprints 6x", "a prose line ending in a count is no header");
 });
 
 test("a change that rounds to zero carries no sign (#3933)", () => {
@@ -108,7 +116,20 @@ test("the client source holds one word per thing", () => {
   const path = require("node:path");
   const dir = path.join(__dirname, "../public");
   const sources = fs.readdirSync(dir).filter((name) => /\.(js|html)$/.test(name)).map((name) => [name, fs.readFileSync(path.join(dir, name), "utf8")]);
-  const other = ["Ø Puls", "Pulszonen", "HF-Zone", "Ø Tempo", "Kadenz", "Power-Zonen", "Kurzzeitbelastung", "Langzeitbelastung", "Session-RPE-Last", "Athletenkontext", "Mit Coach lösen", "Mit Coach strukturieren", "Mit dem Coach", "Nicht gesetzt", "nicht konfiguriert", "Noch nicht getestet", "\"Krafttraining\"", ">Krafttraining<"];
+  const other = ["Ø Puls", "Pulszonen", "HF-Zone", "Ø Tempo", "Kadenz", "Power-Zonen", "Kurzzeitbelastung", "Langzeitbelastung", "Session-RPE-Last", "Athletenkontext", "Mit Coach lösen", "Mit Coach strukturieren", "Mit dem Coach", "Nicht gesetzt", "nicht konfiguriert", "Noch nicht getestet", "\"Krafttraining\"", ">Krafttraining<", "Trainingsbelastung", "Akute Belastung", "akute Belastung", "Training Effect", "Load-Focus", ">Thinking<", ": Thinking", ">Personal API<", "SDK-Login"];
   const found = sources.flatMap(([name, text]) => other.filter((word) => text.includes(word)).map((word) => `${name}: ${word}`));
   assert.deepEqual(found, []);
+});
+
+// A connection or freshness line shows a server timestamp in words, never as the ISO text (#3981).
+test("connection and freshness lines never render a raw ISO timestamp", () => {
+  const AppFormat = require("../public/format.js");
+  const { formatTime } = extractFunctions("shared.js", ["formatTime"], { AppFormat, state: { data: {} } });
+  const { freshnessMeta } = extractFunctions("sync-status.js", ["freshnessMeta"], { providerIds: () => ({ intervals: "intervals" }) });
+  const iso = /\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}/;
+  for (const stamp of ["2026-11-21T10:00:00.123456+00:00", "2026-11-21 10:00:00.123456+00:00", "2026-11-21T10:00:00.123456", "not a time"]) {
+    const line = freshnessMeta({ provider: "garmin", state: "ok", last_attempt_at: stamp, last_success_at: stamp, next_retry_at: stamp }, formatTime);
+    assert.doesNotMatch(line, iso, stamp);
+  }
+  assert.equal(AppFormat.dateTime("2026-11-21 10:00:00.123456+00:00"), AppFormat.dateTime("2026-11-21T10:00:00.123+00:00"));
 });

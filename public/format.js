@@ -18,7 +18,9 @@
 
   function toDate(value) {
     if (value == null || value === "") return null;
-    const parsed = value instanceof Date ? value : new Date(value);
+    // A server timestamp may carry microseconds or a space for the T; not every engine reads those.
+    const text = typeof value === "string" ? value.replace(/^(\d{4}-\d{2}-\d{2}) /, "$1T").replace(/(\.\d{3})\d+/, "$1") : value;
+    const parsed = value instanceof Date ? value : new Date(text);
     return Number.isNaN(parsed.valueOf()) ? null : parsed;
   }
 

@@ -13,7 +13,7 @@ directory, and is only read; result files must lie in the system temp
 directory (the session scratchpad). The scripts refuse any other path.
 
 ```powershell
-python scripts/prod_diagnostics.py --url <app address> --password-file <secret file> --expect-version <tag> --expect-schema <current schema> --out <scratchpad>/diagnostics.json [--compare <previous result>]
+python scripts/prod_diagnostics.py --url-file <scratchpad>/app-url.txt --password-file <secret file> --expect-version <tag> --expect-schema <current schema> --out <scratchpad>/diagnostics.json [--compare <previous result>]
 ```
 
 It checks health, logs in with the password read from the file, reads
@@ -38,7 +38,7 @@ prints no response body, cookie, or password; do not add a mode that does.
 ## Sections
 
 ```powershell
-python scripts/prod_diagnostics.py --url <app address> --password-file <secret file> --section <name> [--section <name> ...]
+python scripts/prod_diagnostics.py --url-file <scratchpad>/app-url.txt --password-file <secret file> --section <name> [--section <name> ...]
 ```
 
 Prints, instead of the checks, only the fields of those sections that

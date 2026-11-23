@@ -692,7 +692,7 @@ Source labels SHALL be these exact strings: `Garmin Connect`, `Wahoo` and `Inter
 
 #### Scenario: Garmin performance notes
 - **WHEN** a Garmin observation is labelled for a performance note
-- **THEN** the label is `Garmin Connect Herzfrequenzzonen` (maximum heart rate from `heart_rate_zones`), `Garmin Connect max metrics` (VO2max from `max_metrics`), `Garmin Connect Körpergewicht` (weight), `Garmin Connect FTP` (ride FTP), `Garmin Connect Lauf-Schwellenleistung` (run FTP), `Garmin Connect Lauf-Schwellenpace`, `Garmin Connect Lauf-Schwellenpuls` or `Garmin Connect Rad-Schwellenpuls`, else `Garmin Connect`.
+- **THEN** the label is `Garmin Connect Herzfrequenzzonen` (maximum heart rate from `heart_rate_zones`), `Garmin Connect max metrics` (VO2max from `max_metrics`), `Garmin Connect Körpergewicht` (weight), `Garmin Connect FTP` (ride FTP), `Garmin Connect Lauf-Schwellenleistung` (run FTP), `Garmin Connect Lauf-Schwellenpace`, `Garmin Connect Lauf-LSHF` or `Garmin Connect Rad-LSHF`, else `Garmin Connect`.
 
 #### Scenario: German vocabulary labels
 - **WHEN** a sport or purpose is shown

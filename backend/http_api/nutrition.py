@@ -19,6 +19,7 @@ from backend.nutrition.photo import PHOTO_REQUEST_MAX_BYTES
 
 NUTRITION_ENTRY_PATH = "/api/nutrition/entry"
 NUTRITION_PRODUCTS_PATH = "/api/nutrition/products"
+TEMPLATES_PATH = "/api/nutrition/templates"
 REFRESH_ALL_PATH = f"{NUTRITION_PRODUCTS_PATH}/refresh-all"
 CLEANUP_PATH = f"{NUTRITION_PRODUCTS_PATH}/cleanup"
 PRODUCT_ENTITY = "nutrition_product"
@@ -314,6 +315,10 @@ class NutritionPostRoutes:
                     (f"{NUTRITION_ENTRY_PATH}/session", self._set_session),
                     (f"{NUTRITION_ENTRY_PATH}/estimate", self._set_estimate),
                     ("/api/nutrition/refresh", self._refresh),
+                    (TEMPLATES_PATH, self._save_template),
+                    (f"{TEMPLATES_PATH}/from-entry", self._template_from_entry),
+                    (f"{TEMPLATES_PATH}/delete", self._delete_template),
+                    (f"{TEMPLATES_PATH}/log", self._log_template),
                     (NUTRITION_PRODUCTS_PATH, self._save_product),
                     (f"{NUTRITION_PRODUCTS_PATH}/lookup", self._lookup_product),
                     (f"{NUTRITION_PRODUCTS_PATH}/extract", self._extract_product),
@@ -341,6 +346,7 @@ class NutritionPostRoutes:
                 if self._product_refresh is not None
                 else []
             )
+            + [Route("GET", TEMPLATES_PATH, Access.SESSION, self._list_templates)]
             + (
                 [
                     Route("GET", CLEANUP_PATH, Access.SESSION, self._cleanup_preview),
@@ -479,6 +485,124 @@ class NutritionPostRoutes:
         """
         with change_history.collect_changes() as changes:
             entry = self._diary_service().log_meal(handler.read_json())
+        handler.send_json(200, {"ok": True, "entry": entry, **_change(changes)})
+
+    def _list_templates(self, handler: Any, _request: RouteRequest) -> None:
+        """The saved meals, each for one portion.
+
+        Request: no query, no body.
+
+        Response: 200 `{"templates"}`; each template has `id`, `name`,
+        `description`, `meal_type`, `kcal`, `carbs_g`, `protein_g`, `fat_g`,
+        `source`, `nutrition_basis` and `updated_at`.
+
+        Errors: none beyond the common ones.
+        """
+        handler.send_json(
+            200, {"templates": self._meal_library_service().list_templates()}
+        )
+
+    def _save_template(self, handler: Any, _request: RouteRequest) -> None:
+        """Create or change a saved meal, with the server's nutrient values.
+
+        Request: JSON body of the Coach tool `save_nutrition_template`: `name` (1 to 120
+        characters, unique), optional `id` (changes that saved meal), `description`,
+        `meal_type` and either `components` (1 to 20 items as in `POST
+        /api/nutrition/entry`, calculated by the server) or `food_ingredients`, or
+        the values `kcal`, `carbs_g`, `protein_g`, `fat_g`. A saved meal never
+        changes diary entries already logged.
+
+        Response: 200 `{"ok": true, "template", "change"}`; `change` is the undo
+        reference of the saved meal.
+
+        Errors: 400 "Mahlzeitname muss 1 bis 120 Zeichen enthalten."; 409 "Dieser
+        Mahlzeitname ist bereits vergeben. Lies die Vorlage und ändere sie
+        gezielt."; 400 "Maximal 200 gespeicherte Mahlzeiten sind möglich."; 404
+        "Gespeicherte Mahlzeit nicht gefunden." for an unknown `id`; the component
+        errors of `POST /api/nutrition/entry`.
+        """
+        with change_history.collect_changes() as changes:
+            template = self._meal_library_service().save_template(_read_object(handler))
+        handler.send_json(
+            200,
+            {
+                "ok": True,
+                "template": template,
+                **_change(changes, "nutrition_template"),
+            },
+        )
+
+    def _template_from_entry(self, handler: Any, _request: RouteRequest) -> None:
+        """Keep a logged meal as a saved meal.
+
+        Request: JSON body `{"id": string, "name": string}`; `id` is the diary
+        entry, `name` the saved meal's name (1 to 120 characters, unique). The
+        entry's values and basis are copied as stored for one portion; a meal in a
+        session slot becomes a snack.
+
+        Response: 200 `{"ok": true, "template", "change"}`.
+
+        Errors: 404 "Ernährungseintrag nicht gefunden." for an unknown entry; the
+        name errors of `POST /api/nutrition/templates`.
+        """
+        payload = _read_object(handler)
+        entry = self._diary_service().get_meal(str(payload.get("id") or ""))
+        with change_history.collect_changes() as changes:
+            template = self._meal_library_service().save_template_from_meal(
+                entry, payload.get("name")
+            )
+        handler.send_json(
+            200,
+            {
+                "ok": True,
+                "template": template,
+                **_change(changes, "nutrition_template"),
+            },
+        )
+
+    def _delete_template(self, handler: Any, _request: RouteRequest) -> None:
+        """Delete a saved meal; logged diary entries stay as they are.
+
+        Request: JSON body `{"id": string, "confirmed": true}`.
+
+        Response: 200 `{"ok": true, "deleted_id", "change"}`.
+
+        Errors: 409 "Das Löschen muss bestätigt werden." without `confirmed: true`;
+        404 "Gespeicherte Mahlzeit nicht gefunden.".
+        """
+        payload = _read_object(handler)
+        if payload.get("confirmed") is not True:
+            raise AppError(409, "Das Löschen muss bestätigt werden.")
+        result = self._meal_library_service().delete_template(
+            str(payload.get("id") or "")
+        )
+        handler.send_json(200, {"ok": True, **result})
+
+    def _log_template(self, handler: Any, _request: RouteRequest) -> None:
+        """Log a saved meal on a day, for a number of portions.
+
+        Request: JSON body `{"id": string, "portions": number, "meal_date": string,
+        "meal_time": string, "meal_type": string, "volume_ml": number}`; `portions`
+        is above 0 up to 20 (default 1), the other fields are optional and as in
+        `POST /api/nutrition/entry`. The values are the saved meal's, scaled by the
+        server.
+
+        Response: 200 `{"ok": true, "entry", "change"}`.
+
+        Errors: 404 "Gespeicherte Mahlzeit nicht gefunden."; 400 "Ungültige
+        Portionsanzahl." or "Portionsanzahl muss größer als 0 und höchstens 20
+        sein."; the date, time and type errors of `POST /api/nutrition/entry`.
+        """
+        payload = _read_object(handler)
+        with change_history.collect_changes() as changes:
+            entry = self._diary_service().log_template(
+                str(payload.get("id") or ""),
+                payload.get("portions", 1),
+                meal_date=payload.get("meal_date"),
+                meal_time=payload.get("meal_time"),
+                meal_type=payload.get("meal_type"),
+                volume_ml=payload.get("volume_ml"),
+            )
         handler.send_json(200, {"ok": True, "entry": entry, **_change(changes)})
 
     def _add_product(self, handler: Any, _request: RouteRequest) -> None:

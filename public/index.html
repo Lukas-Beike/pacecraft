@@ -63,7 +63,7 @@
         </section>
         <form id="chatForm" class="composer">
           <section id="quickMessageTemplates" class="quick-message-templates" hidden aria-label="Schnelle Nachrichten">
-            <button id="quickMorningCheckinButton" type="button" data-request-kind="morning_checkin" data-message="Gib mir den heutigen Morgen-Check-in. Lade dafür die aktuellen Garmin- und Wahoo-Daten, bewerte Erholung, Trainingsbelastung und die geplante Einheit und sag mir, was heute sinnvoll ist.">Morgen-Check-in</button>
+            <button id="quickMorningCheckinButton" type="button" data-request-kind="morning_checkin" data-message="Gib mir den heutigen Morgen-Check-in. Lade dafür die aktuellen Garmin- und Wahoo-Daten, bewerte Erholung, Belastung und die geplante Einheit und sag mir, was heute sinnvoll ist.">Morgen-Check-in</button>
             <button id="quickAnalysisButton" type="button" aria-haspopup="menu" aria-expanded="false" aria-controls="quickAnalysisMenu" popovertarget="quickAnalysisMenu">Analyse &amp; Plan</button>
             <div id="quickAnalysisMenu" class="quick-action-menu" popover="auto" role="menu" aria-label="Analyse und Plan">
               <button type="button" role="menuitem" data-request-kind="session_analysis" data-message="Aktualisiere zuerst meine Garmin- und Wahoo-Daten. Analysiere danach meine letzte absolvierte Einheit: Was lief gut, was sollte ich anpassen und wie beeinflusst sie die nächste Einheit? Nutze bei einer nahezu gleichen Wahoo- und Garmin-Radaufzeichnung immer Wahoo.">Einheit analysieren</button>
@@ -188,6 +188,7 @@
           <div id="nutritionLookupResult" class="nutrition-list" hidden></div>
           <div id="nutritionExtraction" class="nutrition-product-editor" hidden></div>
           <div id="nutritionProducts" class="nutrition-list"></div>
+          <div id="nutritionTemplates" class="nutrition-list"></div>
         </section>
         </section>
         <div id="nutritionWeek" hidden>
@@ -210,7 +211,7 @@
         </section>
       </section>
 
-      <section id="profilePanel" class="panel" aria-label="Profil">
+      <div class="more-area">
         <div class="section-heading">
           <div><h2>Mehr</h2></div>
         </div>
@@ -222,6 +223,7 @@
           <a href="#more/app" data-more-segment="app">App</a>
           <a href="#more/operations" data-more-segment="operations">Betrieb &amp; Diagnose</a>
         </nav>
+      <section id="profilePanel" class="panel" aria-label="Profil">
         <form id="profileForm" class="profile-form">
           <details class="profile-section collapsible-section">
             <summary class="collapsible-summary"><span class="collapsible-summary-title">Person</span><span id="profileSummary" class="collapsible-summary-meta">Noch nicht ausgefüllt</span></summary>
@@ -298,17 +300,6 @@
       </section>
 
       <section id="settingsPanel" class="panel" aria-label="Systemeinstellungen">
-        <div class="section-heading">
-          <div><h2>Mehr</h2></div>
-        </div>
-        <nav class="more-segment-nav" aria-label="Mehr-Bereiche">
-          <a href="#more/profile" data-more-segment="profile">Profil</a>
-          <a href="#more/connections" data-more-segment="connections" aria-current="page">Anbindungen</a>
-          <a href="#more/equipment" data-more-segment="equipment">Ausrüstung und Wartung</a>
-          <a href="#more/coach" data-more-segment="coach">Coach &amp; Modell</a>
-          <a href="#more/app" data-more-segment="app">App</a>
-          <a href="#more/operations" data-more-segment="operations">Betrieb &amp; Diagnose</a>
-        </nav>
         <section class="settings-section" data-more-segment-panel="equipment" hidden>
           <details id="profileEquipmentNote" class="settings-section collapsible-section" hidden>
             <summary class="collapsible-summary"><span class="collapsible-summary-title">Ausrüstungstext aus dem Profil</span></summary>
@@ -368,7 +359,7 @@
                   </div>
                 </section>
                 <form id="cred-form-garmin_personal" class="credential-form" autocomplete="off" aria-labelledby="credGarminPersonalTitle">
-                  <h4 id="credGarminPersonalTitle" aria-level="3">Personal API</h4>
+                  <h4 id="credGarminPersonalTitle" aria-level="3">API-Schlüssel</h4>
                   <div class="credential-row">
                     <div class="credential-row-head"><label for="cred-garmin_personal_api_key">API-Schlüssel</label><span id="cred-source-garmin_personal_api_key" class="credential-source">Status wird geprüft…</span></div>
                     <input id="cred-garmin_personal_api_key" type="password" autocomplete="off" spellcheck="false" placeholder="Neuen Schlüssel eingeben">
@@ -392,7 +383,7 @@
                 <label class="sync-period">Zeitraum (Tage)<input id="garminSyncDays" type="number" min="-1" max="90" step="1" value="84"></label>
                 <div class="connection-actions"><button data-check-button="garmin" data-check-group="garmin-login" class="secondary-button" type="button">Verbindung prüfen</button><button id="garminSyncButton" class="secondary-button" type="button">Garmin synchronisieren</button><button id="garminFullResyncButton" class="secondary-button danger-button" type="button">Lokale Daten neu laden</button></div>
                 <small id="garminFullResyncStatus" class="connection-resync-status"></small>
-                <p id="garminSetupHint" class="provider-setup-hint" hidden>Garmin ist nicht verbunden. Melde dich unter „Garmin-Konto“ an oder hinterlege unter „Personal API“ einen Schlüssel.</p>
+                <p id="garminSetupHint" class="provider-setup-hint" hidden>Garmin ist nicht verbunden. Melde dich unter „Garmin-Konto“ an oder hinterlege unter „API-Schlüssel“ den Schlüssel.</p>
               </div>
             </details>
             <details id="connection-wahoo" class="connection-card">
@@ -578,14 +569,14 @@
           <dl class="shortcut-list"><dt><kbd>Alt</kbd>+<kbd>1</kbd></dt><dd>Coach</dd><dt><kbd>Alt</kbd>+<kbd>2</kbd></dt><dd>Kalender</dd><dt><kbd>Alt</kbd>+<kbd>3</kbd></dt><dd>Analyse</dd><dt><kbd>Alt</kbd>+<kbd>4</kbd></dt><dd>Ernährung</dd><dt><kbd>Alt</kbd>+<kbd>5</kbd></dt><dd>Mehr</dd></dl>
         </details>
         <details class="settings-section collapsible-section" data-more-segment-panel="coach">
-          <summary class="collapsible-summary"><span class="collapsible-summary-title">Coach-Modell &amp; Thinking</span><span id="modelSettingsSummary" class="collapsible-summary-meta">Auswahl wird geladen…</span></summary>
+          <summary class="collapsible-summary"><span class="collapsible-summary-title">Coach-Modell &amp; Denktiefe</span><span id="modelSettingsSummary" class="collapsible-summary-meta">Auswahl wird geladen…</span></summary>
           <div id="modelSettingsTarget">
             <div class="task-model">
               <div class="task-model-heading"><h3>Gespräch</h3><button type="button" class="analysis-legend-info analysis-info-icon" data-model-info aria-label="Gespräch: Wann dieses Modell genutzt wird" popovertarget="modelInfoConversation">i</button></div>
               <div id="modelInfoConversation" class="analysis-info-tooltip" popover="auto" role="tooltip">Für alles, was du im Chat schreibst, auch den Morgen-Check-in, und für „Mit Coach besprechen“ an geplanten Einheiten im Kalender.</div>
               <div class="task-model-pair">
                 <label for="modelSelect">Modell<select id="modelSelect" data-task="conversation"></select></label>
-                <label for="thinkingLevelSelect">Thinking<select id="thinkingLevelSelect" data-task="conversation"></select></label>
+                <label for="thinkingLevelSelect">Denktiefe<select id="thinkingLevelSelect" data-task="conversation"></select></label>
               </div>
               <small id="modelNotice" class="model-notice" hidden></small>
             </div>
@@ -594,7 +585,7 @@
               <div id="modelInfoPlanning" class="analysis-info-tooltip" popover="auto" role="tooltip">Für die Schnellaktionen unter „Analyse &amp; Plan“ und im „+“-Menü sowie „Mit Coach besprechen“ an abgeschlossenen Einheiten im Kalender.</div>
               <div class="task-model-pair">
                 <label for="planningModelSelect">Modell<select id="planningModelSelect" data-task="planning"></select></label>
-                <label for="planningThinkingLevelSelect">Thinking<select id="planningThinkingLevelSelect" data-task="planning"></select></label>
+                <label for="planningThinkingLevelSelect">Denktiefe<select id="planningThinkingLevelSelect" data-task="planning"></select></label>
               </div>
               <small id="planningModelNotice" class="model-notice" hidden></small>
             </div>
@@ -603,7 +594,7 @@
               <div id="modelInfoNutrition" class="analysis-info-tooltip" popover="auto" role="tooltip">Für „Nährwerttabelle fotografieren“ und die Websuche nach fehlenden Nährwerten, die der Coach startet.</div>
               <div class="task-model-pair">
                 <label for="nutritionModelSelect">Modell<select id="nutritionModelSelect" data-task="nutrition"></select></label>
-                <label for="nutritionThinkingLevelSelect">Thinking<select id="nutritionThinkingLevelSelect" data-task="nutrition"></select></label>
+                <label for="nutritionThinkingLevelSelect">Denktiefe<select id="nutritionThinkingLevelSelect" data-task="nutrition"></select></label>
               </div>
               <small id="nutritionModelNotice" class="model-notice" hidden></small>
             </div>
@@ -644,6 +635,12 @@
           </div>
           <div id="systemContextPreviewStatus" class="context-preview-status">Noch nicht geladen.</div>
           <div id="systemContextPreviewContent" class="context-preview-content" hidden></div>
+        </details>
+        <details id="changeHistorySection" class="settings-section collapsible-section" data-more-segment-panel="operations">
+          <summary class="collapsible-summary"><span class="collapsible-summary-title">Verlauf der Änderungen</span></summary>
+          <ul id="changeHistoryList" class="change-history-list"></ul>
+          <output id="changeHistoryStatus" class="tab-sync-detail"></output>
+          <button id="changeHistoryMore" type="button" class="secondary-button" hidden>Mehr laden</button>
         </details>
         <details class="settings-section logs-section collapsible-section" data-more-segment-panel="operations">
           <summary class="collapsible-summary"><span class="collapsible-summary-title">Server-Logs</span></summary>
@@ -697,6 +694,7 @@
           <p class="settings-app-version">Version <span id="settingsAppVersion">wird geladen…</span></p>
         </section>
       </section>
+      </div>
     </main>
 
     <nav class="bottom-nav" aria-label="Hauptnavigation">
@@ -890,10 +888,12 @@
   <script src="/notifications.js" defer></script>
   <script src="/nutrition.js" defer></script>
   <script src="/nutrition-meal-edit.js" defer></script>
+  <script src="/nutrition-templates.js" defer></script>
   <script src="/analysis.js" defer></script>
   <script src="/activity-details.js" defer></script>
   <script src="/activity-analysis.js" defer></script>
   <script src="/performance-view.js" defer></script>
+  <script src="/checkin-form.js" defer></script>
   <script src="/diagnostics.js" defer></script>
   <script src="/state-loader.js" defer></script>
   <script src="/sync-actions.js" defer></script>

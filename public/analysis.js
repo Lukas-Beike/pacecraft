@@ -828,7 +828,7 @@ const CYCLING_POWER_PROFILE_DURATIONS = [[5, "5 Sekunden"], [15, "15 Sekunden"],
 
 // The date of a record opens its activity (#3826); a record without one keeps plain text.
 function recordDateCell(point, label) {
-  const cell = h("td");
+  const cell = h("td", { dataset: { label: "Datum" } });
   if (!point) return cell;
   if (!point.activity_id) { cell.append(dateLabel(point.date)); return cell; }
   const open = h("button", { type: "button", className: "link-button", "aria-label": `${label} vom ${dateLabel(point.date)} öffnen` }, dateLabel(point.date));
@@ -852,7 +852,7 @@ function cyclingPowerProfileTable(result) {
   const body = h("tbody");
   for (const [duration, label] of CYCLING_POWER_PROFILE_DURATIONS) {
     const point = cyclingPowerProfilePoint(result, duration);
-    const cell = h("td", { title: point?.source }, point && analysisValue(point.watts, "W"));
+    const cell = h("td", { title: point?.source, dataset: { label: "Leistung" } }, point && analysisValue(point.watts, "W"));
     // Indoor rides count for power, marked as such (#3826).
     if (point?.environment === "indoor") cell.append(recordSourceChip("Indoor"));
     if (!point) markValueMissing(cell);
@@ -1089,7 +1089,7 @@ function renderActivityRecords(result) {
     let values = 0;
     for (const [field, label] of ACTIVITY_RECORD_ROWS[sport]) {
       const record = records.find((item) => item.sport === sport && item.field === field && item.status === "ok");
-      const cell = h("td", { title: record?.source }, record && activityRecordValue(record));
+      const cell = h("td", { title: record?.source, dataset: { label: "Wert" } }, record && activityRecordValue(record));
       if (record) values += 1; else markValueMissing(cell, "–");
       body.append(h("tr", { dataset: { activityRecord: `${sport}:${field}` } }, h("th", { scope: "row" }, label), cell, recordDateCell(record, label)));
     }
@@ -1122,7 +1122,7 @@ function renderRunningBestEfforts(result) {
   for (const [meters, label] of RUNNING_BEST_DISTANCES) {
     const own = points.find((item) => item.distance_meters === meters && item.seconds > 0);
     const point = own || records.find((item) => item.distance_meters === meters && item.seconds > 0);
-    const cell = h("td", { title: point?.source }, point && AppFormat.clock(point.seconds));
+    const cell = h("td", { title: point?.source, dataset: { label: "Zeit" } }, point && AppFormat.clock(point.seconds));
     if (point && !own) cell.append(recordSourceChip(point.label));
     if (point) values += 1; else markValueMissing(cell, "–");
     // Garmin's personal record names no activity; its date stays plain text.
@@ -1225,16 +1225,16 @@ function renderAnalysisHistory(history) { // NOSONAR
   const development = trendHistoryFor(developmentPeriod, BASE_PERIOD_DAYS, rerenderAnalysisTrend)?.history || history;
   const developmentMetrics = development.metrics;
   const load = loadHistory.load || { points: [] };
-  const loadSeries = [{ label: "Akute Belastung", legendLabel: "Akute Belastung", source: load.source, unit: "", color: 0,
+  const loadSeries = [{ label: "Akute Garmin-Belastung", legendLabel: "Akute Garmin-Belastung", source: load.source, unit: "", color: 0,
     cadenceDays: weekly ? 7 : 1, average: true, averageInHeading: true,
     points: weekly ? analysisWeeklyLastPoints(load.points.filter((point) => point.date >= start && point.date <= end).map((point) => ({ date: point.date, value: point.value })), start, end) : load.points.filter((point) => point.date >= start && point.date <= end).map((point) => ({ date: point.date, value: point.value })),
     currentPoint: load.points.filter((point) => point.date >= start && point.date <= end).map((point) => ({ date: point.date, value: point.value })).findLast(analysisValidPoint) }];
   const loadValues = loadSeries[0].points.filter(analysisValidPoint).map((point) => Number(point.value));
   const loadAverage = loadValues.length ? loadValues.reduce((sum, value) => sum + value, 0) / loadValues.length : null;
-  const loadTitle = loadAverage == null ? "Akute Belastung" : `Akute Belastung \u00b7 \u00d8 ${analysisValue(loadAverage, "")}`;
+  const loadTitle = loadAverage == null ? "Akute Garmin-Belastung" : `Akute Garmin-Belastung \u00b7 \u00d8 ${analysisValue(loadAverage, "")}`;
   const sourcePrefix = (source) => (source ? `${source}: ` : "");
   const loadMissing = [];
-  const loadChart = collectAnalysisChart(loadMissing, loadTitle, loadSeries, "", start, end, `${sourcePrefix(load.source)}gemessene akute Belastung. Gestrichelte Linie: Durchschnitt der angezeigten Werte. Fehlende Messungen bleiben L\u00fccken.`, { calendarWeeks: weekly, caption: analysisBasisCaption("Belastungspunkte", weekly, "state") });
+  const loadChart = collectAnalysisChart(loadMissing, loadTitle, loadSeries, "", start, end, `${sourcePrefix(load.source)}gemessene akute Garmin-Belastung. Gestrichelte Linie: Durchschnitt der angezeigten Werte. Fehlende Messungen bleiben L\u00fccken.`, { calendarWeeks: weekly, caption: analysisBasisCaption("Belastungspunkte", weekly, "state") });
   if (loadChart) {
     loadChart.querySelector(".analysis-chart-legend")?.remove();
     loadRoot.append(loadChart);
@@ -1417,7 +1417,7 @@ function appendDailyActivityGroup(activity, loadRoot, loadMissing, start, end) {
 }
 
 function providerMetricLabel(key) {
-  return { endurance_score: "Ausdauer-Score", running_tolerance: "Lauf-Belastbarkeit", training_readiness_history: "Trainingsbereitschaft", weekly_training_status: "Trainingsstatus · akute Belastung" }[key] || key;
+  return { endurance_score: "Ausdauer-Score", running_tolerance: "Lauf-Belastbarkeit", training_readiness_history: "Trainingsbereitschaft", weekly_training_status: "Trainingsstatus · akute Garmin-Belastung" }[key] || key;
 }
 
 function providerMetricUnit(key) {
@@ -1557,7 +1557,13 @@ function bodyFoldFat(read, entered) {
 }
 
 function bodyOverviewReading(metric, body, preferred) {
-  if (metric === "body_fat_pct") return bodyFoldFat(skinfoldRead, bodyOverviewLatest(metric, body, preferred, true)) || { text: "—" };
+  if (metric === "body_fat_pct") {
+    const own = bodyFoldFat(skinfoldRead, bodyOverviewLatest(metric, body, preferred, true));
+    if (own) return own;
+    // Nothing entered: the value the chart and the energy formulas use is shown with its source, as for the weight (#3930).
+    const device = skinfoldRead ? bodyOverviewLatest(metric, body, preferred) : null;
+    return device ? { value: device.value, note: `${device.source} · ${dateLabel(device.observed_at || device.date)}`, device: true } : { text: "—" };
+  }
   const latest = bodyOverviewLatest(metric, body, preferred);
   return latest ? { value: latest.value, date: latest.date, note: `${latest.source} · ${dateLabel(latest.observed_at || latest.date)}` } : { text: "—" };
 }
@@ -2078,16 +2084,6 @@ function energyBodyText(body) {
   return `KFA ${analysisValue(body.body_fat_pct, "%")} (${source}), fettfreie Masse ${analysisValue(body.lean_mass_kg, "kg")}`;
 }
 
-function energyBasisText(read) {
-  const { basis, body } = read;
-  const own = basis.insufficient
-    ? `Aus deinen Daten: Datenbasis zu gering (${ENERGY_INSUFFICIENT[basis.insufficient] || basis.insufficient})`
-    : `Aus deinen Daten: ${basis.complete_days} von ${basis.days} Tagen vollständig`;
-  const folds = energyBodyText(body);
-  return `kcal/Tag · ${own} · Formeln: Ruhe + eigene Aktivität + Verdauung · ${folds} · `
-    + "Bänder nominal 95 %, ohne Fehler beim Erfassen des Essens · Ruhe aus deinen Daten ist ein Rest (Gesamt − eigene Aktivität − Verdauung) und trägt deren Fehler mit";
-}
-
 // How the values come about sits behind one small "i": the basis, the formulas and NEAT's inputs
 // (athlete decisions 2026-11-16, #3252 and #3255); no helper text stays under the table.
 let energyInfoId = 0;
@@ -2098,7 +2094,7 @@ function energyBiasText(flagged) {
   return `Geschätzte Mahlzeiten wirken im Mittel ${formatWhole(Math.abs(flagged.bias_pct))} % ${direction} als erfasst (± ${formatWhole(flagged.bias_band_pct)} %)`;
 }
 
-const ENERGY_DAY_NOTE = "Der Verbrauch ist der gewählte Tag, heute bis jetzt, der Quelle, die dein Gewicht am besten trifft (Vergleich im Verlauf); Sport 0 ohne Einheit, Verdauung nur mit erfassten Mahlzeiten; Offene Kalorien zieht das Gegessene vom Tag gesamt ab, das Defizit des gewählten Zeitraums steht im Verlauf";
+const ENERGY_DAY_NOTE = "Verbrauch des gewählten Tages, heute bis jetzt, in kcal/Tag, der Quelle, die dein Gewicht am besten trifft (Vergleich im Verlauf); Sport 0 ohne Einheit, Verdauung nur mit erfassten Mahlzeiten; Offene Kalorien = Tag gesamt − Gegessenes; das Defizit des Zeitraums steht im Verlauf";
 
 // The same small info icon as the chart groups (Analyse › Laufen › Entwicklung, #3336).
 function energyInfoButton(label, text) {
@@ -2108,9 +2104,22 @@ function energyInfoButton(label, text) {
   return [button, info];
 }
 
+// What the numbers are, where they come from and how sure they are, one short line each (athlete decision, #3930).
+function energyInfoItems(read) {
+  const { basis, body } = read;
+  const data = basis.insufficient ? `Datenbasis zu gering (${ENERGY_INSUFFICIENT[basis.insufficient] || basis.insufficient})` : `${basis.complete_days} von ${basis.days} Tagen vollständig`;
+  const activity = [energyNeatInputs(basis?.neat), energyStandNote(read.wellness)].filter(Boolean).join(" · ");
+  const uncertainty = ["Bänder nominal 95 %, ohne Fehler beim Erfassen des Essens",
+    "Ruhe aus deinen Daten ist ein Rest (Gesamt − eigene Aktivität − Verdauung) und trägt deren Fehler mit",
+    energyTefNote(read), energyBiasText(read.flagged)].filter(Boolean).join(" · ");
+  return [["Was", ENERGY_DAY_NOTE], ["Daten", `Aus deinen Daten: ${data}`],
+    ["Quelle", `Formeln: Ruhe + eigene Aktivität + Verdauung · ${energyBodyText(body)}`], ["Aktivität", activity], ["Unsicherheit", uncertainty]]
+    .filter(([, text]) => text);
+}
+
 function energyInfo(read) {
-  const text = [ENERGY_DAY_NOTE, energyBasisText(read), energyNeatInputs(read.basis?.neat), energyStandNote(read.wellness), energyTefNote(read), energyBiasText(read.flagged)].filter(Boolean).join(" · ");
-  return energyInfoButton("Energieverbrauch: Informationen", text);
+  const list = h("ul", "energy-info-list", energyInfoItems(read).map(([what, text]) => h("li", null, h("strong", null, `${what}: `), text)));
+  return energyInfoButton("Energieverbrauch: Informationen", list);
 }
 
 // Split A (athlete decision 2026-11-16): one stacked bar for the outlined source, a row per part.
@@ -2240,7 +2249,7 @@ function energySourceLine(row) {
 // then the day total with its band; the comparison of all sources is Verlauf's.
 function energyUsage(read) {
   const row = read.rows.find((item) => item.source === read.outlined);
-  const head = h("div", "energy-usage-head", h("h3", null, read.day_partial ? "Verbrauch heute · bis jetzt" : "Verbrauch"), ...energyInfo(read));
+  const head = h("div", "energy-usage-head", h("h3", null, read.day_partial ? "Verbrauch heute (Stand jetzt)" : "Verbrauch"), ...energyInfo(read));
   if (!row?.split) return h("div", { className: "energy-usage" }, head, h("p", "muted", "Noch keine Quelle"));
   const parts = energyRowParts(row.split);
   const texts = parts.map((part) => energyPartText(read, row, part));
@@ -2259,7 +2268,7 @@ function energyUsage(read) {
 function energyGuardNotes({ energy_availability: availability, loss_rate: loss }) {
   const notes = [];
   if (availability?.below) notes.push(`Energieverfügbarkeit (7 Tage) ${formatWhole(availability.kcal_per_kg_ffm)} kcal/kg FFM · unter ${formatWhole(availability.floor_kcal_per_kg_ffm)}`);
-  if (loss?.fast) notes.push(`Gewicht fällt ${loss.pct_per_week.toLocaleString("de-DE")} %/Woche · schneller als ${formatWhole(loss.limit_pct_per_week)} %`);
+  if (loss?.fast) notes.push(`Gewicht fällt ${AppFormat.number(loss.pct_per_week, { digits: 2 })} %/Woche · schneller als ${formatWhole(loss.limit_pct_per_week)} %`);
   return notes.map((text) => h("small", { className: "energy-note", dataset: { energyNote: "" } }, text));
 }
 
@@ -2688,7 +2697,7 @@ function renderBodyAnalysis(body) {
   fatRow.addEventListener("click", (event) => { if (!event.target.closest("button")) void openBodyFatDialog(); });
   const rows = [bodyOverviewRow("weight_kg", "Gewicht", "kg", weight, bodyEditButton("Gewicht eintragen", openWeightDialog)), fatRow];
   // The fat-free mass stays derived from the two values, without a pencil (#3402).
-  if (weight.value != null && fat.value != null) rows.push(bodyOverviewRow("lean_mass_kg", "Fettfreie Masse", "kg", { value: weight.value * (1 - fat.value / 100) }, null));
+  if (weight.value != null && fat.value != null && !fat.device) rows.push(bodyOverviewRow("lean_mass_kg", "Fettfreie Masse", "kg", { value: weight.value * (1 - fat.value / 100) }, null));
   rows.push(energyGoalRow());
   root.append(h("section", "analysis-chart-card", h("table", { className: "current-performance-table", dataset: { bodyOverview: "" } }, h("caption", null, "Körperwerte"), h("tbody", null, rows))));
   const key = analysisPeriod(bodyHistoryPeriod).key;
@@ -3017,7 +3026,7 @@ function recoveryPeriodPoints(history, dates, today, weekly) {
 }
 
 function renderRecoveryCharts(report, root) {
-  const metrics = [["sleep", "Schlafdauer", "h", 0], ["hrv", "HRV", "ms", 2], ["resting_hr", "Ruhepuls", "bpm", 3]];
+  const metrics = [["sleep", "Schlafdauer", "h", 0], ["hrv", "HRV", "ms", 2], ["resting_hr", "Ruheherzfrequenz", "bpm", 3]];
   // The base read's baselines hold 84 days: 3 Monate and more read their own history once (#3839);
   // until it arrives the charts keep the base read.
   const long = trendHistoryFor(recoveryHistoryPeriod, 28, () => renderPersonalRecovery(report))?.personal_recovery;
@@ -3103,7 +3112,7 @@ function renderTrainingFocus(report) {
 
   const categories = [["low_aerobic", "Leicht aerob"], ["high_aerobic", "Hoch aerob"], ["anaerobic", "Anaerob"]];
   const info = h("button", { className: "analysis-legend-info analysis-info-icon", type: "button", "aria-label": "Trainingsfokus: Informationen" }, "i");
-  const explanation = h("div", { className: "analysis-info-tooltip", id: `focus-info-${++analysisInfoId}` }, `${trainingFocusPeriodLabel(report)}: ${dateLabel(report.start)} bis ${dateLabel(report.end)}. ${report.coverage?.known_sessions ?? 0} erfasste Garmin-Einheiten im Zeitraum${report.coverage?.observed_start && report.coverage?.observed_end ? ` · erfasste Daten ${dateLabel(report.coverage.observed_start)} bis ${dateLabel(report.coverage.observed_end)}` : ""}. Garmin: aufgezeichnete Belastung nach der Hauptwirkung der Einheit (Training Effect). Keine aus Zonen abgeleitete Einteilung und nicht Garmins separat berechnete Load-Focus-Metrik. ${AppFormat.plural(report.unclassified_sessions || 0, "Einheit", "Einheiten")} ohne bekannte Wirkung oder Belastung ${report.unclassified_sessions === 1 ? "bleibt" : "bleiben"} ausgeschlossen.`); // NOSONAR
+  const explanation = h("div", { className: "analysis-info-tooltip", id: `focus-info-${++analysisInfoId}` }, `${trainingFocusPeriodLabel(report)}: ${dateLabel(report.start)} bis ${dateLabel(report.end)}. ${report.coverage?.known_sessions ?? 0} erfasste Garmin-Einheiten im Zeitraum${report.coverage?.observed_start && report.coverage?.observed_end ? ` · erfasste Daten ${dateLabel(report.coverage.observed_start)} bis ${dateLabel(report.coverage.observed_end)}` : ""}. Aufgezeichnete Garmin-Belastung nach der Hauptwirkung der Einheit (Trainingseffekt). Keine aus Zonen abgeleitete Einteilung und nicht Garmins separat berechneter Belastungsfokus. ${AppFormat.plural(report.unclassified_sessions || 0, "Einheit", "Einheiten")} ohne bekannte Wirkung oder Garmin-Belastung ${report.unclassified_sessions === 1 ? "bleibt" : "bleiben"} ausgeschlossen.`); // NOSONAR
   bindAnalysisPopover(info, explanation); root.firstChild.append(info); root.firstChild.after(explanation);
   appendTrainingFocusShare(report, categories, root);
   appendTrainingFocusZones(report, zones);
@@ -3154,6 +3163,13 @@ function equipmentCard(item, source, parents, place) {
   return card;
 }
 
+// Garmin's status words in German; a stored "Garmin | active" keeps only what follows the source.
+function equipmentGarminStatusText(value) {
+  const word = String(value || "").split("|").pop().trim();
+  if (!word) return "";
+  return normalizeEquipmentStatus(word) === "archived" ? "ausgemustert" : "aktiv";
+}
+
 // Garmin's status of the item and the conflict with the local status; none for a local item Garmin does not know.
 function equipmentGarmin(item, local, title) {
   const garminStatus = String(item.garmin_status || "").trim();
@@ -3161,8 +3177,8 @@ function equipmentGarmin(item, local, title) {
   const conflict = local && normalizeEquipmentStatus(garminStatus) !== item.status;
   const coach = item.status === "archived" ? "archiviert" : "aktiv";
   return equipmentSection(title, [
-    h("p", null, garminStatus || "Unbekannter Garmin-Status"),
-    conflict ? h("p", "muted", `Statuskonflikt · Coach: ${coach} · Garmin: ${garminStatus}`) : null,
+    h("p", null, equipmentGarminStatusText(garminStatus) || "Unbekannter Garmin-Status"),
+    conflict ? h("p", "muted", `Statuskonflikt · Coach: ${coach} · Garmin: ${equipmentGarminStatusText(garminStatus)}`) : null,
   ]);
 }
 

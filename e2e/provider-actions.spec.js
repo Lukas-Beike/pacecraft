@@ -21,5 +21,5 @@ test("@responsive provider sync actions are disabled with a setup hint without c
   await expect(intervalsHint).not.toContainText("INTERVALS_API_KEY");
   await expect(page.locator("#garminSetupHint")).toBeVisible();
   // A-043: the hint names both in-app ways to connect Garmin.
-  await expect(page.locator("#garminSetupHint")).toHaveText("Garmin ist nicht verbunden. Melde dich unter „Garmin-Konto“ an oder hinterlege unter „Personal API“ einen Schlüssel.");
+  await expect(page.locator("#garminSetupHint")).toHaveText("Garmin ist nicht verbunden. Melde dich unter „Garmin-Konto“ an oder hinterlege unter „API-Schlüssel“ den Schlüssel.");
 });

@@ -555,6 +555,29 @@ class AthleteCheckinHistoryTests(unittest.TestCase):
         self.assertEqual(self.saved()["complaints"], [knee])
         self.assertEqual(before["pain"], self.saved()["pain"])
 
+    def test_day_reads_one_stored_day_with_its_answers_and_refuses_a_bad_date(self):
+        # #3953: the form starts from the whole stored day of the chosen date.
+        knee = {"area": "knee", "side": "left", "severity": 2}
+        self.service.save_coach(
+            {
+                "checkin_date": "2026-08-20",
+                "stress": 4,
+                "day_status": "rest",
+                "tag_answers": {"travel": True},
+                "complaints": [knee],
+            }
+        )
+        stored = self.service.day("2026-08-20")
+        self.assertEqual(
+            (stored["stress"], stored["day_status"], stored["tag_answers"]),
+            (4, "rest", {"travel": True}),
+        )
+        self.assertEqual(stored["complaints"], [knee])
+        self.assertIsNone(self.service.day("2026-08-19"))
+        for bad in (None, "", "yesterday"):
+            with self.assertRaises(AppError):
+                self.service.day(bad)
+
     def test_complaints_are_validated(self):
         for complaints in (
             [{"area": "elbow", "side": "left", "severity": 3}],

@@ -258,7 +258,7 @@ def _heart_rate_target(
     percent = _PERCENT.fullmatch(text)
     if percent and "%" in text and percent["basis"] in {"HR", "LTHR"}:
         if percent["basis"] == "LTHR":
-            _require(where, references.threshold_hr, "Schwellenpuls")
+            _require(where, references.threshold_hr, "LSHF")
             kind = "threshold_hr"
         else:
             _require(where, references.max_hr, "maximale Herzfrequenz")

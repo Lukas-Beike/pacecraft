@@ -38,7 +38,7 @@ test.afterEach(async ({ page }) => {
   }).catch(() => null);
 });
 
-const card = (page, name) => page.locator("#competitionList details.competition-card").filter({ hasText: name });
+const card = (page, name) => page.locator("#competitionList .competition-item").filter({ hasText: name });
 
 // "Löschen" in the dialog deletes at once; the receipt offers the undo (#3934 G-03).
 async function removeFromDialog(page) {
@@ -75,6 +75,11 @@ test("@responsive an upcoming competition is added, edited and deleted at once w
   await expect(dialog).toBeHidden();
   const edited = card(page, "E2E Stadtlauf 10 km");
   await expect(edited).toHaveCount(1);
+  // The pencil stands beside the details: a rebuild of the list returns focus to it.
+  const pencil = edited.getByRole("button", { name: "Wettkampf bearbeiten" });
+  await pencil.focus();
+  await page.evaluate(() => renderCompetitions(structuredClone(state.data.competitions).map((item) => ({ ...item, notes: "neu" }))));
+  await expect(card(page, "E2E Stadtlauf 10 km").getByRole("button", { name: "Wettkampf bearbeiten" })).toBeFocused();
   await edited.locator("summary .competition-summary-main").click();
   await expect(edited).toContainText("Musterstadt");
   await expect(edited).toContainText("09:30");
@@ -108,7 +113,7 @@ test("@responsive a past competition in the archive is edited with its derived r
   await addCompetition(page, { name: "E2E Archiv", date: "2020-03-01", sport: "Radfahren", priority: "C" });
   const archive = page.locator(".competition-archive");
   await archive.locator(":scope > summary").click();
-  const past = archive.locator("details.competition-card").filter({ hasText: "E2E Archiv" });
+  const past = archive.locator(".competition-item").filter({ hasText: "E2E Archiv" });
   await expect(past).toHaveCount(1);
   await past.getByRole("button", { name: "Wettkampf bearbeiten" }).click();
   const dialog = page.locator("#competitionDialog");
@@ -125,7 +130,7 @@ test("@responsive a past competition in the archive is edited with its derived r
   await past.getByRole("button", { name: "Wettkampf bearbeiten" }).click();
   await removeFromDialog(page);
   await expect(dialog).toBeHidden();
-  await expect(archive.locator("details.competition-card").filter({ hasText: "E2E Archiv" })).toHaveCount(0);
+  await expect(archive.locator(".competition-item").filter({ hasText: "E2E Archiv" })).toHaveCount(0);
 });
 
 test("@responsive a bad duration and a failed save keep the dialog open with the message", async ({ page }) => {
