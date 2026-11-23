@@ -12,6 +12,7 @@ from backend.runtime.events import StateEventBuffer
 from backend.runtime.maintenance import MaintenanceGate
 from backend.sync.daily import DailySyncMarkerService
 from backend.sync.jobs import (
+    JOB_TYPES,
     SYNC_JOB_LIST_LIMIT,
     JobValidationError,
     SyncJobInvalidOperationError,
@@ -149,6 +150,13 @@ class SyncJobQueueService:
                 400,
                 "Ein Job kann nur ausdrücklich mit action=retry erneut gestartet werden.",
                 reason="invalid_job_resolution",
+            )
+        # A job of a type that no longer exists (a nutrition export, #4031) is never run again.
+        if self.state(job_id).get("type") not in JOB_TYPES:
+            raise AppError(
+                409,
+                "Dieser Job-Typ wird nicht mehr unterstützt.",
+                reason="job_type_retired",
             )
         try:
             result = self._store.resolve(job_id)

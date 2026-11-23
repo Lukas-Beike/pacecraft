@@ -1,4 +1,4 @@
-"""Build the local nutrition services and the explicit Intervals.icu nutrition sync."""
+"""Build the local nutrition services."""
 
 from __future__ import annotations
 
@@ -55,10 +55,8 @@ from backend.nutrition.meal_library import NutritionMealLibraryService
 from backend.nutrition.photo import NutritionPhotoExtractionService
 from backend.nutrition.product_cleanup import ProductCleanupService
 from backend.nutrition.product_refresh import ProductRefreshRunner
-from backend.nutrition.sync import IntervalsNutritionSyncService
 from backend.nutrition.web_search import NutritionWebSearchService
 from backend.performance.daily_health import read_daily_health_by_date
-from backend.providers.intervals import IntervalsApiClient
 from backend.providers.model_seam import ModelRequest, ModelTurn
 from backend.providers.open_food_facts import OpenFoodFactsClient
 from backend.providers.yazio import YazioClient
@@ -82,7 +80,6 @@ class NutritionServices:
     # Removes products not used for a chosen number of days, as one run (#3444).
     product_cleanup: Callable[[], ProductCleanupService]
     diary_service: Callable[[], NutritionDiaryService]
-    intervals_sync_service: Callable[[], IntervalsNutritionSyncService]
     # Counts of the adaptive expenditure basis for the diagnostics (#3100).
     energy_basis: Callable[[Any], dict[str, Any]]
     # Resting and daily expenditure per source and their fit (#3099).
@@ -302,17 +299,6 @@ def build_nutrition(ctx: AppContext) -> NutritionServices:
                 db, energy_sources(), end, day, periods, days, today
             )
 
-    def intervals_sync_service() -> IntervalsNutritionSyncService:
-        config = ctx.config()
-        return IntervalsNutritionSyncService(
-            config=config,
-            api_client=IntervalsApiClient(
-                api_key=config.intervals_api_key,
-                request=ctx.provider_transport.json_http_client().request,
-            ),
-            diary_service=diary_service(),
-        )
-
     return NutritionServices(
         # Runtime-only provider tokens for the log redactor.
         secret_values=food_database.yazio_secret_values,
@@ -323,7 +309,6 @@ def build_nutrition(ctx: AppContext) -> NutritionServices:
             ctx.database(), lambda: ctx.clock.now().date(), utc_now
         ),
         diary_service=diary_service,
-        intervals_sync_service=intervals_sync_service,
         energy_basis=lambda db: energy_basis(
             db, energy_sources(), ctx.clock.now().date()
         ),

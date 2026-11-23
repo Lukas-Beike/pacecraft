@@ -163,15 +163,6 @@ class NutritionUseCaseServiceTests(unittest.TestCase):
                 {"image_data_url": "data:image/jpeg;base64,YQ=="}
             )
 
-    def test_sync_status_reads_empty_manifest_and_pending_dates(self) -> None:
-        manifest = self.sync_status.approval_manifest(meal_date="2026-09-24")
-        self.assertEqual(len(manifest), 1)
-        self.assertEqual(manifest[0]["date"], "2026-09-24")
-        self.assertEqual(manifest[0]["entry_count"], 0)
-        self.assertEqual(self.sync_status.list_unsynced_dates(), [])
-        with self.assertRaises(AppError):
-            self.sync_status.approval_manifest()
-
 
 if __name__ == "__main__":
     unittest.main()

@@ -4,7 +4,7 @@ The athlete approves a card that lists the units. That card authorizes exactly
 those units; the model's own scope tokens are not what decides it. Real services
 run on a temporary SQLite database: dialogue classification, tool preparation,
 card creation, confirmation, one-shot execution, plan selection, planning
-authority, nutrition manifests and the job queue. Every card kind of the Coach
+authority and the job queue. Every card kind of the Coach
 and every provider refresh target is driven through that chain. No network, no
 real ``.env``.
 """
@@ -21,7 +21,6 @@ from datetime import UTC, date, datetime
 from typing import Any
 from unittest import mock
 
-from nutrition_service_support import build_nutrition_services
 from support import temp_database
 
 from backend.coach.dialogue_action import CoachDialogueActionService
@@ -72,7 +71,6 @@ def _payload(name: str, day: str, sport: str) -> str:
 
 RACE = "race-1"
 STRENGTH_IDS = [WEEK[0][0], WEEK[2][0], WEEK[5][0]]
-NUTRITION_DAY = "2026-11-09"
 SELECTED = "selected"
 
 
@@ -148,7 +146,6 @@ def wire_card_flow(case: unittest.TestCase) -> CardFlow:
     authority = PlanningAuthorityService(
         database, mock.Mock(), mock.Mock(), NOW.isoformat
     )
-    diary, _library = build_nutrition_services(database, NOW.isoformat, lambda: NOW)
     plan_push = PlanPushCommandService(queue)
     sync_tools = CoachSyncToolService(
         queue,
@@ -158,7 +155,6 @@ def wire_card_flow(case: unittest.TestCase) -> CardFlow:
         mock.Mock(),
         plan_push,
         ProviderRefreshCommandService(queue, inline_refreshes),
-        diary,
     )
     dispatcher = mock.Mock()
     dispatcher.execute.side_effect = lambda name, arguments, **kwargs: (
@@ -174,7 +170,6 @@ def wire_card_flow(case: unittest.TestCase) -> CardFlow:
         database,
         now=lambda: clock[0],
         utc_now=NOW.isoformat,
-        nutrition_diary_service=lambda: diary,
         today=lambda: date(2026, 11, 9),
     )
     confirmation = CoachProposalConfirmationService(database, now=lambda: clock[0])
@@ -518,17 +513,6 @@ def _competition_call(flow: CardFlow) -> dict[str, Any]:
     )
 
 
-def _nutrition_call(flow: CardFlow) -> dict[str, Any]:
-    return prepared_call(
-        flow,
-        "sync_nutrition",
-        {"date": NUTRITION_DAY},
-        request_for(
-            "intervals", ["local_nutrition", "intervals_sync"], sync_scope=None
-        ),
-    )
-
-
 # Card kind -> (call builder, provider, job type, payload key the card binds).
 CARD_KINDS: dict[str, tuple[Any, str, str, str]] = {
     "start_intervals_plan_sync": (_plan_sync_call, "intervals", "plan_push", "entries"),
@@ -537,12 +521,6 @@ CARD_KINDS: dict[str, tuple[Any, str, str, str]] = {
         _competition_call,
         "intervals",
         "competition_push",
-        "approval_manifest",
-    ),
-    "sync_nutrition": (
-        _nutrition_call,
-        "intervals",
-        "nutrition_sync",
         "approval_manifest",
     ),
 }

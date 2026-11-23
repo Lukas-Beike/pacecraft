@@ -781,7 +781,6 @@ class RemoteTierTests(unittest.TestCase):
     REMOTE = (
         ("Synchronisier den Plan mit Intervals", "start_intervals_plan_sync"),
         ("Sync die Wettkämpfe zu Intervals.icu", "sync_competitions"),
-        ("Übertrag die Ernährung in den Intervals Kalender", "sync_nutrition"),
         ("Kannst du meinen Plan zu Intervals hochladen?", "start_intervals_plan_sync"),
         ("Please upload it to my calendar", "start_intervals_plan_sync"),
         ("Bitte den Konflikt reparieren", "resolve_training_sync_conflict"),
@@ -795,6 +794,10 @@ class RemoteTierTests(unittest.TestCase):
                 decision = _check(tool, text, classifier=classifier)
                 self.assertTrue(decision.allowed, decision)
                 self.assertEqual(classifier.calls, [])
+
+    def test_nutrition_transfer_request_has_no_tool_to_call(self):
+        # Athlete decision (#4031): nutrition is never sent to Intervals.icu.
+        self.assertNotIn("sync_nutrition", REMOTE_COACH_WRITE_TOOLS)
 
     def test_unnamed_negated_or_asked_syncs_are_denied(self):
         for text in (

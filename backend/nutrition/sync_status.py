@@ -10,7 +10,6 @@ from backend.db import garmin_store
 from backend.db.manager import DatabaseManager
 from backend.db.repositories import NutritionRepository
 from backend.errors import AppError
-from backend.nutrition.contracts import nutrition_approval_item
 from backend.nutrition.intake_totals import INTAKE_FIELDS, add_intake_totals
 from backend.nutrition.models import validate_iso_date
 from backend.performance.canonical_inputs import resolve_reader
@@ -134,11 +133,6 @@ class NutritionSyncStatusService:
                 active_only += stored.get("active_kcal") is not None
         return {"days": EXPENDITURE_GAP_DAYS, **counts, "with_active_only": active_only}
 
-    def get_sync_snapshot(self, meal_date: str) -> dict[str, Any]:
-        validated_date = validate_iso_date(meal_date)
-        with self._database_manager.unit_of_work() as db:
-            return self._nutrition_repository.day_sync_snapshot(db, validated_date)
-
     def get_week_summary(self, day_count: int = 7) -> dict[str, Any]:
         """Compare logged intake with each closed day's expenditure: its own
         "Aus deinen Daten" day total (athlete decision, #3600), named by
@@ -204,63 +198,6 @@ class NutritionSyncStatusService:
             # Where expenditure_kcal comes from: "own" (#3600) or "device".
             "expenditure_source": "device" if own is None else "own",
         }
-
-    def approval_manifest(
-        self,
-        *,
-        meal_date: str | None = None,
-        pending_limit: int | None = None,
-        dates: list[str] | None = None,
-    ) -> list[dict[str, Any]]:
-        selectors = sum(
-            value is not None for value in (meal_date, pending_limit, dates)
-        )
-        if selectors != 1:
-            raise AppError(400, "Choose one date or an approved date range.")
-        with self._database_manager.unit_of_work() as db:
-            if meal_date is not None:
-                selected_dates = [validate_iso_date(meal_date)]
-            elif pending_limit is not None:
-                if type(pending_limit) is not int or not 1 <= pending_limit <= 31:
-                    raise AppError(
-                        400,
-                        "Die Anzahl ausstehender Tage muss zwischen 1 und 31 liegen.",
-                    )
-                selected_dates = self._nutrition_repository.list_unsynced_dates(
-                    db, limit=pending_limit
-                )
-            else:
-                if (
-                    not isinstance(dates, list)
-                    or len(dates) > 31
-                    or any(not isinstance(value, str) for value in dates)
-                ):
-                    raise AppError(400, "Invalid nutrition approval manifest.")
-                selected_dates = [validate_iso_date(value) for value in dates]
-                if len(selected_dates) != len(set(selected_dates)):
-                    raise AppError(
-                        400, "Nutrition approval manifest contains duplicate dates."
-                    )
-            return [
-                nutrition_approval_item(
-                    self._nutrition_repository.day_sync_snapshot(
-                        db, day, create_if_missing=False
-                    )
-                )
-                for day in selected_dates
-            ]
-
-    def list_unsynced_dates(self, limit: int = 14) -> list[str]:
-        with self._database_manager.unit_of_work() as db:
-            return self._nutrition_repository.list_unsynced_dates(db, limit=limit)
-
-    def mark_date_synced(self, meal_date: str, revision: int) -> bool:
-        validated_date = validate_iso_date(meal_date)
-        now_str = self._utc_now()
-        with self._database_manager.unit_of_work() as db:
-            return self._nutrition_repository.mark_date_synced(
-                db, validated_date, revision, now_str
-            )
 
 
 def _week_day(

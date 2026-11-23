@@ -430,7 +430,6 @@ def build_coach_proposals(
             now=now,
             utc_now=utc_now,
             uuid_factory=uuid.uuid4,
-            nutrition_diary_service=ctx.nutrition.diary_service,
             today=local_date,
         )
 

@@ -115,7 +115,7 @@ class SyncCommandPostRoute:
         "type": string, "payload": object}`. `provider` is a registered provider
         id (case-insensitive); `type` is optional (default `refresh`) and one of
         `refresh`, `activity_details`, `plan_push`, `competition_push`,
-        `nutrition_sync`, `historical_backfill`, `wellness_backfill` or
+        `historical_backfill`, `wellness_backfill` or
         `stream_backfill`, as far as the provider supports it. Without `payload`,
         the top-level `days`, `force` and `reason` fields are used as the payload.
         The payload fields are validated per provider and job type; a refresh
@@ -128,9 +128,9 @@ class SyncCommandPostRoute:
 
         Errors: 400 `invalid_job_request` with the validation text, for example
         "Unsupported provider.", "Unsupported job type.", "Job payload must be an
-        object." or "Der Job enthält nicht unterstützte Felder."; 400
-        `invalid_job_request` "Der Ernährungs-Export braucht eine bestätigte
-        Vorschau." for `nutrition_sync`; 409 `not_configured` with the provider's
+        object." or "Der Job enthält nicht unterstützte Felder." (nutrition is never
+        sent to a provider, so a `nutrition_sync` type is an unsupported job type);
+        409 `not_configured` with the provider's
         setup message for `garmin`, `wahoo` and `intervals`.
         """
         payload = (

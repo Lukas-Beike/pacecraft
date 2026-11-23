@@ -183,8 +183,8 @@ test("a diary component from a database product is labelled as such, an own prod
   assert.equal(context.nutritionComponentSource(estimate), "Erfasst");
   const details = context.nutritionComponentDetails({ source: "coach", nutrition_basis: { kind: "composite", components: [{ name: "Pasta", nutrition_basis: estimate }] } });
   assert.match(JSON.stringify(details), /"Coach"/);
-  assert.equal(context.nutritionBasisLabel(database, {}, "Erfasst"), "Datenbankprodukt · Haferdrink (Open Food Facts) · 50 ml");
-  assert.equal(context.nutritionBasisLabel(own, {}, "Erfasst"), "Lokales Produkt · Whey (packaging_label) · 50 ml");
+  assert.equal(context.nutritionBasisLabel(database, "Erfasst"), "Datenbankprodukt · Haferdrink (Open Food Facts) · 50 ml");
+  assert.equal(context.nutritionBasisLabel(own, "Erfasst"), "Lokales Produkt · Whey (packaging_label) · 50 ml");
 });
 
 test("the Coach draft of a product names the product by id, never by name", () => {

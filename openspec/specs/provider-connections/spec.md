@@ -42,7 +42,7 @@ Evidence: `backend/providers/intervals.py:IntervalsApiClient`, `backend/provider
 The system SHALL project the Intervals.icu connection state from durable stamps of the last export success and the last provider failure, adopt once at startup the newest synced plan or competition link time as the success stamp when none exists, and ignore an unreadable stamp.
 
 #### Scenario: Only a round trip counts
-- **WHEN** a plan, competition or nutrition push ends
+- **WHEN** a plan or competition push ends
 - **THEN** a synced entry or completed run stamps a success and a provider failure stamps a failure; a skipped, already synced or conflicting entry, a local failure and a contended run stamp nothing.
 
 #### Scenario: An export outlives a restart

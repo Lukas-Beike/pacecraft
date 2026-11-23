@@ -147,7 +147,6 @@ def build_coach_command_tools(
             sync_commands.repair_manifest(),
             sync_commands.plan_push(),
             sync_commands.provider_refresh(),
-            nutrition_diary=ctx.nutrition.diary_service(),
             connection_checks=ctx.provider_connection_checks,
             yazio_check=lambda: (
                 ctx.nutrition.meal_library_service().food_database.check_yazio_connection()

@@ -87,22 +87,12 @@ class NutritionHistoryTests(NutritionHistoryCase):
         with self.manager.unit_of_work() as db:
             undo.apply_many(db, changes)
 
-    def pending_revision(self) -> int:
-        with self.manager.reader() as db:
-            row = db.execute(
-                "SELECT revision FROM nutrition_sync_dates WHERE meal_date=? "
-                "AND sync_state='pending'",
-                (MEAL_DATE,),
-            ).fetchone()
-        return int(row["revision"]) if row else 0
-
     def test_undo_of_a_logged_meal_removes_it(self) -> None:
         entry, changes = self.collected(lambda: self.diary.log_meal(MEAL))
         self.assertEqual([change["action"] for change in changes], ["create"])
         self.undo(changes)
         with self.assertRaises(AppError):
             self.diary.get_meal(entry["id"])
-        self.assertEqual(self.pending_revision(), 2)
 
     def test_undo_of_a_correction_restores_the_previous_values(self) -> None:
         entry = self.diary.log_meal(MEAL)
@@ -129,8 +119,6 @@ class NutritionHistoryTests(NutritionHistoryCase):
             }
         )
         entry = self.diary.log_meal(MEAL)
-        self.diary.sync_status.mark_date_synced(MEAL_DATE, self.pending_revision())
-        self.assertEqual(self.pending_revision(), 0)
 
         updated, changes = self.collected(
             lambda: self.diary.add_product_to_meal(entry["id"], banana["id"], 100, "g")
@@ -138,8 +126,6 @@ class NutritionHistoryTests(NutritionHistoryCase):
 
         self.assertEqual([change["action"] for change in changes], ["update"])
         self.assertEqual(updated["kcal"], 690)
-        self.assertGreater(self.pending_revision(), 0)
-        self.diary.sync_status.mark_date_synced(MEAL_DATE, self.pending_revision())
 
         self.undo(changes)
 
@@ -147,24 +133,21 @@ class NutritionHistoryTests(NutritionHistoryCase):
         self.assertEqual(restored["description"], "Rice bowl")
         self.assertEqual(restored["kcal"], 600)
         self.assertEqual(restored["nutrition_basis"], entry["nutrition_basis"])
-        self.assertGreater(self.pending_revision(), 0)
 
-    def test_undo_of_a_delete_brings_the_entry_back_after_a_sync(self) -> None:
+    def test_undo_of_a_delete_brings_the_entry_back_and_a_later_log_undoes(
+        self,
+    ) -> None:
         entry = self.diary.log_meal(MEAL)
         _, changes = self.collected(lambda: self.diary.delete_meal(entry["id"]))
         self.undo(changes)
         restored = self.diary.get_meal(entry["id"])
         self.assertEqual(restored["description"], "Rice bowl")
         self.assertEqual(restored["nutrition_basis"], entry["nutrition_basis"])
-        # A later sync marks the day; undo of the original log still applies.
-        self.diary.sync_status.mark_date_synced(MEAL_DATE, self.pending_revision())
         _, created = self.collected(lambda: self.diary.log_meal(MEAL))
-        self.diary.sync_status.mark_date_synced(MEAL_DATE, self.pending_revision())
         self.undo(created)
         self.assertEqual(
             self.diary.sync_status.get_day_summary(MEAL_DATE)["entry_count"], 1
         )
-        self.assertGreater(self.pending_revision(), 0)
 
     def test_undo_is_refused_after_a_later_edit(self) -> None:
         entry, changes = self.collected(lambda: self.diary.log_meal(MEAL))

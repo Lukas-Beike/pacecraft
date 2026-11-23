@@ -223,7 +223,7 @@ class RegistryLookupTests(unittest.TestCase):
         )
 
 
-INTERVALS_JOB_TYPES = frozenset({"plan_push", "competition_push", "nutrition_sync"})
+INTERVALS_JOB_TYPES = frozenset({"plan_push", "competition_push"})
 PREVIOUS_JOB_SUPPORT: dict[str, frozenset[str]] = {
     "intervals": INTERVALS_JOB_TYPES,
     "garmin": frozenset(

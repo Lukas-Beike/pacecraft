@@ -11,7 +11,6 @@ from nutrition_service_support import build_nutrition_services
 from support import temp_database
 
 from backend import change_history
-from backend.db.repositories import NutritionRepository
 from backend.errors import AppError
 
 TOFU = "bls:H861000"
@@ -271,17 +270,6 @@ class MealComponentEditTests(unittest.TestCase):
         self.assertEqual(self.components(updated)[0]["kind"], "estimate")
         self.assertEqual(updated["source"], "coach")
 
-    def test_a_synced_day_is_marked_for_the_next_synchronization(self) -> None:
-        self.assertTrue(self.diary.sync_status.mark_date_synced("2026-11-04", 1))
-        self.assertEqual(self.diary.get_meal(self.meal["id"])["sync_state"], "synced")
-
-        updated = self.edit(self.meal["id"], [{"index": 2, "remove": True}])
-
-        self.assertEqual(updated["sync_state"], "local")
-        with self.manager.read_snapshot() as db:
-            pending = NutritionRepository(now=lambda: "").list_unsynced_dates(db)
-        self.assertEqual(pending, ["2026-11-04"])
-
     def change_meal(self, **meal: Any) -> dict[str, Any]:
         """A change of the meal's own fields alone, as the dialog sends it (#3985)."""
         return self.diary.edit_components(self.meal["id"], None, None, meal)
@@ -310,27 +298,14 @@ class MealComponentEditTests(unittest.TestCase):
             self.change_meal(meal_type="dinner")["logged_at"], named["logged_at"]
         )
 
-    def test_a_new_day_moves_the_meal_and_marks_both_days(self) -> None:
+    def test_a_new_day_moves_the_meal(self) -> None:
         self.change_meal(meal_type="dinner")
-        with self.manager.unit_of_work() as db:
-            snapshot = NutritionRepository(now=lambda: "").day_sync_snapshot(
-                db, "2026-11-04"
-            )
-        self.assertTrue(
-            self.diary.sync_status.mark_date_synced(
-                "2026-11-04", snapshot["sync_revision"]
-            )
-        )
-
         moved = self.change_meal(meal_date="2026-11-03")
 
         self.assertEqual(
             (moved["meal_date"], moved["logged_at"], moved["sync_state"]),
             ("2026-11-03", "2026-11-03T14:00:00+00:00", "local"),
         )
-        with self.manager.read_snapshot() as db:
-            pending = NutritionRepository(now=lambda: "").list_unsynced_dates(db)
-        self.assertEqual(pending, ["2026-11-03", "2026-11-04"])
 
     def test_an_unknown_time_keeps_only_the_type_and_a_named_time_ends_it(self) -> None:
         unknown = self.change_meal(meal_type="snack", logged_time_known=False)

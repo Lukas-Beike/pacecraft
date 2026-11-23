@@ -18,7 +18,6 @@ class CoachSyncToolServiceTests(unittest.TestCase):
         self.plan_repair = Mock()
         self.plan_push = Mock()
         self.provider_refresh = Mock()
-        self.nutrition = Mock()
         self.service = CoachSyncToolService(
             self.queue,
             self.authority,
@@ -27,7 +26,6 @@ class CoachSyncToolServiceTests(unittest.TestCase):
             self.plan_repair,
             self.plan_push,
             self.provider_refresh,
-            nutrition_diary=self.nutrition,
         )
 
     def test_garmin_push_needs_the_garmin_target_scope_and_approved_entries(self):

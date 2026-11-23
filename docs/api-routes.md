@@ -1619,8 +1619,7 @@ Errors: 400 "Ungültige Eintrags-ID."; 404 "Ernährungseintrag nicht gefunden."
 
 Request: JSON body `{"id": string, "revision": string, "edits": [...], "meal": {...}}`;
 `edits` and `meal` are each optional, one is required. `meal` changes the meal
-itself: `meal_date` (YYYY-MM-DD, both days are marked for the next Intervals.icu
-synchronization), `meal_type` (a new type moves a default time to the type's
+itself: `meal_date` (YYYY-MM-DD), `meal_type` (a new type moves a default time to the type's
 default), and `meal_time` (HH:MM) or `logged_time_known: false` (the time is
 unknown, only the type stays); a `meal` without `edits` leaves the components and
 the origin as stored. `id` is the
@@ -1633,8 +1632,7 @@ each edit names a component by its `index` (see
 most once, other components stay as stored. The server scales the nutrients from
 the stored snapshot or calculates them from the food or product and the amount;
 the client sends none. The meal becomes a composite and keeps its description;
-its day is marked for the next Intervals.icu synchronization; templates and
-saved meals are not changed.
+templates and saved meals are not changed.
 
 Response: 200 `{"ok": true, "entry", "change"}` with the updated entry and the
 undo reference.
@@ -2582,7 +2580,7 @@ Request: `POST /api/sync/jobs` with JSON body `{"provider": string,
 "type": string, "payload": object}`. `provider` is a registered provider
 id (case-insensitive); `type` is optional (default `refresh`) and one of
 `refresh`, `activity_details`, `plan_push`, `competition_push`,
-`nutrition_sync`, `historical_backfill`, `wellness_backfill` or
+`historical_backfill`, `wellness_backfill` or
 `stream_backfill`, as far as the provider supports it. Without `payload`,
 the top-level `days`, `force` and `reason` fields are used as the payload.
 The payload fields are validated per provider and job type; a refresh
@@ -2595,9 +2593,9 @@ requested by `user`.
 
 Errors: 400 `invalid_job_request` with the validation text, for example
 "Unsupported provider.", "Unsupported job type.", "Job payload must be an
-object." or "Der Job enthält nicht unterstützte Felder."; 400
-`invalid_job_request` "Der Ernährungs-Export braucht eine bestätigte
-Vorschau." for `nutrition_sync`; 409 `not_configured` with the provider's
+object." or "Der Job enthält nicht unterstützte Felder." (nutrition is never
+sent to a provider, so a `nutrition_sync` type is an unsupported job type);
+409 `not_configured` with the provider's
 setup message for `garmin`, `wahoo` and `intervals`.
 
 ### `GET /api/sync/jobs/{id}`

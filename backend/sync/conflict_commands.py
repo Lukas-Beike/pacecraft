@@ -11,7 +11,7 @@ from backend.sync.queue import SyncJobQueueService
 class SyncConflictCommandService:
     """Orchestrate conflict decisions after Coach authorization has succeeded."""
 
-    _PUSH_JOB_TYPES = frozenset({"plan_push", "competition_push", "nutrition_sync"})
+    _PUSH_JOB_TYPES = frozenset({"plan_push", "competition_push"})
 
     def __init__(
         self,
