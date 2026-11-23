@@ -21,7 +21,7 @@ case on both sides, so the guards match.
 tool and route exists, the parity value matches the two columns, each gap names
 its issue and the counts below match the table.
 
-Counts: both 53, UI only 23, Coach only 10, neither 0, UI by rule 8.
+Counts: both 57, UI only 19, Coach only 10, neither 0, UI by rule 8.
 
 ## Matrix
 
@@ -30,11 +30,11 @@ Counts: both 53, UI only 23, Coach only 10, neither 0, UI by rule 8.
 | Profile | Read profile and competitions | Mehr › Profil `GET /api/profile` | `read_profile`, `read_coach_context` | — | both | |
 | Profile | Edit profile fields, time zone, weather location, preferred sources | Mehr › Profil `PUT /api/profile` | `update_profile` | receipt, undo | both | |
 | Profile | Set the energy goal | Analyse › Körper "Energieziel" `PUT /api/profile` | `update_profile` (`energy_goal`, `energy_goal_kcal`) | receipt | both | |
-| Zones | Read zones and thresholds | Profil › Zonen & Schwellen `GET /api/zones` | `read_training_state` | — | both | |
-| Zones | Save a local zone configuration | Zonen & Schwellen `PUT /api/zones` | — | UI save | UI only | #3956 |
-| Zones | Remove a local zone configuration | Zonen & Schwellen `PUT /api/zones/remove` | — | confirmation | UI only | #3956 |
-| Zones | Adopt the first-threshold estimate | Zonen & Schwellen `POST /api/profile/first-threshold/adopt` | — | receipt, undo | UI only | #3956 |
-| Zones | Adopt an LT2 estimate | Zonen & Schwellen `POST /api/zones/lt2/adopt` | — | receipt | UI only | #3956 |
+| Zones | Read zones and thresholds | Profil › Zonen & Schwellen `GET /api/zones` | `read_coach_context` | — | both | |
+| Zones | Save a local zone configuration | Zonen & Schwellen `PUT /api/zones` | `save_zones` (`save`) | receipt, undo | both | |
+| Zones | Remove a local zone configuration | Zonen & Schwellen `PUT /api/zones/remove` | `delete_zones` | delete confirmation, undo | both | |
+| Zones | Adopt the first-threshold estimate | Zonen & Schwellen `POST /api/profile/first-threshold/adopt` | `save_zones` (`adopt_first_threshold`) | receipt, undo; replacing a measured value needs a confirmed request | both | |
+| Zones | Adopt an LT2 estimate | Zonen & Schwellen `POST /api/zones/lt2/adopt` | `save_zones` (`adopt_lt2`) | receipt, undo; replacing an entered value needs a confirmed request | both | |
 | Competitions | Create or change a competition | Kalender › Wettkampf `PUT /api/competitions` | `save_competition`, `list_competitions` | receipt, undo | both | |
 | Competitions | Delete a competition | Kalender › Wettkampf `PUT /api/competitions/remove` | `delete_competition` | delete confirmation | both | |
 | Competitions | Send competitions to Intervals.icu | Kalender › Wettkampf `POST /api/intervals/competitions/send` | `sync_competitions` | named sync | both | |

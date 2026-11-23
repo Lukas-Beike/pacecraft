@@ -517,6 +517,19 @@ class CoachCommandToolBuilderTests(unittest.TestCase):
             equipment=ctx.athlete.equipment.return_value,
             session_corrections=ctx.athlete.session_corrections.return_value,
             body_entries=ANY,
+            zones=ctx.athlete.zones,
+            first_threshold=ctx.athlete.first_threshold,
+            second_threshold=ANY,
+            step_test=ANY,
+        )
+        # #3956: the LT2 service reads the performance curves, lazily.
+        kwargs = constructors["CoachAthleteRecordToolService"].call_args.kwargs
+        ctx.athlete.second_threshold.assert_not_called()
+        self.assertIs(
+            ctx.athlete.second_threshold.return_value, kwargs["second_threshold"]()
+        )
+        ctx.athlete.second_threshold.assert_called_once_with(
+            ctx.performance.curve_records
         )
         # #3640: the Körper entry services, built lazily per kind.
         body_entries = constructors["CoachAthleteRecordToolService"].call_args.kwargs[

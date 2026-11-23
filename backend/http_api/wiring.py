@@ -580,8 +580,6 @@ def _athlete_write_routes(
         EquipmentPostRoutes(athlete.equipment),
         FirstThresholdPostRoutes(
             athlete.first_threshold,
-            athlete.profile,
-            ctx.database,
             step_test=lambda activity_id: _step_test(ctx, activity_id),
         ),
         SecondThresholdPostRoutes(

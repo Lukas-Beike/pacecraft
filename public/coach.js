@@ -912,6 +912,7 @@ const COACH_RECEIPT_LABELS = {
   save_activity_feedback: "Aktivitätsfeedback gespeichert", delete_activity_feedback: "Aktivitätsfeedback gelöscht",
   save_competition: "Wettkampf gespeichert", delete_competition: "Wettkampf gelöscht",
   save_body_entry: "Körperwert gespeichert", delete_body_entry: "Körperwert entfernt",
+  save_zones: "Zonen gespeichert", delete_zones: "Zonen entfernt",
   update_training_plan: "Trainingsplan geändert", undo_training_change: "Rücknahme zur Prüfung bereit",
   preview_adaptive_replan: "Plananpassung zur Prüfung bereit", apply_adaptive_replan: "Plananpassung gespeichert",
   start_provider_refresh: "Datenabruf beauftragt", refresh_current_performance: "Leistungsdatenabruf beauftragt",

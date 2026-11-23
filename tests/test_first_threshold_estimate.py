@@ -724,6 +724,11 @@ class AdoptFlowTests(unittest.TestCase):
         self.assertEqual(again["profile"][FIRST_THRESHOLD_ORIGIN_FIELD], "estimated")
         self.assertEqual(again["first_threshold_estimate"]["percent_lthr"], 90.0)
         self.assertEqual(len(history(self)), entries)
+        # The shown value is checked and stored under the profile lock (#3956).
+        lock = MagicMock(wraps=self.profile.mutation_coordinator)
+        self.profile.mutation_coordinator = lock
+        self.service.adopt({"percent_lthr": 90.0})
+        lock.__enter__.assert_called()
 
     def test_a_stale_or_missing_shown_value_is_refused(self) -> None:
         seed(self)
@@ -1070,16 +1075,12 @@ class ProfileReadTests(unittest.TestCase):
 
 class RouteTests(unittest.TestCase):
     def test_the_route_adopts_through_the_service_under_the_profile_lock(self) -> None:
+        # The service takes the profile lock (#3956), so the route and the
+        # Coach share it; the route reads a step test before calling it.
         service = Mock()
         service.adopt.return_value = {"profile": {}, "first_threshold_estimate": None}
-        profile = Mock(mutation_coordinator=threading.RLock())
         step_test = Mock()
-        routes = FirstThresholdPostRoutes(
-            lambda: service,
-            lambda: profile,
-            lambda: MagicMock(),
-            step_test=step_test,
-        )
+        routes = FirstThresholdPostRoutes(lambda: service, step_test=step_test)
         handler = Mock()
         handler.read_json.return_value = {"percent_lthr": 90.0}
         self.assertTrue(dispatch_route(routes, handler, ADOPT_PATH, method="POST"))
@@ -1090,10 +1091,12 @@ class RouteTests(unittest.TestCase):
         )
         # A step test's detail read (#3833) runs before the profile lock is taken.
         events: list[str] = []
-        profile.mutation_coordinator = MagicMock()
-        profile.mutation_coordinator.__enter__.side_effect = lambda: events.append(
-            "lock"
-        )
+
+        def adopt(*_args: Any) -> dict[str, Any]:
+            events.append("lock")
+            return {}
+
+        service.adopt.side_effect = adopt
 
         def read(activity_id: str) -> dict[str, str]:
             events.append("read")

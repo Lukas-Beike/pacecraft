@@ -672,7 +672,8 @@ def _removes_records(tool_name: str, arguments: Mapping[str, Any] | None) -> boo
     if not isinstance(arguments, Mapping):
         return False
     # Replacing a day's entered weight or body fat removes the old value (#3640).
-    if tool_name == "save_body_entry":
+    # So does replacing a measured or entered threshold (#3956).
+    if tool_name in {"save_body_entry", "save_zones"}:
         return arguments.get("replace") is True
     if tool_name in {"save_equipment", "update_training_plan"}:
         payload = arguments.get("payload")
@@ -984,11 +985,13 @@ CLASSIFIER_INSTRUCTIONS = (
     "anything else, including doubts, a plain training request, or mentioning "
     "the illness without asking to train through it. Domains: planning "
     "(training plan, workouts, schedule, templates), profile (athlete profile, "
-    "FTP, goals, availability, equipment), competition (races, events), "
+    "FTP, zones, thresholds, goals, availability, equipment), competition "
+    "(races, events), "
     "checkin (sleep, health, mood, symptoms, activity feedback), nutrition "
     "(meals, food, products, templates), body (weight, body fat, skinfolds), "
     "undo (revert an earlier change). Changing a weight or body fat already "
-    "entered for a day is a delete in body."
+    "entered for a day is a delete in body; replacing a measured or entered "
+    "threshold is a delete in profile."
 )
 
 CLASSIFIER_SCHEMA: dict[str, Any] = {
