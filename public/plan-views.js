@@ -3599,6 +3599,45 @@ function loadRacePlan(section, competition) {
   });
 }
 
+// A competition whose Intervals.icu event changed or vanished (#4021): keep the local values, or take the remote ones
+// after a confirmation card (they replace the local values for good). Nothing is sent to Intervals.icu.
+function competitionConflict(competition) {
+  let conflict = competition.sync_conflict;
+  try { if (typeof conflict === "string") conflict = JSON.parse(conflict || "{}"); } catch { conflict = {}; }
+  const gone = conflict?.type === "remote_missing";
+  const status = h("p", { className: "planned-delete-note", role: "status" });
+  const settle = async (strategy, buttons, confirmed = false) => {
+    buttons.forEach((button) => { button.disabled = true; });
+    status.textContent = "";
+    try {
+      await api(`/api/competitions/${encodeURIComponent(competition.id)}/resolve`, { method: "POST", body: JSON.stringify({ strategy, ...(confirmed ? { confirmed: true } : {}) }) });
+    } catch (error) {
+      buttons.forEach((button) => { button.disabled = false; });
+      status.textContent = error.message;
+      // Settled elsewhere meanwhile: the card is stale, so the view reads the competition again.
+      if (error.status === 409) await globalThis.load?.().catch(() => {});
+      return;
+    }
+    await globalThis.load?.();
+    announcePlanChange(strategy === "keep_local" ? "Lokal behalten" : "Von Intervals.icu übernommen");
+  };
+  const keep = h("button", { type: "button", className: "secondary-button" }, "Lokal behalten");
+  const buttons = [keep];
+  const ask = h("div", { className: "library-card", hidden: true }, h("p", null, "Deine lokalen Werte werden durch die von Intervals.icu ersetzt."));
+  if (!gone) {
+    const adopt = h("button", { type: "button", className: "secondary-button" }, "Von dort übernehmen");
+    const confirm = h("button", { type: "button", className: "secondary-button danger-button" }, "Ersetzen");
+    const cancel = h("button", { type: "button", className: "secondary-button" }, "Abbrechen");
+    adopt.addEventListener("click", () => { ask.hidden = false; confirm.focus(); });
+    cancel.addEventListener("click", () => { ask.hidden = true; });
+    confirm.addEventListener("click", () => void settle("adopt_remote", [keep, adopt, confirm, cancel], true));
+    ask.append(h("div", "planned-activity-actions", confirm, cancel));
+    buttons.push(adopt);
+  }
+  keep.addEventListener("click", () => void settle("keep_local", buttons));
+  return h("div", "competition-conflict", h("p", null, gone ? "Bei Intervals.icu gelöscht" : "Bei Intervals.icu geändert"), h("div", "planned-activity-actions", ...buttons), ask, status);
+}
+
 function competitionCard(competition, todayKey, openIds) {
   const sport = competition.sport_detail || competitionSportLabel(competition.sport, competition.environment);
   const when = AppFormat.relativeDay(competition.event_date, todayKey);
@@ -3632,8 +3671,8 @@ function competitionCard(competition, todayKey, openIds) {
   const facts = optional.filter(([, value]) => value != null && String(value).trim() !== "").map(([label, value]) => competitionFact(label, value));
   const upcoming = competitionDate(competition, todayKey) && competition.event_date >= todayKey;
   const plan = upcoming ? h("section", "race-plan") : null;
-  const card = h("details", { className: "competition-card", dataset: { competitionId: String(competition.id) }, open: openIds.has(String(competition.id)) },
-    summary, source, facts.length ? h("div", "competition-card-facts", facts) : null, plan);
+  const card = h("details", { className: "competition-card", dataset: { competitionId: String(competition.id) }, open: openIds.has(String(competition.id)) || competition.sync_state === "conflict" },
+    summary, source, competition.sync_state === "conflict" ? competitionConflict(competition) : null, facts.length ? h("div", "competition-card-facts", facts) : null, plan);
   if (plan) {
     card.addEventListener("toggle", () => { if (card.open) loadRacePlan(plan, competition); });
     if (card.open) loadRacePlan(plan, competition);
