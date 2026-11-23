@@ -11,6 +11,8 @@ from session_stream_support import synthetic_session
 from backend.performance.comparable_sessions import (
     comparable_sessions,
     equal_effort_trend,
+    progress,
+    session_types,
 )
 from backend.performance.session_execution import (
     comparison_metrics,
@@ -235,6 +237,173 @@ class ComparableSessionsTests(unittest.TestCase):
     def test_a_session_without_execution_is_not_covered(self) -> None:
         result = comparable_sessions([_row("2026-11-03", None)], "act_2026-11-03")
         self.assertEqual(result["status"], "not_covered")
+
+
+def _paced(pace: float, seconds: float = 400.0) -> dict[str, Any]:
+    """A steady pace profile with ``seconds`` in each of the 130 and 135 bpm bins."""
+    speed = 1000 / pace
+    part = {
+        "seconds": seconds,
+        "distance_m": seconds * speed,
+        "speed_sq": seconds * speed * speed,
+    }
+    return {"status": "ok", "grade_adjusted": True, "bins": {"130": part, "135": part}}
+
+
+def _long(day: str, minutes: int, pace: float, decoupling: float = 4.0) -> dict:
+    row = _row(day, {**_easy(350, 133, seconds=4200), "decoupling_pct": decoupling})
+    return {**row, "duration_s": minutes * 60, "pace_at_hr_profile": _paced(pace)}
+
+
+class SessionTypeCohortTests(unittest.TestCase):
+    """#4136: comparisons only within the session type and plan target."""
+
+    def test_long_runs_compare_only_with_long_runs_of_the_same_target(self) -> None:
+        records = [
+            _long("2026-09-06", 86, 346),
+            _long("2026-08-30", 80, 352),
+            # An easy run of the same shape and heart rate.
+            _long("2026-09-02", 70, 340),
+            # A long run with another heart-rate cap.
+            _long("2026-08-26", 80, 330),
+            _long("2026-08-23", 80, 353),
+            _long("2026-08-16", 78, 355),
+        ]
+        plans = {
+            "act_2026-09-02": {"focus": "easy", "target": 84.0},
+            "act_2026-08-26": {"focus": "long", "target": 90.0},
+            **{
+                f"act_{day}": {"focus": "long", "target": 84.0}
+                for day in ("2026-09-06", "2026-08-30", "2026-08-23", "2026-08-16")
+            },
+        }
+        types = session_types(records, plans, None)
+        result = comparable_sessions(records, "act_2026-09-06", types=types)
+        self.assertEqual({"type": "long", "origin": "plan"}, result["session_type"])
+        self.assertEqual(
+            ["2026-08-30", "2026-08-23", "2026-08-16"],
+            [row["date"] for row in result["peers"]],
+        )
+        # 86 minutes against the median 80 of the three newest long runs.
+        self.assertEqual(6, result["duration_change_min"])
+        # 346 s/km in the 130-139 bpm band against the median 353: 2 % faster.
+        progress = result["progress"]
+        self.assertEqual(
+            ("pace_at_heart_rate", "besser", [130, 139]),
+            (
+                progress["marker"],
+                progress["verdict"],
+                result["this"]["heart_rate_band_bpm"],
+            ),
+        )
+        self.assertEqual(353.0, progress["median_pace_s_per_km"])
+
+    def test_a_level_pace_is_decided_by_the_decoupling(self) -> None:
+        records = [
+            _long("2026-09-06", 80, 352, decoupling=2.0),
+            *(
+                _long(day, 80, 352, decoupling=5.0)
+                for day in ("2026-08-30", "2026-08-23", "2026-08-16")
+            ),
+        ]
+        types = session_types(
+            records, {row["activity_id"]: {"focus": "long"} for row in records}, None
+        )
+        result = comparable_sessions(records, "act_2026-09-06", types=types)
+        self.assertEqual("besser", result["progress"]["verdict"])
+        self.assertEqual(-3.0, result["progress"]["decoupling_change_pts"])
+
+    def test_two_peers_are_listed_without_a_progress_verdict(self) -> None:
+        records = [
+            _long("2026-09-06", 86, 346),
+            _long("2026-08-30", 80, 352),
+            _long("2026-08-23", 80, 353),
+        ]
+        types = session_types(
+            records, {row["activity_id"]: {"focus": "long"} for row in records}, None
+        )
+        result = comparable_sessions(records, "act_2026-09-06", types=types)
+        self.assertEqual(("ok", 2), (result["status"], result["count"]))
+        self.assertEqual("not_covered", result["progress"]["status"])
+
+    def test_faster_at_a_clearly_higher_heart_rate_is_level(self) -> None:
+        # The athlete's threshold example: 6 s/km faster than the median 280,
+        # but 5 bpm higher (157 against 152), is "gleich"; 1 bpm higher is
+        # "besser"; 10 s/km slower at the same heart rate is "schlechter".
+        def threshold(pace: int, heart: int) -> dict[str, Any]:
+            return _row("2026-09-06", _easy(pace, heart, seconds=1800))
+
+        peers = [
+            _row(day, _easy(pace, 152, seconds=1800))
+            for day, pace in (
+                ("2026-08-30", 280),
+                ("2026-08-23", 280),
+                ("2026-08-16", 281),
+            )
+        ]
+        for own, verdict in (
+            (threshold(274, 157), "gleich"),
+            (threshold(274, 153), "besser"),
+            (threshold(290, 152), "schlechter"),
+        ):
+            records = [own, *peers]
+            types = session_types(
+                records,
+                {row["activity_id"]: {"focus": "threshold"} for row in records},
+                None,
+            )
+            with self.subTest(verdict=verdict):
+                result = comparable_sessions(records, "act_2026-09-06", types=types)
+                self.assertEqual(verdict, result["progress"]["verdict"])
+                self.assertEqual("output", result["progress"]["marker"])
+
+    def test_an_unknown_type_or_heart_rate_gives_no_progress(self) -> None:
+        # #4136: peers of mixed type give no verdict and no duration change,
+        # and an output change without the heart rate it cost gives none.
+        records = [
+            _long("2026-09-06", 86, 346),
+            *(
+                _long(day, 80, 352)
+                for day in ("2026-08-30", "2026-08-23", "2026-08-16")
+            ),
+        ]
+        untyped = comparable_sessions(records, "act_2026-09-06", types={})
+        self.assertEqual(
+            (None, None, "not_covered"),
+            (
+                untyped["session_type"],
+                untyped["duration_change_min"],
+                untyped["progress"]["status"],
+            ),
+        )
+        no_heart = {"structure": "continuous", "output_unit": "W", "output": 250}
+        peers = [{**no_heart, "output": 240} for _ in range(3)]
+        self.assertEqual("not_covered", progress(no_heart, peers)["status"])
+
+    def test_without_a_plan_the_type_is_detected_from_the_execution(self) -> None:
+        interval = {"structure": "interval", "rep_count": 4, "median_rep_s": 240}
+        records = [
+            _row("2026-09-01", interval),
+            _row("2026-09-02", _easy(350, 135, seconds=4000)),
+            _row("2026-09-03", _easy(340, 135, seconds=3000)),
+            _row("2026-09-04", _easy(290, 150, seconds=3000)),
+            _row("2026-09-05", _easy(290, 150)),
+        ]
+        plans = {"act_2026-09-05": {"focus": "race"}}
+        self.assertEqual(
+            {
+                "act_2026-09-01": "interval",
+                "act_2026-09-02": "long",
+                "act_2026-09-03": "easy",
+                "act_2026-09-04": "threshold",
+            },
+            {
+                key: found["type"]
+                for key, found in session_types(records, plans, 140).items()
+            },
+        )
+        # Without a first threshold a steady run has no detected type.
+        self.assertEqual({"act_2026-09-01"}, set(session_types(records, plans, None)))
 
 
 class EqualEffortTrendTests(unittest.TestCase):

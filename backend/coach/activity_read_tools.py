@@ -31,7 +31,12 @@ from backend.performance.activity_read_service import (
     ActivityAnalysisReadService,
     calendar_pairs,
 )
-from backend.performance.comparable_sessions import comparable_sessions
+from backend.performance.comparable_sessions import COMPARE_DAYS as COHORT_DAYS
+from backend.performance.comparable_sessions import (
+    comparable_sessions,
+    same_type_keys,
+    session_types,
+)
 from backend.performance.critical_power import (
     METHOD_ID as CRITICAL_SPEED_METHOD,
 )
@@ -835,6 +840,19 @@ class CoachActivityReadToolService:
         of the LTHR, else of the max-HR share, as the stored band times count it,
         #3915); None without a reference or stream.
         """
+        bpm = self._easy_bpm(session, unit, day)
+        found = None if bpm is None else heart_rate_above(bpm, result.get("streams"))
+        if bpm is None or found is None:
+            return None
+        return {"bpm": bpm, "above_s": found[0], "total_s": found[1]}
+
+    def _easy_bpm(
+        self,
+        session: Mapping[str, Any],
+        unit: Mapping[str, Any] | None,
+        day: date | None,
+    ) -> int | None:
+        """The LT1 heart rate of the session's day, None without a reference."""
         sport = session.get("sport")
         if self._unit_thresholds is None or day is None or sport not in ("run", "ride"):
             return None
@@ -844,11 +862,28 @@ class CoachActivityReadToolService:
         if not lthr:
             return None
         # The athlete's own first threshold, else the stand-in (#3915).
-        bpm = round(lthr * (settings.lt1_share or LT1_HR_SHARE))
-        found = heart_rate_above(bpm, result.get("streams"))
-        if found is None:
-            return None
-        return {"bpm": bpm, "above_s": found[0], "total_s": found[1]}
+        return round(lthr * (settings.lt1_share or LT1_HR_SHARE))
+
+    def _session_types(
+        self,
+        session: Mapping[str, Any],
+        day: date,
+        records: list[dict[str, Any]],
+    ) -> dict[str, dict[str, Any]]:
+        """Each compared session's type: its paired unit's focus and heart-rate
+        cap, else detected from its execution (#4136)."""
+        plans: dict[str, dict[str, Any]] = {}
+        if self._planned_units is not None:
+            first = day - timedelta(days=COHORT_DAYS)
+            units = self._planned_units.list(250, future_only=True, since=first)
+            summaries = self._activity_read.summaries_between(
+                first, day + timedelta(days=1)
+            )
+            by_id = {str(unit.get("id")): unit for unit in units}
+            for unit_id, keys in calendar_pairs(units, summaries or []).items():
+                if keys and unit_id in by_id:
+                    plans[keys[0]] = _unit_plan(by_id[unit_id])
+        return session_types(records, plans, self._easy_bpm(session, None, day))
 
     def _step_adherence(
         self, result: Mapping[str, Any], session: Mapping[str, Any], unit: Any
@@ -894,8 +929,21 @@ class CoachActivityReadToolService:
         # A session before the curve window has no curve; nothing is read for it.
         inside = own is not None and day >= covered_from
         records = self._curve_records() if inside else None
+        # Only a compared session reads the types (#4136).
+        compared = (
+            own is not None
+            and not summary_is_electric(own)
+            and not summary_is_not_training(own)
+        )
+        types = (
+            self._session_types(session, day, records)
+            if compared and records is not None
+            else None
+        )
         if session.get("sport") == "run":
-            checks["pace_at_heart_rate"] = self._pace_at_heart_rate(own, records, day)
+            checks["pace_at_heart_rate"] = self._pace_at_heart_rate(
+                own, records, day, types
+            )
             checks["critical_speed"] = _critical_speed(records, day, covered_from)
             checks["running_dynamics_rating"] = self._dynamics_rating(own)
         if own is None or (inside and records is None):
@@ -915,7 +963,10 @@ class CoachActivityReadToolService:
             }
         else:
             checks["comparable_sessions"] = comparable_sessions(
-                records, stored_activity_key(own), covered_from=covered_from
+                records,
+                stored_activity_key(own),
+                covered_from=covered_from,
+                types=types,
             )
         return checks
 
@@ -1006,6 +1057,7 @@ class CoachActivityReadToolService:
         own: Mapping[str, Any] | None,
         records: list[dict[str, Any]] | None,
         day: date,
+        types: Mapping[str, Mapping[str, Any]] | None = None,
     ) -> dict[str, Any]:
         if (
             own is not None
@@ -1019,7 +1071,10 @@ class CoachActivityReadToolService:
             return _unavailable()
         if summary_is_not_training(own):
             return _not_compared()
-        return session_comparison(records, stored_activity_key(own))
+        key = stored_activity_key(own)
+        # Only runs of this one's session type (#4136).
+        peers = None if types is None else same_type_keys(types, key)
+        return session_comparison(records, key, peers)
 
     @staticmethod
     def _bounded_integer(
@@ -1029,6 +1084,15 @@ class CoachActivityReadToolService:
             return max(1, min(int(arguments.get(key, default)), maximum))
         except (TypeError, ValueError) as exc:
             raise AppError(400, error, reason="invalid_list_request") from exc
+
+
+def _unit_plan(unit: Mapping[str, Any]) -> dict[str, Any]:
+    """A paired unit's focus and its heart-rate cap as the plan target (#4136)."""
+    cap = stored_cap(unit)
+    return {
+        "focus": unit.get("session_focus"),
+        "target": None if cap is None else cap.get("percent_lthr"),
+    }
 
 
 def _report_sections(arguments: dict[str, Any]) -> list[str]:

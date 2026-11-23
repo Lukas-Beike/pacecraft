@@ -16,7 +16,7 @@ from __future__ import annotations
 import math
 import statistics
 from collections import defaultdict
-from collections.abc import Mapping, Sequence
+from collections.abc import Collection, Mapping, Sequence
 from datetime import date, timedelta
 from typing import Any, Final
 
@@ -510,15 +510,47 @@ def _shared_band(
     return low, mine, found
 
 
+def band_paces(
+    own: Mapping[str, Any], peers: Sequence[Mapping[str, Any] | None]
+) -> tuple[list[int], float, list[float | None]] | None:
+    """This run's pace and each peer's in the band most of them share (#4136).
+
+    The profiles are ``pace_at_hr_profile`` values; a peer without steady pace
+    in the band, or without a usable profile, has None. None without a band.
+    """
+    usable = [
+        peer
+        if isinstance(peer, Mapping)
+        and peer.get("status") == "ok"
+        and bool(peer.get("grade_adjusted")) == bool(own.get("grade_adjusted"))
+        else None
+        for peer in peers
+    ]
+    if own.get("status") != "ok":
+        return None
+    shared = _shared_band(own, [peer for peer in usable if peer is not None])
+    if shared is None:
+        return None
+    low, mine, _found = shared
+    paces: list[float | None] = []
+    for peer in usable:
+        totals = None if peer is None else _band_totals(peer, low)
+        paces.append(None if totals is None else _pace(totals[0], totals[1]))
+    return [low, low + BAND_BINS * BIN_BPM - 1], _pace(mine[0], mine[1]), paces
+
+
 def session_comparison(
-    records: Sequence[Mapping[str, Any]], activity_key: str
+    records: Sequence[Mapping[str, Any]],
+    activity_key: str,
+    peer_keys: Collection[str] | None = None,
 ) -> dict[str, Any]:
     """Pace of one run in a heart-rate band against comparable steady runs.
 
     Comparable: earlier runs of the last ``COMPARE_DAYS`` days with the same
     environment and grade handling that have steady pace in the same band, the
-    eligibility of the block trend. Too few of them, or an ineligible run, is
-    ``not_covered`` with the reason, never zero.
+    eligibility of the block trend; with ``peer_keys`` only those sessions,
+    the runs of this one's session type (#4136). Too few of them, or an
+    ineligible run, is ``not_covered`` with the reason, never zero.
     """
     base = {"method": METHOD, "unit": "s/km", "scope": SCOPE}
     own_row = next((r for r in records if r.get("activity_id") == activity_key), None)
@@ -538,6 +570,7 @@ def session_comparison(
         row["pace_at_hr_profile"]
         for row in records
         if row is not own_row
+        and (peer_keys is None or row.get("activity_id") in peer_keys)
         and row.get("sport") == "run"
         and row.get("environment") == own_row.get("environment")
         and first <= str(row.get("date") or "") < day

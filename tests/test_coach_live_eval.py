@@ -298,7 +298,24 @@ class ScorerTests(unittest.TestCase):
             {row["metric"]: row["value"] for row in report["recovery_before"]},
         )
         self.assertEqual(14.0, report["weather"]["temperature_c"])
-        self.assertEqual("ok", report["comparable_sessions"]["status"])
+        # #4136: only the four earlier long runs, never the easy run of the
+        # same shape; 86 minutes against 80, faster in the same heart-rate band.
+        compared = report["comparable_sessions"]
+        self.assertEqual(
+            (
+                {"type": "long", "origin": "plan"},
+                ["2026-08-30", "2026-08-23", "2026-08-16", "2026-08-09"],
+                6,
+                "besser",
+            ),
+            (
+                compared["session_type"],
+                [row["date"] for row in compared["peers"]],
+                compared["duration_change_min"],
+                compared["progress"]["verdict"],
+            ),
+        )
+        self.assertEqual(4, report["pace_at_heart_rate"]["comparable"]["count"])
         with contextlib.redirect_stdout(io.StringIO()) as printed:
             self.assertEqual(2, live.print_reports(["c18-activity-feedback"]))
         self.assertIn("a03-long-run-analysis", printed.getvalue())

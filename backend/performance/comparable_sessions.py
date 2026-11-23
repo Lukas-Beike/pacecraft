@@ -20,6 +20,7 @@ from datetime import date, timedelta
 from typing import Any, Final
 
 from backend.canonical.activity_summary import summary_is_trail_run
+from backend.performance.pace_at_hr import band_paces
 from backend.performance.session_execution import rounded_metric
 
 METHOD: Final = "comparable-sessions-v1"
@@ -40,7 +41,11 @@ SCOPE: Final = (
     "peers' median in the metric's unit (pace s/km: negative is faster). Terrain "
     "is not matched. weather_temp_c is the activity weather's air temperature, "
     "listed so heat is not read as a fitness change; null when no weather is "
-    "stored, never the device sensor. Descriptive; at least 3 peers."
+    "stored, never the device sensor. Descriptive; at least 2 peers, medians "
+    "and progress at least 3. session_type: peers share it and the plan target "
+    "(plan focus, else detected). duration_change_min: this session minus the "
+    "3 newest peers' median. progress.verdict: the type's marker against the "
+    "peers (besser, gleich, schlechter)."
 )
 # Metrics the session report judges against the peers' upper quartile (#3084).
 PERSONAL_LIMIT_METRICS: Final = frozenset({"decoupling_pct", "gap_cv_pct"})
@@ -63,16 +68,111 @@ _METRICS: Final = {
 }
 
 
+# Session types (#4136): a planned unit's focus names its session's type; a
+# race or test has none and is never compared.
+_FOCUS_TYPES: Final = {
+    "recovery": "easy",
+    "easy": "easy",
+    "endurance": "easy",
+    "long": "long",
+    "tempo": "threshold",
+    "sweet_spot": "threshold",
+    "threshold": "threshold",
+    "vo2max": "interval",
+    "anaerobic": "interval",
+}
+# Without a plan: a steady main part at most at the first threshold (LT1) is
+# easy, from this long on a long session; above LT1 threshold work.
+LONG_MAIN_S: Final = 3600
+# At least this many peers are listed; a progress verdict needs MIN_PEERS.
+MIN_LISTED: Final = 2
+# Progress (#4136): the type's marker changed by at least this share of the
+# peers' median; a heart rate at most this much higher keeps "besser"; a
+# decoupling change of at least this many points decides a level pace.
+PROGRESS_PCT: Final = 1.0
+PROGRESS_HEART_RATE_BPM: Final = 2
+PROGRESS_DECOUPLING_PTS: Final = 2.0
+# The duration change is measured against this many of the newest peers.
+RECENT_PEERS: Final = 3
+_UNTYPED: Final = {
+    "status": "not_covered",
+    "reason": "Einheitstyp unbekannt: kein Plan und keine Erkennung, keine Entwicklung ablesbar.",
+}
+
+
+def session_types(
+    records: Sequence[Mapping[str, Any]],
+    plans: Mapping[str, Mapping[str, Any]],
+    easy_bpm: float | None,
+) -> dict[str, dict[str, Any]]:
+    """Each record's session type, from its planned unit's focus, else detected.
+
+    ``plans`` maps a session key to its paired unit's ``focus`` and ``target``
+    (a hashable plan target, None without one). Detection reads the execution:
+    intervals are interval sessions; a continuous main part at most at
+    ``easy_bpm`` is easy, from ``LONG_MAIN_S`` on long; above it threshold.
+    ``easy_bpm`` is the analysed session's, so a peer from before a threshold
+    change is typed by today's value. A session of no known type is left out.
+    """
+    found: dict[str, dict[str, Any]] = {}
+    for row in records:
+        key = str(row.get("activity_id") or "")
+        plan = plans.get(key) or {}
+        if plan.get("focus"):
+            kind, origin = _FOCUS_TYPES.get(str(plan["focus"])), "plan"
+        else:
+            kind, origin = _detected(row.get("execution_summary"), easy_bpm), "detected"
+        if kind is not None:
+            found[key] = {"type": kind, "origin": origin, "target": plan.get("target")}
+    return found
+
+
+def _detected(summary: Any, easy_bpm: float | None) -> str | None:
+    if not isinstance(summary, Mapping):
+        return None
+    if summary.get("structure") == "interval":
+        return "interval"
+    heart_rate, main = summary.get("heart_rate_avg"), summary.get("main_part_s")
+    if easy_bpm is None or not isinstance(heart_rate, (int, float)):
+        return None
+    if heart_rate > easy_bpm:
+        return "threshold"
+    long = isinstance(main, (int, float)) and main >= LONG_MAIN_S
+    return "long" if long else "easy"
+
+
+def same_type_keys(
+    types: Mapping[str, Mapping[str, Any]], activity_key: str
+) -> frozenset[str] | None:
+    """The sessions of this one's type and plan target; None when its type is unknown."""
+    own = types.get(activity_key)
+    if own is None:
+        return None
+    return frozenset(
+        key
+        for key, other in types.items()
+        if other["type"] == own["type"]
+        and (
+            own.get("target") is None
+            or other.get("target") is None
+            or other["target"] == own["target"]
+        )
+    )
+
+
 def comparable_sessions(
     records: Sequence[Mapping[str, Any]],
     activity_key: str,
     *,
     covered_from: date | None = None,
+    types: Mapping[str, Mapping[str, Any]] | None = None,
 ) -> dict[str, Any]:
     """Compare one session's execution with its comparable earlier sessions.
 
     ``covered_from`` is the first day the records cover; an earlier peer window
-    is cut there and named as truncated.
+    is cut there and named as truncated. ``types`` (``session_types``) keeps
+    the peers to this session's type and plan target (#4136); a session of
+    unknown type keeps the shape rules alone and says so.
     """
     base = {"method": METHOD, "scope": SCOPE}
     own = next((row for row in records if row.get("activity_id") == activity_key), None)
@@ -95,54 +195,207 @@ def comparable_sessions(
         day = date.fromisoformat(str(own.get("date") or ""))
     except ValueError:
         return _not_covered(base, "Datum der Einheit unbekannt.")
-    first = day - timedelta(days=COMPARE_DAYS)
-    truncated = covered_from is not None and covered_from > first
-    if covered_from is not None and truncated:
-        first = covered_from
-    window = {"window_days": (day - first).days, "window_truncated": truncated}
-    peers = _peers(records, own, mine, first, day)
-    if len(peers) < MIN_PEERS:
+    first, window = _window(day, covered_from)
+    own_type = None if types is None else types.get(activity_key)
+    allowed = None if types is None else same_type_keys(types, activity_key)
+    window["session_type"] = None if own_type is None else _type_view(own_type)
+    peers = _peers(records, own, mine, first, day, allowed)
+    if len(peers) < MIN_LISTED:
         return _not_covered(
             base,
-            f"{len(peers)} vergleichbare Einheiten in {window['window_days']} Tagen, mindestens {MIN_PEERS} nötig.",
+            f"{len(peers)} vergleichbare Einheiten dieses Typs in {window['window_days']} Tagen, mindestens {MIN_LISTED} nötig.",
             count=len(peers),
             # Its own numbers, so a value judged only against peers is still shown.
-            this=dict(mine),
+            this={**mine, "duration_s": own.get("duration_s")},
             **window,
         )
     metrics = _METRICS.get(str(mine.get("structure")), ())
     median, difference, median_peers, quartile = _medians(mine, peers, metrics)
     peers.sort(key=lambda row: str(row.get("date")), reverse=True)
+    this, rows = _cohort_rows(own, peers, metrics)
     return {
         **base,
         "status": "ok",
         "count": len(peers),
         **window,
-        "this": {
-            **mine,
-            "date": own.get("date"),
-            "weather_temp_c": own.get("weather_temp_c"),
-        },
+        "this": this,
         "median_of_peers": median,
         "median_peers": median_peers,
         "upper_quartile_of_peers": quartile,
         "at_same_output": _at_same_output(mine, peers),
         "difference": difference,
-        "peers": [
-            {
-                "date": row.get("date"),
-                "name": row.get("name"),
-                "weather_temp_c": row.get("weather_temp_c"),
-                "source": row["execution_summary"].get("source"),
-                **{
-                    key: row["execution_summary"][key]
-                    for key in metrics
-                    if key in row["execution_summary"]
-                },
-            }
-            for row in peers[:MAX_LISTED]
-        ],
+        **_trend(this, rows, typed=types is None or own_type is not None),
+        "peers": rows[:MAX_LISTED],
     }
+
+
+def _window(day: date, covered_from: date | None) -> tuple[date, dict[str, Any]]:
+    """The first day of the peer window and its length, cut at ``covered_from``."""
+    first = day - timedelta(days=COMPARE_DAYS)
+    truncated = covered_from is not None and covered_from > first
+    if covered_from is not None and truncated:
+        first = covered_from
+    return first, {"window_days": (day - first).days, "window_truncated": truncated}
+
+
+def _trend(
+    this: Mapping[str, Any], rows: Sequence[Mapping[str, Any]], *, typed: bool
+) -> dict[str, Any]:
+    """The duration change and progress; a session of unknown type has mixed
+    peers, so none against them (#4136)."""
+    if not typed:
+        return {"duration_change_min": None, "progress": dict(_UNTYPED)}
+    return {
+        "duration_change_min": _duration_change(this, rows),
+        "progress": progress(this, rows),
+    }
+
+
+def _type_view(own_type: Mapping[str, Any]) -> dict[str, Any]:
+    return {"type": own_type["type"], "origin": own_type["origin"]}
+
+
+def _cohort_rows(
+    own: Mapping[str, Any],
+    peers: Sequence[Mapping[str, Any]],
+    metrics: Sequence[str],
+) -> tuple[dict[str, Any], list[dict[str, Any]]]:
+    """This session's row and each peer's, newest first, with its duration and,
+    for runs, the pace in the heart-rate band they share (#4136)."""
+    shared = band_paces(
+        own.get("pace_at_hr_profile") or {},
+        [row.get("pace_at_hr_profile") for row in peers],
+    )
+    band, own_pace, paces = shared or (None, None, [None] * len(peers))
+    this = {
+        **own["execution_summary"],
+        "date": own.get("date"),
+        "duration_s": own.get("duration_s"),
+        "weather_temp_c": own.get("weather_temp_c"),
+        "heart_rate_band_bpm": band,
+        "pace_at_band_s_per_km": own_pace,
+    }
+    rows = [
+        {
+            "date": row.get("date"),
+            "name": row.get("name"),
+            "duration_s": row.get("duration_s"),
+            "weather_temp_c": row.get("weather_temp_c"),
+            "source": row["execution_summary"].get("source"),
+            "pace_at_band_s_per_km": pace,
+            **{
+                key: row["execution_summary"][key]
+                for key in metrics
+                if key in row["execution_summary"]
+            },
+        }
+        for row, pace in zip(peers, paces, strict=True)
+    ]
+    return this, rows
+
+
+def _duration_change(
+    this: Mapping[str, Any], rows: Sequence[Mapping[str, Any]]
+) -> int | None:
+    """Minutes this session lasted longer (negative: shorter) than the median of
+    the newest ``RECENT_PEERS`` peers."""
+    durations = [
+        float(row["duration_s"])
+        for row in rows[:RECENT_PEERS]
+        if isinstance(row.get("duration_s"), (int, float))
+    ]
+    own = this.get("duration_s")
+    if not durations or not isinstance(own, (int, float)):
+        return None
+    return round((own - statistics.median(durations)) / 60)
+
+
+def progress(
+    this: Mapping[str, Any], rows: Sequence[Mapping[str, Any]]
+) -> dict[str, Any]:
+    """besser, gleich or schlechter on the session type's marker (#4136).
+
+    Steady runs: the pace in the shared heart-rate band against the peers'
+    median, a level pace decided by the decoupling. Other sessions: the main
+    output (rep output for intervals) against the median with the heart rate it
+    cost; faster at a clearly higher heart rate is "gleich". Needs
+    ``MIN_PEERS`` peers with the marker.
+    """
+    paces = _values(rows, "pace_at_band_s_per_km")
+    own_pace = this.get("pace_at_band_s_per_km")
+    if isinstance(own_pace, (int, float)) and len(paces) >= MIN_PEERS:
+        median = statistics.median(paces)
+        change = (own_pace - median) / median * 100
+        coupling = _change(this, rows, "decoupling_pct")
+        verdict = _verdict(-change, 0.0)
+        if verdict == "gleich" and coupling is not None:
+            verdict = _verdict(-coupling, 0.0, PROGRESS_DECOUPLING_PTS)
+        return {
+            "status": "ok",
+            "marker": "pace_at_heart_rate",
+            "verdict": verdict,
+            "peers": len(paces),
+            "pace_s_per_km": round(own_pace, 1),
+            "median_pace_s_per_km": round(median, 1),
+            "change_pct": round(change, 1),
+            "decoupling_change_pts": coupling,
+        }
+    interval = this.get("structure") == "interval"
+    output_key = "rep_output_mean" if interval else "output"
+    heart_key = "heart_rate_end_mean" if interval else "heart_rate_avg"
+    outputs = _values(rows, output_key)
+    own_output = this.get(output_key)
+    if not isinstance(own_output, (int, float)) or len(outputs) < MIN_PEERS:
+        return {
+            "status": "not_covered",
+            "reason": f"{len(outputs)} vergleichbare Einheiten mit Messwerten, für eine Entwicklung mindestens {MIN_PEERS} nötig.",
+        }
+    median = statistics.median(outputs)
+    change = (own_output - median) / median * 100
+    better = -change if this.get("output_unit") == "s/km" else change
+    heart = _change(this, rows, heart_key)
+    if heart is None:
+        # Output alone says nothing without the heart rate it cost.
+        return {
+            "status": "not_covered",
+            "reason": "Puls der vergleichbaren Einheiten fehlt, keine Entwicklung ablesbar.",
+        }
+    return {
+        "status": "ok",
+        "marker": output_key,
+        "verdict": _verdict(better, heart),
+        "peers": len(outputs),
+        "output_unit": this.get("output_unit"),
+        "output": own_output,
+        "median_output": rounded_metric(median),
+        "change_pct": round(change, 1),
+        "heart_rate_change_bpm": heart,
+    }
+
+
+def _verdict(better: float, heart: float, limit: float = PROGRESS_PCT) -> str:
+    """besser when the marker improved by ``limit`` at a heart rate at most
+    ``PROGRESS_HEART_RATE_BPM`` higher; schlechter the other way round."""
+    if better >= limit and heart <= PROGRESS_HEART_RATE_BPM:
+        return "besser"
+    if better <= -limit and heart >= -PROGRESS_HEART_RATE_BPM:
+        return "schlechter"
+    return "gleich"
+
+
+def _values(rows: Sequence[Mapping[str, Any]], key: str) -> list[float]:
+    return [float(row[key]) for row in rows if isinstance(row.get(key), (int, float))]
+
+
+def _change(
+    this: Mapping[str, Any], rows: Sequence[Mapping[str, Any]], key: str
+) -> float | None:
+    """This session's value minus the peers' median, with at least MIN_PEERS peers."""
+    values = _values(rows, key)
+    own = this.get(key)
+    if not isinstance(own, (int, float)) or len(values) < MIN_PEERS:
+        return None
+    return rounded_metric(own - statistics.median(values))
 
 
 def _peers(
@@ -151,12 +404,15 @@ def _peers(
     mine: Mapping[str, Any],
     first: date,
     day: date,
+    allowed: frozenset[str] | None = None,
 ) -> list[Mapping[str, Any]]:
-    """Earlier sessions of the window with this one's kind, sound data and shape."""
+    """Earlier sessions of the window with this one's kind, sound data and shape;
+    with ``allowed`` only those sessions, this one's type (#4136)."""
     return [
         row
         for row in records
         if row is not own
+        and (allowed is None or row.get("activity_id") in allowed)
         and first.isoformat() <= str(row.get("date") or "") < day.isoformat()
         and row.get("sport") == own.get("sport")
         and row.get("environment") == own.get("environment")
