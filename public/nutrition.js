@@ -1502,7 +1502,8 @@ function stopNutritionBarcode() {
   nutritionBarcodeFrame = null;
   nutritionBarcodeStream?.getTracks().forEach((track) => track.stop());
   nutritionBarcodeStream = null;
-  const video = document.querySelector("#nutritionBarcodeVideo"); if (video) video.srcObject = null;
+  const video = document.querySelector("#nutritionBarcodeVideo");
+  if (video) { video.srcObject = null; video.hidden = true; }
 }
 
 async function scanNutritionBarcode() {
@@ -1518,7 +1519,8 @@ async function scanNutritionBarcode() {
     const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: "environment" } }, audio: false });
     if (session !== nutritionBarcodeSession || !dialog.open || generation !== state.sessionGeneration) { stream.getTracks().forEach((track) => track.stop()); return; }
     nutritionBarcodeStream = stream;
-    video.srcObject = nutritionBarcodeStream; await video.play(); status.textContent = "Barcode vor die Kamera halten …";
+    // The picture shows only while a camera delivers one; unsupported scanning leaves no black box (#4037).
+    video.srcObject = nutritionBarcodeStream; video.hidden = false; await video.play(); status.textContent = "Barcode vor die Kamera halten …";
     const scan = async () => {
       if (!dialog.open || session !== nutritionBarcodeSession || generation !== state.sessionGeneration) return;
       try { const codes = await nutritionBarcodeDetector.detect(video); if (codes[0]?.rawValue) { document.querySelector("#nutritionBarcodeManual").value = codes[0].rawValue; await lookupNutritionProduct(codes[0].rawValue); return; } } catch (_) { /* continue until cancelled */ }

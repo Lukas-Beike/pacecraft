@@ -534,7 +534,7 @@ test("@responsive the energy goal is set from the diary and priced there", async
   expect(await dialog.getByLabel("Defizit pro Tag (kcal)").evaluate((input) => input.validity.valid)).toBeTruthy();
   await dialog.getByLabel("Defizit pro Tag (kcal)").fill("500");
   // #3618: body weight per week at the energy view's density (70 % fat by the rule of thumb).
-  await expect(dialog.locator("#energyGoalDialogWeek")).toHaveText("≈ 0,49 kg Körpergewicht pro Woche");
+  await expect(dialog.locator("#energyGoalDialogWeek")).toHaveText("≈ 0,5 kg Körpergewicht pro Woche");
   await dialog.getByText("Halten").click();
   await expect(dialog.getByLabel("Defizit pro Tag (kcal)")).toBeHidden();
   await dialog.getByText("Abnehmen").click();

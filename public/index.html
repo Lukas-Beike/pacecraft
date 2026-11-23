@@ -734,7 +734,7 @@
   <dialog id="nutritionBarcodeDialog" aria-labelledby="nutritionBarcodeTitle">
     <form method="dialog" class="confirmation-dialog" id="nutritionBarcodeForm">
       <h2 id="nutritionBarcodeTitle">Barcode scannen</h2>
-      <video id="nutritionBarcodeVideo" playsinline muted aria-label="Kamerabild für Barcode-Scan"></video>
+      <video id="nutritionBarcodeVideo" hidden playsinline muted aria-label="Kamerabild für Barcode-Scan"></video>
       <p id="nutritionBarcodeStatus" class="tab-sync-detail" aria-live="polite">Kamera wird vorbereitet …</p>
       <label for="nutritionBarcodeManual">EAN manuell eingeben<input id="nutritionBarcodeManual" inputmode="numeric" pattern="[0-9]{8,14}" maxlength="14" autocomplete="off"></label>
       <div class="dialog-actions"><button type="button" id="nutritionBarcodeCancel" class="secondary-button">Abbrechen</button><button type="submit" id="nutritionBarcodeLookup">Produkt suchen</button></div>

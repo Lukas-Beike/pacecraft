@@ -227,10 +227,12 @@ test("closing the barcode dialog stops the camera tracks and releases the video"
   const { context, dialog, video, stream, frames } = barcodeSetup();
   await context.scanNutritionBarcode();
   assert.equal(video.srcObject, stream);
+  assert.equal(video.hidden, false);
   assert.equal(stream.stopped, 0);
   dialog.close();
   assert.equal(stream.stopped, 1);
   assert.equal(video.srcObject, null);
+  assert.equal(video.hidden, true);
   assert.equal(frames.cancelled, 1);
 });
 
@@ -239,5 +241,6 @@ test("a camera that fails to start is stopped and the manual entry is offered", 
   await context.scanNutritionBarcode();
   assert.equal(stream.stopped, 1);
   assert.equal(video.srcObject, null);
+  assert.equal(video.hidden, true);
   assert.equal(document.nodes.get("#nutritionBarcodeStatus").textContent, "Kamera nicht verfügbar. Gib die EAN manuell ein. (play blocked)");
 });
