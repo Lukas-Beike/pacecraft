@@ -883,6 +883,7 @@ a.message-retry { display: grid; place-items: center; text-decoration: none; }
 /* The value columns keep their header word whole; the name column takes the rest and wraps. */
 .zone-thresholds { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 4px 12px; font-size: .88rem; }
 .zone-thresholds b { font-weight: 600; font-variant-numeric: tabular-nums; }
+.zone-note { grid-column: 1 / -1; margin: 4px 0 0; color: var(--muted); font-size: .78rem; font-variant-numeric: tabular-nums; }
 /* rem follows the text size: with bigger text each row names its threshold on its own line above the two values. */
 @container (max-width: 15rem) {
   .zone-thresholds { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px 8px; }
@@ -992,6 +993,7 @@ a.message-retry { display: grid; place-items: center; text-decoration: none; }
 .planned-focus-field { display: grid; flex: 0 1 12rem; gap: 4px; font-size: .78rem; font-weight: 700; }
 .planned-focus-field select { min-height: 44px; width: 100%; padding: 4px 8px; }
 .planned-focus-status { color: var(--muted); font-size: .72rem; }
+output.planned-move-status { display: block; }
 .planned-move-status, .planned-delete-note { margin: 0; color: var(--muted); font-size: .72rem; }
 .planned-move-days { display: flex; flex-wrap: wrap; gap: 6px; }
 .planned-move-day { display: grid; min-width: 44px; min-height: 44px; place-items: center; padding: 4px 6px; border: 1px solid var(--line-strong); border-radius: var(--radius-sm); color: var(--ink); background: var(--surface-input); font-size: .72rem; line-height: 1.2; }

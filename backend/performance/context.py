@@ -15,7 +15,11 @@ from backend.canonical.first_threshold import (
 )
 from backend.canonical.vocabulary import ProviderId
 from backend.errors import DatabaseBusyError
-from backend.performance import activity_validation, garmin_projection
+from backend.performance import (
+    activity_validation,
+    garmin_projection,
+    threshold_evidence,
+)
 from backend.performance import comparisons as performance_comparisons
 from backend.performance import current_metrics as performance_current_metrics
 from backend.performance import daily_health as performance_daily_health
@@ -141,10 +145,10 @@ def _unavailable_context(
     return unavailable
 
 
-def _at_heart_rate(
-    records: Callable[[int], Sequence[Mapping[str, Any]]] | None, today: date
-) -> performance_current_metrics.OutputAtHeartRate | None:
-    """Pace or power at a heart rate from the session records, read at most once.
+def _session_reader(
+    records: Callable[[int], Sequence[Mapping[str, Any]]] | None,
+) -> Callable[[], Sequence[Mapping[str, Any]]] | None:
+    """The session records of the longest window, read at most once.
 
     A busy database or a missing session source reads as no sessions, so LT1
     falls back to the fixed share instead of failing the projection.
@@ -155,11 +159,54 @@ def _at_heart_rate(
     @functools.cache
     def read() -> Sequence[Mapping[str, Any]]:
         try:
-            return records(LT1_DAYS)
+            return records(max(LT1_DAYS, threshold_evidence.EFFORT_WINDOW_DAYS))
         except DatabaseBusyError, RuntimeError:
             return ()
 
+    return read
+
+
+def _at_heart_rate(
+    read: Callable[[], Sequence[Mapping[str, Any]]] | None, today: date
+) -> performance_current_metrics.OutputAtHeartRate | None:
+    """Pace or power at a heart rate from the session records."""
+    if read is None:
+        return None
     return lambda sport, bpm: output_at_heart_rate(read(), sport, bpm, today)
+
+
+def _recorded_max_hr(
+    recorded: Callable[[date], tuple[float, str] | None] | None, today: date
+) -> tuple[float, str] | None:
+    """The chest-strap maximum of the last 12 months; unknown when unreadable."""
+    if recorded is None:
+        return None
+    try:
+        return recorded(today - timedelta(days=threshold_evidence.RECORDED_MAX_HR_DAYS))
+    except DatabaseBusyError, RuntimeError:
+        return None
+
+
+def _threshold_evidence(
+    metrics: Mapping[str, Mapping[str, Any]],
+    read: Callable[[], Sequence[Mapping[str, Any]]] | None,
+    chest_strap_max_hr: Callable[[date], tuple[float, str] | None] | None,
+    today: date,
+) -> dict[str, Any]:
+    """What the recordings say about the thresholds in effect (#3920, C5 and C6)."""
+    ftp_w = metrics["cycling_ftp_watts"]["value"]
+    run_pace = metrics["run_threshold_pace_seconds_per_km"]["value"]
+    # Without a threshold in effect there is nothing to compare: no session read.
+    records = read() if read is not None and (ftp_w or run_pace) else ()
+    return {
+        "unsupported_by_recent_effort": threshold_evidence.unsupported_by_recent_effort(
+            records, ftp_w=ftp_w, run_pace_seconds_per_km=run_pace
+        ),
+        "recorded_max_hr_above": threshold_evidence.recorded_max_hr_above(
+            metrics["max_hr_bpm"]["value"],
+            _recorded_max_hr(chest_strap_max_hr, today),
+        ),
+    }
 
 
 # The threshold charts' twelve calendar weeks (#2693).
@@ -262,12 +309,16 @@ def current_performance_context(
     canonical: CanonicalPerformanceInputs,
     session_feedback: FeedbackLookup | None = None,
     lt1_session_records: Callable[[int], Sequence[Mapping[str, Any]]] | None = None,
+    chest_strap_max_hr: Callable[[date], tuple[float, str] | None] | None = None,
 ) -> dict[str, Any]:
     """Compose the current performance projection from canonical inputs only.
 
     ``lt1_session_records(days)`` reads the ride
     and run sessions of the last days with their heart-rate profiles, so LT1 pace and power come from the
     athlete's own steady sessions at the LT1 heart rate; read once, when needed.
+
+    ``chest_strap_max_hr(since)`` reads the highest max heart rate (bpm, ISO day)
+    of a chest-strap recording since that day (#3920).
 
     ``session_feedback`` reads the local session feedback, so load rollups can
     report the session-RPE load of sessions without a TSS-scale load.
@@ -312,6 +363,7 @@ def current_performance_context(
         garmin_thresholds=_garmin_canonical(canonical).thresholds,
         as_of=today,
     )
+    session_records = _session_reader(lt1_session_records)
     feedback = feedback_by_session(
         _recent(activities, today - timedelta(days=_ROLLUP_LOOKBACK_DAYS)),
         session_feedback,
@@ -393,8 +445,9 @@ def current_performance_context(
                 metrics,
                 stored_bpm(profile),
                 first_threshold_origin(profile),
-                _at_heart_rate(lt1_session_records, today),
+                _at_heart_rate(session_records, today),
             ),
+            **_threshold_evidence(metrics, session_records, chest_strap_max_hr, today),
         },
         "current_load": load,
         "recovery": {

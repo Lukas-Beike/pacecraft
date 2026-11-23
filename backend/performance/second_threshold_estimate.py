@@ -52,6 +52,10 @@ GOOD_MIN_SESSIONS: Final = 5
 # Spread of the qualifying runs in percent of their median (F2: as for LT1).
 GOOD_MAX_SPREAD_PCT: Final = 5.0
 BOUNDS_BPM: Final = (60.0, 220.0)
+# The 0.5 crossing against gas-exchange VT2 on a treadmill: limits of agreement of
+# the heart rate in bpm (Rogers et al. 2021, R76; 15 men, group error, not an
+# individual interval). Shown at adoption (#3920, C7).
+DFA_LIMITS_OF_AGREEMENT_BPM: Final = (-24, 16)
 CRITICAL_WINDOW_DAYS: Final = 42
 GOOD_MAX_RESIDUAL: Final = 0.015
 GOOD_MAX_LEAVE_ONE_OUT: Final = 0.03
@@ -168,6 +172,10 @@ def dfa_second_threshold(
         "spread_pct": round(spread, 1),
         "quality": (DfaQuality.GOOD if good else DfaQuality.LOW).value,
         "source": DFA_LABEL,
+        "range": {
+            "heart_rate_bpm": list(DFA_LIMITS_OF_AGREEMENT_BPM),
+            "basis": "Limits of Agreement gegen VT2, Rogers et al. 2021 (R76)",
+        },
     }
 
 

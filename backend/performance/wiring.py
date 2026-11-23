@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass
+from datetime import date
 from typing import Any
 
 from backend.activities.activity_reference import ActivityReferences
@@ -29,7 +30,9 @@ from backend.athlete.skinfolds import SkinfoldService
 from backend.athlete.zones import ZoneConfigurationService
 from backend.canonical.activity_summary import ActivitySummary
 from backend.canonical.first_threshold import FIRST_THRESHOLD_FIELD
+from backend.canonical.validation import HEART_RATE_BOUNDS
 from backend.canonical.vocabulary import ProviderId
+from backend.db import canonical_store
 from backend.db.manager import kept_until_change
 from backend.db.repositories import CheckinRepository, ProfileRepository
 from backend.performance import step_test
@@ -63,6 +66,8 @@ class PerformanceServices:
     all_time_records: Callable[[], tuple[tuple[Mapping[str, Any], ...], bool] | None]
     # That background build as a state word, count and last duration (#2852).
     curve_build_state: Callable[[], dict[str, Any]]
+    # The highest max heart rate (bpm, ISO day) of a chest-strap recording since a day (#3920).
+    chest_strap_max_hr: Callable[[date], tuple[float, str] | None]
 
 
 def build_performance(
@@ -173,11 +178,22 @@ def build_performance(
     def curve_records(days: int) -> Sequence[Mapping[str, Any]]:
         return profiles().curve_records(days, shared=True)
 
+    def chest_strap_max_hr(since: date) -> tuple[float, str] | None:
+        with canonical_performance_source().database_manager().reader() as db:
+            row = canonical_store.chest_strap_max_hr_row(
+                db,
+                since=since.isoformat(),
+                low=HEART_RATE_BOUNDS[0],
+                high=HEART_RATE_BOUNDS[1],
+            )
+        return None if row is None else (float(row["max_hr"]), str(row["local_date"]))
+
     return PerformanceServices(
         training_reports,
         curve_records,
         lambda: profiles().all_time_records(),
         power_curves.background_state,
+        chest_strap_max_hr,
     )
 
 

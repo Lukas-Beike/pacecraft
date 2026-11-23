@@ -199,6 +199,7 @@ class PublicPerformanceStateTests(unittest.TestCase):
             session_feedback=None,
             # LT1 pace and power read the session records (#2427).
             lt1_session_records=list,
+            chest_strap_max_hr=None,
         )
         garmin_payload_service.sync_status.assert_called_once_with()
         garmin_payload_service.view.assert_not_called()

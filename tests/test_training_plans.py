@@ -107,6 +107,66 @@ class TrainingPlanServiceTests(unittest.TestCase):
         self.assertEqual(self.revision(), 1)
         self.assertEqual(self.events.events, [("coach", {"status": "changed"})])
 
+    def test_create_stores_the_plan_with_history_revision_and_event(self):
+        changes = []
+        with patch(
+            "backend.planning.training_plans.change_history.record_change",
+            side_effect=lambda *args, **kwargs: changes.append((args, kwargs)),
+        ):
+            result = self.service.create(
+                {
+                    "name": "  Aufbau  ",
+                    "goal": "Halbmarathon",
+                    "start_date": "2026-11-30",
+                    "end_date": "2027-01-03",
+                }
+            )
+
+        stored = self.repository.get(self.db, result["plan_id"])
+        self.assertEqual(
+            ("Aufbau", "Halbmarathon", "2026-11-30", "2027-01-03", "planned"),
+            (
+                stored["name"],
+                stored["goal"],
+                stored["start_date"],
+                stored["end_date"],
+                stored["status"],
+            ),
+        )
+        self.assertEqual("created", result["status"])
+        self.assertEqual(("create", None), (changes[0][0][3], changes[0][0][4]))
+        self.assertEqual(self.revision(), 1)
+        self.assertEqual(self.events.events, [("coach", {"status": "changed"})])
+
+    def test_create_refuses_a_missing_name_and_swapped_dates(self):
+        for values in (
+            {"start_date": "2026-11-30", "end_date": "2027-01-03"},
+            {"name": "x", "start_date": "2027-01-03", "end_date": "2026-11-30"},
+            {"name": "x", "start_date": "30.11.2026", "end_date": "2027-01-03"},
+            {
+                "name": "x",
+                "start_date": "2026-11-30",
+                "end_date": "2027-01-03",
+                "status": "bogus",
+            },
+        ):
+            with self.subTest(values=values), self.assertRaises(AppError):
+                self.service.create(values)
+        self.assertEqual(1, len(self.repository.list(self.db)))
+        self.assertEqual(self.revision(), 0)
+
+    def test_update_clears_the_goal_only_when_it_is_sent_empty(self):
+        with patch("backend.planning.training_plans.change_history.record_change"):
+            self.service.update(self.plan_id, {"goal": "Grundlage"})
+            self.service.update(self.plan_id, {"name": "Base 2"})
+            self.assertEqual(
+                "Grundlage", self.repository.get(self.db, self.plan_id)["goal"]
+            )
+
+            self.service.update(self.plan_id, {"goal": ""})
+
+        self.assertEqual("", self.repository.get(self.db, self.plan_id)["goal"])
+
     def test_failed_update_rolls_back_and_does_not_publish(self):
         with (
             patch(

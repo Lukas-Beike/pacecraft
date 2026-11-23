@@ -86,6 +86,7 @@ from backend.http_api.static_assets import StaticAssetService
 from backend.http_api.sync_commands import SyncCommandEndpoint
 from backend.http_api.sync_commands_post import SyncCommandPostRoute
 from backend.http_api.sync_get import SyncGetRoutes
+from backend.http_api.training_plan_post import TrainingPlanPostRoutes
 from backend.http_api.wahoo import WahooGetRoutes, WahooPostRoutes
 from backend.nutrition.macro_context import body_weight, macro_context
 from backend.nutrition.session_fuelling import read_session_fuelling
@@ -198,6 +199,7 @@ def build_public_state(
             ),
             now=ctx.clock.now,
             lt1_session_records=lambda days: ctx.performance.curve_records(days),
+            chest_strap_max_hr=ctx.performance.chest_strap_max_hr,
             lt1_history_records=ctx.performance.all_time_records,
         )
 
@@ -573,6 +575,7 @@ def _athlete_write_routes(
             ctx.planning.workout_library,
             ctx.planning_workflows.workout_library_plan_service,
         ),
+        TrainingPlanPostRoutes(ctx.planning.training_plan),
         CredentialsPutRoutes(ctx.provider_credential_service, session_auth_service),
         EquipmentPostRoutes(athlete.equipment),
         FirstThresholdPostRoutes(
@@ -714,6 +717,7 @@ def build_http_api(
         history_undo_post,
         planned_unit_focus_post,
         library_post,
+        training_plan_post,
         credentials_put,
         equipment_post,
         first_threshold_post,
@@ -770,6 +774,7 @@ def build_http_api(
             nutrition_post,
             planned_unit_focus_post,
             library_post,
+            training_plan_post,
             credentials_put,
             wahoo_get,
             wahoo_post,

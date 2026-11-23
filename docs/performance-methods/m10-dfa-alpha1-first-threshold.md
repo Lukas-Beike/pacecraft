@@ -181,6 +181,10 @@ first, else a 400 m track with the watch's track run mode, a flat loop only as
 a fallback, and the same place for every repeat test, so tests stay
 comparable.
 
+The LT2 adoption row of the DFA-α1 estimate shows the R76 limits of agreement
+"(−24/+16)" bpm beside the heart rate (#3920, C7). The LT1 adoption and the
+step test show no range: no limit of agreement is cited for them.
+
 ## Sources
 
 - **Threshold definition and agreement with VT1:** R56 (laboratory, running,

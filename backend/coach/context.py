@@ -663,9 +663,11 @@ class CoachPerformanceContextReader:
         activity_rows: ActivitySummarySource | None = None,
         session_feedback: FeedbackLookup | None = None,
         lt1_session_records: Callable[[int], Sequence[Mapping[str, Any]]] | None = None,
+        chest_strap_max_hr: Callable[[date], tuple[float, str] | None] | None = None,
     ) -> None:
         self._profile_service = profile_service
         self._lt1_session_records = lt1_session_records
+        self._chest_strap_max_hr = chest_strap_max_hr
         self._garmin_payload_service = garmin_payload_service
         self._garmin_projection_service = garmin_projection_service
         self._today = today
@@ -724,6 +726,7 @@ class CoachPerformanceContextReader:
                 canonical=canonical or EMPTY_PERFORMANCE_INPUTS,
                 session_feedback=self._session_feedback,
                 lt1_session_records=self._lt1_session_records,
+                chest_strap_max_hr=self._chest_strap_max_hr,
             )
         )
 

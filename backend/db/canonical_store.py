@@ -32,12 +32,14 @@ from backend.canonical.records import (
 from backend.canonical.section_items import section_of
 from backend.canonical.validation import MAX_ACTIVITY_DURATION_S
 from backend.canonical.vocabulary import (
+    ActivityDetailKind,
     ActivityLinkKind,
     ActivityPurpose,
     ActivityRecordState,
     ActivitySessionState,
     Assist,
     DeviceType,
+    HeartRateSource,
     MetricKind,
     ProjectionState,
     ProviderId,
@@ -699,6 +701,41 @@ def activity_max_hr_rows(
             high,
         ),
     )
+
+
+def chest_strap_max_hr_row(
+    db: Any, *, since: str, low: float, high: float
+) -> dict[str, Any] | None:
+    """The highest max heart rate of a chest-strap recording since ``since``, with its day.
+
+    Only active records of sessions that are not deleted count, and only those
+    whose stored streams name a chest strap as the heart-rate source; an optical
+    recording never counts. The newest day wins a tie. None without one.
+    """
+    rows = _fetch_all(
+        db,
+        "WITH strap AS (SELECT json_extract(CASE WHEN json_valid(r.details) "
+        f"THEN r.details END, '$.{_MAX_HR_KEY}') AS peak, r.local_date AS day "
+        "FROM activity_records AS r "
+        "JOIN activity_sessions AS s ON s.activity_id = r.activity_id "
+        "JOIN activity_detail_sets AS d ON d.provider = r.provider "
+        "AND d.provider_activity_id = r.provider_activity_id "
+        "WHERE d.detail_kind = ? AND d.hr_source = ? AND r.state = ? "
+        "AND s.state <> ? AND r.local_date >= ?) "
+        "SELECT peak AS max_hr, day AS local_date FROM strap "
+        "WHERE typeof(peak) IN ('integer', 'real') AND peak BETWEEN ? AND ? "
+        "ORDER BY peak DESC, day DESC LIMIT 1",
+        (
+            ActivityDetailKind.STREAMS.value,
+            HeartRateSource.CHEST_STRAP.value,
+            ActivityRecordState.ACTIVE.value,
+            ActivitySessionState.DELETED.value,
+            since,
+            low,
+            high,
+        ),
+    )
+    return rows[0] if rows else None
 
 
 def session_activity_rows(db: Any, activity_id: str) -> list[dict[str, Any]]:

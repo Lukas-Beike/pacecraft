@@ -49,7 +49,11 @@ def _candidate(current: dict[str, Any], values: dict[str, Any]) -> dict[str, Any
     candidate = {
         "id": current["id"],
         "name": str(values.get("name") or current.get("name") or "").strip()[:200],
-        "goal": str(values.get("goal") or current.get("goal") or "").strip()[:2000],
+        "goal": str(
+            values["goal"]
+            if values.get("goal") is not None
+            else current.get("goal") or ""
+        ).strip()[:2000],
         "start_date": str(
             values.get("start_date") or current.get("start_date") or ""
         ).strip(),
@@ -104,6 +108,32 @@ class TrainingPlanService:
                 )
                 plan["constraints"] = json.loads(value or "[]")
             return plans
+
+    def create(self, values: Any) -> dict[str, Any]:
+        """Save a new plan without units (#3950): units join it when they are planned."""
+        if not isinstance(values, dict):
+            raise AppError(400, "Der Trainingsplan muss als Objekt gesendet werden.")
+        plan_id = str(uuid.uuid4())
+        candidate = _candidate({"id": plan_id}, values)
+        now = self._now()
+        plan = {**candidate, "created_at": now, "updated_at": now}
+        with self._database_manager.unit_of_work() as db:
+            self._repository.create(
+                db,
+                plan_id,
+                candidate["name"],
+                candidate["goal"],
+                candidate["start_date"],
+                candidate["end_date"],
+                candidate["status"],
+                now,
+            )
+            change_history.record_change(
+                db, "training_plan", plan_id, "create", None, plan
+            )
+            self._revisions.bump(db)
+        self._event_buffer.publish("coach", {"status": "changed"})
+        return {"status": "created", "plan_id": plan_id, "plan": plan}
 
     def update(self, plan_id: Any, values: Any) -> dict[str, Any]:
         normalized_id = self._normalize_id(plan_id)

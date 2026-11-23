@@ -256,6 +256,7 @@ every named number the code fixes. A test fails when it is out of date.
 | `GOOD_MIN_SESSIONS` | `5` | `backend/performance/second_threshold_estimate.py` |  |
 | `GOOD_MAX_SPREAD_PCT` | `5.0` | `backend/performance/second_threshold_estimate.py` | Spread of the qualifying runs in percent of their median (F2: as for LT1). |
 | `BOUNDS_BPM` | `(60.0, 220.0)` | `backend/performance/second_threshold_estimate.py` |  |
+| `DFA_LIMITS_OF_AGREEMENT_BPM` | `(-24, 16)` | `backend/performance/second_threshold_estimate.py` | The 0.5 crossing against gas-exchange VT2 on a treadmill: limits of agreement of the heart rate in bpm (Rogers et al. 2021, R76; 15 men, group error, not an individual interval). Shown at adoption (#3920, C7). |
 | `CRITICAL_WINDOW_DAYS` | `42` | `backend/performance/second_threshold_estimate.py` |  |
 | `GOOD_MAX_RESIDUAL` | `0.015` | `backend/performance/second_threshold_estimate.py` |  |
 | `GOOD_MAX_LEAVE_ONE_OUT` | `0.03` | `backend/performance/second_threshold_estimate.py` |  |
@@ -427,6 +428,11 @@ every named number the code fixes. A test fails when it is out of date.
 | `LT1_NOT_REACHED` | `'α1 blieb über 0,75. Die Stufen waren nicht schnell genug.'` | `backend/performance/step_test.py` |  |
 | `LT2_NOT_REACHED` | `'α1 blieb über 0,5. Die letzten Stufen waren nicht schnell genug oder wurden abgebrochen.'` | `backend/performance/step_test.py` |  |
 | `NO_CROSSING` | `'keine klare Kreuzung'` | `backend/performance/step_test.py` |  |
+| `EFFORT_WINDOW_DAYS` | `90` | `backend/performance/threshold_evidence.py` | The window of the session curve records the best efforts come from. |
+| `RIDE_EFFORT_SECONDS` | `1200` | `backend/performance/threshold_evidence.py` |  |
+| `RUN_EFFORT_METRES` | `5000` | `backend/performance/threshold_evidence.py` |  |
+| `RECORDED_MAX_HR_MARGIN_BPM` | `3` | `backend/performance/threshold_evidence.py` | A chest-strap maximum counts from this margin over the stored one. |
+| `RECORDED_MAX_HR_DAYS` | `365` | `backend/performance/threshold_evidence.py` |  |
 | `STALE_AFTER_DAYS` | `56` | `backend/performance/threshold_staleness.py` | Athlete decision 2026-11-07: eight weeks. |
 | `REASON_STALE` | `'stale'` | `backend/performance/threshold_staleness.py` |  |
 | `REASON_EXPIRED` | `'expired'` | `backend/performance/threshold_staleness.py` |  |

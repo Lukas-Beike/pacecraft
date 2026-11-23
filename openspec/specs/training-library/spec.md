@@ -853,11 +853,15 @@ The Bibliothek SHALL list the undated, non-archived workouts grouped by sport in
 - **WHEN** "Weitere Bibliothekseinheiten laden" is pressed
 - **THEN** the next page is appended to the list without duplicates by id
 
+#### Scenario: Training plans above the units
+- **WHEN** the athlete opens the Bibliothek
+- **THEN** the plans stand above the units with "+ Plan" and, per plan, "Bearbeiten", "Archivieren" and "Löschen" (the plan only; its units stay), the archived ones under "Archiviert" with "Wiederherstellen"; the form takes name, goal, period and status and saves with `POST /api/training-plans` or `.../{id}/update`; archive and delete post `confirmed`, act at once and show a receipt with "Rückgängig"; the unit editor offers the active plans for a new unit.
+
 #### Scenario: Create, edit, restore and delete in the view
 - **WHEN** the athlete saves the editor of the Bibliothek, restores an archived entry or deletes a never-synced one
 - **THEN** the view offers "+ Einheit", "Bearbeiten", "Einplanen", "Löschen" (archive) and an "Archiviert" filter with "Wiederherstellen" and, for an entry no provider holds, "Endgültig löschen"; each runs the Coach's `manage_training_templates` use case locally with a receipt and "Rückgängig"; the entry is created (source `manual`), changed, brought back or removed; the steps must add up to the duration; a synced entry is refused with "Archiviere sie stattdessen"; nothing is sent to a provider; the 30-day clean-up of archived never-synced entries is unchanged.
 
-Evidence: `public/plan-views.js:renderLibrary`, `public/unit-editor.js`; `public/coach.js:appendHistoryPageButton`; `backend/http_api/library_post.py`; `tests/test_http_library_post.py`; `e2e/ux-polish.spec.js:the calendar has a refresh button and the library rows show a count and a chevron @responsive`.
+Evidence: `public/plan-views.js:renderLibrary`, `public/unit-editor.js`; `public/coach.js:appendHistoryPageButton`; `backend/http_api/library_post.py`; `tests/test_http_library_post.py`; `backend/http_api/training_plan_post.py`; `tests/test_http_training_plan_post.py`; `e2e/unit-editor.spec.js`; `e2e/ux-polish.spec.js:the calendar has a refresh button and the library rows show a count and a chevron @responsive`.
 
 ### Requirement: Stored rows and sync state of templates and planned units
 Templates (`workout_library`) and dated units (`planned_units`) SHALL each be one row with a local UUID, a JSON payload and sync columns, and SHALL move through the sync states `local`, `syncing`, `synced`, `sync_error`, `remote_missing` and `conflict`. The table definitions are in docs/schema-reference.md.

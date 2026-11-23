@@ -164,7 +164,6 @@ texts.
 | `public/activity-details.js` `renderBundle` | Aktivität löschen? | Die Aktivität wird mit allen Aufzeichnungen lokal gelöscht. Bei den Anbietern bleibt sie erhalten. | Löschen |
 | `public/analysis.js` `bindBodyFatDialog` | (computed) `` `${name} löschen?` `` | (computed) `` `${name} vom ${dateLabel(day)} wird gelöscht.` `` | Löschen |
 | `public/analysis.js` `bindWeightDialog` | Gewicht löschen? | (computed) `` `Das Gewicht vom ${dateLabel(day)} wird gelöscht.` `` | Löschen |
-| `public/analysis.js` `retireEquipment` | Ausrüstung ausmustern? | (computed) `` `${item.name} wird ausgemustert.` `` | Ausmustern |
 | `public/auth.js` `logout` | Abmelden? | (computed) `` `Du wirst auf diesem Gerät abgemeldet. Deine Daten bleiben verschlüsselt gespeichert.${outboxLossNote()}` `` | Abmelden |
 | `public/coach.js` `resetCoachChat` | Coach-Chat zurücksetzen? | Der Verlauf dieses Chats wird gelöscht, eine neue Unterhaltung beginnt. Profil, Pläne und Einträge bleiben. | Zurücksetzen |
 | `public/coach.js` `undoCoachTurn` | Änderungen zurücknehmen? | Alle lokalen Änderungen dieser Coach-Antwort werden zurückgenommen. Intervals.icu bleibt unverändert. | Zurücknehmen |
