@@ -247,6 +247,7 @@ const PLANNED_CAMS_POLLEN_FLAG_MIN = 10; // grains/m³; DWD levels count from 1
 const PLANNED_DAY_STATUS_LABELS = new Map([["rest", "Ruhetag"], ["pause", "Trainingspause"]]);
 
 function externalCalendarDetail(calendar) {
+  if (!calendar.configured) return "Adresse speichern, dann synchronisieren.";
   if (calendar.last_error) return "Fehler bei letzter Aktualisierung";
   const skipped = Number(calendar.skipped_events) || 0;
   return skipped ? `${skipped} Termine übersprungen` : "";
@@ -1047,7 +1048,7 @@ function renderExternalCalendar(data) {
   const detail = $("#externalCalendarConnectionDetail");
   if (detail) detail.textContent = externalCalendarDetail(calendar);
   if (syncButton) {
-    syncButton.disabled = Boolean(calendar.running || state.localSync.externalCalendar);
+    syncButton.disabled = Boolean(!calendar.configured || calendar.running || state.localSync.externalCalendar);
     syncButton.textContent = calendar.running || state.localSync.externalCalendar ? "Synchronisierung läuft…" : "Synchronisieren";
   }
 }

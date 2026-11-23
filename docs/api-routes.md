@@ -2344,7 +2344,9 @@ strings (stored after trimming, at most 4096 characters, no control
 characters) or `null` / a blank string (clears the value stored in the app,
 so the environment value applies again). Fields: `openai_api_key`,
 `anthropic_api_key`, `intervals_api_key`, `garmin_personal_api_key`,
-`wahoo_client_secret`, `yazio_password`, `openai_base_url`,
+`wahoo_client_secret`, `yazio_password`, `calendar_ical_url` (the shared
+calendar's private ICS address: HTTPS, no user or password, no local host;
+it takes the place of the `CALENDAR_ICAL_URL` setting), `openai_base_url`,
 `anthropic_base_url` (HTTPS, or HTTP on loopback), `intervals_athlete_id`,
 `wahoo_client_id`, `garmin_personal_api_key_expires` (`YYYY-MM-DD`; changing
 the key without it clears the stored date), `garmin_email`, `yazio_email`.
@@ -2371,7 +2373,8 @@ Errors: 403 "Das App-Passwort fehlt oder ist falsch. Es wurde nichts
 geändert." when `app_password` is missing or wrong for a field above; 400
 "Unbekanntes Zugangsdatenfeld."; 400 "Ungültiger Wert für {field}." for a
 non-string value, an over-long one or one with control characters; 400
-"Ungültiges Ablaufdatum."; 400 "OPENAI_BASE_URL muss HTTPS oder HTTP auf
+"Ungültiges Ablaufdatum."; 400 "Die Kalenderadresse muss eine HTTPS-URL ohne
+Zugangsdaten sein." (also for a local host or a bad port); 400 "OPENAI_BASE_URL muss HTTPS oder HTTP auf
 Loopback verwenden." (`ANTHROPIC_BASE_URL` for the other field).
 
 ### `PUT /api/settings/model`

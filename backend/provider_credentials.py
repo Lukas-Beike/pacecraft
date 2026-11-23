@@ -26,6 +26,7 @@ from backend.config import Config, validated_base_url
 from backend.db.manager import DatabaseManager
 from backend.db.repositories import KeyValueRepository
 from backend.errors import AppError
+from backend.providers import calendar as calendar_provider
 from backend.providers.garmin_capability import clear_capability_state
 
 _LOGGER = logging.getLogger("intervals_coach")
@@ -68,6 +69,8 @@ SECRET_FIELDS = frozenset(
         "garmin_personal_api_key",
         "wahoo_client_secret",
         "yazio_password",
+        # A private feed address carries its access token in the path or query.
+        "calendar_ical_url",
     }
 )
 # Non-secret values that the PWA may display.
@@ -246,6 +249,8 @@ def _validated_change(field: str, value: object) -> str | None:
             return validated_base_url(text, BASE_URL_SETTINGS[field])
         except AppError as exc:
             raise AppError(400, exc.message) from exc
+    if field == "calendar_ical_url":
+        return calendar_provider.validated_calendar_url(text)
     if field == PERSONAL_KEY_EXPIRES_FIELD:
         try:
             return date.fromisoformat(text).isoformat()

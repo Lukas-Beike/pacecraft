@@ -285,6 +285,33 @@ class ProviderCredentialTests(unittest.TestCase):
         status = self.service.update({"yazio_password": None})
         self.assertFalse(status["yazio_configured"])
 
+    def test_calendar_address_is_stored_applied_and_never_echoed(self):
+        address = "https://calendar.example.test/private/token-123/basic.ics"
+        self.assertEqual(self.holder["config"].calendar_ical_url, "")
+        status = self.service.update({"calendar_ical_url": f"  {address}  "})
+        self.assertEqual(self.holder["config"].calendar_ical_url, address)
+        self.assertNotIn("token-123", json.dumps(status))
+        self.assertEqual(status["fields"]["calendar_ical_url"]["source"], "db")
+        self.assertNotIn("value", status["fields"]["calendar_ical_url"])
+        status = self.service.update({"calendar_ical_url": None})
+        self.assertEqual(self.holder["config"].calendar_ical_url, "")
+        self.assertEqual(status["fields"]["calendar_ical_url"]["source"], "none")
+
+    def test_calendar_address_refuses_an_unsafe_form_before_anything_is_written(self):
+        for address in (
+            "http://calendar.example.test/feed.ics",
+            "https://user:secret@calendar.example.test/feed.ics",
+            "https://localhost/feed.ics",
+            "https://calendar.example.test:8443/feed.ics",
+        ):
+            with self.subTest(address=address), self.assertRaises(AppError) as raised:
+                self.service.update(
+                    {"calendar_ical_url": address, "openai_api_key": "test"}
+                )
+            self.assertEqual(raised.exception.status, 400)
+        self.assertEqual(self.holder["config"].calendar_ical_url, "")
+        self.assertNotEqual(self.holder["config"].openai_api_key, "test")
+
     def test_yazio_generation_ignores_other_credentials_and_tracks_replacements(self):
         start = self.holder["config"].yazio_credential_generation
         unrelated = {"openai_api_key": "test"}
