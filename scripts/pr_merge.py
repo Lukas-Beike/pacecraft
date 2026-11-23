@@ -337,7 +337,9 @@ def ci_round_rebase(
     return False
 
 
-def settled(number: int, pr: dict[str, Any], checks: list[tuple[str, str]]) -> int | None:
+def settled(
+    number: int, pr: dict[str, Any], checks: list[tuple[str, str]]
+) -> int | None:
     """0 once merged, 1 once closed or a check failed, else None, saying which."""
     if pr.get("state") == "MERGED":
         oid = (pr.get("mergeCommit") or {}).get("oid") or "?"
