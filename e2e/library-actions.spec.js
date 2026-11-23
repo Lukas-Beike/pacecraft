@@ -62,8 +62,10 @@ test("@responsive Einplanen refused for an unclassified appointment offers Termi
   await page.locator("#library details.library-sport").first().evaluate((section) => { section.open = true; });
   const card = page.locator("#library .library-card").first();
   const day = await page.evaluate(() => {
-    const target = addDateKey(timezoneDateKey(state.data?.profile?.timezone, new Date()), 2);
-    state.data.external_calendar = { ...state.data.external_calendar, events: [{ uid: "open-1", name: "Zahnarzt", start_local: `${target}T09:00:00`, end_local: `${target}T11:00:00`, impact: "open" }] };
+    const today = timezoneDateKey(state.data?.profile?.timezone, new Date());
+    const target = addDateKey(today, 2);
+    // A multi-day appointment that began earlier still covers the day.
+    state.data.external_calendar = { ...state.data.external_calendar, events: [{ uid: "open-1", name: "Zahnarzt", start_local: `${today}T09:00:00`, end_local: `${addDateKey(target, 1)}T11:00:00`, impact: "open" }] };
     return target;
   });
   await page.route("**/api/library/*/blocked-days*", (route) => route.fulfill({ json: { blocked: {} } }));

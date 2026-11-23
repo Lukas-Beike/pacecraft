@@ -2348,7 +2348,7 @@ function undecidedPlannedEvents() {
 // appointment; the redraw after the decision frees the day (#3932 K-01).
 function plannedClassifyAction(error, dayKey) {
   if (error.reason !== "calendar_event_open") return null;
-  const open = undecidedPlannedEvents().find((event) => String(event.start_local || "").slice(0, 10) === dayKey);
+  const open = undecidedPlannedEvents().find((event) => String(event.start_local || "").slice(0, 10) <= dayKey && dayKey <= String(event.end_local || event.start_local || "").slice(0, 10));
   if (!open) return null;
   const button = h("button", { type: "button", className: "secondary-button" }, "Termin einordnen");
   button.addEventListener("click", () => openPlannedEventSheet(open));
