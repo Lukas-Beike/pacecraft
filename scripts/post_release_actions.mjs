@@ -1,6 +1,6 @@
 // The allowed post-release Coach action: one question without a change.
 //
-//   node scripts/post_release_actions.mjs --url <app address> --password-file <secret file>
+//   node scripts/post_release_actions.mjs {--url <app address> | --url-file <file>} --password-file <secret file>
 //
 // Logs in with the password read from the secret file in this process (the
 // password is never printed or passed on a command line, and the shell guard
@@ -15,7 +15,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { parseArgs } from "node:util";
-import { baseUrl, SECRET_MISSING, secretPath, T3_SECRETS } from "./ui_walk.mjs";
+import { appUrl, SECRET_MISSING, secretPath, T3_SECRETS } from "./ui_walk.mjs";
 
 // The exact message; e2e/fixture_runtime.py answers the same text.
 export const MESSAGES = { ask: "Was steht morgen in meinem Plan?" };
@@ -34,9 +34,9 @@ class Stop extends Error {}
 
 // The secret file must lie in the temp directory or T3's secret folder (#3758).
 export function parseInput(argv, secrets = T3_SECRETS) {
-  const { values } = parseArgs({ args: argv, options: { url: { type: "string" }, "password-file": { type: "string" } } });
-  if (!values.url || !values["password-file"]) throw new Error("--url and --password-file are required");
-  const url = baseUrl(values.url);
+  const { values } = parseArgs({ args: argv, options: { url: { type: "string" }, "url-file": { type: "string" }, "password-file": { type: "string" } } });
+  if (!values["password-file"]) throw new Error("--url or --url-file and --password-file are required");
+  const url = appUrl(values);
   const file = secretPath(values["password-file"], secrets);
   let password;
   try {

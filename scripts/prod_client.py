@@ -73,6 +73,24 @@ def base_url(text: str) -> str:
     return f"{parts.scheme}://{parts.netloc}"
 
 
+def app_url(url: str | None, url_file: str | None) -> str:
+    """The app address from --url, or from --url-file's one line in the scratchpad
+    (#4125): a file keeps the address out of the command, which no substitution may
+    bring in. The address is never printed."""
+    if url_file is None:
+        return url or ""
+    try:
+        # utf-8-sig: a byte-order mark (PowerShell's Out-File) is dropped, as in Node.
+        lines = (
+            scratch_path(url_file).read_text(encoding="utf-8-sig").strip().splitlines()
+        )
+    except (OSError, UnicodeDecodeError) as exc:
+        raise ProdError("cannot read --url-file") from exc
+    if len(lines) != 1 or not lines[0].strip():
+        raise ProdError("--url-file must hold one URL")
+    return lines[0].strip()
+
+
 def scratch_path(path: str) -> Path:
     """Result and log files live in the system temp directory (the session
     scratchpad), never in the repository or anywhere else a path could reach."""

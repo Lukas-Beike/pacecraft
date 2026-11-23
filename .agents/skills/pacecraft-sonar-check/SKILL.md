@@ -40,7 +40,7 @@ python scripts/sonar_check.py --pr <number>
   `scripts/ui_walk.mjs` at the call sites the athlete accepted (#2319, #2538):
   `--out-dir` through `scratchPath` and the fixed file names written under it,
   `--password-file` through `secretPath` (also in `scripts/post_release_actions.mjs`),
-  and `--compare` through `scratchPath`.
+  and `--compare` and `--url-file` (#4125) through `scratchPath`.
   The taint analysis does not see these guards. Read the flagged line, confirm the
   guard's return value reaches `fs` unchanged (no later join with CLI input), mark
   the issue false positive with that reason and add an evidence line (rule, file,

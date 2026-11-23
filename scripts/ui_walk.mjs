@@ -1,6 +1,6 @@
 // Headless read-only walk through the running app at phone and desktop width.
 //
-//   node scripts/ui_walk.mjs --url <app address> --password-file <secret file>
+//   node scripts/ui_walk.mjs {--url <app address> | --url-file <file>} --password-file <secret file>
 //     --out-dir <new scratchpad dir> [--compare <previous walk's out-dir or its ui-walk.json>]
 //
 // Logs in with the password read from the file (never printed or passed on a
@@ -94,6 +94,24 @@ export function baseUrl(text) {
   const url = new URL(text);
   if (!["http:", "https:"].includes(url.protocol)) throw new Error("the app address must be an http(s) URL");
   return url.origin;
+}
+
+// The app address from --url, or from --url-file's one line in the scratchpad (#4125): a file keeps the address out
+// of the command, which no substitution may bring in. The address is never printed.
+export function appUrl(values) {
+  if (Boolean(values.url) === Boolean(values["url-file"])) throw new Error("give exactly one of --url and --url-file");
+  if (values.url) return baseUrl(values.url);
+  const file = scratchPath(values["url-file"]);
+  let text;
+  try {
+    text = fs.readFileSync(file, "utf8");
+  } catch {
+    // A fixed message: the callers map an fs error to their own wording (secret, out-dir).
+    throw new Error("cannot read --url-file");
+  }
+  const lines = text.trim().split(/\r?\n/);
+  if (lines.length !== 1 || !lines[0].trim()) throw new Error("--url-file must hold one URL");
+  return baseUrl(lines[0].trim());
 }
 
 // The cache name and asset versions are content hashes the server stamps.
@@ -625,15 +643,15 @@ export function reportLines(result) {
 
 async function main() {
   const { values } = parseArgs({
-    options: { url: { type: "string" }, "password-file": { type: "string" }, "out-dir": { type: "string" }, compare: { type: "string" } },
+    options: { url: { type: "string" }, "url-file": { type: "string" }, "password-file": { type: "string" }, "out-dir": { type: "string" }, compare: { type: "string" } },
   });
   let url;
   let outDir;
   let password;
   let readingSecret = false;
   try {
-    if (!values.url || !values["password-file"] || !values["out-dir"]) throw new Error("--url, --password-file and --out-dir are required");
-    url = baseUrl(values.url);
+    if (!values["password-file"] || !values["out-dir"]) throw new Error("--url or --url-file, --password-file and --out-dir are required");
+    url = appUrl(values);
     outDir = scratchPath(values["out-dir"]);
     readingSecret = true;
     password = fs.readFileSync(secretPath(values["password-file"]), "utf8").trim();

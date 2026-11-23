@@ -15,7 +15,7 @@ logger starts) comes from the Unraid MCP, read-only.
 **Inputs at run time only:** the app address (the athlete's private notes) and
 the app password as a secret file delivered to the session (`request_secret`
 with file delivery). Never write either into the repository, a tracked file,
-a command line, a tool argument, or output. T3 stores the delivered secret
+a command line (the address goes in a scratchpad file for `--url-file`, #4125), a tool argument, or output. T3 stores the delivered secret
 file under `~/.t3/userdata/secrets`; pass that path as `--password-file` to
 the scripts that take one (they read it only from there or the system temp
 directory), and never read, print or copy the file; the shell guard blocks
@@ -59,18 +59,18 @@ stop, report it, and do not try to repair production.
    a session, 403 without the CSRF token, TLS days to expiry. A failed guard
    stops the check.
 4. **Logs:** run [prod-logs](../pacecraft-prod-logs/SKILL.md) with the app's
-   own redacted entries (`--url`, `--password-file`): counts and event names
-   only, the number of removed past app-created Garmin workouts after the first
+   own redacted entries (`--url-file`, `--password-file`): counts and event
+   names only, the removed past app-created Garmin workouts after the first
    Garmin refresh since the deploy, and plan-sync error events. The durable
-   removal counts come from `python scripts/prod_diagnostics.py --url <app
-   address> --password-file <secret file> --section garmin_past_workout_removal`. The Unraid MCP
+   removal counts come from `python scripts/prod_diagnostics.py --url-file
+   <scratchpad>/app-url.txt --password-file <secret file> --section garmin_past_workout_removal`. The Unraid MCP
    logs call ignores `level=` and truncates at about 40 KB, so a saved container
    log covers only the latest window: use it (`--log-file`, then delete it) for
    startup errors, and say which window the counts cover.
 5. **Server health:** the step 2 run prints the `storage` lines with the
    previous release's values: database and write-ahead log size, free disk
    space, `uptime_s`, `malloc_arena_max` (must be 2) and the recovery copies.
-   For the full fields: `python scripts/prod_diagnostics.py --url <app address>
+   For the full fields: `python scripts/prod_diagnostics.py --url-file <scratchpad>/app-url.txt
    --password-file <secret file> --section database --section runtime
    --section recovery_copies`. Compare the appdata total with the previous
    release through the Unraid MCP (host state: logs, token store, staging).
@@ -81,7 +81,7 @@ stop, report it, and do not try to repair production.
    age and size; the app reads them by stat only. Container memory as the host
    sees it comes from the Unraid MCP, read-only.
 6. **UI walk:** first wait for the all-time curve build with
-   `python scripts/prod_diagnostics.py --url <app address> --password-file
+   `python scripts/prod_diagnostics.py --url-file <scratchpad>/app-url.txt --password-file
    <secret file> --wait-ready 900 --section curve_build` (exit 3: still
    building after 15 min, a finding; never a hand-written polling loop, #3346).
    Then [ui-walk](../pacecraft-ui-walk/SKILL.md) with `--compare
