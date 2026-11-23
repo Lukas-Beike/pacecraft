@@ -361,7 +361,7 @@ h2 {
 .analysis-subchart { min-width: 0; padding-top: 12px; border-top: 1px solid var(--line); }
 .analysis-subchart h4 { margin: 0; color: var(--ink); font-size: .9rem; }
 .analysis-period-controls { display: flex; flex-wrap: wrap; gap: 4px; }
-.analysis-period-controls button { flex: 1 1 0; min-width: 0; min-height: 44px; padding-inline: 4px; white-space: nowrap; }
+.analysis-period-controls button { flex: 1 1 0; min-width: 4.5rem; min-height: 44px; padding-inline: 4px; }
 .analysis-trend-controls { display: grid; gap: 8px; }
 /* The theme attribute lifts the pressed state above the later light-theme .secondary-button surface rule. */
 .analysis-chart-stack .analysis-chart-legend { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 7.5rem), 1fr)); gap: 12px; margin: 8px 0 12px; }
@@ -1812,7 +1812,7 @@ button:focus-visible, a:focus-visible, summary:focus-visible {
 .swap-result small { color: var(--muted); }
 .swap-result .origin { color: var(--accent-bright); font-size: .78rem; font-weight: 650; }
 
-#nutritionPanel .analysis-period-controls button { min-width: 0; }
+#nutritionPanel .analysis-period-controls button { min-width: 4.5rem; }
 #nutritionPanel .push-button { padding: 12px 16px; }
 .nutrition-total span, .nutrition-card small { color: var(--muted); }
 .nutrition-components { margin-top: 12px; border-top: 1px solid var(--line); padding-top: 10px; }

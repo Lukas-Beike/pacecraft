@@ -202,13 +202,13 @@ test("@responsive recovery uses independent scales, honest coverage over exactly
   const info = root.locator(".analysis-info-tooltip:not([popover]):not([hidden])");
   await expect(info).toContainText("Vergleich mit 28 früheren Nächten.");
   await expect(info).toContainText("Mindestens 14 frühere passende Nächte erforderlich.");
-  await expect(info).toContainText("7-Tage-Mittel 55,2 ms (3 Nächte) · im Normalbereich (53 ms–62,2 ms) · Schwankung 2,5 % · vorläufig");
+  await expect(info).toContainText("7-Tage-Mittel 55,2 ms (3 Nächte) · im Bereich deiner früheren Werte (53 ms–62,2 ms) · Schwankung 2,5 % · vorläufig");
   await expect(info).toContainText("Vergleich mit 28 früheren Nächten. Messkontext unbekannt.");
   await expect(info).toContainText(/Messkontext geändert am 30\.09\.2026\./);
   await expect(info).toContainText("Durchschnitt der angezeigten Werte");
   await page.keyboard.press("Escape");
   const recoveryText = await root.evaluate((element) => element.textContent);
-  for (const forbidden of ["Grüner Bereich", "üblichen Bereich", "Basis", "bestätigt", "Status:"]) {
+  for (const forbidden of ["Grüner Bereich", "üblichen Bereich", "Normalbereich", "Basis", "bestätigt", "Status:"]) {
     expect(recoveryText).not.toContain(forbidden);
   }
   expect((await new AxeBuilder({ page }).include("#personalRecovery").analyze()).violations).toEqual([]);

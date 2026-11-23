@@ -747,11 +747,11 @@ test("the seven-day ln(RMSSD) note shows the back-transformed mean, range and sp
   const { recoveryRollingNote } = extractFunctions("analysis.js", ["analysisRatioUnit", "analysisCountUnit", "analysisNumber", "analysisValue", "recoveryRollingNote"], { AppFormat: require("../public/format.js") });
   assert.equal(
     recoveryRollingNote({ status: "ok", mean_ms: 51.9, lower_ms: 53, upper_ms: 62.2, position: "below", cv_pct: 3, window_nights: 5 }),
-    "7-Tage-Mittel 51,9 ms (5 Nächte) · unter dem Normalbereich (53 ms–62,2 ms) · Schwankung 3,0 %",
+    "7-Tage-Mittel 51,9 ms (5 Nächte) · unter dem Bereich deiner früheren Werte (53 ms–62,2 ms) · Schwankung 3,0 %",
   );
   assert.equal(
     recoveryRollingNote({ status: "provisional", mean_ms: 57, lower_ms: 53, upper_ms: 62.2, position: "within", cv_pct: null, window_nights: 3 }),
-    "7-Tage-Mittel 57 ms (3 Nächte) · im Normalbereich (53 ms–62,2 ms) · vorläufig",
+    "7-Tage-Mittel 57 ms (3 Nächte) · im Bereich deiner früheren Werte (53 ms–62,2 ms) · vorläufig",
   );
   assert.equal(
     recoveryRollingNote({ status: "insufficient_data", reason: "Mindestens 3 Nächte in den letzten 7 Tagen erforderlich." }),

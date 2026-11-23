@@ -716,7 +716,7 @@ function restoreAnalysisPeriods() {
   developmentPeriod = storedAnalysisPeriod("development", developmentPeriod);
   strengthHistoryPeriod = storedAnalysisPeriod("strength", strengthHistoryPeriod);
   bodyHistoryPeriod = storedAnalysisPeriod("body", bodyHistoryPeriod);
-  nutritionHistoryPeriod = storedAnalysisPeriod("nutrition", nutritionHistoryPeriod);
+  restoreNutritionPeriod();
 }
 
 function analysisPeriod(key) {
@@ -2970,7 +2970,7 @@ function recoveryReference({ metric, item, range, target, unit, position, rollin
 function recoveryReferenceLabel(item, range, target, unit, position) {
   if (range) {
     const provisional = item.status === "provisional" ? " · vorläufig" : "";
-    return `${position || "Im Normalbereich"} (${analysisValue(range.lower, unit)}–${analysisValue(range.upper, unit)})${provisional}`;
+    return `${position || "Bereich deiner früheren Werte"} (${analysisValue(range.lower, unit)}–${analysisValue(range.upper, unit)})${provisional}`;
   }
   if (target != null) return `Persönliches Schlafziel: ${analysisValue(target, unit)}`;
   return item.reason || "Noch kein Vergleich verfügbar";
@@ -2980,7 +2980,7 @@ function recoveryReferenceLabel(item, range, target, unit, position) {
 // The caller ends the note with a full stop, so a reason drops its own.
 function recoveryRollingNote(rolling) {
   if (!["ok", "provisional"].includes(rolling.status)) return `7-Tage-Mittel: ${String(rolling.reason || "kein Vergleich").replace(/\.$/, "")}`;
-  const position = { below: "unter dem Normalbereich", within: "im Normalbereich", above: "über dem Normalbereich" }[rolling.position] || "neben dem Normalbereich";
+  const position = { below: "unter dem Bereich deiner früheren Werte", within: "im Bereich deiner früheren Werte", above: "über dem Bereich deiner früheren Werte" }[rolling.position] || "neben dem Bereich deiner früheren Werte";
   const range = `${analysisValue(rolling.lower_ms, "ms")}–${analysisValue(rolling.upper_ms, "ms")}`;
   const spread = rolling.cv_pct == null ? "" : ` · Schwankung ${analysisValue(rolling.cv_pct, "%")}`;
   const provisional = rolling.status === "provisional" ? " · vorläufig" : "";
@@ -3017,7 +3017,7 @@ function renderRecoveryCharts(report, root) {
     const expectedDays = Math.max(0, Math.round((Date.parse(today) - Date.parse(start)) / 86400000) + 1);
     const range = metric !== "sleep" && ["ok", "provisional"].includes(item.status) && Number.isFinite(item.lower) && Number.isFinite(item.upper) ? { lower: item.lower, upper: item.upper, status: item.status } : null;
     const target = null;
-    const position = { below: "Unter dem Normalbereich", within: "Im Normalbereich", above: "Über dem Normalbereich" }[item.position];
+    const position = { below: "Unter dem Bereich deiner früheren Werte", within: "Im Bereich deiner früheren Werte", above: "Über dem Bereich deiner früheren Werte" }[item.position];
     const measurement = metric === "hrv" ? " · " + item.measurement : "";
     const rangeDescription = range ? " Vergleich mit " + item.nights + " früheren Nächten." : "";
     const changed = item.context_changed_on ? ` Messkontext geändert am ${dateLabel(item.context_changed_on)}.` : "";

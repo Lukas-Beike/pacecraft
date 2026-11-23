@@ -2,6 +2,10 @@
 let nutritionLoadSequence = 0;
 let nutritionHistoryPeriod = "28d";
 
+function restoreNutritionPeriod() {
+  nutritionHistoryPeriod = storedAnalysisPeriod("nutrition", nutritionHistoryPeriod);
+}
+
 const MAX_NUTRITION_IMAGE_EDGE = 1600;
 const MAX_NUTRITION_IMAGE_BYTES = 1_200_000;
 

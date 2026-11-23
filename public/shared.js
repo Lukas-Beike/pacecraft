@@ -123,13 +123,13 @@ function ensureRouteData(route = state.route) {
 
 // The period of each analysis tab is remembered on this device across reloads; a tab keeps its own
 // default until the athlete chooses (athlete decision, #3929 A-11).
-const ANALYSIS_PERIOD_KEYS = ["28d", "91d", "182d", "365d"];
+const ANALYSIS_PERIOD_KEYS = new Set(["28d", "91d", "182d", "365d"]);
 const ANALYSIS_PERIOD_STORE = "analysisPeriods";
 
 function storedAnalysisPeriod(tab, fallback) {
   try {
     const value = JSON.parse(localStorage.getItem(ANALYSIS_PERIOD_STORE) || "{}")[tab];
-    return ANALYSIS_PERIOD_KEYS.includes(value) ? value : fallback;
+    return ANALYSIS_PERIOD_KEYS.has(value) ? value : fallback;
   } catch { return fallback; }
 }
 
