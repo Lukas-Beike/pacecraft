@@ -39,11 +39,13 @@ class WorkoutLibraryPlanService:
         planned_unit_service: Any,
         calendar_conflict_service: Any,
         publish_change: Callable[[], None],
+        training_plan_service: Any | None = None,
     ) -> None:
         self._database_manager = database_manager
         self._planned_unit_service = planned_unit_service
         self._calendar_conflict_service = calendar_conflict_service
         self._publish_change = publish_change
+        self._training_plan_service = training_plan_service
 
     def apply(
         self,
@@ -66,7 +68,11 @@ class WorkoutLibraryPlanService:
                 for request in requested:
                     check_template(request["library_workout_id"], request["workout"])
             self._raise_conflicts(self._library_plan_conflicts(requested))
-            planned = [self._apply_request(db, request) for request in requested]
+            plans = self._plans_of(db, requested)
+            planned = [self._apply_request(db, request, plans) for request in requested]
+            # A plan's period follows the days of its units.
+            if plans and self._training_plan_service is not None:
+                self._training_plan_service.update_bounds(db, plans)
 
         self._publish_change()
         return {"status": "local", "planned": planned, "local_planned": len(planned)}
@@ -103,6 +109,24 @@ class WorkoutLibraryPlanService:
                     blocked[day] = list(dict.fromkeys(names))
         return blocked
 
+    def _plans_of(
+        self, db: Any, requested: list[dict[str, Any]]
+    ) -> dict[str, dict[str, Any]]:
+        """The active plans the requests name (``plan_id``), by id (#4054)."""
+        ids = {request["plan_id"] for request in requested if request.get("plan_id")}
+        if ids and self._training_plan_service is None:
+            raise AppError(400, "Ein Trainingsplan ist hier nicht verfügbar.")
+        plans = {
+            plan_id: self._training_plan_service.active_plan(db, plan_id)  # type: ignore[union-attr]
+            for plan_id in sorted(ids)
+        }
+        # The service accepts a non-canonical id; the plans are keyed and the requests named by the canonical one.
+        for request in requested:
+            plan = plans.get(request.get("plan_id") or "")
+            if plan is not None:
+                request["plan_id"] = str(plan["id"])
+        return {str(plan["id"]): plan for plan in plans.values()}
+
     @staticmethod
     def _library_plan_request(db: Any, item: Any) -> dict[str, Any]:
         if not isinstance(item, dict):
@@ -123,7 +147,13 @@ class WorkoutLibraryPlanService:
         workout = parse_payload(row["payload"])
         if workout is None:
             raise AppError(500, CORRUPT_LIBRARY_ERROR)
-        return {"library_workout_id": workout_id, "date": plan_date, "workout": workout}
+        plan_id = str(item.get("plan_id") or "").strip()
+        return {
+            "library_workout_id": workout_id,
+            "date": plan_date,
+            "workout": workout,
+            **({"plan_id": plan_id} if plan_id else {}),
+        }
 
     def _library_plan_conflicts(
         self, requested: list[dict[str, Any]]
@@ -176,7 +206,21 @@ class WorkoutLibraryPlanService:
             f"Planung wegen bestehender Kalendereinheiten nicht möglich: {descriptions}.{suffix}",
         )
 
-    def _apply_request(self, db: Any, request: dict[str, Any]) -> dict[str, Any]:
+    @staticmethod
+    def _plan_fields(
+        plans: dict[str, dict[str, Any]], request: dict[str, Any]
+    ) -> dict[str, str]:
+        plan = plans.get(str(request.get("plan_id") or ""))
+        if plan is None:
+            return {}
+        return {
+            "plan_id": str(plan["id"]),
+            "plan_name": str(plan.get("name") or "")[:200],
+        }
+
+    def _apply_request(
+        self, db: Any, request: dict[str, Any], plans: dict[str, dict[str, Any]]
+    ) -> dict[str, Any]:
         source = request["workout"]
         if request["already_planned"]:
             local_entry = source
@@ -209,6 +253,7 @@ class WorkoutLibraryPlanService:
                     "source": "library",
                     TEMPLATE_ID: str(request["library_workout_id"]),
                     "rationale": "Aus der lokalen Trainingsbibliothek übernommen.",
+                    **self._plan_fields(plans, request),
                 },
                 db=db,
             )

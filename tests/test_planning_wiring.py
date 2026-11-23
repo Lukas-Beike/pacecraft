@@ -147,9 +147,10 @@ class PlanningWorkflowBuilderTests(unittest.TestCase):
         with patch.object(planning_wiring, "WorkoutLibraryPlanService") as service:
             self.services.workout_library_plan_service()
 
-        manager, units, conflicts, publish = service.call_args.args
+        manager, units, conflicts, publish, plans = service.call_args.args
         self.assertIs(self.ctx.database.return_value, manager)
         self.assertIs(self.ctx.planning.planned_unit.return_value, units)
+        self.assertIs(self.ctx.planning.training_plan.return_value, plans)
         self.assertIsNotNone(conflicts)
         with patch.object(runtime_events.STATE_EVENT_BUFFER, "publish") as published:
             publish()
