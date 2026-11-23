@@ -944,9 +944,12 @@ function replanMinutes(value) {
   return Number(value) > 0 ? `${Math.round(Number(value))} min` : "entfällt";
 }
 
+// The preview's rationale is written for the Coach model (English, with marker tags); the row names its triggers.
+const REPLAN_TRIGGER_LABELS = { illness: "Krankheit gemeldet", injury: "Beschwerden gemeldet", weather: "Wetter", calendar: "Kalendertermin" };
+
 function replanRow(change) {
   const day = MOVE_DAY_FORMAT.format(dateFromKey(String(change.date).slice(0, 10)));
-  const reason = String(change.after?.rationale || "").split(".")[0];
+  const reason = (change.blocking_triggers || []).map((trigger) => REPLAN_TRIGGER_LABELS[trigger]).filter(Boolean).join(", ");
   return h("li", "replan-row", h("strong", null, day), h("span", null, [`${change.name || "Einheit"} ${replanMinutes(change.before?.duration_minutes)} → ${replanMinutes(change.after?.duration_minutes)}`, reason].filter(Boolean).join(" · ")));
 }
 
@@ -964,7 +967,7 @@ async function applyReplan(preview, button, status, accept = false) {
   } catch (error) {
     status.textContent = error.message;
     button.disabled = false;
-    if (error.reason === "illness_hard") { button.textContent = "Trotzdem übernehmen"; button.onclick = () => applyReplan(preview, button, status, true); }
+    if (error.reason === "illness_hard") { button.textContent = "Trotzdem übernehmen"; button.dataset.accept = "1"; }
   }
 }
 
@@ -1006,7 +1009,7 @@ function plannedReplanCard() {
   const apply = h("button", { type: "button", className: "push-button" }, "Übernehmen");
   const discard = h("button", { type: "button", className: "secondary-button" }, "Verwerfen");
   const status = h("p", { className: "planned-delete-note", role: "status" });
-  apply.addEventListener("click", () => void applyReplan(preview, apply, status));
+  apply.addEventListener("click", () => void applyReplan(preview, apply, status, apply.dataset.accept === "1"));
   discard.addEventListener("click", () => {
     dismissedReplanId = preview.id;
     try { localStorage.setItem(REPLAN_UNDO_KEY, preview.id); } catch { /* The choice then holds until the next load. */ }
