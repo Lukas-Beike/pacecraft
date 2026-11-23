@@ -39,7 +39,7 @@ Counts: both 69, UI only 7, Coach only 10, neither 0, UI by rule 8.
 | Competitions | Delete a competition | Kalender › Wettkampf `PUT /api/competitions/remove` | `delete_competition` | delete confirmation | both | |
 | Competitions | Send competitions to Intervals.icu | Kalender › Wettkampf `POST /api/intervals/competitions/send` | `sync_competitions` | named sync | both | |
 | Planning | Read planned units and the planning view | Kalender `GET /api/plan` | `list_planned_workouts`, `read_training_state` | — | both | |
-| Planning | Create a planned unit | Bibliothek "+ Einheit" `POST /api/library`, then "Einplanen" `POST /api/library/{id}/schedule` | `apply_training_patch` (`workouts`) | receipt, undo, calendar rule check | both | "Einplanen" runs no illness plan check yet (#4055) |
+| Planning | Create a planned unit | Bibliothek "+ Einheit" `POST /api/library`, then "Einplanen" `POST /api/library/{id}/schedule` | `apply_training_patch` (`workouts`) | receipt, undo, plan checks | both | |
 | Planning | Change a planned unit's content | Kalender card "Bearbeiten" `POST /api/planned-units/{id}/update` | `apply_training_patch` (`update`) | receipt, undo, plan checks | both | |
 | Planning | Move a planned unit to another day | Kalender card `POST /api/planned-units/{id}/date` | `apply_training_patch` (`update` with `date`) | receipt, undo | both | |
 | Planning | Delete a planned unit | Kalender card `POST /api/planned-units/{id}/delete` | `apply_training_patch` (`delete`) | delete confirmation | both | |
@@ -57,7 +57,7 @@ Counts: both 69, UI only 7, Coach only 10, neither 0, UI by rule 8.
 | Library | List library workouts | Bibliothek `GET /api/library` | `list_workout_library` | — | both | |
 | Library | Create a library workout | Bibliothek "+ Einheit" `POST /api/library` | `manage_training_templates` (`create`) | receipt, undo | both | |
 | Library | Edit a library workout | Bibliothek "Bearbeiten" `POST /api/library/{id}/update` | `manage_training_templates` (`update`) | receipt, undo | both | |
-| Library | Schedule a library workout on a day | Bibliothek `POST /api/library/{id}/schedule` | `apply_workout_library_plan` | receipt, undo | both | |
+| Library | Schedule a library workout on a day | Bibliothek "Einplanen" with the optional plan `POST /api/library/{id}/schedule` | `apply_workout_library_plan` | plan checks, receipt, undo | both | |
 | Library | Archive a library workout | Bibliothek `POST /api/library/{id}/archive` | `manage_training_templates` (`archive`) | confirmation | both | |
 | Library | Restore an archived library workout | Bibliothek › Archiviert `GET /api/library` (`archived=1`), "Wiederherstellen" `POST /api/library/{id}/restore` | `manage_training_templates` (`restore`) | receipt, undo | both | |
 | Library | Delete a library workout | Bibliothek › Archiviert "Endgültig löschen" `POST /api/library/{id}/delete` | `manage_training_templates` (`delete`) | confirmed request, undo | both | |

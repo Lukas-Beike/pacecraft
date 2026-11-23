@@ -3040,14 +3040,22 @@ function libraryActions(workout) {
   const name = workout.name || "Bibliotheks-Einheit";
   const toggle = h("button", { type: "button", className: "secondary-button", "aria-expanded": "false" }, "Einplanen");
   const status = h("p", { className: "planned-move-status", role: "status" });
-  const schedule = async (day) => {
+  // The training plans the unit may join (#4054) and the illness block's second tap (#4055).
+  const plans = (state.data?.plans || []).filter((plan) => plan.id && !["archived", "completed", "cancelled"].includes(plan.status));
+  const planSelect = plans.length ? h("select", null, h("option", { value: "" }, "Ohne Plan"), plans.map((plan) => h("option", { value: plan.id }, plan.name))) : null;
+  const planField = planSelect ? h("label", { className: "library-plan-field", hidden: true }, "Trainingsplan", planSelect) : null;
+  const again = h("button", { type: "button", className: "secondary-button", hidden: true }, "Trotzdem einplanen");
+  let blockedDay = "";
+  const schedule = async (day, accept = false) => {
     if (!day) return;
     const buttons = [...days.querySelectorAll("button, input")];
     buttons.forEach((item) => { item.disabled = true; });
     status.replaceChildren();
+    again.hidden = true;
     libraryOpenStrips.delete(id);
     try {
-      const result = await api(`/api/library/${encodeURIComponent(id)}/schedule`, { method: "POST", body: JSON.stringify({ date: day }) });
+      const body = { date: day, ...(planSelect?.value ? { plan_id: planSelect.value } : {}), ...(accept ? { accept_plan_findings: ["illness_hard"] } : {}) };
+      const result = await api(`/api/library/${encodeURIComponent(id)}/schedule`, { method: "POST", body: JSON.stringify(body) });
       const text = `Eingeplant: ${MOVE_DAY_FORMAT.format(dateFromKey(day))}`;
       libraryReceipts.clear();
       libraryReceipts.set(id, { text, change: result.change });
@@ -3057,11 +3065,14 @@ function libraryActions(workout) {
       buttons.forEach((item) => { item.disabled = false; });
       status.textContent = error.message;
       libraryOpenStrips.add(id);
+      if (error.reason === "illness_hard") { blockedDay = day; again.hidden = false; }
     }
   };
+  again.addEventListener("click", () => void schedule(blockedDay, true));
   const days = plannedDayStrip(timezoneDateKey(state.data?.profile?.timezone, new Date()), null, "Tag", (day) => void schedule(day));
   const showDays = (open) => {
     days.hidden = !open;
+    if (planField) planField.hidden = !open;
     toggle.setAttribute("aria-expanded", String(open));
     if (open) { libraryOpenStrips.add(id); void markBlockedDays(days, `/api/library/${encodeURIComponent(id)}`); } else libraryOpenStrips.delete(id);
   };
@@ -3078,7 +3089,7 @@ function libraryActions(workout) {
   if (receipt) libraryReceiptLine(status, id, receipt);
   const edit = h("button", { type: "button", className: "secondary-button" }, "Bearbeiten");
   edit.addEventListener("click", () => openLibraryEditor(workout));
-  return [h("div", "planned-activity-actions", edit, toggle, remove), confirm, days, status];
+  return [h("div", "planned-activity-actions", edit, toggle, remove), confirm, days, planField, again, status];
 }
 
 // "+ Einheit" and "Bearbeiten" (#3951): the unit editor over the library use cases; the receipt offers "Rückgängig".
