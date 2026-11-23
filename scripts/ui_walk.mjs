@@ -282,7 +282,8 @@ export const STEPS = [
   // step, while the calendar still shows today; later steps select other weeks and days. A running
   // week without any data yet (no plan, session, recovery value or check-in, early on a Monday) has
   // no card, so the step is optional.
-  { view: "plan", name: "Kalender: Wochenrückblick", covers: "#3298 week review (formerly Analyse › Woche, #3000)", pre: ['.planned-view-switch button[data-view="week"]'], ready: '.planned-week .week-review[data-this-week="true"] .week-review-tile', kind: "numbers", optional: true },
+  { view: "plan", name: "Kalender: Wochenrückblick", covers: "#3298 week review (formerly Analyse › Woche, #3000)", pre: ['.planned-view-switch button[data-view="week"]'], ready: '.planned-week .week-review[data-this-week="true"] .week-review-tile', kind: "numbers", optional: true,
+    saw: [["still loading", ".week-review .loading-state"], ["nicht verfügbar", ".week-review[data-failed]"], ["plan line instead", ".planned-week > .planned-week-totals"], ["card missing", null]] },
   // Shown only on a morning whose night values are clearly unusual (M14), so the step is optional. The values
   // come with the two answers, "Mir geht's gut" (neutral) and "Ich bin krank" (filled); they are never pressed.
   { view: "plan", name: "Kalender: Infekt-Hinweis", covers: "#3762 infection hint, #3821 answers", pre: ['.planned-view-switch button[data-view="week"]'], ready: ".planned-day.is-today [data-infection-hint]:has(.infection-hint-actions > button.secondary-button + button:not(.secondary-button))", kind: "numbers", optional: true },
@@ -462,6 +463,14 @@ async function maySeek(page, step, count, paged, began) {
   return page.locator(step.seek).filter({ visible: true }).first().isEnabled().catch(() => false);
 }
 
+// What the page shows instead of an optional step's element, named in its skip: the label of the first
+// `saw` pair [label, selector] with a visible match, else the pair without a selector.
+async function sawLabel(page, saw) {
+  if (!saw) return "";
+  const label = await page.evaluate((pairs) => pairs.find(([, selector]) => selector && [...document.querySelectorAll(selector)].some((node) => node.checkVisibility()))?.[0], saw).catch(() => null);
+  return ` (${label ?? saw.find(([, selector]) => !selector)?.[0] ?? "nothing"})`;
+}
+
 // One step: { status: ok|fail|skip, ms (interaction to ready, of the candidate that passed), why }.
 export async function runStep(page, { pre = [], post = [], unseek, ...step }, capMs = STEP_CAP_MS) {
   // After a restart the app reloads its data as each start sync ends, and a reload re-renders the view:
@@ -485,7 +494,7 @@ export async function runStep(page, { pre = [], post = [], unseek, ...step }, ca
     }
     // Nothing loaded and nothing empty: the data this step needs does not exist (info, not a failure).
     if (!empty) return { status: "skip", ms: 0, why: count ? "no stored data" : NO_SESSION };
-    return step.optional ? { status: "skip", ms: 0, why: `none of ${count} has it` } : { status: "fail", ms: Date.now() - began, why: "missing or empty" };
+    return step.optional ? { status: "skip", ms: 0, why: `none of ${count} has it${await sawLabel(page, step.saw)}` } : { status: "fail", ms: Date.now() - began, why: "missing or empty" };
   } catch (error) {
     return { status: "fail", ms: Date.now() - began, why: error.name === "TimeoutError" ? "control missing" : error.message.split("\n")[0] };
   } finally {
