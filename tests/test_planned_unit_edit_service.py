@@ -137,7 +137,7 @@ class PlannedUnitEditServiceTests(unittest.TestCase):
             lambda: change_service,
             lambda: self.library,
             lambda: cast(PlanGuardService, self.guard),
-            lambda: replacement,
+            replacement_service=lambda: replacement,
         )
 
     def rows(self, table):

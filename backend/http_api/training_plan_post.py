@@ -54,7 +54,7 @@ class TrainingPlanPostRoutes:
 
         Request: path `{id}`; JSON body `{"start", "end"}` (the period, today or
         later), `"replaced_ids"` (the ids of the units the athlete saw listed),
-        `"workouts"` (the new units with the fields of `POST /api/planned-units`),
+        `"workouts"` (the new units with the fields of `POST /api/library`),
         `"accept_plan_findings"` and `"confirmed": true`. One transaction; the
         replaced units stay in the local history; nothing is written remotely.
 
