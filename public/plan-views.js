@@ -1564,7 +1564,7 @@ function plannedActivityActions(actual, dateKey, title, entryKey) {
 function plannedGarminRemoval(entry) {
   const garmin = providerIds().garmin;
   if (!entry.remote_copies?.includes(garmin) || !plannedProviderConfiguration()[garmin]) return null;
-  const open = h("button", { type: "button", className: "secondary-button" }, "Aus Garmin entfernen");
+  const open = h("button", { type: "button", className: "secondary-button planned-garmin-remove" }, "Aus Garmin entfernen");
   const confirm = h("button", { type: "button", className: "secondary-button danger-button" }, "Entfernen");
   const cancel = h("button", { type: "button", className: "secondary-button" }, "Abbrechen");
   const status = h("p", { className: "planned-delete-note", role: "status" });
@@ -1579,13 +1579,15 @@ function plannedGarminRemoval(entry) {
     try {
       const done = await runPlanPush(garmin, [{ library_workout_id: String(entry.local_id), remove: true }]);
       if (done.status !== "completed") throw new Error(globalThis.providerJobErrorDetail?.(done) || "Entfernen fehlgeschlagen");
-      globalThis.toast?.("Aus Garmin entfernt");
-      await globalThis.load?.();
-      announcePlanChange("Aus Garmin entfernt");
     } catch (error) {
       [confirm, cancel].forEach((button) => { button.disabled = false; });
       status.textContent = error.message;
+      return;
     }
+    // The copy is gone: a failed reload must not re-arm "Entfernen" or blame the removal.
+    globalThis.toast?.("Aus Garmin entfernt");
+    await globalThis.load?.().catch(() => {});
+    announcePlanChange("Aus Garmin entfernt");
   });
   return [open, ask, status];
 }

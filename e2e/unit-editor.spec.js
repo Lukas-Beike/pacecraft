@@ -335,14 +335,16 @@ test("@responsive Aus Garmin entfernen asks first and removes only the Garmin co
   test.setTimeout(180_000);
   const posts = [];
   await openApp(page, request, "/#plan/overview");
-  const dialog = page.locator("#unitEditDialog");
+  // A unit is planned from the Bibliothek, through the routes "Einplanen" sends (the calendar has no add button).
+  await page.evaluate(async () => {
+    const made = await api("/api/library", { method: "POST", body: JSON.stringify({ name: "E2E Garmin", description: "- 10m 60%", sport: "Ride", duration_minutes: 10, target: "POWER" }) });
+    const today = timezoneDateKey(state.data.profile.timezone, new Date());
+    await api(`/api/library/${made.local_id}/schedule`, { method: "POST", body: JSON.stringify({ date: addDateKey(planWeekStart(today), 10) }) });
+    await globalThis.load();
+  });
   await page.getByRole("button", { name: "Nächste Woche" }).click();
-  await page.locator(".planned-day").first().getByRole("button", { name: "+ Einheit hinzufügen" }).click();
-  await dialog.getByLabel("Name", { exact: true }).fill("E2E Garmin");
-  await dialog.getByRole("button", { name: "+ Schritt" }).click();
-  await dialog.getByRole("button", { name: "Speichern" }).click();
-  await expect(dialog).toBeHidden();
   const entry = page.locator(".planned-entry", { hasText: "E2E Garmin" });
+  if (!(await entry.first().evaluate((node) => node.open))) await entry.locator("summary").first().click();
   await expect(entry.getByRole("button", { name: "Bearbeiten" })).toBeVisible();
   await expect(entry.getByRole("button", { name: "Aus Garmin entfernen" })).toHaveCount(0);
 
