@@ -175,11 +175,22 @@ class PlannedUnitService:
         self._follow_plans = follow_plans
 
     def _follow(
-        self, db: Any, before: dict[str, Any] | None, after: dict[str, Any] | None
+        self,
+        db: Any,
+        before: dict[str, Any] | None,
+        after: dict[str, Any] | None,
+        deferred: set[str] | None = None,
     ) -> None:
-        """Let the plans of a unit that moved, changed plan or was hidden or restored follow its days."""
+        """Let the plans of a unit that moved, changed plan or was hidden or restored follow its days.
+
+        A batch undo passes ``deferred`` and follows once at its end: its plan's own
+        entry may still be undone, and a period changed meanwhile would be stale.
+        """
         if plan_ids := _moved_plan_ids(before, after):
-            self._follow_plans(db, plan_ids)
+            if deferred is None:
+                self._follow_plans(db, plan_ids)
+            else:
+                deferred.update(plan_ids)
 
     def insert(
         self,
@@ -222,12 +233,16 @@ class PlannedUnitService:
         current: dict[str, Any] | None,
         target: dict[str, Any] | None,
         history_action: str,
+        deferred_plans: set[str] | None = None,
     ) -> dict[str, Any] | None:
-        """Restore one audited local state inside the caller-owned transaction."""
+        """Restore one audited local state inside the caller-owned transaction.
+
+        The plans the restore touches follow at once, or are added to ``deferred_plans``.
+        """
         if target is None:
             before = parse_payload((current or {}).get("payload"))
             if hidden := self._hide_intervals_linked(db, entity_id, current):
-                self._follow(db, before, hidden)
+                self._follow(db, before, hidden, deferred_plans)
                 return hidden
             planning_store.delete_planned_unit(db, entity_id)
             # A pushed Garmin workout stays removable by its link.
@@ -237,7 +252,7 @@ class PlannedUnitService:
                 entity_id,
                 keep=(ProviderId.GARMIN.value,),
             )
-            self._follow(db, before, None)
+            self._follow(db, before, None, deferred_plans)
             return None
         if current is None:
             self._reject_restore_conflict(entity_id, target)
@@ -245,10 +260,10 @@ class PlannedUnitService:
                 target, local_id=entity_id, sync_status="local"
             )
             inserted = self.insert(db, restored)
-            self._follow(db, None, inserted)
+            self._follow(db, None, inserted, deferred_plans)
             return inserted
         return self._restore_existing_in_transaction(
-            db, entity_id, current, target, history_action
+            db, entity_id, current, target, history_action, deferred_plans
         )
 
     def _hide_intervals_linked(
@@ -288,6 +303,7 @@ class PlannedUnitService:
         current: dict[str, Any],
         target: dict[str, Any],
         history_action: str,
+        deferred_plans: set[str] | None = None,
     ) -> dict[str, Any]:
         current_payload = parse_payload(current.get("payload"))
         if current_payload is None:
@@ -341,7 +357,7 @@ class PlannedUnitService:
             db, entity_id, restored, self._now(), mark_local=not focus_only
         )
         _REMOTE_LINKS.refresh_from_slots(db, RemoteEntityKind.PLANNED_UNIT, entity_id)
-        self._follow(db, current_payload, restored)
+        self._follow(db, current_payload, restored, deferred_plans)
         return restored
 
     @staticmethod
