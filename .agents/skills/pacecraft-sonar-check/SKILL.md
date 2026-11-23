@@ -49,5 +49,5 @@ python scripts/sonar_check.py --pr <number>
 - A new script that needs a secret takes `--password-file` through `secretPath`
   of `scripts/ui_walk.mjs` and joins `SECRET_RUN` in `scripts/hooks/guard_private_paths.py`:
   the shell guard allows T3's secret folder only as that value (#3758); that read
-  is the accepted S8707 shape above. Any other input file comes on standard input
+  is the accepted S8707 shape above. Any other new input file comes on standard input
   (`--inject -`, `--plan -`), not as a path: S8707 is checked only in CI (#3964).
