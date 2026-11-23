@@ -67,6 +67,7 @@ class PlannedUnitEditService:
         plan_guard: Callable[[], PlanGuardService],
         library_plan_service: Callable[[], Any] | None = None,
         replacement_service: Callable[[], Any] | None = None,
+        training_plan_service: Callable[[], Any] | None = None,
     ) -> None:
         self._database_manager = database_manager
         self._change_service = change_service
@@ -74,6 +75,7 @@ class PlannedUnitEditService:
         self._plan_guard = plan_guard
         self._library_plan_service = library_plan_service
         self._replacement_service = replacement_service
+        self._training_plan_service = training_plan_service
 
     def schedule(
         self,
@@ -216,6 +218,9 @@ class PlannedUnitEditService:
                 selected_plan_id=plan_id,
                 keep_plan=True,
             )
+            # The plan's period follows the days of its units, as in every other path that adds units.
+            if self._training_plan_service is not None:
+                self._training_plan_service().update_bounds(db, [plan_id])
             notes = guard.verify(before, accept or [], waived=_WAIVED)
         return {**result, "plan_check_notes": notes}
 

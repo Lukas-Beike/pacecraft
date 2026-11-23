@@ -138,6 +138,7 @@ class PlannedUnitEditServiceTests(unittest.TestCase):
             lambda: self.library,
             lambda: cast(PlanGuardService, self.guard),
             replacement_service=lambda: replacement,
+            training_plan_service=lambda: training_plans,
         )
 
     def rows(self, table):
@@ -259,6 +260,11 @@ class PlannedUnitEditServiceTests(unittest.TestCase):
         # The plan stays what it is: the new unit joins it and no second plan is made.
         self.assertEqual(plan_id, live[0]["plan_id"])
         self.assertEqual([plan_id], [plan["id"] for plan in self.plan_service.list()])
+        # Its period follows the days of its units (the plan began on 2026-09-21).
+        plan = self.plan_service.list()[0]
+        self.assertEqual(
+            ("2026-09-23", "2026-09-23"), (plan["start_date"], plan["end_date"])
+        )
 
     def test_replace_period_refuses_a_period_that_is_past_or_out_of_order(
         self,

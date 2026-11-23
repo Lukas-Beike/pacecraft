@@ -533,6 +533,7 @@ def _unit_edit_service(ctx: Any) -> Callable[[], PlannedUnitEditService]:
         ctx.plan_guard.plan_guard_service,
         ctx.planning_workflows.workout_library_plan_service,
         ctx.planning_workflows.structured_training_plan_replacement_service,
+        ctx.planning.training_plan,
     )
 
 
