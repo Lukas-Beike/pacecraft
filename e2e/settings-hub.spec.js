@@ -122,9 +122,9 @@ test("@responsive the eight connections start collapsed and name their status in
   await expect(page.locator("#providerCredentials, #providerFreshnessTimeline, #connectionsSummary")).toHaveCount(0);
   await expandConnections(page, ["garmin"]);
   const lines = page.locator("#garminSourceLines li");
-  await expect(lines).toHaveCount(2);
-  await expect(lines.nth(0)).toContainText("Personal API:");
-  await expect(lines.nth(1)).toContainText("SDK-Login:");
+  // The fixture's Garmin is not set up: its chip says so and no line repeats it (#3936 M-03).
+  await expect(page.locator("#garminConnectionStatus")).toHaveText("Nicht eingerichtet");
+  await expect(lines).toHaveCount(0);
 });
 
 test("@responsive an open card holds only its own provider's status, access, settings and actions", async ({ page }) => {

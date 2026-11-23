@@ -82,6 +82,8 @@ function garminConnectionKind(garmin) {
 function garminSourceLines(garmin, sdkConnected) {
   const lines = [];
   const key = garmin?.personal_api;
+  // Nothing set up: the chip says so, and two lines repeating "nicht eingerichtet" add nothing (#3936 M-03).
+  if (!key?.configured && !sdkConnected && !garmin?.sdk_skipped) return lines;
   if (key?.configured) {
     const label = GARMIN_KEY_LINES[key.state] || "gespeichert";
     const until = key.state === "valid" && key.expires_on ? `${label} bis ${globalThis.AppFormat?.date?.(key.expires_on) ?? key.expires_on}` : label;

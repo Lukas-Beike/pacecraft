@@ -86,7 +86,8 @@ function renderGarminFullResync(data, garmin = data?.garmin || {}) {
 function renderUnavailableGarmin(garmin, status, detail, button) {
   const unavailable = !garmin?.available;
   if (!unavailable && garmin.configured) return false;
-  status.textContent = unavailable ? "Garmin nicht verfügbar" : "Garmin nicht eingerichtet";
+  // An unset card is named by its chip alone (#3936 M-03).
+  status.textContent = unavailable ? "Garmin nicht verfügbar" : "";
   detail.textContent = "";
   button.disabled = true;
   return true;

@@ -590,7 +590,7 @@ function thresholdBox(sport) {
   if (effort) grid.append(h("p", { className: "zone-note", dataset: { thresholdNote: "effort" } }, effort));
   const foot = h("p", "zone-source", zoneEditButton("Bearbeiten", { zoneEdit: "lt1" }));
   const sources = lt2SourceRows(sport);
-  const list = sources.length ? h("div", "lt2-sources", h("h4", null, lt2Label), h("ul", null, ...sources.map((row) => lt2SourceItem(sport, row)))) : null;
+  const list = sources.length ? h("div", "lt2-sources", h("h4", null, "Quellen der Schwelle"), h("ul", null, ...sources.map((row) => lt2SourceItem(sport, row)))) : null;
   return h("section", { className: "zone-box", dataset: { zoneBox: "thresholds" } }, heading, grid, list, foot);
 }
 

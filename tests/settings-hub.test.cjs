@@ -41,6 +41,7 @@ test("Garmin is an error for a rejected or expired key, an expiring key stays co
 });
 
 test("Garmin names the Personal API key and the SDK login in words", () => {
+  assert.deepEqual(garminSourceLines({ configured: true }, false), [], "an unset card names nothing beside its chip");
   assert.deepEqual(garminSourceLines({ configured: true }, true), [
     { label: "Personal API", text: "nicht eingerichtet" },
     { label: "SDK-Login", text: "aktiv" },

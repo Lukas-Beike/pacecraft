@@ -2391,6 +2391,9 @@ function setupCoachEvents() {
 
   $("#coachChatResetButton").addEventListener("click", resetCoachChat);
 
+  $(".context-preview").addEventListener("toggle", (event) => {
+    if (event.currentTarget.open) void loadContextPreview();
+  });
   $("#systemContextPreviewButton").addEventListener("click", () => {
     $("#systemContextPreviewButton").dataset.loaded = "false";
     void loadContextPreview();
