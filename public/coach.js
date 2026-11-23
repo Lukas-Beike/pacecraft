@@ -913,6 +913,8 @@ const COACH_RECEIPT_LABELS = {
   save_competition: "Wettkampf gespeichert", delete_competition: "Wettkampf gelöscht",
   save_body_entry: "Körperwert gespeichert", delete_body_entry: "Körperwert entfernt",
   save_zones: "Zonen gespeichert", delete_zones: "Zonen entfernt",
+  delete_activity_session: "Aktivität gelöscht", rename_activity_route: "Strecke umbenannt",
+  set_equipment_rule: "Ausrüstungsregel gespeichert",
   update_training_plan: "Trainingsplan geändert", undo_training_change: "Rücknahme zur Prüfung bereit",
   preview_adaptive_replan: "Plananpassung zur Prüfung bereit", apply_adaptive_replan: "Plananpassung gespeichert",
   start_provider_refresh: "Datenabruf beauftragt", refresh_current_performance: "Leistungsdatenabruf beauftragt",
@@ -978,7 +980,7 @@ function commandReceipt(entry) {
   };
 }
 
-const COACH_EQUIPMENT_TOOLS = new Set(["save_equipment", "assign_activity_equipment", "log_equipment_maintenance"]);
+const COACH_EQUIPMENT_TOOLS = new Set(["save_equipment", "assign_activity_equipment", "log_equipment_maintenance", "set_equipment_rule"]);
 
 function addStructuredCoachReceipts(payload) {
   const commands = Array.isArray(payload?.command_receipts) ? payload.command_receipts : [];

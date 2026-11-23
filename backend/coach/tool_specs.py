@@ -50,6 +50,7 @@ EXECUTION = "CoachStructuredToolExecutionService"
 ATHLETE_SESSION_CORRECTIONS = (
     "activity-ingestion-and-storage/Athlete session corrections"
 )
+AP9 = "athlete-profile-and-checkins/AP9"
 CA1 = "coach-tool-authority/CA1"
 CA2 = "coach-tool-authority/CA2"
 CA4 = "coach-tool-authority/CA4"
@@ -126,7 +127,7 @@ TOOL_SPECS: tuple[ToolSpec, ...] = (
         "read_training_records",
         requirements=(
             "athlete-profile-and-checkins/AP8",
-            "athlete-profile-and-checkins/AP9",
+            AP9,
             "athlete-profile-and-checkins/AP10",
         ),
     ),
@@ -358,7 +359,7 @@ TOOL_SPECS: tuple[ToolSpec, ...] = (
         domain=PROFILE,
         done="Ausrüstung zugeordnet",
         action="Ausrüstung zuordnen",
-        requirements=("athlete-profile-and-checkins/AP9", CA2),
+        requirements=(AP9, CA2),
     ),
     ToolSpec(
         "confirm_activity_session",
@@ -392,6 +393,34 @@ TOOL_SPECS: tuple[ToolSpec, ...] = (
             ATHLETE_SESSION_CORRECTIONS,
             CA2,
         ),
+    ),
+    ToolSpec(
+        "delete_activity_session",
+        ATHLETE_RECORDS,
+        domain=PROFILE,
+        done="Aktivität gelöscht",
+        action="Aktivität löschen",
+        deletes=True,
+        requirements=(ATHLETE_SESSION_CORRECTIONS, CA4),
+    ),
+    ToolSpec(
+        "rename_activity_route",
+        ATHLETE_RECORDS,
+        domain=PROFILE,
+        done="Strecke umbenannt",
+        action="Strecke umbenennen",
+        requirements=(
+            "activity-analysis-and-feedback/Recognised routes of outdoor sessions",
+            CA2,
+        ),
+    ),
+    ToolSpec(
+        "set_equipment_rule",
+        ATHLETE_RECORDS,
+        domain=PROFILE,
+        done="Ausrüstungsregel gespeichert",
+        action="Ausrüstungsregel speichern",
+        requirements=(AP9, CA4),
     ),
     ToolSpec(
         "log_equipment_maintenance",

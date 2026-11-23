@@ -188,6 +188,7 @@ def build_coach_command_tools(
                     activity_id, ctx.clock.now().date()
                 )
             ),
+            activity_routes=lambda: ctx.activity_routes,
         )
 
     def profile_update_service() -> CoachProfileUpdateService:

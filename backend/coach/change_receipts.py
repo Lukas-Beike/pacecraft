@@ -13,7 +13,7 @@ from backend.planning.plan_checks import BLOCKING_CODES, FINDING_CODES
 # Write tools whose success leaves athlete records unchanged: previews and
 # drafts take effect only through a later, separately approved step.
 _NOT_A_CHANGE = frozenset({"preview_adaptive_replan", "stage_training_plan"})
-# "unchanged": a call that found its value already stored (#3956).
+# "unchanged": a call that read or found nothing to write (#3956, #3957).
 _WAITING_STATUSES = frozenset({"approval_required", "cancelled", "unchanged"})
 # As in ``outcomes.coach_effect_label``: a card run reports "applied".
 _APPLIED_UNDO = frozenset({"applied", "undone"})
@@ -30,6 +30,8 @@ _FULLY_TRACKED_TOOLS = frozenset(
         "confirm_activity_session",
         "split_activity_session",
         "merge_activity_sessions",
+        "delete_activity_session",
+        "set_equipment_rule",
         "save_nutrition_entry",
         "update_nutrition_entry",
         "delete_nutrition_entry",

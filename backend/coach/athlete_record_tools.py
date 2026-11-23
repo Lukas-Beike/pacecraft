@@ -20,10 +20,21 @@ from backend.nutrition.meal_library import NutritionMealLibraryService
 from backend.planning.competition_service import CompetitionService
 
 _EQUIPMENT_TOOLS = frozenset(
-    {"save_equipment", "assign_activity_equipment", "log_equipment_maintenance"}
+    {
+        "save_equipment",
+        "assign_activity_equipment",
+        "log_equipment_maintenance",
+        "set_equipment_rule",
+    }
 )
 _SESSION_TOOLS = frozenset(
-    {"confirm_activity_session", "split_activity_session", "merge_activity_sessions"}
+    {
+        "confirm_activity_session",
+        "split_activity_session",
+        "merge_activity_sessions",
+        "delete_activity_session",
+        "rename_activity_route",
+    }
 )
 _NUTRITION_UNAVAILABLE = "NutritionService ist nicht verfügbar."
 # Körper's weight and body fat, recorded as the dialogs record them (#3640).
@@ -63,12 +74,15 @@ class CoachAthleteRecordToolService:
         first_threshold: Callable[[], Any] | None = None,
         second_threshold: Callable[[], Any] | None = None,
         step_test: Callable[[str], Any] | None = None,
+        activity_routes: Callable[[], Any] | None = None,
     ) -> None:
         # Zonen & Schwellen's services and the step-test read of one session.
         self._zones = zones
         self._first_threshold = first_threshold
         self._second_threshold = second_threshold
         self._step_test = step_test
+        # The recognised routes, renamed as the session details do (#3957).
+        self._activity_routes = activity_routes
         # The Körper entry service of "weight" or "body_fat" (#3640).
         self._body_entries = body_entries
         self._checkins = checkins
@@ -189,25 +203,70 @@ class CoachAthleteRecordToolService:
         require_coach_scope(intent, "local_equipment")
         if self._equipment is None:
             raise AppError(503, "Ausrüstung ist nicht verfügbar.")
+        payload = structured_action_payload(arguments)
+        if name == "set_equipment_rule":
+            return self._equipment_rule(payload)
         method = {
             "save_equipment": self._equipment.save,
             "assign_activity_equipment": self._equipment.assign,
             "log_equipment_maintenance": self._equipment.maintain,
         }[name]
-        return method(structured_action_payload(arguments))
+        return method(payload)
+
+    def _equipment_rule(self, payload: dict[str, Any]) -> dict[str, Any]:
+        """Set a kind's default item, count or apply it as Ausrüstung does (#3957).
+
+        ``preview`` changes nothing; ``apply`` is the confirmed bulk change of
+        earlier sessions, which the write gate counts as bulk.
+        """
+        action, kind = payload.get("action"), payload.get("kind")
+        if action == "set":
+            if "equipment_id" not in payload:
+                # null clears the default; a missing item must not (#3957).
+                raise AppError(
+                    400,
+                    "Die Regel braucht equipment_id (null für keine).",
+                    reason="tool_arguments_invalid",
+                )
+            return self._equipment.save_rule(
+                {
+                    "kind": kind,
+                    "equipment_id": payload.get("equipment_id"),
+                    "expected_revision": payload.get("expected_revision"),
+                }
+            )
+        if action == "preview":
+            preview = self._equipment.rule_apply_preview(kind)
+            return {"ok": True, "status": "unchanged", **preview}
+        if action == "apply":
+            applied = self._equipment.apply_rule({"kind": kind, "confirmed": True})
+            return applied | (
+                {"status": "unchanged"} if applied["change"] is None else {}
+            )
+        raise AppError(400, "Unbekannte Regelaktion.", reason="tool_arguments_invalid")
 
     def _execute_session(
         self, name: str, arguments: dict[str, Any], intent: dict[str, Any]
     ) -> dict[str, Any]:
-        """Confirm, split or merge a canonical session for the Coach."""
+        """Confirm, split, merge or delete a session, or rename its route."""
         self._authorize(intent, name, "Diese lokale Korrektur ist nicht autorisiert.")
         require_coach_scope(intent, "local_activity_session")
+        payload = structured_action_payload(arguments)
+        if name == "rename_activity_route":
+            if self._activity_routes is None:
+                raise AppError(503, "Strecken sind nicht verfügbar.")
+            renamed = self._activity_routes().rename(
+                payload.get("route_id"), payload.get("name")
+            )
+            return {"ok": True, "stored_locally": True, **renamed}
         if self._session_corrections is None:
             raise AppError(503, "Aktivitätskorrekturen sind nicht verfügbar.")
-        payload = structured_action_payload(arguments)
         service = self._session_corrections
         activity_id = str(payload.get("activity_id") or "")
-        if name == "confirm_activity_session":
+        if name == "delete_activity_session":
+            # Local only, as the session details' delete (#3957).
+            result = service.delete(activity_id, source="coach")
+        elif name == "confirm_activity_session":
             result = service.confirm(activity_id, source="coach")
         elif name == "split_activity_session":
             result = service.split(

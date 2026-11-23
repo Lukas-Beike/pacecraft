@@ -69,11 +69,16 @@ def coach_effect_label(item: dict[str, Any]) -> str:
             if result.get("partial")
             else "Daten aktualisiert"
         )
-    count = len(
-        result.get("library_entry_ids")
-        or result.get("templates")
-        or result.get("changes")
-        or []
+    # A rule applied to earlier sessions or a product clean-up names its
+    # ``count`` of records (#3957).
+    count = max(
+        len(
+            result.get("library_entry_ids")
+            or result.get("templates")
+            or result.get("changes")
+            or []
+        ),
+        result.get("count", 0),
     )
     return f"{label} ({count})" if count else label
 

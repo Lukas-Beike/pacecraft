@@ -689,6 +689,17 @@ def _removes_records(tool_name: str, arguments: Mapping[str, Any] | None) -> boo
     )
 
 
+def _applies_equipment_rule(
+    tool_name: str, arguments: Mapping[str, Any] | None
+) -> bool:
+    payload = arguments.get("payload") if isinstance(arguments, Mapping) else None
+    return (
+        tool_name == "set_equipment_rule"
+        and isinstance(payload, Mapping)
+        and _canonical(payload.get("action")) == "apply"
+    )
+
+
 def _new_records(
     tool_name: str, arguments: Mapping[str, Any] | None, seen_ids: frozenset[str]
 ) -> int:
@@ -747,6 +758,8 @@ def call_impact(
     bulk_from = BULK_FROM.get(tool_name)
     if (
         tool_name in WHOLE_PLAN_TOOLS
+        # A rule applied to earlier sessions changes them all at once (#3957).
+        or _applies_equipment_rule(tool_name, arguments)
         or (records and records_so_far + records > BULK_THRESHOLD)
         or (bulk_from and tool_records_so_far + records >= bulk_from)
     ):
@@ -985,8 +998,8 @@ CLASSIFIER_INSTRUCTIONS = (
     "anything else, including doubts, a plain training request, or mentioning "
     "the illness without asking to train through it. Domains: planning "
     "(training plan, workouts, schedule, templates), profile (athlete profile, "
-    "FTP, zones, thresholds, goals, availability, equipment), competition "
-    "(races, events), "
+    "FTP, zones, thresholds, goals, availability, equipment and its default "
+    "rules, recorded activity sessions and routes), competition (races, events), "
     "checkin (sleep, health, mood, symptoms, activity feedback), nutrition "
     "(meals, food, products, templates), body (weight, body fat, skinfolds), "
     "undo (revert an earlier change). Changing a weight or body fat already "

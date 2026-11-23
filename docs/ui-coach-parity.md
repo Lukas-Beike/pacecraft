@@ -21,7 +21,7 @@ case on both sides, so the guards match.
 tool and route exists, the parity value matches the two columns, each gap names
 its issue and the counts below match the table.
 
-Counts: both 57, UI only 19, Coach only 10, neither 0, UI by rule 8.
+Counts: both 62, UI only 14, Coach only 10, neither 0, UI by rule 8.
 
 ## Matrix
 
@@ -66,14 +66,14 @@ Counts: both 57, UI only 19, Coach only 10, neither 0, UI by rule 8.
 | Activities | Save or edit activity feedback and purpose | Session details `POST /api/activities/{id}/feedback` | `save_activity_feedback` | receipt, undo | both | |
 | Activities | Clear activity feedback | Session details `POST /api/activities/{id}/feedback` | `delete_activity_feedback` | receipt, undo | both | |
 | Activities | Confirm, split or merge a session bundle | Session details `POST /api/activities/{id}/session` | `confirm_activity_session`, `split_activity_session`, `merge_activity_sessions` | receipt, undo | both | |
-| Activities | Delete a session bundle | Session details `POST /api/activities/{id}/session` (`delete`) | — | delete confirmation | UI only | #3957 |
-| Activities | Rename a recognised route | Session details `POST /api/routes/rename` | — | — | UI only | #3957 |
+| Activities | Delete a session bundle | Session details `POST /api/activities/{id}/session` (`delete`) | `delete_activity_session` | delete confirmation, undo | both | |
+| Activities | Rename a recognised route | Session details `POST /api/routes/rename` | `rename_activity_route` | receipt | both | |
 | Equipment | Create, edit or retire equipment | Mehr › Ausrüstung `POST /api/equipment` | `save_equipment` | receipt | both | |
 | Equipment | Record maintenance | Mehr › Ausrüstung `POST /api/equipment/maintenance` | `log_equipment_maintenance` | receipt | both | |
 | Equipment | Assign equipment to a session | Session details `POST /api/equipment/assignment` | `assign_activity_equipment` | receipt | both | |
-| Equipment | Assign equipment to a planned unit | Kalender card `GET /api/equipment/planned`, `POST /api/equipment/assignment` | — | receipt | UI only | #3957 |
-| Equipment | Set a default equipment rule | Mehr › Ausrüstung `POST /api/equipment/rules` | — | — | UI only | #3957 |
-| Equipment | Apply a rule to earlier sessions | Mehr › Ausrüstung `GET /api/equipment/rules/preview`, `POST /api/equipment/rules/apply` | — | preview count, confirmation | UI only | #3957 |
+| Equipment | Assign equipment to a planned unit | Kalender card `GET /api/equipment/planned`, `POST /api/equipment/assignment` | `assign_activity_equipment` (`planned_unit_id`) | receipt | both | |
+| Equipment | Set a default equipment rule | Mehr › Ausrüstung `POST /api/equipment/rules` | `set_equipment_rule` (`set`) | receipt, undo | both | |
+| Equipment | Apply a rule to earlier sessions | Mehr › Ausrüstung `GET /api/equipment/rules/preview`, `POST /api/equipment/rules/apply` | `set_equipment_rule` (`preview`, `apply`) | preview count, confirmed bulk request | both | |
 | Nutrition | Read the diary day, week and energy | Ernährung `GET /api/nutrition/day`, `GET /api/nutrition/week`, `GET /api/body/energy` | `read_nutrition` | — | both | |
 | Nutrition | Log a saved product as a meal | Produkt dialog `POST /api/nutrition/entry` | `save_nutrition_entry` | receipt, undo | both | |
 | Nutrition | Log a composed meal from several foods | — | `save_nutrition_entry` | receipt, undo | Coach only | #3952 |
