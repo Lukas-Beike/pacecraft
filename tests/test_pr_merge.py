@@ -239,6 +239,10 @@ class PrMergeTests(unittest.TestCase):
              "Gitar silent repo-wide since 2026-11-23T05:22:00Z: #1, #2 wait over 60 min"),
             # One silent head is that PR's matter, not an outage.
             ([head(1, "2026-11-23T05:30:00Z"), head(3, "2026-11-23T05:00:00Z", reviewed)], ""),
+            # Bot PRs and drafts never get Gitar's check: no outage from them.
+            ([{**head(4, "2026-11-23T05:30:00Z"), "author": {"is_bot": True}},
+              {**head(5, "2026-11-23T05:30:00Z"), "isDraft": True},
+              head(1, "2026-11-23T05:30:00Z")], ""),
             # Heads whose CI finished within the hour, or still runs, are not silent yet.
             ([head(1, "2026-11-23T06:30:00Z"), head(2, "2026-11-23T06:40:00Z"), running], ""),
         ):  # fmt: skip

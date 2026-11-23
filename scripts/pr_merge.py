@@ -162,7 +162,7 @@ def gitar_gate(sha: str, minutes: int) -> int | None:
     print(f"refused: Gitar has not reviewed {sha[:10]} yet; run again once it has")
     try:
         silence = gitar_silence(datetime.now(UTC))
-    except CliError:
+    except CliError, AttributeError, KeyError, TypeError:
         silence = ""  # only a hint; the refusal above stands either way
     if silence:
         print(silence)
@@ -204,11 +204,16 @@ def gitar_waits(rollup: list[dict[str, Any]], cutoff: str) -> tuple[str, bool]:
 
 def gitar_silence(now: datetime) -> str:
     """One line when at least two open PRs wait for Gitar an hour after their CI
-    finished, else ""."""
+    finished, else "". Drafts and bot PRs (Dependabot, the release app) are left
+    out: Gitar's ruleset does not cover them, so they never get its check."""
     prs = gh_json(
         "pr", "list", "--base", "develop", "--state", "open", "--limit", "100",
-        "--json", "number,statusCheckRollup",
+        "--json", "number,isDraft,author,statusCheckRollup",
     ) or []  # fmt: skip
+    prs = [
+        pr for pr in prs
+        if not pr.get("isDraft") and not (pr.get("author") or {}).get("is_bot")
+    ]  # fmt: skip
     cutoff = (now - timedelta(minutes=GITAR_SILENT_MINUTES)).strftime(
         "%Y-%m-%dT%H:%M:%SZ"
     )
