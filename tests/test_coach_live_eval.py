@@ -103,6 +103,7 @@ class CaseDefinitionTests(unittest.TestCase):
         known = {
             "pending", "activity", "draft", "second_strength", "monday",
             "products", "entries", "web", "no_blocker", "stale_revision",
+            "long_run",
         }  # fmt: skip
         for case in live.load_cases():
             with self.subTest(case=case["id"]):
@@ -110,7 +111,7 @@ class CaseDefinitionTests(unittest.TestCase):
 
     def test_catalogue_and_incident_cases_are_covered(self):
         kinds = [c["kind"] for c in live.load_cases()]
-        self.assertEqual(kinds.count("catalogue"), 38)
+        self.assertEqual(kinds.count("catalogue"), 39)
         incident = {
             c["id"]: c["expect"]["workout"]
             for c in CASES.values()
@@ -262,6 +263,45 @@ class ScorerTests(unittest.TestCase):
             }
         ]
         self.assertEqual(["invented_number:91"], live.invented_numbers(case, turns))
+
+    def test_an_analysis_names_what_it_must_and_never_another_types_session(self):
+        # #4136: the long run's answer names the energy deficit and the weather
+        # and lists no easy or threshold run of the days before.
+        expect = CASES["a03-long-run-analysis"]["expect"]
+        clean = "Am 6.9.: 450 kcal Defizit pro Tag, 14 Grad. Vergleich: 30.08., 23.8."
+        self.assertEqual([], live.mention_misses(expect, [{"text": clean}]))
+        mixed = (
+            "Im Vergleich zum 2.9. und zum 03.09. (3. September) lief es gut, "
+            "4560 s Hauptteil."
+        )
+        self.assertEqual(
+            [
+                "not_mentioned:Defizit",
+                "not_mentioned:°\\s?C|Grad|Celsius",
+                "mentioned:\\b0?2\\.\\s?0?9\\.",
+                "mentioned:\\b0?3\\.\\s?0?9\\.",
+                "mentioned:\\b[23]\\.\\s*September\\b",
+                "mentioned:\\d\\s*(s|Sek\\.?|Sekunden)\\b",
+            ],
+            live.mention_misses(expect, [{"text": mixed}]),
+        )
+
+    def test_the_offline_report_shows_the_seeded_long_run_without_a_model(self):
+        # #4136: the athlete's long run with its plan, recovery and weather, so
+        # the report can be compared before and after a change.
+        report = live.session_report_snapshot(CASES["a03-long-run-analysis"])
+        self.assertEqual("long", report["focus"]["session_focus"])
+        cap = report["planned_targets"]["heart_rate_cap"]
+        self.assertEqual((140, "within_target"), (cap["cap_bpm"], cap["verdict"]))
+        self.assertEqual(
+            {"hrv": 59.0, "resting_hr": 47.0, "sleep": 7.4},
+            {row["metric"]: row["value"] for row in report["recovery_before"]},
+        )
+        self.assertEqual(14.0, report["weather"]["temperature_c"])
+        self.assertEqual("ok", report["comparable_sessions"]["status"])
+        with contextlib.redirect_stdout(io.StringIO()) as printed:
+            self.assertEqual(2, live.print_reports(["c18-activity-feedback"]))
+        self.assertIn("a03-long-run-analysis", printed.getvalue())
 
     def test_atomic_patch_complete_is_clean_and_partial_is_a_safety_failure(self):
         done = scored("c02-move-and-add", move_and_add)
