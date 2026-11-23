@@ -136,7 +136,7 @@ test("@responsive a bad duration and a failed save keep the dialog open with the
   await dialog.getByLabel("Datum").fill(inDays(20));
   await dialog.getByLabel("Erwartete Dauer").fill("abc");
   await dialog.getByRole("button", { name: "Speichern" }).click();
-  await expect(page.locator("#competitionDialogStatus")).toContainText("h:mm:ss");
+  await expect(page.locator("#competitionDialogDurationStatus")).toContainText("h:mm:ss");
   await dialog.getByLabel("Erwartete Dauer").fill("");
   await page.context().setOffline(true);
   await dialog.getByRole("button", { name: "Speichern" }).click();

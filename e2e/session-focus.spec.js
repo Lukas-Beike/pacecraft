@@ -28,7 +28,7 @@ test("@responsive session focus chip and select on a planned unit", async ({ pag
   // The derived focus is offered next to the empty field; one tap sets it.
   await expect(select).toHaveValue("");
   const suggestion = entry.locator(".planned-focus-form .planned-suggestion-chip");
-  await expect(suggestion).toHaveText(/^≈ .+ übernehmen$/);
+  await expect(suggestion).toHaveText(/^Als Art setzen: .+$/);
   expect((await suggestion.boundingBox()).height).toBeGreaterThanOrEqual(32);
   const suggested = page.waitForResponse((response) => response.url().includes("/focus") && response.request().method() === "POST");
   await suggestion.click();

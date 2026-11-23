@@ -42,7 +42,7 @@ test("@responsive compact calendar week shows one week, groups repeats and keeps
   // Conflicts: one component with one action, no marker or conflict pills, calendar text not link-coloured.
   await expect(page.locator(".planned-badge.is-conflict, .planned-badge.is-marker")).toHaveCount(0);
   const conflict = planned.locator(".planned-conflict");
-  await expect(conflict).toContainText("Konflikt: Kein Training");
+  await expect(conflict).toContainText("Ein Termin an diesem Tag erlaubt kein Training");
   await expect(conflict.getByRole("button")).toHaveCount(1);
   await expect(conflict.getByRole("button")).toHaveText("Mit Coach besprechen");
   const result = await conflict.evaluate((element) => {

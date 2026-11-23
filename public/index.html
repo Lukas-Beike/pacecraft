@@ -818,9 +818,10 @@
       <label for="competitionDialogTime">Startzeit<input id="competitionDialogTime" name="start_time" type="time"></label>
       <label for="competitionDialogSport">Sportart<select id="competitionDialogSport" name="sport"><option value="Ride">Radfahren</option><option value="VirtualRide">Rad indoor</option><option value="Run">Laufen</option><option value="WeightTraining">Kraft</option></select></label>
       <fieldset class="appearance-control"><legend>Priorität</legend><div class="segmented-control"><label><input type="radio" name="priority" value="A">A</label><label><input type="radio" name="priority" value="B" checked>B</label><label><input type="radio" name="priority" value="C">C</label></div></fieldset>
-      <label for="competitionDialogDistance">Distanz (km)<input id="competitionDialogDistance" name="distance" type="text" maxlength="80" autocomplete="off"></label>
-      <label for="competitionDialogTarget">Ziel<input id="competitionDialogTarget" name="target" type="text" maxlength="1000" autocomplete="off"></label>
-      <label for="competitionDialogDuration">Erwartete Dauer<input id="competitionDialogDuration" name="duration" type="text" placeholder="h:mm:ss" autocomplete="off"></label>
+      <label for="competitionDialogDistance">Distanz (km)<input id="competitionDialogDistance" name="distance" type="text" inputmode="decimal" maxlength="12" placeholder="z. B. 42,2" autocomplete="off"></label>
+      <label for="competitionDialogTarget">Ziel<input id="competitionDialogTarget" name="target" type="text" maxlength="1000" placeholder="z. B. unter 45 Minuten" autocomplete="off"></label>
+      <label for="competitionDialogDuration">Erwartete Dauer<input id="competitionDialogDuration" name="duration" type="text" placeholder="h:mm:ss" autocomplete="off" aria-describedby="competitionDialogDurationStatus"></label>
+      <output id="competitionDialogDurationStatus" class="tab-sync-detail error" aria-live="polite"></output>
       <label for="competitionDialogLocation">Ort<input id="competitionDialogLocation" name="location" type="text" maxlength="200" autocomplete="off"></label>
       <label for="competitionDialogCourse">Streckenprofil<textarea id="competitionDialogCourse" name="course_profile" rows="2" maxlength="2000"></textarea></label>
       <label for="competitionDialogNotes">Notizen<textarea id="competitionDialogNotes" name="notes" rows="3" maxlength="2000"></textarea></label>

@@ -268,6 +268,19 @@ function plannedDayStatusLabel(dayStatus) {
   return PLANNED_DAY_STATUS_LABELS.get(dayStatus) || null;
 }
 
+// A marker conflict names what the day's appointment allows; other labels stay as the server wrote them (#3932 K-05).
+const MARKER_CONFLICT_TEXTS = {
+  no_training: "Ein Termin an diesem Tag erlaubt kein Training",
+  no_intensity: "Ein Termin an diesem Tag erlaubt keine Intensität",
+  short_only: "Ein Termin an diesem Tag erlaubt nur kurze Einheiten",
+};
+
+function plannedConflictTexts(conflicts) {
+  return [...new Set((Array.isArray(conflicts) ? conflicts : [])
+    .map((conflict) => MARKER_CONFLICT_TEXTS[conflict?.code] || String(conflict?.label || "").trim())
+    .filter(Boolean))];
+}
+
 function plannedConflictLabels(conflicts) {
   return [...new Set((Array.isArray(conflicts) ? conflicts : [])
     .map((conflict) => String(conflict?.label || "").trim())
@@ -472,8 +485,10 @@ function appendCalendarFact(root, label, value) {
   root.append(h("span", null, h("strong", null, label), ` ${value}`));
 }
 
-function calendarBadge({ kind, icon, text }) {
-  return h("span", `planned-badge is-${kind}`, icon ? h("span", { "aria-hidden": "true" }, icon) : null, text);
+function calendarBadge({ kind, icon, text, title }) {
+  const badge = h("span", `planned-badge is-${kind}`, icon ? h("span", { "aria-hidden": "true" }, icon) : null, text);
+  if (title) badge.title = title;
+  return badge;
 }
 
 function calendarBadgeRow(specs) {
@@ -749,7 +764,8 @@ function focusChipSpec(entry) {
   const intensityLabel = STRENGTH_INTENSITY_LABELS[entry.strength_intensity];
   const intensity = intensityLabel && entry.intensity_origin === "derived" ? `≈${intensityLabel}` : intensityLabel;
   const derived = entry.focus_origin === "derived";
-  return { kind: derived ? "focus-derived" : "focus", text: [derived ? "≈" : null, label, intensity].filter(Boolean).join(" "), derived };
+  // "≈" says the value is read from the unit's content, not set by the athlete (#3932 K-06).
+  return { kind: derived ? "focus-derived" : "focus", text: [derived ? "≈" : null, label, intensity].filter(Boolean).join(" "), derived, title: derived ? "≈ vom Inhalt der Einheit abgeleitet" : null };
 }
 
 const HR_CAP_SOURCE_LABELS = { default: "Standard", measured: "gemessen", estimated: "DFA-α1" };
@@ -1246,7 +1262,7 @@ function plannedFocusForm(entry, dateKey) {
   ];
   for (const [part, value, labels] of derived) {
     if (!part || !value || !labels[value]) continue;
-    const chip = h("button", { type: "button", className: "planned-suggestion-chip" }, `≈ ${labels[value]} übernehmen`);
+    const chip = h("button", { type: "button", className: "planned-suggestion-chip" }, `Als Art setzen: ${labels[value]}`);
     chip.addEventListener("click", async () => {
       part.select.value = value;
       if (await save()) chip.remove();
@@ -1328,6 +1344,7 @@ function plannedWeekSyncButton(weekKey, weekEntries, leftovers, todayKey) {
 function plannedConflict(entry, dateKey) {
   const labels = plannedConflictLabels(entry.conflicts);
   if (!labels.length) return null;
+  const texts = plannedConflictTexts(entry.conflicts);
   const button = h("button", { type: "button", className: "secondary-button planned-conflict-button" }, "Mit Coach besprechen");
   button.setAttribute("aria-label", "Mit Coach besprechen: Konflikt");
   button.addEventListener("click", (event) => {
@@ -1337,7 +1354,7 @@ function plannedConflict(entry, dateKey) {
     const session = [activitySportLabel(calendarSportType(entry)), plannedEntryDurationLabel(null, entry)].filter(Boolean).join(", ");
     void globalThis.askCoach?.(`Die geplante Einheit am ${dateLabel(dateKey)} (${session}) kollidiert mit: ${labels.join(", ")}. Schlage eine Anpassung vor.`);
   });
-  return h("span", "planned-conflict", h("span", null, `⚠ Konflikt: ${labels.join(" · ")}`), button);
+  return h("span", "planned-conflict", h("span", null, `⚠ ${texts.join(" · ")}`), button);
 }
 
 // Why a strength or run unit cannot reach the watch, with the action that fixes it:
@@ -2447,17 +2464,46 @@ function renderPlannedMonth(view) {
   const names = h("div", { className: "planned-month-row planned-month-names", "aria-hidden": "true" }, ["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So", "KW"].map((name) => h("span", null, name)));
   const grid = h("div", "planned-month-grid", names);
   for (let weekKey = planWeekStart(monthKey); weekKey < nextMonthKey; weekKey = addDateKey(weekKey, 7)) grid.append(plannedMonthRow(view, weekKey, monthKey));
-  month.append(heading, grid);
+  month.append(heading, grid, plannedMonthTotals(view, monthKey, nextMonthKey), plannedMonthLegend());
   return month;
+}
+
+// Pure: the time of the days given, done for a recorded session and planned for a unit still ahead (a missed one counts for neither).
+function plannedTimes(view, dateKeys) {
+  const total = { done: 0, planned: 0 };
+  for (const dateKey of dateKeys) {
+    for (const entry of view.eventsByDate.get(dateKey) || []) {
+      const actual = calendarActualActivity(entry);
+      if (actual) total.done += Number(AppFormat.sessionSeconds(actual)) || 0;
+      else if (calendarEntryStatus(entry, dateKey, view.todayKey) !== "missed") total.planned += plannedDurationSeconds(entry);
+    }
+  }
+  return total;
+}
+
+// "Monat: 18:20 h absolviert · 3:00 h geplant" for the days of the shown month (#3932 K-07).
+function plannedMonthTotals(view, monthKey, nextMonthKey) {
+  const days = [];
+  for (let day = monthKey; day < nextMonthKey; day = addDateKey(day, 1)) days.push(day);
+  const { done, planned } = plannedTimes(view, days);
+  const parts = [done > 0 ? `${calendarHours(done)} absolviert` : null, planned > 0 ? `${calendarHours(planned)} geplant` : null].filter(Boolean);
+  return h("p", "planned-month-totals", parts.length ? `Monat: ${parts.join(" · ")}` : "Monat: keine Einheiten");
+}
+
+// The marks in a day cell, named once under the grid.
+function plannedMonthLegend() {
+  const mark = (status, text) => h("span", null, h("i", `planned-month-mark is-${status}`), text);
+  return h("p", "planned-month-legend", mark("completed", "absolviert"), mark("planned", "geplant"), mark("missed", "verpasst"), mark("skipped", "entfallen"),
+    h("span", null, h("i", "planned-month-blocked"), "Termin blockiert Training"));
 }
 
 // One week of the month grid: seven days, then the ISO week with its planned time.
 function plannedMonthRow(view, weekKey, monthKey) {
   const row = h("div", `planned-month-row${weekKey === planWeekStart(view.todayKey) ? " is-current" : ""}`);
   for (let offset = 0; offset < 7; offset += 1) row.append(plannedMonthDay(view, addDateKey(weekKey, offset), monthKey));
-  const seconds = Array.from({ length: 7 }, (_, offset) => view.eventsByDate.get(addDateKey(weekKey, offset)) || []).flat()
-    .filter((entry) => !entry.is_completed_activity)
-    .reduce((total, entry) => total + plannedDurationSeconds(entry), 0);
+  // The week's time is what was done plus what is still planned, so past weeks show theirs too.
+  const times = plannedTimes(view, Array.from({ length: 7 }, (_, offset) => addDateKey(weekKey, offset)));
+  const seconds = times.done + times.planned;
   row.append(h("span", "planned-month-kw", [`KW ${isoWeekNumber(weekKey)}`, seconds > 0 ? calendarHours(seconds) : ""].filter(Boolean).join(" · ")));
   return row;
 }
@@ -3382,6 +3428,8 @@ function competitionCard(competition, todayKey, openIds) {
     edit);
   const source = h("small", "competition-sync-state", competition.external_id ? "Intervals.icu" : "Nicht an Intervals.icu gesendet");
   if (competition.sync_state === "local_override") source.textContent = "Lokal geändert";
+  // A conflict names itself: the local and the Intervals.icu entry differ and nothing is overwritten (#3932 K-15).
+  if (competition.sync_state === "conflict") source.textContent = "Konflikt mit Intervals.icu: lokal und dort unterscheiden sich";
   const optional = [
     ["Ergebnis", competitionResult(competition.result)],
     // Midnight is no start time, as in the dialog; a goal is shown as a time only when it is one.
@@ -3534,6 +3582,7 @@ function fillCompetitionDialog(competition) {
   $("#competitionDialogResult").replaceChildren(...(result ? [competitionFact("Ergebnis", result)] : []));
   $("#competitionDialogRemove").hidden = !competition;
   $("#competitionDialogStatus").textContent = "";
+  $("#competitionDialogDurationStatus").textContent = "";
   for (const button of $("#competitionDialog").querySelectorAll("button")) button.disabled = false;
 }
 
@@ -3605,7 +3654,9 @@ function bindCompetitionDialog() {
     const status = $("#competitionDialogStatus");
     const payload = competitionDialogPayload(form);
     if (!payload) {
-      status.textContent = "Erwartete Dauer als h:mm:ss oder mm:ss angeben.";
+      // The message sits under the field it is about, with the focus on it.
+      $("#competitionDialogDurationStatus").textContent = "Erwartete Dauer als h:mm:ss oder mm:ss angeben.";
+      form.elements.duration.focus();
       return;
     }
     void sendCompetition("/api/competitions", payload, $("#competitionDialogSave"), status, () => "Wettkampf gespeichert.");
