@@ -12,7 +12,7 @@ latest window; name that window with the counts.
 
 ```powershell
 python scripts/prod_logs.py --log-file <scratchpad>/container.log [--since <container start, ISO>]
-python scripts/prod_logs.py --url <app address> --password-file <secret file>
+python scripts/prod_logs.py --url-file <scratchpad>/app-url.txt --password-file <secret file>
 ```
 
 It prints counts per level and per event name, the number of removed past

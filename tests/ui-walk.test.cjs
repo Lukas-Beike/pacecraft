@@ -57,6 +57,24 @@ test("ui walk keeps files in the temp directory and needs an http(s) address", a
   assert.throws(() => walk.scratchPath(path.join(t3, "shots")), /system temp directory/);
   assert.equal(walk.baseUrl("https://app.example.test:8090/some/path"), "https://app.example.test:8090");
   assert.throws(() => walk.baseUrl("file:///etc/passwd"), /http\(s\) URL/);
+  // #4125: the address from --url or from --url-file's one line in the temp directory, never both, never printed.
+  const address = "https://app.example.test:8090";
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "walk-url-"));
+  try {
+    const file = path.join(dir, "app-url.txt");
+    fs.writeFileSync(file, `  ${address}/x\n`);
+    assert.equal(walk.appUrl({ url: `${address}/y` }), address);
+    assert.equal(walk.appUrl({ "url-file": file }), address);
+    assert.throws(() => walk.appUrl({}), /exactly one of --url and --url-file/);
+    assert.throws(() => walk.appUrl({ url: address, "url-file": file }), /exactly one/);
+    for (const content of ["", `${address}\n${address}\n`]) {
+      fs.writeFileSync(file, content);
+      assert.throws(() => walk.appUrl({ "url-file": file }), (error) => /one URL/.test(error.message) && !error.message.includes(address));
+    }
+    assert.throws(() => walk.appUrl({ "url-file": path.join(__dirname, "..", "app-url.txt") }), /system temp directory/);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
 });
 
 test("ui walk reads the stamped cache name and asset versions", async () => {

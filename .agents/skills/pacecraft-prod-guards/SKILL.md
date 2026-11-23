@@ -6,7 +6,7 @@ description: Base skill. Confirm production still refuses an API request without
 # Production guards
 
 ```powershell
-python scripts/prod_guards.py --url <app address> --password-file <secret file> [--min-tls-days 14]
+python scripts/prod_guards.py --url-file <scratchpad>/app-url.txt --password-file <secret file> [--min-tls-days 14]
 python scripts/prod_guards.py --check-secret --password-file <secret file>
 ```
 

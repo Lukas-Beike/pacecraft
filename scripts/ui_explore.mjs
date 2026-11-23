@@ -1,6 +1,6 @@
 // Read-only explorer of the running app for UI reviews (#3913): runs the steps of a plan file.
 //
-//   node scripts/ui_explore.mjs --url <app address> --password-file <secret file>
+//   node scripts/ui_explore.mjs {--url <app address> | --url-file <file>} --password-file <secret file>
 //     --out-dir <new scratchpad dir> --plan - < plan.json
 //
 // Plan: {"viewports": ["phone", "desktop"], "colorScheme": "light|dark", "textZoom": 100-200,
@@ -18,7 +18,7 @@ import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { parseArgs } from "node:util";
 
-import { baseUrl, FRESH_OUT_DIR, login, logout, refusedLabel, rendered, scratchPath, SECRET_MISSING, secretPath, settled, WIDTHS, writeFresh } from "./ui_walk.mjs";
+import { appUrl, FRESH_OUT_DIR, login, logout, refusedLabel, rendered, scratchPath, SECRET_MISSING, secretPath, settled, WIDTHS, writeFresh } from "./ui_walk.mjs";
 
 // Login and logout are the only writes the explorer lets through.
 const SESSION_PATHS = new Set(["/api/login", "/api/logout"]);
@@ -226,9 +226,9 @@ async function main() {
   let password;
   let reading = "";
   try {
-    ({ values } = parseArgs({ options: { url: { type: "string" }, "password-file": { type: "string" }, "out-dir": { type: "string" }, plan: { type: "string" } } }));
-    if (!values.url || !values["password-file"] || !values["out-dir"] || !values.plan) throw new Error("--url, --password-file, --out-dir and --plan are required");
-    url = baseUrl(values.url);
+    ({ values } = parseArgs({ options: { url: { type: "string" }, "url-file": { type: "string" }, "password-file": { type: "string" }, "out-dir": { type: "string" }, plan: { type: "string" } } }));
+    if (!values["password-file"] || !values["out-dir"] || !values.plan) throw new Error("--url or --url-file, --password-file, --out-dir and --plan are required");
+    url = appUrl(values);
     outDir = scratchPath(values["out-dir"]);
     // The plan comes on standard input, so no file path from the command line is read for it (Sonar S8707).
     if (values.plan !== "-") throw new Error("--plan - reads the plan JSON from standard input");

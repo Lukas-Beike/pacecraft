@@ -13,7 +13,7 @@ password never appears in an argument, the output or the agent's context; the
 shell guard allows the secret path only as this `--password-file` value (#3758).
 
 ```powershell
-node scripts/post_release_actions.mjs --url <app address> --password-file "<secret file>"
+node scripts/post_release_actions.mjs --url-file <scratchpad>/app-url.txt --password-file "<secret file>"
 ```
 
 It logs in, asks the Coach one fixed German question (what is planned

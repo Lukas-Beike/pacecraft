@@ -201,6 +201,9 @@ class GuardPrivatePathsTests(unittest.TestCase):
             f"cat p.json | node scripts/ui_explore.mjs --url u --password-file={posix} --plan -",
             # A later segment cannot change what already ran.
             f'node scripts/ui_walk.mjs --password-file "{secret}" --url u; cd x',
+            # #4125: the app address from a scratchpad file, no substitution needed.
+            f'python scripts/prod_diagnostics.py --url-file /tmp/app-url.txt --password-file "{secret}" --section runtime',
+            f'node scripts/ui_walk.mjs --url-file /tmp/app-url.txt --password-file "{secret}" --out-dir /tmp/walk',
             # A reader of its output may run alongside (#4075 review).
             f'python scripts/prod_guards.py --url u --password-file "{secret}" 2>&1 | Select-Object -Last 5',
             f"node scripts/ui_walk.mjs --password-file {posix} --url u | tail -3 && cd x",

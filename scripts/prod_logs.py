@@ -1,7 +1,7 @@
 """Count warning and error log entries by event name; never print log text.
 
     python scripts/prod_logs.py --log-file <container log in the system temp directory> [--since ISO]
-    python scripts/prod_logs.py --url <app address> --password-file <secret file> [--since ISO]
+    python scripts/prod_logs.py {--url <app address> | --url-file <file>} --password-file <secret file> [--since ISO]
 
 The first form reads container logs saved from the Unraid MCP; the second the
 app's own redacted recent entries (`/api/logs`). Prints counts per level and
@@ -21,7 +21,7 @@ import sys
 from collections import Counter
 from typing import Any
 
-from prod_client import ProdError, Session, scratch_path
+from prod_client import ProdError, Session, app_url, scratch_path
 
 EVENT = re.compile(r"^[a-z][a-z0-9_.]{0,63}$")
 LEVEL = re.compile(r"\b(ERROR|WARNING|CRITICAL)\b")
@@ -152,7 +152,7 @@ def load(args: argparse.Namespace) -> list[dict[str, Any] | str]:
         except OSError:
             raise ProdError("cannot read the log file") from None
         return list(text.splitlines())
-    session = Session(args.url, args.ca_file)
+    session = Session(app_url(args.url, args.url_file) or "", args.ca_file)
     session.login(args.password_file)
     try:
         data = session.get_json("/api/logs?limit=500")
@@ -167,12 +167,13 @@ def main(argv: list[str] | None = None) -> int:
     source = parser.add_mutually_exclusive_group(required=True)
     source.add_argument("--log-file")
     source.add_argument("--url")
+    source.add_argument("--url-file")
     parser.add_argument("--password-file")
     parser.add_argument("--since", help="ISO time; older entries are skipped")
     parser.add_argument("--ca-file")
     args = parser.parse_args(argv)
-    if args.url and not args.password_file:
-        parser.error("--url needs --password-file")
+    if (args.url or args.url_file) and not args.password_file:
+        parser.error("--url or --url-file needs --password-file")
     try:
         summary = summarize(load(args), args.since)
     except ProdError as exc:

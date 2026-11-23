@@ -1,6 +1,6 @@
 """Check that production still refuses unauthenticated and CSRF-less requests.
 
-    python scripts/prod_guards.py --url <app address> --password-file <secret file>
+    python scripts/prod_guards.py {--url <app address> | --url-file <file>} --password-file <secret file>
         [--min-tls-days 14] [--ca-file ca.pem] [--require-current]
     python scripts/prod_guards.py --check-secret --password-file <secret file>
 
@@ -23,7 +23,7 @@ import sys
 import time
 from urllib.parse import urlsplit
 
-from prod_client import ProdError, Session, checkout_current, read_secret
+from prod_client import ProdError, Session, app_url, checkout_current, read_secret
 
 
 def check_secret(path: str) -> int:
@@ -60,6 +60,7 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     target = parser.add_mutually_exclusive_group(required=True)
     target.add_argument("--url")
+    target.add_argument("--url-file")
     # Only whether the secret file is readable and not empty; no request (#3768).
     target.add_argument("--check-secret", action="store_true")
     parser.add_argument("--password-file", required=True)
@@ -74,10 +75,11 @@ def main(argv: list[str] | None = None) -> int:
         return 2
     results: list[tuple[bool, str]] = []
     try:
-        anonymous = Session(args.url, args.ca_file)
+        url = app_url(args.url, args.url_file) or ""
+        anonymous = Session(url, args.ca_file)
         code = anonymous.status("GET", "/api/diagnostics")
         results.append((code == 401, f"no session -> {code} (expected 401)"))
-        session = Session(args.url, args.ca_file)
+        session = Session(url, args.ca_file)
         session.login(args.password_file)
         code = session.status("POST", "/api/logout", body={})
         results.append((code == 403, f"no CSRF token -> {code} (expected 403)"))

@@ -1073,6 +1073,29 @@ class ProdChecksTests(unittest.TestCase):
         self.assertEqual(code, 1)
         self.assertIn("FAIL no CSRF token -> 200", text)
 
+    def test_the_app_address_comes_from_url_or_url_file(self):
+        # #4125: --url-file keeps the address out of the command; it is never printed.
+        url_file = Path(self.tmp.name) / "app-url.txt"
+        url_file.write_text(f"  {self.url}\n", encoding="utf-8")
+        secret = ("--password-file", str(self.secret))
+        for module, extra in ((prod_guards, ()), (prod_diagnostics, ()), (prod_logs, ())):
+            with self.subTest(module=module.__name__):
+                code, text = self.run_main(module, "--url-file", str(url_file), *secret, *extra)
+                self.assertIn(code, (0, 1), text)
+                self.assertNotIn(self.url, text)
+        for content, why in (("", "one URL"), (f"{self.url}\n{self.url}\n", "one URL")):
+            url_file.write_text(content, encoding="utf-8")
+            code, text = self.run_main(prod_guards, "--url-file", str(url_file), *secret)
+            self.assertEqual(code, 2)
+            self.assertIn(why, text)
+            self.assertNotIn(self.url, text)
+        # A file outside the scratchpad is refused; --url and --url-file exclude each other.
+        with self.assertRaises(prod_client.ProdError):
+            prod_client.app_url(None, str(Path(prod_client.ROOT) / "app-url.txt"))
+        for module in (prod_guards, prod_diagnostics, prod_logs):
+            with self.subTest(module=module.__name__), self.assertRaises(SystemExit), redirect_stderr(io.StringIO()):
+                module.main(["--url", self.url, "--url-file", str(url_file), *secret])
+
     def test_check_secret_reads_only_the_file(self):
         # #3768: checked before a release dispatch, without any request (a
         # Session would fail the test); run_main checks the secret is not printed.
