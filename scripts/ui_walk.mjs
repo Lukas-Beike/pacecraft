@@ -264,7 +264,7 @@ export const STEPS = [
   { view: "plan", name: "Kalender: Schuh/Rad geplant", covers: "#3011 planned equipment chip", each: PLANNED, ...LATER, ready: '.planned-entry[open] .planned-equipment-chip[aria-label*=": "]', kind: "text", optional: true },
   { view: "plan", name: "Kalender: geplante Einheit", covers: "#2189 planned session", pre: ['button[aria-label="Nächste Woche"]'], each: PLANNED, ready: ".planned-entry[open] .planned-entry-details", kind: "text", optional: true, post: ['button[aria-label="Vorherige Woche"]'] },
   // Read-only: the walk checks that "Löschen" is there, it never presses it (#3027).
-  { view: "plan", name: "Kalender: Löschen", covers: "#3027 calendar delete, #3950 unit editor and archive", each: PLANNED, ...LATER, ready: ".planned-entry[open] .planned-activity-actions .danger-button", kind: "text", optional: true },
+  { view: "plan", name: "Kalender: Löschen", covers: "#3027 calendar delete", each: PLANNED, ...LATER, ready: ".planned-entry[open] .planned-activity-actions .danger-button", kind: "text", optional: true },
   { view: "plan", name: "Kalender: Verpflegung", covers: "#2921 fuelling", each: PLANNED, ...LATER, ready: ".planned-entry[open] .planned-fuelling", kind: "numbers", optional: true },
   // Only a planned running step test carries its precondition note, so the step is optional (#3833).
   { view: "plan", name: "Kalender: Stufentest geplant", covers: "#3833 running step test", each: ".planned-entry:is(.is-planned, .is-today)[data-sport='Laufen'] > summary", ...LATER, ready: ".planned-entry[open] [data-step-test-note]", kind: "text", optional: true },

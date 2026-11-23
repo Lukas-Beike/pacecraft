@@ -330,8 +330,8 @@ function renderUnitEditor(form, onSaved) {
   form.onsubmit = (event) => { event.preventDefault(); void saveUnitEditor(dialog, status, save, onSaved); };
 }
 
-// `kind` is "unit" or "library"; `entry` the unit or entry to change (none: a new one), `dateKey` the day a new
-// unit starts on; `onSaved(result, editor)` shows the receipt and reloads.
+// `kind` is "unit" (a planned unit, always with its `entry`: the calendar plans no new unit) or "library" (an entry to
+// change, or none for a new one); `onSaved(result, editor)` shows the receipt and reloads.
 function openUnitEditor({ kind, entry = null, dateKey = "", onSaved }) {
   const dialog = document.querySelector("#unitEditDialog");
   const form = dialog?.querySelector("form");
@@ -342,8 +342,8 @@ function openUnitEditor({ kind, entry = null, dateKey = "", onSaved }) {
   showAccessibleDialog(dialog);
 }
 
-// The form of a training plan (#3950): name, goal, period and status. Its units are planned one by one with the
-// unit editor, which offers the plan; the server keeps the plan's period at the days of its units.
+// The form of a training plan (#3950): name, goal, period and status. The server keeps the plan's period at
+// the days of its units.
 const PLAN_STATUSES = [["planned", "Geplant"], ["active", "Aktiv"], ["paused", "Pausiert"], ["completed", "Beendet"], ["cancelled", "Abgebrochen"]];
 
 function openPlanEditor({ plan = null, onSaved }) {
