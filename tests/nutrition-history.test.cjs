@@ -192,3 +192,12 @@ test("a Verlauf week row reads Woche ab with its Monday, the current one Diese W
   assert.equal(ctx.nutritionRunLabel({ start: "2026-02-01", end: "2026-02-09" }), "01.02–09.02");
   assert.equal(ctx.nutritionRunLabel({ start: "2026-02-01", end: "2026-02-01" }), "01.02");
 });
+
+// #4037 N-10: the diary's date names its weekday, today says so; a BLS meal names its source short.
+test("the diary date names its weekday and a BLS source its short name", () => {
+  const ctx = extractFunctions("nutrition.js", ["nutritionDayName", "nutritionFoodSource"]);
+  assert.equal(ctx.nutritionDayName("2026-11-23", "2026-11-23"), "Heute · Montag");
+  assert.equal(ctx.nutritionDayName("2026-11-22", "2026-11-23"), "Sonntag");
+  assert.equal(ctx.nutritionFoodSource("Max Rubner-Institut (2025): Bundeslebensmittelschlüssel (BLS), Version 4.0"), "BLS");
+  assert.equal(ctx.nutritionFoodSource("Open Food Facts"), "Open Food Facts");
+});

@@ -173,10 +173,15 @@ function setValueWithUnit(element, text) {
   return element;
 }
 
+// The full citation of the BLS stays in the stored basis; the card names it short (#4037).
+function nutritionFoodSource(source) {
+  return /Bundeslebensmittelschlüssel \(BLS\)/.test(source) ? "BLS" : source;
+}
+
 function nutritionBasisLabel(basis, sourceLabel) {
   if (basis?.kind === "composite") return "";
   if (basis?.kind === "database") {
-    return "Datenbankberechnung · " + basis.ingredients.map((food) => `${food.source}: ${food.name}, ${food.amount} ${food.unit} (Basis 100 ${food.basis_unit})`).join("; ");
+    return "Datenbankberechnung · " + basis.ingredients.map((food) => `${nutritionFoodSource(food.source)}: ${food.name}, ${food.amount} ${food.unit} (Basis 100 ${food.basis_unit})`).join("; ");
   }
   if (basis?.kind === "product" || basis?.kind === "local_product") {
     const product = basis.product || basis;
@@ -199,7 +204,7 @@ function nutritionComponentDetails(item) {
     h("ul", "nutrition-component-list", components.map((component) => h("li", null,
       h("strong", null, component.name || "Unbenannte Zutat"),
       h("span", null, ` · ${component.amount ?? "–"} ${component.unit || ""}`.trim()),
-      h("span", null, ` · ${nutritionNumber(component.kcal)} kcal · KH ${nutritionNumber(component.carbs_g, "g")} g · Protein ${nutritionNumber(component.protein_g, "g")} g · Fett ${nutritionNumber(component.fat_g, "g")} g`),
+      h("span", null, ` · ${nutritionNumber(component.kcal)} kcal · Kohlenhydrate ${nutritionNumber(component.carbs_g, "g")} g · Protein ${nutritionNumber(component.protein_g, "g")} g · Fett ${nutritionNumber(component.fat_g, "g")} g`),
       h("small", null, nutritionComponentSource(component.nutrition_basis, NUTRITION_SOURCE_LABELS[item.source]))))));
 }
 
@@ -258,7 +263,7 @@ function nutritionCard(item, template, sessions = []) {
     template ? title : h("div", "nutrition-card-head", title, nutritionEditButton(item)),
     template ? null : nutritionSessionBlock(item, sessions),
     h("p", null, item.description),
-    h("p", null, `${nutritionNumber(item.kcal)} kcal · KH ${nutritionNumber(item.carbs_g, "g")} g · Protein ${nutritionNumber(item.protein_g, "g")} g · Fett ${nutritionNumber(item.fat_g, "g")} g${template ? " / Portion" : ""}${volume}`),
+    h("p", null, `${nutritionNumber(item.kcal)} kcal · Kohlenhydrate ${nutritionNumber(item.carbs_g, "g")} g · Protein ${nutritionNumber(item.protein_g, "g")} g · Fett ${nutritionNumber(item.fat_g, "g")} g${template ? " / Portion" : ""}${volume}`),
     sourceText ? h("small", null, sourceText) : null);
   if (!template) card.append(...nutritionEntryActions(item));
   return card;
@@ -612,8 +617,15 @@ function nutritionCoachDraft(date, today) {
   return `Ich habe ${when} gegessen: `;
 }
 
+// "Heute · Montag" or "Montag": the diary's date names its weekday (#4037).
+function nutritionDayName(date, today) {
+  const weekday = new Intl.DateTimeFormat("de-DE", { weekday: "long", timeZone: "UTC" }).format(new Date(`${date}T12:00:00Z`));
+  return date === today ? `Heute · ${weekday}` : weekday;
+}
+
 function renderNutritionDay(day) {
   document.querySelector("#nutritionDate").value = day.date;
+  document.querySelector("#nutritionDateName").textContent = nutritionDayName(day.date, todayIso());
   const intake = nutritionIntakeKey(day);
   // Another day is read again by the energy card itself (#3395); only a changed intake of the
   // same day drops the read here, so a day switch starts one read, not two.
@@ -1156,7 +1168,7 @@ function nutritionProductCard(product, local) {
       h("h3", null, [product.brand, product.name].filter(Boolean).join(" · ") || "Unbenanntes Produkt"),
       nutritionUsageCount(product),
       local && product.id && product.local !== false ? nutritionFavoriteButton(product) : null),
-    h("p", null, `${kcalLabel} · KH ${nutritionNumber(product.carbs_g, "g")} g · Protein ${nutritionNumber(product.protein_g, "g")} g · Fett ${nutritionNumber(product.fat_g, "g")} g`),
+    h("p", null, `${kcalLabel} · Kohlenhydrate ${nutritionNumber(product.carbs_g, "g")} g · Protein ${nutritionNumber(product.protein_g, "g")} g · Fett ${nutritionNumber(product.fat_g, "g")} g`),
     h("div", "nutrition-product-marks",
       h("span", "nutrition-origin", nutritionOriginText(product)),
       nutritionLastUseText(product) ? h("span", "nutrition-last-use", nutritionLastUseText(product)) : null,

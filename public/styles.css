@@ -1774,6 +1774,7 @@ button:focus-visible, a:focus-visible, summary:focus-visible {
 
 .nutrition-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 20px 0; container-type: inline-size; }
 .nutrition-toolbar label { flex: 1; min-width: 0; }
+.nutrition-date-name { display: block; margin-bottom: 2px; color: var(--muted); font-size: .72rem; text-align: center; }
 /* rem follows the text size: a bigger text puts the day on its own row. */
 @container (max-width: 20rem) { .nutrition-toolbar label { flex: 1 1 100%; order: -1; } }
 .nutrition-toolbar input { width: 100%; text-align: center; font-weight: 650; }
