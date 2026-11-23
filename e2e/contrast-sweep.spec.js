@@ -217,6 +217,40 @@ async function waitForStableLayout(page) {
   }, STABLE_MS, { polling: 100, timeout: 15_000 });
 }
 
+// A node that straddles the edge of the viewport cannot be sampled where it lies (axe reports it overlapped or
+// obscured); scrolled to the middle of the screen it can. A few pixels of layout decide which nodes straddle (#4037).
+const STRADDLING = /overlapped by another element|partially obscured/;
+
+function undecidedNodes(results) {
+  return results.flatMap((result) => result.nodes.map((node) => ({
+    target: node.target.join(" "), message: node.any[0]?.message || result.help,
+    by: (node.any[0]?.relatedNodes || []).map((related) => related.target.join(" ")).join(", "),
+  })));
+}
+
+const isAccepted = ({ target, message }) => INCOMPLETE_ALLOWED.some((allowed) => allowed.target.test(target) && allowed.message.test(message));
+
+function contrastText(view, theme, node) {
+  const data = node.any.find((check) => check.id === "color-contrast")?.data || {};
+  return `${view} [${theme}] ${node.target.join(" ")}: ${data.contrastRatio} < ${data.expectedContrastRatio} (${data.fgColor} on ${data.bgColor}, ${data.fontSize}, ${data.fontWeight})`;
+}
+
+// Measures each straddling node again in the middle of the screen: what it then fails is a violation, what stays
+// undecided stays undecided.
+async function remeasureStraddling(page, view, theme, nodes) {
+  const open = [];
+  const failures = [];
+  for (const entry of nodes) {
+    if (!STRADDLING.test(entry.message) || isAccepted(entry)) { open.push(entry); continue; }
+    await page.locator(entry.target).first().evaluate((node) => node.scrollIntoView({ block: "center" }));
+    const again = await new AxeBuilder({ page }).withRules(["color-contrast"]).include(entry.target).analyze();
+    failures.push(...again.violations.flatMap((violation) => violation.nodes.map((node) => contrastText(view, theme, node))));
+    open.push(...undecidedNodes(again.incomplete));
+  }
+  await page.evaluate(() => window.scrollTo(0, 0));
+  return { open, failures };
+}
+
 async function expectContrast(page, view, theme, scopes = SCOPES) {
   await page.mouse.move(0, 0);
   await finishAnimations(page);
@@ -226,17 +260,12 @@ async function expectContrast(page, view, theme, scopes = SCOPES) {
   const { violations, incomplete, passes } = await builder.analyze();
   // A scope that matches nothing would pass without measuring anything.
   expect(passes.concat(violations).reduce((count, rule) => count + rule.nodes.length, 0), `${view} [${theme}]: no node measured`).toBeGreaterThan(0);
-  const failures = violations.flatMap((violation) => violation.nodes.map((node) => {
-    const data = node.any.find((check) => check.id === "color-contrast")?.data || {};
-    return `${view} [${theme}] ${node.target.join(" ")}: ${data.contrastRatio} < ${data.expectedContrastRatio} (${data.fgColor} on ${data.bgColor}, ${data.fontSize}, ${data.fontWeight})`;
-  }));
+  const remeasured = await remeasureStraddling(page, view, theme, undecidedNodes(incomplete));
+  const failures = [...violations.flatMap((violation) => violation.nodes.map((node) => contrastText(view, theme, node))), ...remeasured.failures];
   expect(failures, `colour contrast violations: ${failures.join(" | ")}`).toEqual([]);
   // The elements axe names as covering the node say what to fix.
-  const undecided = incomplete.flatMap((result) => result.nodes.map((node) => ({
-    target: node.target.join(" "), message: node.any[0]?.message || result.help,
-    by: (node.any[0]?.relatedNodes || []).map((related) => related.target.join(" ")).join(", "),
-  })))
-    .filter(({ target, message }) => !INCOMPLETE_ALLOWED.some((allowed) => allowed.target.test(target) && allowed.message.test(message)))
+  const undecided = remeasured.open
+    .filter((entry) => !isAccepted(entry))
     .map(({ target, message, by }) => `${view} [${theme}] ${target}: ${message}` + (by ? " (by " + by + ")" : ""));
   expect(undecided, `colour contrast axe could not decide: ${undecided.join(" | ")}`).toEqual([]);
 }
