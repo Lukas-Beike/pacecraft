@@ -52,7 +52,10 @@ HTTP_STATUS = re.compile(r"HTTP \d{3}")
 # family #3345 retries in release follow). A 4xx stays terminal, and so does any
 # write, which a 5xx may have applied already: it is never sent twice.
 TRANSIENT_GH = re.compile(
-    r"HTTP 5\d\d|No server is currently available|timed out|timeout", re.IGNORECASE
+    r"HTTP 5\d\d|No server is currently available|timed out|timeout"
+    # A dropped connection, as in a short network outage (#4059).
+    r"|error connecting to",
+    re.IGNORECASE,
 )
 GH_RETRY_SECONDS = 3
 GH_WRITE_FLAGS = frozenset(

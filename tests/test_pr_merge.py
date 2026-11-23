@@ -379,9 +379,16 @@ class PrMergeTests(unittest.TestCase):
         code, out, writes, _ = run(self, 7, "--wait", 5, views=views)
         self.assertEqual((code, writes[1:]), (0, []))
         self.assertIn("merged: 0123456789", out)
-        code, out, writes, _ = run(self, 7, "--wait", 1, views=[view(), *[DOWN] * 4])
+        # gh_cli reads a dropped connection once more itself: two answers a poll.
+        code, out, writes, _ = run(self, 7, "--wait", 1, views=[view(), *[DOWN] * 8])
         self.assertEqual((code, writes[1:]), (2, []))
         self.assertRegex(out, f"error: gh .* failed: {DOWN}")
+        # Said once, never after the last poll.
+        self.assertEqual(out.count("polling on"), 1)
+        # An error that is no blip (here an unreadable answer) ends the wait at once.
+        code, out, writes, _ = run(self, 7, "--wait", 5, views=[view(), "not json"])
+        self.assertEqual((code, writes[1:]), (2, []))
+        self.assertIn("invalid JSON", out)
 
     def test_wait_stops_on_close_failure_feedback_or_timeout(self):
         late = view(reviews=[{"body": "finding"}])

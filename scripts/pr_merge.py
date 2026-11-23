@@ -48,7 +48,7 @@ import time
 from collections.abc import Callable
 from typing import Any
 
-from gh_cli import CliError, gh, gh_json, git, positive_int
+from gh_cli import TRANSIENT_GH, CliError, gh, gh_json, git, positive_int
 from pr_state import base_overlap, check_outcome, unresolved_threads
 
 FIELDS = "state,baseRefName,headRefName,headRefOid,autoMergeRequest,mergeCommit,statusCheckRollup,comments,reviews,mergeStateStatus"
@@ -135,9 +135,8 @@ def gitar_verdict(sha: str) -> tuple[str, str]:
 
 def gitar_gate(sha: str, minutes: int) -> int | None:
     """None once Gitar's check passed on this head, else the exit code after
-    saying why: 1 for a failed check or no wait, 3 when the wait ended first,
-    2 when the last read failed. The lane rule arms only a head Gitar reviewed
-    (#3308)."""
+    saying why: 1 for a failed check or no wait, 3 when the wait ended first.
+    The lane rule arms only a head Gitar reviewed (#3308)."""
     polls = max(minutes, 0) * POLLS_PER_MINUTE + 1
     failed = ""
     for poll in range(polls):
@@ -145,7 +144,8 @@ def gitar_gate(sha: str, minutes: int) -> int | None:
             verdict, conclusion = gitar_verdict(sha)
             failed = ""
         except CliError as exc:
-            verdict, conclusion, failed = "pending", "", poll_failed(failed, exc)
+            failed = poll_failed(failed, exc, last=poll == polls - 1)
+            verdict, conclusion = "pending", ""
         if verdict == "passed":
             return None
         if verdict == "failing":
@@ -153,15 +153,16 @@ def gitar_gate(sha: str, minutes: int) -> int | None:
             return 1
         if poll < polls - 1:
             time.sleep(60 / POLLS_PER_MINUTE)
-    if failed:
-        raise CliError(failed)
     print(f"refused: Gitar has not reviewed {sha[:10]} yet; run again once it has")
     return 3 if minutes > 0 else 1
 
 
-def poll_failed(before: str, exc: CliError) -> str:
-    """A failed read inside a wait (a connection blip, #4059): said once, then
-    the next poll reads again; only a failed last poll ends the wait."""
+def poll_failed(before: str, exc: CliError, *, last: bool) -> str:
+    """A transient failed read inside a wait (a dropped connection, #4059) is
+    said once and read again at the next poll; any other error, or one in the
+    last poll, ends the wait."""
+    if last or not TRANSIENT_GH.search(exc.stderr or str(exc)):
+        raise exc
     if not before:
         print(f"a read failed, polling on: {exc}")
     return str(exc)
@@ -362,7 +363,7 @@ def wait(number: int, minutes: int, seen: int, rebased: str = "") -> int:
         try:
             pr = view(number)
         except CliError as exc:
-            failed = poll_failed(failed, exc)
+            failed = poll_failed(failed, exc, last=poll == polls - 1)
             continue
         failed = ""
         checks = [check_outcome(check) for check in pr.get("statusCheckRollup") or []]
@@ -375,8 +376,6 @@ def wait(number: int, minutes: int, seen: int, rebased: str = "") -> int:
             return 1
         # Once, after the first CI round finished: develop may have moved during it (#3872).
         rechecked = rechecked or ci_round_rebase(number, pr, checks, rebased)
-    if failed:
-        raise CliError(failed)
     print(f"PR #{number} still open after {minutes} min")
     return 3
 
