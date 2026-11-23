@@ -83,7 +83,8 @@ test("@responsive the calendar edits and archives a unit", async ({ page, reques
   });
   await page.getByRole("button", { name: "Nächste Woche" }).click();
   const entry = page.locator(".planned-entry", { hasText: "E2E Ausdauer" });
-  await entry.locator("summary").first().click();
+  // The wide layout opens its default entry itself: a click would close it again.
+  if (!(await entry.first().evaluate((node) => node.open))) await entry.locator("summary").first().click();
 
   await entry.getByRole("button", { name: "Bearbeiten" }).click();
   await expect(dialog.getByRole("heading", { name: "Einheit bearbeiten" })).toBeVisible();
