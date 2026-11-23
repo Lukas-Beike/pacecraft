@@ -684,9 +684,60 @@ class WorkflowSourceTests(unittest.TestCase):
             publish.index("create-github-app-token"),
         )
         self.assertIn(
-            r"allowed='^\.agents/skills/(\.openspec-target|openspec-[a-z0-9-]+/SKILL\.md)$'",
+            r"allowed='^(\.agents/skills/(\.openspec-target|openspec-[a-z0-9-]+/SKILL\.md)"
+            r"|tests/fixtures/quality_baseline\.json)$'",
             publish,
         )
+        # #4107: the regenerated skills' sizes go into the same PR, and the
+        # baseline may change in nothing else.
+        self.assertIn(
+            "python tools/quality_baseline.py --align-openspec-sizes", regenerate
+        )
+        self.assertLess(
+            regenerate.index("npm run openspec -- update"),
+            regenerate.index("--align-openspec-sizes"),
+        )
+        self.assertIn("beyond the generated skills' sizes", publish)
+        self.assertLess(
+            publish.index("beyond the generated skills' sizes"),
+            publish.index("create-github-app-token"),
+        )
+        check = textwrap.dedent(
+            publish.split("<<'PY'\n", 1)[1].split("\n          PY\n")[0]
+        )
+        skill = ".agents/skills/openspec-archive-change/SKILL.md"
+        before = {
+            "schema": 1,
+            "versions": {"ruff": "1"},
+            "instruction_lines": {"AGENTS.md": 9, skill: 221},
+        }
+        for changed, code in (
+            ({skill: 227}, 0),
+            ({"AGENTS.md": 10}, 1),
+            ({".agents/skills/pr/SKILL.md": 5}, 1),
+        ):
+            with self.subTest(changed=changed), tempfile.TemporaryDirectory() as folder:
+                path = Path(folder, "tests/fixtures/quality_baseline.json")
+                path.parent.mkdir(parents=True)
+                path.write_text(json.dumps(before), encoding="utf-8")
+                git = ["git", "-C", folder, "-c", "user.name=t", "-c", "user.email=t@t"]
+                subprocess.run([*git, "init", "-q"], check=True)
+                subprocess.run([*git, "add", "."], check=True)
+                subprocess.run([*git, "commit", "-qm", "base"], check=True)
+                after = {
+                    **before,
+                    "instruction_lines": {**before["instruction_lines"], **changed},
+                }
+                path.write_text(json.dumps(after), encoding="utf-8")
+                subprocess.run([*git, "add", "."], check=True)
+                done = subprocess.run(
+                    [sys.executable, "-c", check],
+                    cwd=folder,
+                    capture_output=True,
+                    text=True,
+                    check=False,
+                )
+                self.assertEqual(done.returncode, code, done.stderr)
         self.assertIn("core.hooksPath=/dev/null push", publish)
         self.assertIn("--base develop", workflow)
         self.assertIn("--auto --squash", workflow)

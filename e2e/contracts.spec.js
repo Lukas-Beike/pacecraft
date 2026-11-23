@@ -534,6 +534,10 @@ test("fresh service worker keeps the current shell available offline", async ({ 
 });
 
 test("plan overview deep link focuses and reveals today after loading", { tag: "@responsive" }, async ({ page }) => {
+  // Without a connected source the calendar is one empty state (#3936 G-13); the week needs one.
+  const projections = ["/api/bootstrap", "/api/performance"].map((path) => fixture.get(path));
+  const garmins = projections.map((projection) => projection.garmin);
+  projections.forEach((projection) => { projection.garmin = { ...projection.garmin, configured: true }; });
   await page.goto("/#plan/overview");
   await expect(page.locator("#appShell")).toBeVisible();
   await expect.poll(() => page.evaluate(() => state.loadPromise === null && state.loadedAreas.has("plan"))).toBe(true);
@@ -548,6 +552,7 @@ test("plan overview deep link focuses and reveals today after loading", { tag: "
   expect(position.top).toBeGreaterThanOrEqual(0);
   // One week is shown, so a late weekday sits lower only when the page cannot scroll further.
   expect(position.top < position.viewportHeight / 2 || position.atBottom).toBe(true);
+  projections.forEach((projection, index) => { projection.garmin = garmins[index]; });
 });
 
 test("current plan payload displays each requested sport exactly", async ({ page }) => {

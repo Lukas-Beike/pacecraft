@@ -100,6 +100,7 @@ class AppContext:
     planning: Any = None
     planning_workflows: Any = None
     plan_guard: Any = None
+    sync_commands: Any = None
     performance: Any = None
     nutrition: Any = None
     provider_sync: Any = None

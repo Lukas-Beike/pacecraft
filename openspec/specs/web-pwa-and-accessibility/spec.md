@@ -377,6 +377,10 @@ The client SHALL present domain-provided planning, performance, activity, and eq
 - **WHEN** the athlete taps "Bearbeiten" or "Archivieren" on an opened planned unit (a new unit is planned from the Bibliothek with "Einplanen"; the calendar has no add button)
 - **THEN** "Bearbeiten" opens the unit editor (a dialog: sport, name, day and time, "Art der Einheit", target, the steps of an endurance unit as rows of minutes and zone or percent with "+ Schritt" and "+ Wiederholung" and the computed duration, or the exercises of a strength unit) and saves through the Coach's change batch with `POST /api/planned-units/{id}/update` (with the unit's content hash); the card shows "Gespeichert: <Name>" with "Rückgängig"; an illness check offers "Trotzdem speichern" (`accept_plan_findings`); "Archivieren" posts `confirmed` to `.../{id}/archive` at once and the day shows "Archiviert: <Name>" with "Rückgängig"; a workout text the rows cannot show opens as text; nothing is written remotely.
 
+#### Scenario: Apply a shown replan preview
+- **WHEN** a stored adaptive preview with changes exists
+- **THEN** a card "Plananpassung" above the week lists each changed unit with its day and before and after ("Grundlage 60 min → 40 min") and, for an illness pause, that applying records today's check-in as ill; "Übernehmen" posts `confirmed` and the preview id to `POST /api/planning/replan/apply`, the Coach's local apply under the plan checks (an illness check offers "Trotzdem übernehmen"), and the receipt "Angepasst: n Einheiten" offers "Rückgängig" for all changes at once (`POST /api/change-history/undo-batch`); "Verwerfen" hides it until a newer preview; nothing is written remotely, the Intervals.icu entry of an illness pause stays with the named sync.
+
 #### Scenario: Planned steps as a list
 - **WHEN** the athlete opens a planned unit whose workout has structured steps
 - **THEN** the pane lists one row per step with its zone colour mark, duration or distance, zone, and the target range right-aligned ("110–128 bpm", "≤ 109 bpm", pace in min/km) from the zones in effect on the unit's day; a step without a range shows none; the description keeps only its free text, and the stored workout text and its export stay unchanged.
@@ -441,6 +445,7 @@ Evidence:
 - `e2e/calendar-detail-pane.spec.js::@responsive Löschen acts at once, deletes a planned unit and Rückgängig brings it back`
 - `e2e/calendar-detail-pane.spec.js::@responsive Mit Coach besprechen puts the planned unit into the Coach field without sending`
 - `e2e/unit-editor.spec.js::@responsive the calendar edits and archives a unit`
+- `e2e/unit-editor.spec.js::@responsive the calendar applies a shown replan preview and Rückgängig takes it back as one batch`
 - `e2e/calendar-detail-pane.spec.js::@responsive Verschieben moves a planned unit to a tapped day and Rückgängig puts it back`
 - `e2e/calendar-week-compact.spec.js::@responsive compact calendar week shows one week, groups repeats and keeps one conflict style`
 - `e2e/calendar-week-compact.spec.js::@responsive the Monat switch shows the month grid and the calendar returns to the week`

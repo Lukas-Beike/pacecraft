@@ -471,6 +471,43 @@ class GuardHookTests(unittest.TestCase):
             'cat"" scripts/r*.py',
             "j'ython' scripts/r*.py 1 PRRT_abc",
             "uni'x' scripts/r*.py",
+            # #3982 advisor: a heredoc named like an inert program, whose body's
+            # lone quote pairs across lines in this reading.
+            (
+                "cat <<true\necho '\ntrue\npython scripts/resolve_review_threa?.py 1 PRRT_x\n"
+                "cat <<true\necho '\ntrue"
+            ),
+            # #3982: a single-quoted inside is read literally, nothing else is.
+            "grep 'x’ ; python scripts/r*.py 1 PRRT_x ; grep ‘y' f",
+            "grep $'\\x27' f; python scripts/r*.py 1 PRRT_x; grep $'\\x27' f",
+            'grep "\'" f; python scripts/r*.py 1 PRRT_x; grep "\'" f',
+            # A single-quoted run glued to a word keeps its inside read (fuzz).
+            "cat scripts/RESOLV~1.p'\\'y",
+            "echo 'a\\' ; python scripts/r*.py 1 PRRT_x ; echo '\\'",
+            'echo "x\\" \'y" ; python scripts/r*.py 1 PRRT_x ; echo "\' z"',
+            "grep '\r' f\rpython scripts/r*.py 1 PRRT_x",
+            # sed only as `sed -n 'N[,M]p'` with plain non-option words after it.
+            "sed -n '1p' -e 'e python scripts/r*.py 1 PRRT_x' f",
+            "sed -n '1p' --expression='e python scripts/r*.py' f",
+            "sed -ni '1p' f; python scripts/r*.py 1 PRRT_x",
+            "sed -n '1p;e python scripts/r*.py 1 PRRT_x' f",
+            "sed -n '1p' 'f' ; python scripts/r*.py 1 PRRT_x",
+            "sed -n '1p' f; python scripts/r*.py 1 PRRT_x",
+            "sed -n '1p' f\x00sed scripts/r*.py",
+            # #3982 bypass review: a glob in sed's files can expand to an option.
+            "sed -n '1p' scripts/r*.py",
+            # #4091 gate: a sed shape that is a redirection's target starts no command.
+            "> sed -n '5p' ls scripts/r*.py",
+            "ls x 2> sed -n '5p' scripts/r*.py",
+            "< sed -n '5p' ls scripts/r*.py",
+            "touch -- '--expression=1e python scripts/r*.py 1 PRRT_x' a; sed -n '1p' *",
+            # Quote marks the shells do not read as ours: fullwidth ones NFKC
+            # turns into quotes, and PowerShell's low-9 and reversed ones.
+            "echo ＇a ; python scripts/r*.py 1 PRRT_x ; echo b＇",
+            "echo ＂x ; python scripts/RESOLV~1.PY 1 PRRT_x ; echo y＂",
+            "echo 'a‚ ; python scripts/RESOLV~1.PY 1 PRRT_x ; echo ‚b'",
+            "echo 'a‛ ; python scripts/RESOLV~1.PY 1 PRRT_x ; echo „b'",
+            "echo a python scripts/RESOLV~1.PY 1 PRRT_x",
         ):
             with self.subTest(command):
                 self.assertEqual(self.decide(command), 2)
@@ -522,6 +559,10 @@ class GuardHookTests(unittest.TestCase):
             "ls */*.py",
             'gh run list -q \'.[] | .name+" "+(.conclusion//"-")\'',
             "echo '" + "[" * 4000 + "]'",
+            # #3982: quoted grep patterns and a printed line range are no paths.
+            "sed -n '10,40p' backend/performance/threshold_staleness.py | grep -n '\"[a-z_]*\":'",
+            "grep -n 'within the weeks ahead.\\s*$' docs/features.md",
+            "sed -n '1,80p' test.log | grep -v '^\\s*\\^*$\\|~~~'",
         ):
             with self.subTest(command):
                 self.assertEqual(self.decide(command), 0)

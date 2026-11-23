@@ -273,13 +273,24 @@ class StructuredTrainingPlanReplacementService:
         return created
 
     def replace(
-        self, arguments: dict[str, Any], *, selected_plan_id: str | None = None
+        self,
+        arguments: dict[str, Any],
+        *,
+        selected_plan_id: str | None = None,
+        keep_plan: bool = False,
     ) -> dict[str, Any]:
+        """Swap units for new ones; ``keep_plan`` puts the new ones into the selected plan.
+
+        The Coach replaces a whole plan by a new one; the athlete's "Zeitraum ersetzen"
+        changes one period and the plan stays what it is (#4024).
+        """
         payload, expected_revision, workouts, plan_name, today, period = (
             replacement.prepare_structured_plan_replacement(
                 arguments, today=self._today()
             )
         )
+        if keep_plan:
+            replacement.validate_period_from_today(period, today)
         with self._database_manager.unit_of_work() as db:
             current_revision = self._planning_state_repository.read(db)
             if expected_revision != current_revision:
@@ -297,10 +308,18 @@ class StructuredTrainingPlanReplacementService:
             self._validate_calendar(workouts, ignored_calendar_ids)
             now = self._now()
             self._archive_entries(db, existing_entries, now)
+            keep = keep_plan and bool(selected_plan_id)
+            if keep:
+                superseded_plan_ids.discard(str(selected_plan_id))
             self._archive_superseded_plans(db, superseded_plan_ids, now)
             replacement_payload = {**payload, "workouts": workouts}
-            plan_id = self._create_plan(db, replacement_payload, plan_name, now)
-            self._copy_constraints(db, arguments, plan_id, superseded_plan_ids)
+            plan_id = (
+                str(selected_plan_id)
+                if keep
+                else self._create_plan(db, replacement_payload, plan_name, now)
+            )
+            if not keep:
+                self._copy_constraints(db, arguments, plan_id, superseded_plan_ids)
             created = self._create_units(db, workouts, plan_id, plan_name)
             if rows or created or plan_id:
                 self._revision_service.bump(db)

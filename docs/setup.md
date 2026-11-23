@@ -147,7 +147,7 @@ Intervals.icu, OpenAI, Claude (Anthropic), Garmin Personal API key (with its exp
 | Open-Meteo | Forecast for fixed public coordinates | Needs no key; never sends the profile location. |
 | Yazio | Authentication only | See below. |
 
-The shared calendar and Open Food Facts have no check: a calendar check would be the full feed fetch, which "Synchronisieren" already performs, and Open Food Facts needs no credentials.
+The shared calendar takes its private ICS address in its card (a stored address wins over `CALENDAR_ICAL_URL` and is never shown again); without one, "Synchronisieren" stays disabled and the card says to save an address. The shared calendar and Open Food Facts have no check: a calendar check would be the full feed fetch, which "Synchronisieren" already performs, and Open Food Facts needs no credentials.
 
 ## Garmin Authentication & MFA Setup
 

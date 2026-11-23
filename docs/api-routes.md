@@ -57,6 +57,7 @@ handler's docstring. Regenerate it with
 | PUT | `/api/body/weight/remove` | Session + CSRF | before access | Remove the entered weight of one day. |
 | GET | `/api/bootstrap` | Session | no | Initial authenticated client state. |
 | POST | `/api/change-history/undo` | Session + CSRF | after access | Apply an undo from the change history. |
+| POST | `/api/change-history/undo-batch` | Session + CSRF | after access | Undo the changes of one write together, as a period replacement returns them. |
 | POST | `/api/change-history/undo-turn` | Session + CSRF | after access | Undo every tracked write of one Coach turn. |
 | POST | `/api/chat/cancel` | Session + CSRF | no | Cancel running Coach work of this session. |
 | GET | `/api/chat/history` | Session | no | Coach conversation history page, optionally searched. |
@@ -142,6 +143,7 @@ handler's docstring. Regenerate it with
 | POST | `/api/planned-units/{id}/focus` | Session + CSRF | after access | Set or clear the focus of a planned unit without a remote write. |
 | POST | `/api/planned-units/{id}/garmin-exercise` | Session + CSRF | after access | Assign the Garmin catalogue exercise of one strength exercise of a unit. |
 | POST | `/api/planned-units/{id}/update` | Session + CSRF | after access | Change a unit's content or day without a remote write. |
+| POST | `/api/planning/replan/apply` | Session + CSRF | after access | Apply the shown preview to future local units; nothing is written remotely. |
 | GET | `/api/privacy/backup` | Session | no | Download the encrypted database backup. |
 | POST | `/api/privacy/delete` | Session + CSRF | after access | Delete the local athlete data after the typed confirmation (`confirm`). |
 | GET | `/api/privacy/delete/preview` | Session | no | Preview of the local data deletion. |
@@ -172,6 +174,7 @@ handler's docstring. Regenerate it with
 | GET | `/api/sync/status` | Session | no | Synchronization status. |
 | POST | `/api/training-plans` | Session + CSRF | after access | Save a new local plan without units. |
 | POST | `/api/training-plans/{id}/delete` | Session + CSRF | after access | Delete a plan's metadata after the athlete confirmed it; its units stay. |
+| POST | `/api/training-plans/{id}/replace` | Session + CSRF | after access | Swap the plan's units of a period for new ones, as the Coach's plan replacement (#4024). |
 | POST | `/api/training-plans/{id}/update` | Session + CSRF | after access | Change a plan's name, goal, dates or status; its units stay as they are. |
 | GET | `/api/wahoo/callback` | Public | no | Wahoo OAuth redirect target; answers 302 to the app. |
 | POST | `/api/wahoo/connect` | Session + CSRF | after access | Start the Wahoo OAuth connection or disconnect Wahoo. |
@@ -655,6 +658,17 @@ werden."; 400 "Ein Export an einen Anbieter lässt sich nicht zurücknehmen.";
 400 "Diese Änderung lässt sich nicht mehr zurücknehmen."; 409 "Die lokale
 Änderung wurde inzwischen weiter geändert; Undo wurde abgebrochen."; 400
 "Unbekannte lokale Änderung.".
+
+### `POST /api/change-history/undo-batch`
+
+Request: JSON body `{"changes": [{"id": string, "after_hash": string}]}`, 1
+to 400 entries as the write's response listed them.
+
+Response: 200 `{"status": "undone", "count", "remote_untouched": true}`. All
+changes are restored in one transaction or none.
+
+Errors: 400 "Ungültige Änderungsliste."; the errors of the single undo for a
+change that is gone or was edited since (409, nothing is restored).
 
 ### `POST /api/change-history/undo-turn`
 
@@ -2001,6 +2015,23 @@ Errors: as the create route; 409 `planning_revision_conflict` for a
 missing hash; 409 `payload_hash_conflict` for an outdated hash or an
 unknown id.
 
+### `POST /api/planning/replan/apply`
+
+Request: JSON body `{"adjustment_id": string, "confirmed": true,
+"accept_plan_findings": [string]}` (the codes of blocking plan checks the
+athlete accepts, `illness_hard`). During an illness pause applying also
+records today's check-in as ill; the Intervals.icu entry of the pause goes
+only with the athlete's named sync.
+
+Response: 200 `{"status", "id", "updated", "updated_checkins", "stale",
+"illness_pause", "planning", "plan_check_notes", "changes"}`; `changes` is
+one undo batch for `POST /api/change-history/undo-batch`.
+
+Errors: 409 `confirmation_required` without `confirmed: true`; 409
+`preview_outdated` when a newer preview replaced it; 409 `illness_hard` for
+a hard or long unit within days of a reported illness; 400 for an id that
+is no UUID; 404 "Plananpassung nicht gefunden.".
+
 ### `GET /api/privacy/backup`
 
 Request: no body.
@@ -2314,7 +2345,9 @@ strings (stored after trimming, at most 4096 characters, no control
 characters) or `null` / a blank string (clears the value stored in the app,
 so the environment value applies again). Fields: `openai_api_key`,
 `anthropic_api_key`, `intervals_api_key`, `garmin_personal_api_key`,
-`wahoo_client_secret`, `yazio_password`, `openai_base_url`,
+`wahoo_client_secret`, `yazio_password`, `calendar_ical_url` (the shared
+calendar's private ICS address: HTTPS, no user or password, no local host;
+it takes the place of the `CALENDAR_ICAL_URL` setting), `openai_base_url`,
 `anthropic_base_url` (HTTPS, or HTTP on loopback), `intervals_athlete_id`,
 `wahoo_client_id`, `garmin_personal_api_key_expires` (`YYYY-MM-DD`; changing
 the key without it clears the stored date), `garmin_email`, `yazio_email`.
@@ -2341,7 +2374,8 @@ Errors: 403 "Das App-Passwort fehlt oder ist falsch. Es wurde nichts
 geändert." when `app_password` is missing or wrong for a field above; 400
 "Unbekanntes Zugangsdatenfeld."; 400 "Ungültiger Wert für {field}." for a
 non-string value, an over-long one or one with control characters; 400
-"Ungültiges Ablaufdatum."; 400 "OPENAI_BASE_URL muss HTTPS oder HTTP auf
+"Ungültiges Ablaufdatum."; 400 "Die Kalenderadresse muss eine HTTPS-URL ohne
+Zugangsdaten sein." (also for a local host or a bad port); 400 "OPENAI_BASE_URL muss HTTPS oder HTTP auf
 Loopback verwenden." (`ANTHROPIC_BASE_URL` for the other field).
 
 ### `PUT /api/settings/model`
@@ -2470,6 +2504,23 @@ Response: 200 `{"status": "deleted", "plan_id", "change"}`.
 Errors: 409 `confirmation_required` "Das Löschen muss bestätigt werden."
 without `confirmed: true`; 400 for an id that is no UUID; 404
 "Trainingsplan nicht gefunden.".
+
+### `POST /api/training-plans/{id}/replace`
+
+Request: path `{id}`; JSON body `{"start", "end"}` (the period, today or
+later), `"replaced_ids"` (the ids of the units the athlete saw listed),
+`"workouts"` (the new units with the fields of `POST /api/library`),
+`"accept_plan_findings"` and `"confirmed": true`. One transaction; the
+replaced units stay in the local history; nothing is written remotely.
+
+Response: 200 `{"status": "replaced", "archived_count", "created_count",
+"plan_id", "plan_check_notes", "change"}`.
+
+Errors: 409 `confirmation_required` "Das Ersetzen muss bestätigt werden."
+without `confirmed: true`; 409 `period_changed` when the period holds other
+units now; 409 `plan_not_available` for an archived plan; 409
+`plan_date_conflict` for a day the calendar rules out; 400 for no new unit,
+a unit before today or outside the period.
 
 ### `POST /api/training-plans/{id}/update`
 

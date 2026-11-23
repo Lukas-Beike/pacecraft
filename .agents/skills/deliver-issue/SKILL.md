@@ -66,9 +66,9 @@ goes through AskUserQuestion in plain language, recommendation first; method
 questions give the derivation first. Each question asks one decision and every
 option answers only that decision; independent choices are separate questions
 in the same call (at most four per call, the rest in a further call; #2958).
-Design and UI questions come only with
-rendered mockups. When a request is unclear or differs from an earlier recorded
-decision (issue comments, epic, docs), ask before acting.
+Design and UI questions come only with rendered mockups. Re-read the issue comments
+before a design or remote-write question (#4046); a request that is unclear or differs
+from a recorded decision (issue comments, epic, docs) is asked about before acting.
 
 When an orchestrator coordinates the run: ask it for the `AGENTS.md` turn before
 touching that file, follow its hold on a red `develop`, and report each closed

@@ -239,7 +239,7 @@ DATA_DIR = Path(os.environ.get("DATA_DIR", ROOT / "data"))
 DB_PATH = DATA_DIR / "intervals-coach.db"
 LOG_PATH = DATA_DIR / "intervals-coach.log"
 APP_NAME = "Pacecraft · AI Coach"
-APP_VERSION = "2.2.21"
+APP_VERSION = "2.2.22"
 MAX_BODY_BYTES = 1_000_000
 COACH_CONVERSATION_GATE = CoachConversationGate()
 
@@ -764,6 +764,7 @@ SYNC_COMMANDS = build_sync_commands(
     after_refresh=DERIVED_PASS_HOOK,
     training_change_limit=coach_limits.COACH_TRAINING_CHANGE_LIMIT,
 )
+APP.sync_commands = SYNC_COMMANDS
 
 
 CHAT_PAGE_MAX = 100

@@ -127,6 +127,7 @@ expression. Other inline status lines are not listed.
 | `plannedWeekReview` | `createLoadingState` | Wochenrückblick wird geladen… |  |
 | `weekReviewFailed` | `h(.empty)` | Wochenrückblick gerade nicht verfügbar |  |
 | `retryWeekReview` | `createLoadingState` | Wochenrückblick wird geladen… |  |
+| `plannedNoSourceState` | `createEmptyState` | Noch keine Aktivitäten | Verbinde Garmin oder Wahoo, dann erscheinen deine Einheiten hier. |
 | `renderLibrary` | `h(.context-empty)` | Noch keine Einheiten in der Bibliothek. Der Coach legt hier Einheiten ab, wenn du sie planst. |  |
 | `renderCompetitions` | `h(.context-empty)` | Noch keine Wettkämpfe gespeichert. |  |
 <!-- END GENERATED STATES -->

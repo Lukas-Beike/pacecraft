@@ -10,6 +10,7 @@ const CREDENTIAL_FORMS = Object.freeze({
   garmin_personal: Object.freeze(["garmin_personal_api_key", "garmin_personal_api_key_expires"]),
   wahoo: Object.freeze(["wahoo_client_id", "wahoo_client_secret"]),
   yazio: Object.freeze(["yazio_email", "yazio_password"]),
+  calendar: Object.freeze(["calendar_ical_url"]),
 });
 
 // Setting one of these needs the APP_PASSWORD again; the password is sent once with the
@@ -29,6 +30,7 @@ const CREDENTIAL_FIELD_LABELS = Object.freeze({
   wahoo_client_secret: "Wahoo-Client-Secret",
   yazio_email: "Yazio-E-Mail",
   yazio_password: ["Yazio", "Passwort"].join("-"),
+  calendar_ical_url: "Kalender-Adresse",
 });
 
 // Non-secret values the server echoes back; they are shown as the current value.

@@ -547,6 +547,15 @@
                   <small id="externalCalendarConnectionDetail"></small>
                   <div id="freshness-calendar" class="provider-freshness-list" aria-live="polite"></div>
                 </div>
+                <form id="cred-form-calendar" class="credential-form" autocomplete="off" aria-label="Kalender-Adresse">
+                  <div class="credential-row">
+                    <div class="credential-row-head"><label for="cred-calendar_ical_url">Kalender-Adresse (ICS)</label><span id="cred-source-calendar_ical_url" class="credential-source">Status wird geprüft…</span></div>
+                    <input id="cred-calendar_ical_url" type="url" autocomplete="off" spellcheck="false" placeholder="https://…/privat.ics">
+                    <button id="cred-clear-calendar_ical_url" class="secondary-button danger-button credential-clear" type="button" hidden>Entfernen</button>
+                  </div>
+                  <p id="cred-error-calendar" class="credential-error" role="alert" hidden></p>
+                  <button id="cred-submit-calendar" class="secondary-button" type="submit">Speichern</button>
+                </form>
                 <div class="connection-actions"><button id="externalCalendarSyncButton" class="secondary-button" type="button">Synchronisieren</button></div>
               </div>
             </details>
@@ -610,10 +619,8 @@
         <details class="settings-section collapsible-section" data-more-segment-panel="coach">
           <summary class="collapsible-summary"><span class="collapsible-summary-title">Verbrauch</span><span id="usageSummary" class="collapsible-summary-meta">Verbrauch wird geladen…</span></summary>
           <dl class="usage-stats">
-            <div><dt>Anfragen</dt><dd id="usageRequests">–</dd></div>
             <div><dt>Eingabe-Tokens</dt><dd id="usageInputTokens">–</dd></div>
             <div><dt>Ausgabe-Tokens</dt><dd id="usageOutputTokens">–</dd></div>
-            <div><dt>Gesamt-Tokens</dt><dd id="usageTotalTokens">–</dd></div>
           </dl>
           <dl class="usage-details">
             <div><dt>Restkontingent Anfragen</dt><dd id="usageRemainingRequests">–</dd></div>

@@ -108,9 +108,9 @@ athlete decision 2026-11-17).
   lane to hold merges in the failing area until it is green again, and hold the
   lane that caused it to its fix forward or revert PR within 30 minutes (the pr
   workflow's revert-or-fix rule, #2636).
-- **Go and hold messages:** send a "go" or a merge hold to a lane that is
-  working as a steer into its running turn, not as a message queued behind it
-  (#2735).
+- **Go, hold and decision messages:** send them to a working lane as a steer into
+  its running turn; after a send that was queued, the next one repeats the decision
+  in full, never by reference (#2735, #4046).
 
 ## Athlete questions
 

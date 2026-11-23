@@ -224,7 +224,7 @@ class PrMergeTests(unittest.TestCase):
                        "completedAt": ci_done}]  # fmt: skip
             if gitar:
                 rollup.append({"__typename": "CheckRun", "name": "Gitar", **gitar})
-            return {"number": number, "statusCheckRollup": rollup}
+            return {"number": number, "state": "OPEN", "statusCheckRollup": rollup}
 
         reviewed = {"status": "COMPLETED", "completedAt": "2026-11-23T05:22:00Z"}
         stuck = {"status": "IN_PROGRESS", "completedAt": None}
@@ -239,6 +239,15 @@ class PrMergeTests(unittest.TestCase):
              "Gitar silent repo-wide since 2026-11-23T05:22:00Z: #1, #2 wait over 60 min"),
             # One silent head is that PR's matter, not an outage.
             ([head(1, "2026-11-23T05:30:00Z"), head(3, "2026-11-23T05:00:00Z", reviewed)], ""),
+            # A Gitar run that finished within the hour, on an open or a merged
+            # PR, means Gitar works; only the waiting PRs hang (false alarm 2026-11-23).
+            ([head(1, "2026-11-23T05:30:00Z"), head(2, "2026-11-23T05:40:00Z"),
+              head(3, "2026-11-23T06:10:00Z", {"status": "COMPLETED", "completedAt": "2026-11-23T06:33:00Z"})], ""),
+            ([head(1, "2026-11-23T05:30:00Z"), head(2, "2026-11-23T05:40:00Z"),
+              {**head(3, "2026-11-23T06:10:00Z", {"status": "COMPLETED", "completedAt": "2026-11-23T06:33:00Z"}),
+               "state": "MERGED"}], ""),
+            # A merged PR is never a waiting one.
+            ([head(1, "2026-11-23T05:30:00Z"), {**head(2, "2026-11-23T05:40:00Z"), "state": "MERGED"}], ""),
             # Bot PRs and drafts never get Gitar's check: no outage from them.
             ([{**head(4, "2026-11-23T05:30:00Z"), "author": {"is_bot": True}},
               {**head(5, "2026-11-23T05:30:00Z"), "isDraft": True},

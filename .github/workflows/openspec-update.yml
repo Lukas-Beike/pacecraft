@@ -36,6 +36,14 @@ jobs:
         run: bash .github/scripts/npm_ci_retry.sh
       - name: Regenerate OpenSpec skills
         run: npm run openspec -- update
+      - name: Set up Python
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: '3.14'
+      # The size ratchet records each instruction file's lines; the regenerated
+      # skills' sizes go into the same PR, nothing else (#4107).
+      - name: Record the regenerated skills' size
+        run: python tools/quality_baseline.py --align-openspec-sizes
       - name: Collect generated changes
         id: diff
         shell: bash
@@ -83,7 +91,7 @@ jobs:
           PATCH: ${{ runner.temp }}/openspec-update/openspec-update.patch
         run: |
           set -euo pipefail
-          allowed='^\.agents/skills/(\.openspec-target|openspec-[a-z0-9-]+/SKILL\.md)$'
+          allowed='^(\.agents/skills/(\.openspec-target|openspec-[a-z0-9-]+/SKILL\.md)|tests/fixtures/quality_baseline\.json)$'
           outside="$(git apply --numstat -z "$PATCH" | tr '\0' '\n' | cut -f3 | grep -Ev "$allowed" | grep -v '^$' || true)"
           if [[ -n "$outside" ]]; then
             echo "openspec update changed files outside the generated skills:" >&2
@@ -95,6 +103,20 @@ jobs:
             exit 1
           fi
           git apply --index "$PATCH"
+          # The baseline may change only in the generated skills' sizes (#4107).
+          python3 - <<'PY'
+          import json, re, subprocess
+          path = "tests/fixtures/quality_baseline.json"
+          def read(ref):
+              shown = subprocess.run(["git", "show", f"{ref}:{path}"], capture_output=True, text=True, check=True)
+              return json.loads(shown.stdout)
+          skill = re.compile(r"\.agents/skills/openspec-[a-z0-9-]+/SKILL\.md")
+          def kept(data):
+              sizes = {key: value for key, value in data["instruction_lines"].items() if not skill.fullmatch(key)}
+              return {**{key: value for key, value in data.items() if key != "instruction_lines"}, "sizes": sizes}
+          if kept(read("HEAD")) != kept(read("")):
+              raise SystemExit("openspec update changed the quality baseline beyond the generated skills' sizes")
+          PY
       - name: Create release GitHub App token
         id: app
         uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.0.0

@@ -190,9 +190,29 @@ async function expectTouchTargets(page, view) {
 }
 
 // Fails with the view, the theme and every failing node with its measured and expected contrast.
+// #4108: a late status notice (or a text loading line) can move the view while axe samples a backdrop; the scan
+// starts once the active panel's place and size and the page height stayed unchanged for STABLE_MS.
+const STABLE_MS = 400;
+async function waitForStableLayout(page) {
+  // Each scan measures afresh: a key left by an earlier view must not count as stable time.
+  await page.evaluate(() => { delete globalThis.__contrastLayout; });
+  await page.waitForFunction((stableMs) => {
+    const panel = document.querySelector(".panel.active");
+    if (!panel) return false;
+    const box = panel.getBoundingClientRect();
+    const key = [box.top, box.height, document.documentElement.scrollHeight].map(Math.round).join(":");
+    const loading = [...panel.querySelectorAll("p, div, span, small")].some((node) => !node.children.length && node.textContent.trim().endsWith("wird geladen…") && node.checkVisibility());
+    const last = globalThis.__contrastLayout;
+    const since = last?.key === key && !loading ? last.since : performance.now();
+    globalThis.__contrastLayout = { key, since };
+    return performance.now() - since >= stableMs;
+  }, STABLE_MS, { polling: 100, timeout: 15_000 });
+}
+
 async function expectContrast(page, view, theme, scopes = SCOPES) {
   await page.mouse.move(0, 0);
   await finishAnimations(page);
+  await waitForStableLayout(page);
   const builder = new AxeBuilder({ page }).withRules(["color-contrast"]);
   for (const scope of scopes) builder.include(scope);
   const { violations, incomplete, passes } = await builder.analyze();

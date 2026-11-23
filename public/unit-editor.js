@@ -160,6 +160,12 @@ async function saveUnitEditor(dialog, status, save, onSaved) {
   const body = unitEditorBody(editor);
   status.textContent = unitEditorProblem(editor, body);
   if (status.textContent) return;
+  if (editor.collect) {
+    // A unit of a period replacement is kept by the caller and saved with the whole replacement.
+    dialog.close();
+    await onSaved(body, editor);
+    return;
+  }
   if (editor.kind === "unit" && editor.entry) body.expected_payload_hash = editor.entry.payload_hash;
   if (editor.accept) body.accept_plan_findings = ["illness_hard"];
   save.disabled = true;
@@ -288,7 +294,7 @@ function renderUnitEditor(form, onSaved) {
     // A past unit keeps its own day as the earliest choice, so a rename saves.
     const today = timezoneDateKey(state.data?.profile?.timezone, new Date());
     const own = String(editor.entry?.date || "").slice(0, 10);
-    const date = h("input", { type: "date", required: true, value: editor.date, min: own && own < today ? own : today });
+    const date = h("input", { type: "date", required: true, value: editor.date, min: editor.range?.[0] || (own && own < today ? own : today), max: editor.range?.[1] });
     date.addEventListener("input", () => { editor.date = date.value; });
     const time = h("input", { type: "time", value: editor.time });
     time.addEventListener("input", () => { editor.time = time.value; });
@@ -332,13 +338,15 @@ function renderUnitEditor(form, onSaved) {
 
 // `kind` is "unit" (a planned unit, always with its `entry`: the calendar plans no new unit) or "library" (an entry to
 // change, or none for a new one); `onSaved(result, editor)` shows the receipt and reloads.
-function openUnitEditor({ kind, entry = null, dateKey = "", onSaved }) {
+// A `collect` editor (a new unit of a plan's replaced period) hands the unit's fields to `onSaved` instead of saving it,
+// inside `range` ([first, last] day); `onClose` runs when the dialog closes either way.
+function openUnitEditor({ kind, entry = null, dateKey = "", onSaved, collect = false, range = null, onClose = null }) {
   const dialog = document.querySelector("#unitEditDialog");
   const form = dialog?.querySelector("form");
   if (!form) return;
-  unitEditor = unitEditorFrom({ kind, entry, dateKey });
+  unitEditor = { ...unitEditorFrom({ kind, entry, dateKey }), collect, range };
   renderUnitEditor(form, onSaved);
-  dialog.addEventListener("close", () => { unitEditor = null; restoreDialogFocus(dialog); }, { once: true });
+  dialog.addEventListener("close", () => { unitEditor = null; restoreDialogFocus(dialog); onClose?.(); }, { once: true });
   showAccessibleDialog(dialog);
 }
 
@@ -382,6 +390,73 @@ function openPlanEditor({ plan = null, onSaved }) {
       save.disabled = false;
     }
   };
+  dialog.addEventListener("close", () => restoreDialogFocus(dialog), { once: true });
+  showAccessibleDialog(dialog);
+}
+
+// "Zeitraum ersetzen" (#4024): the plan's units in a period are archived and the new ones, made with the unit editor,
+// take their place in one change; the dialog lists both before "Ersetzen".
+function planPeriodUnits(plan, start, end) {
+  return (state.data?.training_calendar || []).filter((item) => item.local_id && item.plan_id === plan.id && !item.archived && !item.local_deleted
+    && String(item.date).slice(0, 10) >= start && String(item.date).slice(0, 10) <= end);
+}
+
+function planReplaceList(title, rows) {
+  return [h("strong", null, title), h("ul", "replan-rows", rows.map(([text, day, remove]) => h("li", "plan-replace-row", h("span", null, text), h("span", null, day), remove)))];
+}
+
+function openPlanReplace({ plan, onReplaced }) {
+  const dialog = document.querySelector("#unitEditDialog");
+  const form = dialog?.querySelector("form");
+  if (!form) return;
+  const today = timezoneDateKey(state.data?.profile?.timezone, new Date());
+  const start = [plan.start_date, today].sort((a, b) => a.localeCompare(b)).at(-1);
+  const period = { start, end: plan.end_date >= start ? plan.end_date : addDateKey(start, 13), workouts: [] };
+  const dayText = (key) => MOVE_DAY_FORMAT.format(dateFromKey(key));
+  const render = () => {
+    const old = planPeriodUnits(plan, period.start, period.end);
+    const status = h("output", { className: "tab-sync-detail", "aria-live": "polite" });
+    const save = h("button", { type: "submit", className: "push-button", disabled: !period.workouts.length }, "Ersetzen");
+    const cancel = h("button", { type: "button", className: "secondary-button" }, "Abbrechen");
+    cancel.addEventListener("click", () => dialog.close());
+    const add = h("button", { type: "button", className: "secondary-button" }, "+ Einheit");
+    add.addEventListener("click", () => {
+      // The editor opens once this dialog's close event ran, so that event never closes the editor's own handler.
+      dialog.addEventListener("close", () => openUnitEditor({ kind: "unit", dateKey: period.start, range: [period.start, period.end], collect: true,
+        onSaved: (body) => { period.workouts.push(body); }, onClose: () => { render(); showAccessibleDialog(dialog); } }), { once: true });
+      dialog.close();
+    });
+    const date = (label, key) => {
+      const input = h("input", { type: "date", required: true, value: period[key], min: today });
+      input.addEventListener("change", () => { period[key] = input.value; period.workouts = period.workouts.filter((item) => item.date >= period.start && item.date <= period.end); render(); });
+      return unitField(label, input);
+    };
+    const fresh = period.workouts.map((item, index) => {
+      const remove = h("button", { type: "button", className: "secondary-button", "aria-label": "Einheit entfernen" }, "✕");
+      remove.addEventListener("click", () => { period.workouts.splice(index, 1); render(); });
+      return [item.name, dayText(item.date), remove];
+    });
+    form.replaceChildren(
+      h("h2", { id: "unitEditTitle" }, "Zeitraum ersetzen"), h("p", null, plan.name),
+      h("div", "edit-meal", date("Von", "start"), date("Bis", "end")),
+      ...planReplaceList(`Wird archiviert · ${old.length} Einheit${old.length === 1 ? "" : "en"}`, old.map((item) => [item.name || "Einheit", dayText(String(item.date).slice(0, 10)), null])),
+      ...planReplaceList(`Neu · ${fresh.length} Einheit${fresh.length === 1 ? "" : "en"}`, fresh),
+      h("div", "dialog-actions", add), status, h("div", "dialog-actions", cancel, save));
+    form.onsubmit = async (event) => {
+      event.preventDefault();
+      save.disabled = true;
+      try {
+        const body = { start: period.start, end: period.end, replaced_ids: old.map((item) => item.local_id), workouts: period.workouts, confirmed: true };
+        const result = await api(`/api/training-plans/${encodeURIComponent(plan.id)}/replace`, { method: "POST", body: JSON.stringify(body) });
+        dialog.close();
+        await onReplaced(result, { replaced: old.length, created: period.workouts.length });
+      } catch (error) {
+        status.textContent = error.message;
+        save.disabled = false;
+      }
+    };
+  };
+  render();
   dialog.addEventListener("close", () => restoreDialogFocus(dialog), { once: true });
   showAccessibleDialog(dialog);
 }

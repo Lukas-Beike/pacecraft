@@ -33,9 +33,9 @@ plain JavaScript, athlete data, and local-action contracts; see
   For an app-style mockup, start the demo fixture (`scripts/demo-container.ps1`)
   and run `node scripts/mockup_capture.mjs --url <demo> --route <view> --out
   <png in the scratchpad>`. A script piped in with `--inject - < part.js` draws the new part with the
-  app's own helpers (`h`, `analysisChart`, `analysisChartGroup`); `--selector`
-  captures one element, and `--width`, `--theme` and `--wait-for` set the rest
-  (#3820).
+  app's own helpers (`h`, `analysisChart`, `analysisChartGroup`) into a holder prepended to
+  `document.body`, outside the view the router re-renders; `--selector` captures that holder,
+  and `--width`, `--theme` and `--wait-for` set the rest (#3820, #3942).
 - Give the primary decision visual priority. Group content by meaning, preserve
   reading order, and use spacing and typography before adding more cards, borders,
   decoration, or animation. Keep dense metrics readable on a narrow screen.

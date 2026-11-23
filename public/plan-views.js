@@ -247,6 +247,7 @@ const PLANNED_CAMS_POLLEN_FLAG_MIN = 10; // grains/m³; DWD levels count from 1
 const PLANNED_DAY_STATUS_LABELS = new Map([["rest", "Ruhetag"], ["pause", "Trainingspause"]]);
 
 function externalCalendarDetail(calendar) {
+  if (!calendar.configured) return "Adresse speichern, dann synchronisieren.";
   if (calendar.last_error) return "Fehler bei letzter Aktualisierung";
   const skipped = Number(calendar.skipped_events) || 0;
   return skipped ? `${skipped} Termine übersprungen` : "";
@@ -929,6 +930,102 @@ function announcePlanChange(message) {
   if (region) region.textContent = message;
 }
 
+// The adaptive replan preview as a card above the week (#4020): every changed unit before and after, "Übernehmen" applies
+// it to the future local units (an illness pause names the check-in it writes), "Verwerfen" hides it until a newer
+// preview. The receipt offers "Rückgängig" for the whole change; nothing goes to a provider.
+let dismissedReplanId = "";
+let replanReceipt = null;
+const REPLAN_UNDO_KEY = "pacecraft.replanDismissed";
+
+function replanDismissed() {
+  try { return dismissedReplanId || localStorage.getItem(REPLAN_UNDO_KEY) || ""; } catch { return dismissedReplanId; }
+}
+
+function replanMinutes(value) {
+  return Number(value) > 0 ? `${Math.round(Number(value))} min` : "entfällt";
+}
+
+// The preview's rationale is written for the Coach model (English, with marker tags); the row names its triggers.
+const REPLAN_TRIGGER_LABELS = { illness: "Krankheit gemeldet", injury: "Beschwerden gemeldet", weather: "Wetter", calendar: "Kalendertermin" };
+
+function replanRow(change) {
+  const day = MOVE_DAY_FORMAT.format(dateFromKey(String(change.date).slice(0, 10)));
+  const reason = (change.blocking_triggers || []).map((trigger) => REPLAN_TRIGGER_LABELS[trigger]).filter(Boolean).join(", ");
+  return h("li", "replan-row", h("strong", null, day), h("span", null, [`${change.name || "Einheit"} ${replanMinutes(change.before?.duration_minutes)} → ${replanMinutes(change.after?.duration_minutes)}`, reason].filter(Boolean).join(" · ")));
+}
+
+async function applyReplan(preview, button, status, accept = false) {
+  button.disabled = true;
+  status.textContent = "";
+  try {
+    const body = { adjustment_id: preview.id, confirmed: true, ...(accept ? { accept_plan_findings: ["illness_hard"] } : {}) };
+    const result = await api("/api/planning/replan/apply", { method: "POST", body: JSON.stringify(body) });
+    // Units that changed since the preview stay as they are; the receipt says how many.
+    const skipped = result.stale?.length ? ` · ${result.stale.length} unverändert, da inzwischen geändert` : "";
+    replanReceipt = { previewId: preview.id, text: `Angepasst: ${result.updated ?? 0} Einheit${result.updated === 1 ? "" : "en"}${skipped}`, changes: result.changes || [] };
+    await globalThis.load?.();
+    announcePlanChange(replanReceipt.text);
+  } catch (error) {
+    status.textContent = error.message;
+    button.disabled = false;
+    if (error.reason === "illness_hard") { button.textContent = "Trotzdem übernehmen"; button.dataset.accept = "1"; }
+  }
+}
+
+// "Rückgängig" for the changes one write returned: all are taken back together or none (#4020, #4024).
+function batchUndoButton(changes, status, undone) {
+  const undo = h("button", { type: "button", className: "message-undo" }, "Rückgängig");
+  undo.addEventListener("click", async () => {
+    undo.disabled = true;
+    try {
+      await api("/api/change-history/undo-batch", { method: "POST", body: JSON.stringify({ changes }) });
+      undone();
+      await globalThis.load?.();
+    } catch (error) {
+      undo.disabled = false;
+      status.firstChild.textContent = `${error.message} `;
+    }
+  });
+  return undo;
+}
+
+function replanReceiptLine() {
+  const receipt = replanReceipt;
+  const status = h("p", { className: "planned-move-status", role: "status" }, receipt.text);
+  if (receipt.changes.length) status.append(" ", batchUndoButton(receipt.changes, status, () => { replanReceipt = { previewId: receipt.previewId, text: "Zurückgenommen.", changes: [] }; }));
+  return status;
+}
+
+// What the calendar's redraw check reads of the replan preview.
+function replanSnapshot() {
+  const preview = state.data?.planning?.latest_replan;
+  return [preview?.id, preview?.status, replanDismissed(), replanReceipt?.text];
+}
+
+function plannedReplanCard() {
+  // A newer preview ends the receipt of the one applied.
+  if (replanReceipt && state.data?.planning?.latest_replan?.id !== replanReceipt.previewId) replanReceipt = null;
+  if (replanReceipt) return replanReceiptLine();
+  const preview = state.data?.planning?.latest_replan;
+  const changes = Array.isArray(preview?.changes) ? preview.changes : [];
+  if (preview?.status !== "preview" || !changes.length || replanDismissed() === preview.id) return null;
+  const pause = preview.illness_pause && !preview.illness_pause.approved ? preview.illness_pause : null;
+  const apply = h("button", { type: "button", className: "push-button" }, "Übernehmen");
+  const discard = h("button", { type: "button", className: "secondary-button" }, "Verwerfen");
+  const status = h("p", { className: "planned-delete-note", role: "status" });
+  apply.addEventListener("click", () => void applyReplan(preview, apply, status, apply.dataset.accept === "1"));
+  discard.addEventListener("click", () => {
+    dismissedReplanId = preview.id;
+    try { localStorage.setItem(REPLAN_UNDO_KEY, preview.id); } catch { /* The choice then holds until the next load. */ }
+    renderPlanned(state.data?.training_calendar || []);
+  });
+  return h("section", "library-card planned-replan",
+    h("div", null, h("h4", null, "Plananpassung"), h("span", null, `${changes.length} Einheit${changes.length === 1 ? "" : "en"}`)),
+    h("ul", "replan-rows", changes.map(replanRow)),
+    pause ? h("p", null, `Krankheitspause bis ${dateLabel(pause.end_date)}: Übernehmen trägt den heutigen Check-in als krank ein.`) : null,
+    h("div", "planned-activity-actions", apply, discard), status);
+}
+
 function renderAdaptivePlanning(data) {
   const planning = data.planning || {};
   const preview = planning.latest_replan;
@@ -954,7 +1051,7 @@ function renderExternalCalendar(data) {
   const detail = $("#externalCalendarConnectionDetail");
   if (detail) detail.textContent = externalCalendarDetail(calendar);
   if (syncButton) {
-    syncButton.disabled = Boolean(calendar.running || state.localSync.externalCalendar);
+    syncButton.disabled = Boolean(!calendar.configured || calendar.running || state.localSync.externalCalendar);
     syncButton.textContent = calendar.running || state.localSync.externalCalendar ? "Synchronisierung läuft…" : "Synchronisieren";
   }
 }
@@ -2920,6 +3017,18 @@ function appendPlannedWeatherHint(root, { firstWeekKey, todayKey, days, planning
   if (!upcomingDays.some((dateKey) => plannedWeatherLabel(plannedDayWeather(planningContextByDate.get(dateKey) || {}, dateKey)))) root.append(plannedWeatherHint());
 }
 
+// Nothing planned or done, no appointment, no competition and no source connected: one empty state with the
+// next step instead of seven empty days under a week switch, filter and paging (#3936 G-13).
+function plannedSourceConnected() {
+  return Boolean(state.data?.garmin?.configured || state.data?.wahoo?.connected);
+}
+
+function plannedNoSourceState(entries) {
+  const external = state.data?.external_calendar?.events;
+  if (entries.length || plannedSourceConnected() || (Array.isArray(external) && external.length) || state.data?.competitions?.length) return null;
+  return createEmptyState("Noch keine Aktivitäten", "Verbinde Garmin oder Wahoo, dann erscheinen deine Einheiten hier.", h("a", { className: "secondary-button", href: "#more/connections" }, "Datenquelle verbinden"));
+}
+
 function renderPlanned(trainingCalendar) {
   const root = $("#plannedCalendar");
   if (!root) return;
@@ -2940,7 +3049,7 @@ function renderPlanned(trainingCalendar) {
   plannedLastDateKey = lastDateKey;
   keepPlannedSelection(todayKey, lastDateKey);
   dropDeleteReceiptsOutsideWeek();
-  const snapshot = JSON.stringify([calendar, todayKey, selectedWeekKey, calendarView, calendarSport, selectedDayKey, state.data?.daily_planning_context, state.data?.planning_compliance, state.data?.competitions, state.data?.weather, (state.data?.external_calendar?.events || []).map((event) => [event?.uid, event?.start_local, event?.impact, event?.name]), state.data?.external_calendar?.undecided_upcoming]);
+  const snapshot = JSON.stringify([calendar, todayKey, selectedWeekKey, calendarView, calendarSport, selectedDayKey, plannedSourceConnected(), state.data?.daily_planning_context, state.data?.planning_compliance, state.data?.competitions, state.data?.weather, (state.data?.external_calendar?.events || []).map((event) => [event?.uid, event?.start_local, event?.impact, event?.name]), state.data?.external_calendar?.undecided_upcoming, ...replanSnapshot()]);
   if (snapshot === plannedRenderSnapshot && root.childElementCount) {
     if (state.plannedTodayFocusPending) requestAnimationFrame(() => focusPlannedToday());
     refreshWeekReview(root);
@@ -2955,8 +3064,7 @@ function renderPlanned(trainingCalendar) {
   }
   const focusedEntry = rememberPlannedEntryState(root);
   root.replaceChildren();
-  const banner = plannedUndecidedBanner();
-  if (banner) root.append(banner);
+  root.append(...[plannedUndecidedBanner(), plannedReplanCard()].filter(Boolean));
   const weeklyCompliance = new Map(
     (Array.isArray(state.data?.planning_compliance) ? state.data.planning_compliance : [])
       .filter((item) => item?.week_start)
@@ -2982,6 +3090,8 @@ function renderPlanned(trainingCalendar) {
   });
 
   appendPlannedWeatherHint(root, { firstWeekKey, todayKey, days: (pastWeeks + futureWeeks + 1) * 7, planningContextByDate });
+  const noSource = plannedNoSourceState(entries);
+  if (noSource) { root.append(noSource); return; }
   const view = {
     calendarEventsByDate: plannedEventsByDate(todayKey),
     leftoversByWeek: plannedLeftoversByWeek(trainingCalendar, currentWeekKey, lastWeekKey),
@@ -3140,7 +3250,7 @@ const PLAN_STATUS_LABELS = { draft: "Entwurf", planned: "Geplant", active: "Akti
 
 async function planChanged(text, result) {
   planReceipts.clear();
-  planReceipts.set(String(result.plan_id), { text, change: result.change });
+  planReceipts.set(String(result.plan_id), { text, change: result.change, changes: result.changes });
   await globalThis.load?.();
   announcePlanChange(text);
 }
@@ -3159,11 +3269,18 @@ function planRestoredStatus(plan) {
   return plan.start_date <= today && today <= plan.end_date ? "active" : "planned";
 }
 
+// One receipt line: a replacement's changes undo together, any other change by its own reference.
+function planReceiptLine(status, id, receipt) {
+  if (!receipt.changes?.length) return libraryReceiptLine(status, id, receipt, planReceipts);
+  status.append(receipt.text, " ", batchUndoButton(receipt.changes, status, () => planReceipts.set(id, { text: "Zurückgenommen." })));
+  return status;
+}
+
 function planCard(plan) {
   const id = String(plan.id);
   const status = h("p", { className: "planned-move-status", role: "status" });
   const receipt = planReceipts.get(id);
-  if (receipt) libraryReceiptLine(status, id, receipt, planReceipts);
+  if (receipt) planReceiptLine(status, id, receipt);
   const [remove, removeNote] = inCardDelete(planPost(plan, "delete", { confirmed: true }, `Gelöscht: ${plan.name}`));
   const buttons = [];
   const notes = [removeNote];
@@ -3174,10 +3291,12 @@ function planCard(plan) {
   } else {
     const edit = h("button", { type: "button", className: "secondary-button" }, "Bearbeiten");
     edit.addEventListener("click", () => openPlanForm(plan));
+    const replace = h("button", { type: "button", className: "secondary-button" }, "Zeitraum ersetzen");
+    replace.addEventListener("click", () => openPlanReplace({ plan, onReplaced: (result, counts) => planChanged(`Ersetzt: ${counts.replaced} → ${counts.created} Einheiten`, { ...result, plan_id: plan.id }) }));
     const [archive, archiveNote] = inCardDelete(planPost(plan, "update", { status: "archived", confirmed: true }, `Archiviert: ${plan.name}`));
     archive.textContent = "Archivieren";
     archive.classList.remove("danger-button");
-    buttons.push(edit, archive);
+    buttons.push(edit, replace, archive);
     notes.push(archiveNote);
   }
   const range = [plan.start_date, plan.end_date].filter(Boolean).map((day) => dateLabel(day)).join(" – ");
@@ -3197,7 +3316,7 @@ function libraryPlans(archivedView) {
     head.push(h("div", "library-toolbar library-plans-head", h("strong", null, "Pläne"), add));
   }
   // A deleted plan's card is gone, so its receipt leads the plans.
-  const lost = [...planReceipts].filter(([id]) => !shown.has(id)).map(([id, receipt]) => libraryReceiptLine(h("p", { className: "planned-move-status", role: "status" }), id, receipt, planReceipts));
+  const lost = [...planReceipts].filter(([id]) => !shown.has(id)).map(([id, receipt]) => planReceiptLine(h("p", { className: "planned-move-status", role: "status" }), id, receipt));
   return [...head, ...lost, ...plans.map(planCard)];
 }
 

@@ -312,6 +312,11 @@ def fetch_calendar_feed(url: str, *, app_version: str) -> bytes:
         raise
 
 
+def validated_calendar_url(value: Any) -> str:
+    """The trimmed feed address when its form is acceptable; nothing is resolved or fetched."""
+    return _calendar_url_parts(value)[0]
+
+
 def external_calendar_url(value: Any) -> str:
     raw, _, hostname, _ = _calendar_url_parts(value)
     try:

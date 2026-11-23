@@ -333,7 +333,9 @@ def matching_word(command: str) -> str | None:
     # Globs, variables and short names in the arguments of programs that never
     # run an argument cannot reach the script (#3759); any other command is
     # read word by word as before.
-    if only_inert_programs(raw):
+    # Only for ASCII text: NFKC makes fullwidth quotes real ones and PowerShell
+    # closes on further quote marks, so the words could differ (#3982 review).
+    if command.isascii() and only_inert_programs(raw):
         return None
     return reaching_word(text, raw)
 
@@ -376,10 +378,22 @@ RUNS_ARGUMENTS = re.compile(
     r"|alias|extension|config|bisect|submodule|foreach)(?![\w-])|[{%]"
 )
 # Text whose words the shells may split differently than this reading:
-# escapes, comments, history and alias marks, ANSI-C, substitutions and
-# typographic quotes PowerShell closes on.
-UNREADABLE = re.compile(r"\\|#|!|`|\r|\$[('\"]|[<>]\(|[‘’“”]")
+# escapes, comments, history and alias marks, ANSI-C, substitutions,
+# typographic quotes PowerShell closes on, and heredocs, whose body a lone
+# quote would pair across (#3982 advisor).
+UNREADABLE = re.compile(r"\\|#|!|`|\r|<<|\$[('\"]|[<>]\(|[‘’“”]")
+# Of those, read on the raw command even inside single quotes (#3982).
+RAW_UNREADABLE = re.compile(r"\r|<<|[‘’“”]")
 QUOTED = re.compile(r"'[^']*'|\"[^\"]*\"")
+# `sed` is inert in one shape only (#3982): print lines N or N to M; it is
+# replaced by SED_LINES before the words are read, and every later word of
+# that command must be a plain word that is no option (GNU sed permutes them).
+SED_PRINT = re.compile(
+    r"(?:^|(?<=[\s;&|(]))sed[ \t]+-n[ \t]+'\d+(?:,\d+)?p'(?=[\s;&|)]|$)"
+)
+SED_LINES = "\x00sed"
+# A literal file name only: a glob could expand to an option (#3982 review).
+SED_FILE = re.compile(r"[a-z0-9_./-]+")
 # Shell tokens: a quoted run, a separator, blanks, plain characters; a lone
 # quote never closes.
 # Tokens after each quoted run became `@`, which no program name holds, so a
@@ -393,6 +407,10 @@ PROGRAM = re.compile(r"[a-z][a-z0-9_-]*")
 def inert(words: list[str]) -> bool:
     """One simple command starts with an inert program."""
     name, after = words[0], words[1:2]
+    if name == SED_LINES:
+        return all(
+            SED_FILE.fullmatch(word) and not word.startswith("-") for word in words[1:]
+        )
     if not PROGRAM.fullmatch(name):
         return False
     if name in INERT_SUBCOMMANDS:
@@ -422,15 +440,38 @@ def simple_commands(text: str) -> list[list[str]] | None:
     return [words for words in segments if words]
 
 
+def single_quoted_blank(match: re.Match[str]) -> str:
+    """A single-quoted run that is a whole word, with its inside blanked and its
+    quotes kept (so `$'` is still seen); both shells read a single-quoted inside
+    literally (#3982). A double-quoted run, or one glued to other text, stays."""
+    run, text = match[0], match.string
+    before = text[match.start() - 1] if match.start() else " "
+    after = text[match.end()] if match.end() < len(text) else " "
+    whole = before in WORD_END and after in WORD_END
+    return f"'{'x' * (len(run) - 2)}'" if run.startswith("'") and whole else run
+
+
 def only_inert_programs(raw: str) -> bool:
     """Every simple command of ``raw`` (casefolded, escapes not decoded)
     starts with an inert program."""
-    if UNREADABLE.search(raw) or any(
-        RUNS_ARGUMENTS.search(form) for form in (QUOTED.sub(" ", raw), unquoted(raw))
+    if (
+        SED_LINES in raw
+        or RAW_UNREADABLE.search(raw)
+        or UNREADABLE.search(QUOTED.sub(single_quoted_blank, raw))
+        or any(
+            RUNS_ARGUMENTS.search(form)
+            for form in (QUOTED.sub(" ", raw), unquoted(raw))
+        )
     ):
         return False
-    commands = simple_commands(raw)
-    return commands is not None and all(inert(words) for words in commands)
+    text = SED_PRINT.sub(SED_LINES, raw)
+    commands = simple_commands(text)
+    if commands is None:
+        return False
+    # Each sed shape must start a command of its own: after a redirection it is
+    # the target, and the shell runs `-n` instead (#4091 gate).
+    starts = sum(words[0] == SED_LINES for words in commands)
+    return starts == text.count(SED_LINES) and all(inert(words) for words in commands)
 
 
 def reaching_word(text: str, raw: str) -> str | None:

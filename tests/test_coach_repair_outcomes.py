@@ -140,6 +140,24 @@ class UnresolvedCoachStepsTests(unittest.TestCase):
         )
         self.assertEqual("completed", status_of(unresolved, [redone]))
         self.assertEqual("Trainingsvorlagen bearbeitet (1)", coach_effect_label(redone))
+        # #3960: a provider refresh names how it ended; a full resync that
+        # already runs started nothing new.
+        for result, label in (
+            ({"ok": True, "status": "already_running"}, "Datenabruf läuft bereits"),
+            ({"ok": True, "status": "started"}, "Datenabruf beauftragt"),
+            ({"ok": True, "status": "completed"}, "Daten aktualisiert"),
+            (
+                {"ok": True, "status": "completed", "partial": True},
+                "Daten teilweise aktualisiert",
+            ),
+        ):
+            with self.subTest(result=result):
+                self.assertEqual(
+                    label,
+                    coach_effect_label(
+                        {"tool": "start_provider_refresh", "result": result}
+                    ),
+                )
         # A success on another template leaves the failed one named: partial.
         other = step("library_workout:t2", "t2", ok=True, name="Z2 lang")
         unresolved = unresolved_coach_steps([failed, other])

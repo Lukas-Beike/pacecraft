@@ -20,6 +20,7 @@ from backend.coach.turn_undo import CoachTurnUndoService
 from backend.diagnostics.readiness_probe import ReadinessProbeService
 from backend.errors import INTERNAL_SERVER_ERROR
 from backend.http_api.activity_route_post import ActivityRoutePostRoutes
+from backend.http_api.adaptive_replan_post import AdaptiveReplanPostRoutes
 from backend.http_api.analysis import AnalysisRoutes
 from backend.http_api.athlete_get import AthleteGetRoutes
 from backend.http_api.athlete_put import AthletePutRoutes
@@ -98,6 +99,7 @@ from backend.performance.canonical_inputs import (
 )
 from backend.performance.season_inputs import SeasonSource
 from backend.planning import season as planning_season
+from backend.planning.adaptive_replan_action import AdaptiveReplanActionService
 from backend.planning.compact_activities import ActivitySummarySource
 from backend.planning.planned_unit_edit_service import PlannedUnitEditService
 from backend.planning.race_plan import read_race_plan
@@ -523,13 +525,15 @@ def _read_routes(
 
 
 def _unit_edit_service(ctx: Any) -> Callable[[], PlannedUnitEditService]:
-    """The athlete's unit edits and library scheduling over the Coach's use cases and plan checks."""
+    """The athlete's unit edits, library scheduling and plan replacement over the Coach's use cases and plan checks."""
     return lambda: PlannedUnitEditService(
         ctx.database(),
         ctx.planning_workflows.structured_training_change_service,
         ctx.planning.workout_library,
         ctx.plan_guard.plan_guard_service,
         ctx.planning_workflows.workout_library_plan_service,
+        ctx.planning_workflows.structured_training_plan_replacement_service,
+        ctx.planning.training_plan,
     )
 
 
@@ -580,7 +584,15 @@ def _athlete_write_routes(
             _unit_edit_service(ctx),
         ),
         LibraryPostRoutes(ctx.planning.workout_library, _unit_edit_service(ctx)),
-        TrainingPlanPostRoutes(ctx.planning.training_plan),
+        TrainingPlanPostRoutes(ctx.planning.training_plan, _unit_edit_service(ctx)),
+        AdaptiveReplanPostRoutes(
+            lambda: AdaptiveReplanActionService(
+                ctx.database(),
+                ctx.planning_workflows.adaptive_replan_preview_service,
+                ctx.sync_commands.illness_pause,
+                ctx.plan_guard.plan_guard_service,
+            )
+        ),
         CredentialsPutRoutes(ctx.provider_credential_service, session_auth_service),
         EquipmentPostRoutes(athlete.equipment),
         FirstThresholdPostRoutes(
@@ -721,6 +733,7 @@ def build_http_api(
         planned_unit_focus_post,
         library_post,
         training_plan_post,
+        adaptive_replan_post,
         credentials_put,
         equipment_post,
         first_threshold_post,
@@ -778,6 +791,7 @@ def build_http_api(
             planned_unit_focus_post,
             library_post,
             training_plan_post,
+            adaptive_replan_post,
             credentials_put,
             wahoo_get,
             wahoo_post,

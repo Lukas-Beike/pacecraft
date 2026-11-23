@@ -218,7 +218,7 @@ const OPENERS = [
   /^a\[data-(analysis|more|nutrition|plan)-segment="[a-z]+"\]$/,
   /^\.planned-view-switch button\[data-view="(week|month)"\]$/,
   /^\.planned-month-day:not\(\[disabled\]\)(:has\(\.planned-month-mark\.is-[a-z]+\))?$/,
-  /^button\[aria-label="(Nächste|Vorherige) Woche"\]$/,
+  /^button\[aria-label="(Nächste Woche|Vorherige Woche|Nächster Monat|Vorheriger Monat)"\]$/,
   // The library card's "Einplanen" only unfolds and folds the day strip; no day is pressed (#4081).
   /^#library \.library-card \.planned-activity-actions \.secondary-button\[aria-expanded="(false|true)"\]$/,
 ];
@@ -254,6 +254,8 @@ const SEEK_WEEKS = 6;
 // A step that needs a kind of unit looks for one that has its element, week by week, and returns.
 const EARLIER = { seek: BACK, unseek: NEXT };
 const LATER = { seek: NEXT, unseek: BACK };
+// Month by month: a planned day of the next month switches the grid there, where no unit is done yet (#4095).
+const EARLIER_MONTH = { seek: 'button[aria-label="Vorheriger Monat"]', unseek: 'button[aria-label="Nächster Monat"]' };
 const tab = (area, segment) => `a[data-${area}-segment="${segment}"]`;
 const detail = (name, covers, ready, kind, extra) => ({ view: "plan", name, covers, each: DONE, ...EARLIER, opens: [DETAILS_OPEN], ready, kind, absent: NO_DETAILS, ...extra });
 export const STEPS = [
@@ -276,7 +278,7 @@ export const STEPS = [
   { view: "plan", name: "Kalender: Stufentest geplant", covers: "#3833 running step test", each: ".planned-entry:is(.is-planned, .is-today)[data-sport='Laufen'] > summary", ...LATER, ready: ".planned-entry[open] [data-step-test-note]", kind: "text", optional: true },
   // Choosing a past day narrows the month's range, so the planned day comes first.
   { view: "plan", name: "Monat: geplante Einheit", covers: "#2189 month", pre: [MONTH], each: ".planned-month-day:not([disabled]):has(.planned-month-mark.is-planned)", opens: [PLANNED], ready: ".planned-entry[open] .planned-entry-details", kind: "text", optional: true },
-  { view: "plan", name: "Monat: absolvierte Einheit", covers: "#2189 month", pre: [MONTH], each: ".planned-month-day:not([disabled]):has(.planned-month-mark.is-completed)", opens: [DONE], ready: ".planned-entry[open] .planned-entry-details", kind: "text" },
+  { view: "plan", name: "Monat: absolvierte Einheit", covers: "#2189 month", pre: [MONTH], each: ".planned-month-day:not([disabled]):has(.planned-month-mark.is-completed)", ...EARLIER_MONTH, opens: [DONE], ready: ".planned-entry[open] .planned-entry-details", kind: "text" },
   { view: "plan", name: "Kalender: Wochenansicht", covers: "#2189 week and month switch", pre: ['.planned-view-switch button[data-view="week"]'], ready: ".planned-week .planned-day", kind: "text" },
   // Read-only as well: the library card offers "Einplanen" and "Löschen"; the walk presses neither (#3028).
   { view: "plan", name: "Bibliothek: Einplanen, Löschen", covers: "#3028 library actions", pre: [tab("plan", "library")], opens: ["#library details.library-sport > summary"], ready: "#library .library-card .planned-activity-actions .danger-button", kind: "text", optional: true, post: [tab("plan", "overview")] },
@@ -289,6 +291,10 @@ export const STEPS = [
   { view: "plan", name: "Bibliothek: Einplanen, Trainingsplan", covers: "#4054 Einplanen plan choice", pre: [tab("plan", "library")], opens: ["#library details.library-sport > summary", '#library .library-card .planned-activity-actions .secondary-button[aria-expanded="false"]'], ready: "#library .library-card .library-plan-field:not([hidden]) select", kind: "text", optional: true, post: [tab("plan", "overview")] },
   // Read-only: the walk checks that the plans block with "+ Plan" is there, it opens no form (#3950).
   { view: "plan", name: "Bibliothek: Pläne", covers: "#3950 training plans", pre: [tab("plan", "library")], ready: "#library .library-toolbar > strong", kind: "text", post: [tab("plan", "overview")] },
+  // Only a plan card offers "Zeitraum ersetzen" and the fixture holds no plan, so the step is optional; the dialog is never opened (#4024).
+  { view: "plan", name: "Bibliothek: Zeitraum ersetzen", covers: "#4024 period replacement", pre: [tab("plan", "library")], ready: "#library .library-card .planned-activity-actions button:nth-child(2)", kind: "text", optional: true, post: [tab("plan", "overview")] },
+  // Only a stored adaptive preview with changes shows the card, so the step is optional; "Übernehmen" is never pressed (#4020).
+  { view: "plan", name: "Kalender: Plananpassung", covers: "#4020 replan card", pre: ['.planned-view-switch button[data-view="week"]'], ready: ".planned-replan .planned-activity-actions .push-button", kind: "text", optional: true },
   // Read-only: the walk checks that "Hinzufügen" is there, it opens no dialog and saves nothing (#3837).
   { view: "plan", name: "Wettkämpfe: Hinzufügen", covers: "#3837 competition entry", pre: [tab("plan", "season")], ready: "#competitionAdd", kind: "text", post: [tab("plan", "overview")] },
   // Completed units: on a Monday the current week has none yet, so each step looks back for a unit that

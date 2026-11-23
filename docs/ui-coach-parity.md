@@ -19,10 +19,9 @@ case on both sides, so the guards match.
 
 `tests/test_api_routes_doc.py` keeps this file honest: every Coach tool in
 `COACH_DIALOGUE_TOOLS` and every athlete write route appears here, every named
-tool and route exists, the parity value matches the two columns, each gap names
-its issue and the counts below match the table.
-
-Counts: both 71, UI only 0, Coach only 10, neither 0, UI by rule 13.
+tool and route exists, every parity value is one of the five above and matches
+the two columns, and each gap names its issue. No hand-kept count: every PR that
+added a row conflicted on it (#4092).
 
 ## Matrix
 
@@ -49,11 +48,11 @@ Counts: both 71, UI only 0, Coach only 10, neither 0, UI by rule 13.
 | Planning | Choose a strength exercise's Garmin exercise | Kalender card `POST /api/planned-units/{id}/garmin-exercise` | `apply_training_patch` (`garmin_exercise`) | receipt | both | |
 | Planning | Read multi-week training plans | Bibliothek › Pläne `GET /api/plan` | `list_training_plans` | — | both | |
 | Planning | Create a multi-week training plan | Bibliothek › Pläne "+ Plan" `POST /api/training-plans`, its units in the unit editor | `stage_training_plan`, `commit_training_plan` | receipt, plan checks | both | |
-| Planning | Replace a period of the plan | — | `replace_training_plan` | receipt, plan checks | Coach only | #4024 |
+| Planning | Replace a period of the plan | Bibliothek › Pläne "Zeitraum ersetzen" `POST /api/training-plans/{id}/replace`, receipt "Rückgängig" `POST /api/change-history/undo-batch` | `replace_training_plan` | confirmation, receipt, plan checks, undo | both | |
 | Planning | Change, archive or delete a training plan | Bibliothek › Pläne `POST /api/training-plans/{id}/update`, `POST /api/training-plans/{id}/delete` | `update_training_plan` | confirmed request, undo | both | |
-| Planning | Preview and apply an adaptive replan | — | `preview_adaptive_replan`, `apply_adaptive_replan` | approved preview | Coach only | #4020 |
+| Planning | Preview and apply an adaptive replan | Kalender card "Plananpassung" shows the stored preview, "Übernehmen" `POST /api/planning/replan/apply` | `preview_adaptive_replan`, `apply_adaptive_replan` | approved preview, undo | both | |
 | Planning | Read the week review and training report | Analyse `GET /api/analysis/week-review` | `get_training_report` | — | both | |
-| History | Undo a change | receipt "Rückgängig" `POST /api/change-history/undo`, `POST /api/change-history/undo-turn` | `undo_training_change` | bound preview, confirmation | both | |
+| History | Undo a change | receipt "Rückgängig" `POST /api/change-history/undo`, `POST /api/change-history/undo-turn`, `POST /api/change-history/undo-batch` | `undo_training_change` | bound preview, confirmation | both | |
 | History | Read the change history | — | `list_change_history` | — | Coach only | #3954 |
 | Library | List library workouts | Bibliothek `GET /api/library` | `list_workout_library` | — | both | |
 | Library | Create a library workout | Bibliothek "+ Einheit" `POST /api/library` | `manage_training_templates` (`create`) | receipt, undo | both | |
