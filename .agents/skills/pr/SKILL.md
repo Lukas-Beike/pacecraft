@@ -30,9 +30,9 @@ Copy this checklist into your response and tick it as you go:
   checkout, and never rebase or push `develop`, `main`, or another protected
   branch.
 - `gh` must be authenticated. Never print credentials or tokens. Without the
-  token's `workflow` scope (`prepare_worktree.py` names it, #3350) push all but
-  `.github/workflows/` and send the orchestrator each workflow file in full
-  with its sha256 and commit message; check the hash after its push (#4044).
+  `workflow` scope (`prepare_worktree.py` names it, #3350) push the branch without
+  its workflow commits; send the orchestrator (the user without one) each workflow
+  file in full, its sha256 and commit message; compare the pushed file's (#4044).
 - Setup prerequisite: the SonarQube CLI is installed and authenticated
   ([development](../../../docs/development.md#secret-checks-before-git-pushes));
   without it the pre-push hook refuses every push.
