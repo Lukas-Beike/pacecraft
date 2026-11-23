@@ -210,9 +210,11 @@ class PlannedUnitFocusPostRoutes:
         missing or outdated `expected_payload_hash`; 400 "Das Planungsdatum muss das
         Format JJJJ-MM-TT haben."; 400 "Eine Einheit in der Vergangenheit wird nicht
         geplant." for a day before today; 409 `plan_date_conflict` when an external
-        calendar marker rules out the day; 409 "Die lokale Einheit kann wegen einer
-        bestehenden Kalendereinheit nicht verschoben werden." for an overlapping
-        calendar entry.
+        calendar marker rules out the day; 409 "Die lokale Einheit kann wegen „…“ nicht
+        verschoben werden." (or "… wegen einer bestehenden Kalendereinheit …" when
+        no entry has a name) for an overlapping calendar entry, with the reason
+        `calendar_event_open` when one of them is an appointment that still waits for
+        its classification.
         """
         payload = _read_object(handler)
         with (

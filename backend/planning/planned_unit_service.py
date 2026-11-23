@@ -26,7 +26,11 @@ from backend.db.remote_links import RemoteLinkRepository
 from backend.errors import CORRUPT_PLANNING_ERROR, INVALID_PLANNING_DATE_ERROR, AppError
 from backend.planning import calendar as planning_calendar
 from backend.planning import planned_units, workouts
-from backend.planning.conflicts import calendar_item_window
+from backend.planning.conflicts import (
+    calendar_item_window,
+    conflict_names,
+    open_event_reason,
+)
 from backend.planning.exercise_mappings import remembered_exercises
 from backend.planning.garmin_orphans import find_orphans
 from backend.planning.intervals_orphans import find_intervals_orphans
@@ -39,6 +43,17 @@ _REMOTE_LINKS = RemoteLinkRepository()
 
 # Local keys no provider receives: the classification and the template link.
 _LOCAL_LINK_KEYS = {*FOCUS_ONLY_KEYS, TEMPLATE_ID}
+
+
+def _move_refusal(conflicts: list[dict[str, Any]]) -> AppError:
+    """The refusal of a move onto a busy day, naming what is in the way."""
+    names = conflict_names(conflicts)
+    message = (
+        f"Die lokale Einheit kann wegen {names} nicht verschoben werden."
+        if names
+        else "Die lokale Einheit kann wegen einer bestehenden Kalendereinheit nicht verschoben werden."
+    )
+    return AppError(409, message, reason=open_event_reason(conflicts))
 
 
 def _is_focus_only(values: dict[str, Any]) -> bool:
@@ -590,10 +605,7 @@ class PlannedUnitService:
                 candidate, {normalized_id}
             )
             if conflicts:
-                raise AppError(
-                    409,
-                    "Die lokale Einheit kann wegen einer bestehenden Kalendereinheit nicht verschoben werden.",
-                )
+                raise _move_refusal(conflicts)
         updated = planned_units.normalized_planned_workout_update(
             candidate, current, row, normalized_id, action, values
         )

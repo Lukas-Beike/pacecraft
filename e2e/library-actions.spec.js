@@ -1,5 +1,9 @@
 const { test, expect } = require("@playwright/test");
 
+// Routes miss requests that pass through the service worker's fetch listener; this spec does not
+// test the worker, so it is blocked and every route applies (#3842).
+test.use({ serviceWorkers: "block" });
+
 // #3028: a library entry is planned and deleted without the Coach, each with a receipt and "Rückgängig".
 test("@responsive Einplanen and Löschen work in the library card and Rückgängig takes each back", async ({ page, request }) => {
   test.setTimeout(180_000);
@@ -51,5 +55,31 @@ test("@responsive Einplanen and Löschen work in the library card and Rückgäng
   await page.locator("#library details.library-sport:not([open])").evaluateAll((sections) => sections.forEach((section) => { section.open = true; }));
   await expect(card.locator(":scope > .planned-move-status")).toContainText("Zurückgenommen.");
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBeTruthy();
+  await page.unrouteAll({ behavior: "ignoreErrors" });
+});
+
+// #3932 K-01: a refusal because of an appointment that still waits for its classification offers the sheet.
+test("@responsive Einplanen refused for an unclassified appointment offers Termin einordnen", async ({ page, request }) => {
+  expect((await request.get("/api/fixture/demo")).ok()).toBeTruthy();
+  await page.goto("/#plan/library");
+  await page.waitForFunction(() => state.initialStateLoaded);
+  await page.locator("#library details.library-sport").first().evaluate((section) => { section.open = true; });
+  const card = page.locator("#library .library-card").first();
+  const day = await page.evaluate(() => {
+    const today = timezoneDateKey(state.data?.profile?.timezone, new Date());
+    const target = addDateKey(today, 2);
+    // A multi-day appointment that began earlier still covers the day.
+    state.data.external_calendar = { ...state.data.external_calendar, events: [{ uid: "open-1", name: "Zahnarzt", start_local: `${today}T09:00:00`, end_local: `${addDateKey(target, 1)}T11:00:00`, impact: "open" }] };
+    return target;
+  });
+  await page.route("**/api/library/*/blocked-days*", (route) => route.fulfill({ json: { blocked: {} } }));
+  await page.route("**/api/library/*/schedule", (route) => route.fulfill({ status: 409, json: { error: "Planung wegen bestehender Kalendereinheiten nicht möglich: Zahnarzt.", reason: "calendar_event_open" } }));
+  await card.getByRole("button", { name: "Einplanen" }).click();
+  await card.locator(`.planned-move-days button[data-day="${day}"]`).click();
+  const status = card.locator(":scope > .planned-move-status");
+  await expect(status).toContainText("Zahnarzt");
+  await status.getByRole("button", { name: "Termin einordnen" }).click();
+  await expect(page.locator(".planned-event-sheet")).toBeVisible();
+  await expect(page.locator(".planned-event-sheet h3")).toHaveText("Zahnarzt");
   await page.unrouteAll({ behavior: "ignoreErrors" });
 });

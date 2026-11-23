@@ -134,6 +134,29 @@ class CalendarConflictServiceTests(unittest.TestCase):
         )
         self.assertEqual(self.external_reader.calls, [(1000, True)])
 
+    def test_an_appointment_without_a_classification_is_marked_open(self) -> None:
+        self.external_reader.events = [
+            {
+                "id": "e-open",
+                "name": "Zahnarzt",
+                "event_date": "2026-10-04",
+                "impact": "open",
+            },
+            {
+                "id": "e-set",
+                "name": "Messe",
+                "event_date": "2026-10-04",
+                "impact": "none",
+            },
+        ]
+
+        conflicts = self.service.conflicts({"date": "2026-10-04"})
+
+        self.assertEqual(
+            [(item["name"], item.get("open", False)) for item in conflicts],
+            [("Zahnarzt", True), ("Messe", False)],
+        )
+
     def test_exclude_ids_only_remove_local_library_conflicts(self) -> None:
         self._add_planned_unit(
             "excluded",
