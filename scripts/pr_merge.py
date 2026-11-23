@@ -195,7 +195,9 @@ def gitar_waits(rollup: list[dict[str, Any]], cutoff: str) -> tuple[str, bool]:
         if item.get("name") == GITAR and item.get("status") == "COMPLETED"
     ]
     others = [item for item in runs if item.get("name") != GITAR]
-    finished = bool(others) and all(item.get("status") == "COMPLETED" for item in others)
+    finished = bool(others) and all(
+        item.get("status") == "COMPLETED" for item in others
+    )
     last_ci = max((str(item.get("completedAt") or "") for item in others), default="")
     return max(done, default=""), not done and finished and last_ci <= cutoff
 
@@ -207,7 +209,9 @@ def gitar_silence(now: datetime) -> str:
         "pr", "list", "--base", "develop", "--state", "open", "--limit", "100",
         "--json", "number,statusCheckRollup",
     ) or []  # fmt: skip
-    cutoff = (now - timedelta(minutes=GITAR_SILENT_MINUTES)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    cutoff = (now - timedelta(minutes=GITAR_SILENT_MINUTES)).strftime(
+        "%Y-%m-%dT%H:%M:%SZ"
+    )
     last, waiting = "", []
     for pr in prs:
         done, waits = gitar_waits(pr.get("statusCheckRollup") or [], cutoff)
