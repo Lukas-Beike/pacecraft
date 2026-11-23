@@ -96,6 +96,33 @@ def _differs_only_in_focus(restored: dict[str, Any], current: dict[str, Any]) ->
     return comparable(restored) == comparable(current)
 
 
+def _moved_plan_ids(
+    before: dict[str, Any] | None, after: dict[str, Any] | None
+) -> set[str]:
+    """The plans whose member days differ between two states of one unit (#4144).
+
+    A unit counts for its plan while it is on a day and neither archived nor
+    deleted, so a changed day, archive or delete flag or plan touches both plans.
+    """
+
+    def membership(state: dict[str, Any] | None) -> tuple[Any, ...]:
+        state = state or {}
+        return (
+            state.get("date"),
+            str(state.get("plan_id") or "").strip(),
+            bool(state.get("archived")),
+            bool(state.get("local_deleted")),
+        )
+
+    if membership(before) == membership(after):
+        return set()
+    return {
+        plan_id
+        for state in (before, after)
+        if (plan_id := str((state or {}).get("plan_id") or "").strip())
+    }
+
+
 def _start_time_suffix(start: str) -> str | None:
     """Return the time part of a local start such as 2026-09-21T07:15:00."""
     return start[10:] if len(start) > 10 and start[10] == "T" else None
@@ -134,6 +161,7 @@ class PlannedUnitService:
         hr_cap_resync: Callable[[Any, list[dict[str, Any]]], set[str]] = (
             lambda _db, _payloads: set()
         ),
+        follow_plans: Callable[[Any, set[str]], None] = lambda _db, _ids: None,
     ):
         self._database_manager = database_manager
         self._planning_revision_service = planning_revision_service
@@ -144,6 +172,25 @@ class PlannedUnitService:
         self._calendar_conflict_service = calendar_conflict_service
         self._publish_change = publish_change
         self._hr_cap_resync = hr_cap_resync
+        self._follow_plans = follow_plans
+
+    def _follow(
+        self,
+        db: Any,
+        before: dict[str, Any] | None,
+        after: dict[str, Any] | None,
+        deferred: set[str] | None = None,
+    ) -> None:
+        """Let the plans of a unit that moved, changed plan or was hidden or restored follow its days.
+
+        A batch undo passes ``deferred`` and follows once at its end: its plan's own
+        entry may still be undone, and a period changed meanwhile would be stale.
+        """
+        if plan_ids := _moved_plan_ids(before, after):
+            if deferred is None:
+                self._follow_plans(db, plan_ids)
+            else:
+                deferred.update(plan_ids)
 
     def insert(
         self,
@@ -186,10 +233,16 @@ class PlannedUnitService:
         current: dict[str, Any] | None,
         target: dict[str, Any] | None,
         history_action: str,
+        deferred_plans: set[str] | None = None,
     ) -> dict[str, Any] | None:
-        """Restore one audited local state inside the caller-owned transaction."""
+        """Restore one audited local state inside the caller-owned transaction.
+
+        The plans the restore touches follow at once, or are added to ``deferred_plans``.
+        """
         if target is None:
+            before = parse_payload((current or {}).get("payload"))
             if hidden := self._hide_intervals_linked(db, entity_id, current):
+                self._follow(db, before, hidden, deferred_plans)
                 return hidden
             planning_store.delete_planned_unit(db, entity_id)
             # A pushed Garmin workout stays removable by its link.
@@ -199,15 +252,18 @@ class PlannedUnitService:
                 entity_id,
                 keep=(ProviderId.GARMIN.value,),
             )
+            self._follow(db, before, None, deferred_plans)
             return None
         if current is None:
             self._reject_restore_conflict(entity_id, target)
             restored = planned_units.normalize_planned_unit(
                 target, local_id=entity_id, sync_status="local"
             )
-            return self.insert(db, restored)
+            inserted = self.insert(db, restored)
+            self._follow(db, None, inserted, deferred_plans)
+            return inserted
         return self._restore_existing_in_transaction(
-            db, entity_id, current, target, history_action
+            db, entity_id, current, target, history_action, deferred_plans
         )
 
     def _hide_intervals_linked(
@@ -247,6 +303,7 @@ class PlannedUnitService:
         current: dict[str, Any],
         target: dict[str, Any],
         history_action: str,
+        deferred_plans: set[str] | None = None,
     ) -> dict[str, Any]:
         current_payload = parse_payload(current.get("payload"))
         if current_payload is None:
@@ -300,6 +357,7 @@ class PlannedUnitService:
             db, entity_id, restored, self._now(), mark_local=not focus_only
         )
         _REMOTE_LINKS.refresh_from_slots(db, RemoteEntityKind.PLANNED_UNIT, entity_id)
+        self._follow(db, current_payload, restored, deferred_plans)
         return restored
 
     @staticmethod
@@ -534,6 +592,7 @@ class PlannedUnitService:
             if not focus_only
             else dict(normalized),
         )
+        self._follow(db, before, normalized)
         if bump_planning_revision:
             self._planning_revision_service.bump(db)
 
@@ -569,6 +628,7 @@ class PlannedUnitService:
             change_history.record_change(
                 db, "planned_unit", normalized_id, "delete", before, deleted
             )
+            self._follow(db, before, deleted)
             if bump_planning_revision:
                 self._planning_revision_service.bump(db)
             return {"status": "deleted", "local_id": normalized_id}

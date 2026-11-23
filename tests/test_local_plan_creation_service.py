@@ -6,6 +6,7 @@ import ast
 import inspect
 import json
 import sqlite3
+import threading
 import unittest
 from contextlib import contextmanager
 from datetime import date
@@ -13,15 +14,22 @@ from pathlib import Path
 from unittest.mock import Mock
 
 from backend.db import row_factory
-from backend.db.repositories import PlanningStateRepository, TrainingPlanRepository
+from backend.db.repositories import (
+    KeyValueRepository,
+    PlanningStateRepository,
+    TrainingPlanRepository,
+)
 from backend.db.schema import initialize_schema
 from backend.errors import AppError
+from backend.history.service import ChangeHistoryService
+from backend.history.undo_service import HistoryUndoService
 from backend.planning.library_service import WorkoutLibraryService
 from backend.planning.local_plan_creation_service import (
     LocalTrainingPlanCreationService,
 )
 from backend.planning.planned_unit_service import PlannedUnitService
 from backend.planning.revision import PlanningRevisionService
+from backend.planning.training_plans import TrainingPlanService
 
 NOW = "2026-09-20T09:00:00+00:00"
 TODAY = date(2026, 9, 20)
@@ -307,6 +315,69 @@ class LocalPlanCreationServiceTests(unittest.TestCase):
         self.assertEqual(len(created), 2)
         self.assertEqual(self.revisions.calls, 1)
         self.assertEqual(self.revisions.service.read(self.db), 1)
+
+    def test_a_batch_undo_of_a_dated_plan_is_not_stale_when_its_units_go_first(
+        self,
+    ) -> None:
+        # #4144: the units' restores follow the plan's days; the plan's own create entry still matches.
+        plans = TrainingPlanService(
+            self.database_manager,
+            TrainingPlanRepository(),
+            KeyValueRepository(lambda: NOW),
+            self.revisions,
+            Mock(),
+            lambda: NOW,
+        )
+        units = PlannedUnitService(
+            self.database_manager,
+            self.revisions,
+            lambda: NOW,
+            lambda: TODAY,
+            self._next_unit_id,
+            lambda text: text,
+            self.calendar_conflicts,
+            Mock(),
+            follow_plans=plans.update_bounds,
+        )
+        undo = HistoryUndoService(
+            self.database_manager,
+            ChangeHistoryService(self.database_manager, None),
+            None,
+            self.library_service,
+            None,
+            units,
+            plans,
+            self.revisions,
+            profile_mutation_coordinator=threading.RLock(),
+        )
+        self.service.save(
+            [self.workout("2026-09-22"), self.workout("2026-09-24", name="Second")],
+            "Aufbau",
+        )
+        written = [
+            {"id": row["id"], "after_hash": row["after_hash"]}
+            for row in self.db.execute(
+                "SELECT id, entity_type, after_hash FROM change_history ORDER BY rowid"
+            ).fetchall()
+        ]
+        kinds = [
+            row["entity_type"]
+            for row in self.db.execute(
+                "SELECT entity_type FROM change_history ORDER BY rowid"
+            ).fetchall()
+        ]
+        # The plan's create entry is written before its units' entries, as the whole-turn undo reads them.
+        self.assertEqual(("training_plan", 2), (kinds[0], kinds.count("planned_unit")))
+
+        with self.database_manager.unit_of_work() as db:
+            undo.apply_many(db, written)
+
+        self.assertEqual(
+            [], self.db.execute("SELECT id FROM training_plans").fetchall()
+        )
+        self.assertEqual(
+            [], self.db.execute("SELECT local_id FROM planned_units").fetchall()
+        )
 
     def test_caller_owned_connection_is_not_committed_or_wrapped(self) -> None:
         self.db.execute("BEGIN")
