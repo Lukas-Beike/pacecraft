@@ -13,6 +13,7 @@ const GROUPS = {
     ["Kalender Woche", "plan/overview"],
     ["Kalender Monat", "plan/overview", "month"],
     ["Kalender Bibliothek", "plan/library"],
+    ["Kalender Pläne", "plan/plans"],
     ["Kalender Wettkämpfe", "plan/season"],
   ],
   Analyse: ["running", "cycling", "load", "recovery"].map((segment) => [`Analyse ${segment}`, `analysis/${segment}`]),

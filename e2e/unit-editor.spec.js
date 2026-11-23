@@ -109,43 +109,43 @@ test("@responsive the calendar edits and archives a unit", async ({ page, reques
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBeTruthy();
 });
 
-// #3950: the training plans sit at the top of the Bibliothek; a plan is created, archived, restored and deleted there.
-test("@responsive the Bibliothek creates, archives, restores and deletes a training plan", async ({ page, request }) => {
+// #3950, #4133: the training plans have their own tab after the Bibliothek; a plan is created, archived, restored and deleted there.
+test("@responsive the Pläne tab creates, archives, restores and deletes a training plan", async ({ page, request }) => {
   test.setTimeout(180_000);
   const posts = [];
   page.on("request", (item) => {
     if (item.method() === "POST" && /^\/api\/training-plans/.test(new URL(item.url()).pathname)) posts.push([new URL(item.url()).pathname, item.postDataJSON()]);
   });
   await openApp(page, request, "/#plan/library");
+  // The tabs: the Pläne tab follows the Bibliothek, and the Bibliothek holds only library workouts.
+  await expect(page.locator("#workoutsPanel .plan-segment-nav a")).toHaveText(["Übersicht", "Bibliothek", "Pläne", "Wettkämpfe"]);
+  await expect(page.locator("#library").getByRole("button", { name: "+ Plan" })).toHaveCount(0);
+  await page.getByRole("link", { name: "Pläne", exact: true }).click();
+  await expect(page).toHaveURL(/#plan\/plans$/);
+  await expect(page.locator("#plans .context-empty")).toHaveText("Noch kein Plan.");
   const dialog = page.locator("#unitEditDialog");
-  await page.locator("#library").getByRole("button", { name: "+ Plan" }).click();
+  await page.locator("#plans").getByRole("button", { name: "+ Plan" }).click();
   await expect(dialog.getByRole("heading", { name: "Plan hinzufügen" })).toBeVisible();
   await dialog.getByLabel("Name", { exact: true }).fill("E2E Aufbau");
   await dialog.getByLabel("Ziel", { exact: true }).fill("Grundlage");
   await dialog.getByRole("button", { name: "Speichern" }).click();
   await expect(dialog).toBeHidden();
   expect(posts.at(-1)).toEqual(["/api/training-plans", expect.objectContaining({ name: "E2E Aufbau", goal: "Grundlage", status: "planned" })]);
-  const card = () => page.locator("#library .library-card", { has: page.locator("h4", { hasText: "E2E Aufbau" }) });
-  const lead = page.locator("#library > .planned-move-status");
+  const card = () => page.locator("#plans .library-card", { has: page.locator("h4", { hasText: "E2E Aufbau" }) });
+  const lead = page.locator("#plans > .planned-move-status");
   await expect(card().locator(":scope > .planned-move-status")).toContainText("Angelegt: E2E Aufbau");
   await expect(card().locator(":scope > .planned-activity-actions").getByRole("button")).toHaveText(["Bearbeiten", "Zeitraum ersetzen", "Archivieren", "Löschen"]);
-
-  // The plan is above the units.
-  const above = await page.locator("#library").evaluate((root) => {
-    const plan = [...root.querySelectorAll(".library-card")].find((node) => node.querySelector("h4")?.textContent === "E2E Aufbau");
-    const units = root.querySelector("details.library-sport");
-    return Boolean(plan && units && plan.compareDocumentPosition(units) & Node.DOCUMENT_POSITION_FOLLOWING);
-  });
-  expect(above).toBeTruthy();
+  // The plan never shows in the Bibliothek.
+  await expect(page.locator("#library .library-card h4", { hasText: "E2E Aufbau" })).toHaveCount(0);
 
   await card().getByRole("button", { name: "Archivieren" }).click();
   await expect(lead).toContainText("Archiviert: E2E Aufbau");
   expect(posts.at(-1)).toEqual([expect.stringMatching(/\/update$/), { status: "archived", confirmed: true }]);
-  await page.locator("#library .chip", { hasText: "Archiviert" }).click();
+  await page.locator("#plans .chip", { hasText: "Archiviert" }).click();
   await expect(card().locator(":scope > .planned-activity-actions").getByRole("button")).toHaveText(["Wiederherstellen", "Löschen"]);
   await card().getByRole("button", { name: "Wiederherstellen" }).click();
   await expect(lead).toContainText("Wiederhergestellt: E2E Aufbau");
-  await page.locator("#library .chip", { hasText: "Aktiv" }).click();
+  await page.locator("#plans .chip", { hasText: "Aktiv" }).click();
   await expect(card().getByRole("button", { name: "Bearbeiten" })).toBeVisible();
 
   await card().getByRole("button", { name: "Löschen" }).click();
@@ -250,13 +250,13 @@ test("@responsive a plan's period is replaced in one change and Rückgängig tak
     const path = new URL(item.url()).pathname;
     if (item.method() === "POST" && /\/replace$|undo-batch$/.test(path)) posts.push([path, item.postDataJSON()]);
   });
-  await openApp(page, request, "/#plan/library");
+  await openApp(page, request, "/#plan/plans");
   const dialog = page.locator("#unitEditDialog");
-  await page.locator("#library").getByRole("button", { name: "+ Plan" }).click();
+  await page.locator("#plans").getByRole("button", { name: "+ Plan" }).click();
   await dialog.getByLabel("Name", { exact: true }).fill("E2E Ersatzplan");
   await dialog.getByRole("button", { name: "Speichern" }).click();
   await expect(dialog).toBeHidden();
-  await expect(page.locator("#library .library-card", { has: page.locator("h4", { hasText: "E2E Ersatzplan" }) })).toBeVisible();
+  await expect(page.locator("#plans .library-card", { has: page.locator("h4", { hasText: "E2E Ersatzplan" }) })).toBeVisible();
 
   // A unit of next week joins the plan.
   // It is planned from the Bibliothek into the plan, through the routes "Einplanen" sends (the calendar has no add button).
@@ -268,8 +268,8 @@ test("@responsive a plan's period is replaced in one change and Rückgängig tak
     await globalThis.load();
   });
 
-  await page.goto("/#plan/library");
-  const card = page.locator("#library .library-card", { has: page.locator("h4", { hasText: "E2E Ersatzplan" }) });
+  await page.goto("/#plan/plans");
+  const card = page.locator("#plans .library-card", { has: page.locator("h4", { hasText: "E2E Ersatzplan" }) });
   await card.getByRole("button", { name: "Zeitraum ersetzen" }).click();
   await expect(dialog.getByRole("heading", { name: "Zeitraum ersetzen" })).toBeVisible();
   await expect(dialog.getByText("Wird archiviert · 1 Einheit")).toBeVisible();
@@ -289,11 +289,11 @@ test("@responsive a plan's period is replaced in one change and Rückgängig tak
   // The plan stays what it is: its card carries the receipt, and no second plan appears.
   const lead = card.locator(":scope > .planned-move-status", { hasText: "Ersetzt: 1 → 1 Einheiten" });
   await expect(lead).toBeVisible();
-  await expect(page.locator("#library .library-card h4", { hasText: "E2E Ersatzplan" })).toHaveCount(1);
+  await expect(page.locator("#plans .library-card h4", { hasText: "E2E Ersatzplan" })).toHaveCount(1);
   await lead.getByRole("button", { name: "Rückgängig" }).click();
   expect(posts.at(-1)[0]).toMatch(/undo-batch$/);
   expect(posts.at(-1)[1].changes.length).toBeGreaterThan(1);
-  await expect(page.locator("#library .planned-move-status", { hasText: "Zurückgenommen." }).first()).toBeVisible();
+  await expect(page.locator("#plans .planned-move-status", { hasText: "Zurückgenommen." }).first()).toBeVisible();
 });
 
 // #4021: a competition with a sync conflict offers "Lokal behalten" and, behind a confirmation card, "Von dort übernehmen".

@@ -3313,8 +3313,8 @@ async function loadArchivedLibrary() {
   renderLibrary(state.data?.library || [], true);
 }
 
-// The training plans at the top of the Bibliothek (#3950): "+ Plan", "Bearbeiten", "Archivieren", "Löschen" (the
-// plan only; its units stay) and, among the archived, "Wiederherstellen". Receipts offer "Rückgängig".
+// The training plans of the Pläne tab (#3950, #4133): "+ Plan", "Bearbeiten", "Zeitraum ersetzen", "Archivieren",
+// "Löschen" (the plan only; its units stay) and, among the archived, "Wiederherstellen". Receipts offer "Rückgängig".
 const planReceipts = new Map();
 const PLAN_STATUS_LABELS = { draft: "Entwurf", planned: "Geplant", active: "Aktiv", paused: "Pausiert", completed: "Beendet", cancelled: "Abgebrochen", archived: "Archiviert" };
 
@@ -3376,18 +3376,36 @@ function planCard(plan) {
     h("div", "planned-activity-actions", ...buttons, remove), ...notes, status);
 }
 
-function libraryPlans(archivedView) {
+// The Pläne tab of the Kalender (#4133): its own "Aktiv" / "Archiviert" view and "+ Plan" above the plan cards.
+let planView = "active";
+
+function plansToolbar() {
+  const group = h("div", { className: "chip-group", role: "radiogroup", "aria-label": "Pläne" });
+  for (const [value, label] of [["active", "Aktiv"], ["archived", "Archiviert"]]) {
+    const input = h("input", { type: "radio", name: "planView", value, checked: planView === value });
+    input.addEventListener("change", () => {
+      planView = value;
+      // A receipt belongs to the view the change was made in.
+      planReceipts.clear();
+      renderPlans();
+      $("#plans input[name=planView]:checked")?.focus();
+    });
+    group.append(h("label", "chip", input, h("span", null, label)));
+  }
+  const add = h("button", { type: "button", className: "secondary-button" }, "+ Plan");
+  add.addEventListener("click", () => openPlanForm());
+  return h("div", "library-toolbar", group, add);
+}
+
+function renderPlans() {
+  const root = $("#plans");
+  if (!root) return;
+  const archivedView = planView === "archived";
   const plans = (Array.isArray(state.data?.plans) ? state.data.plans : []).filter((plan) => (plan.status === "archived") === archivedView);
   const shown = new Set(plans.map((plan) => String(plan.id)));
-  const head = [];
-  if (!archivedView) {
-    const add = h("button", { type: "button", className: "secondary-button" }, "+ Plan");
-    add.addEventListener("click", () => openPlanForm());
-    head.push(h("div", "library-toolbar library-plans-head", h("strong", null, "Pläne"), add));
-  }
   // A deleted plan's card is gone, so its receipt leads the plans.
   const lost = [...planReceipts].filter(([id]) => !shown.has(id)).map(([id, receipt]) => planReceiptLine(h("p", { className: "planned-move-status", role: "status" }), id, receipt));
-  return [...head, ...lost, ...plans.map(planCard)];
+  root.replaceChildren(plansToolbar(), ...lost, ...(plans.length ? plans.map(planCard) : [h("p", "context-empty", archivedView ? "Keine archivierten Pläne." : "Noch kein Plan.")]));
 }
 
 function libraryToolbar() {
@@ -3396,8 +3414,6 @@ function libraryToolbar() {
     const input = h("input", { type: "radio", name: "libraryView", value, checked: libraryView === value });
     input.addEventListener("change", () => {
       libraryView = value;
-      // A receipt belongs to the view the change was made in.
-      planReceipts.clear();
       renderLibrary(state.data?.library || []);
       $("#library input[name=libraryView]:checked")?.focus();
     });
@@ -3501,7 +3517,7 @@ function renderLibrary(workouts, archivedFresh = false) {
   if (libraryView === "archived" && !archivedFresh) void loadArchivedLibrary();
   const openSports = new Set([...root.querySelectorAll("details.library-sport[open]")].map((section) => section.dataset.sport));
   const archivedView = libraryView === "archived";
-  root.replaceChildren(libraryToolbar(), ...libraryPlans(archivedView));
+  root.replaceChildren(libraryToolbar());
   if (!archivedView) appendHistoryPageButton(root, "library");
   const allWorkouts = Array.isArray(workouts) ? workouts : [];
   const visible = archivedView ? libraryArchived : allWorkouts.filter((workout) => !workout.archived && !workout.date);

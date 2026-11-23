@@ -853,9 +853,9 @@ The Bibliothek SHALL list the undated, non-archived workouts grouped by sport in
 - **WHEN** "Weitere Bibliothekseinheiten laden" is pressed
 - **THEN** the next page is appended to the list without duplicates by id
 
-#### Scenario: Training plans above the units
-- **WHEN** the athlete opens the Bibliothek
-- **THEN** the plans stand above the units with "+ Plan" and, per plan, "Bearbeiten", "Archivieren" and "Löschen" (the plan only; its units stay), the archived ones under "Archiviert" with "Wiederherstellen"; the form takes name, goal, period and status and saves with `POST /api/training-plans` or `.../{id}/update`; archive and delete post `confirmed`, act at once and show a receipt with "Rückgängig"; the unit editor offers the active plans for a new unit.
+#### Scenario: Training plans in the Pläne tab
+- **WHEN** the athlete opens the Pläne tab of the Kalender (`#plan/plans`, after Übersicht and Bibliothek, before Wettkämpfe); the Bibliothek shows only library workouts
+- **THEN** the tab shows "Aktiv" / "Archiviert" and "+ Plan" above the plan cards ("Noch kein Plan." when none exists) and, per plan, "Bearbeiten", "Archivieren" and "Löschen" (the plan only; its units stay), the archived ones under "Archiviert" with "Wiederherstellen"; the form takes name, goal, period and status and saves with `POST /api/training-plans` or `.../{id}/update`; archive and delete post `confirmed`, act at once and show a receipt with "Rückgängig"; the unit editor offers the active plans for a new unit.
 
 #### Scenario: Einplanen with a plan and the illness check
 - **WHEN** the athlete plans a library entry with "Einplanen"
