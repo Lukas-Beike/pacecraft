@@ -268,7 +268,7 @@ class PlannedUnitEditServiceTests(unittest.TestCase):
             {"name": "Aufbau", "start_date": days[0], "end_date": days[-1]}
         )["plan_id"]
         units = [
-            self.service.create({**STEADY, "date": day}, plan_id=plan_id)["local_id"]
+            self.unit({**STEADY, "date": day}, plan_id=plan_id)["local_id"]
             for day in days
         ]
         return plan_id, units
