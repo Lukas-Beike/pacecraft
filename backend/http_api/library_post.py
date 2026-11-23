@@ -9,6 +9,8 @@ from backend import change_history
 from backend.canonical.planning_fields import SESSION_FOCUS_KEYS
 from backend.errors import AppError
 from backend.http_api.route_table import Access, Route, RouteRequest
+from backend.planning.plan_guard_service import PlanCheckError
+from backend.planning.planned_unit_edit_service import illness_block
 
 # Both bodies hold one short field; anything larger is not a request of this kind.
 _MAX_BODY_BYTES = 1024
@@ -31,10 +33,10 @@ class LibraryPostRoutes:
     def __init__(
         self,
         workout_library: Callable[[], Any],
-        library_plan_service: Callable[[], Any],
+        unit_edit: Callable[[], Any],
     ):
         self._workout_library = workout_library
-        self._library_plan_service = library_plan_service
+        self._unit_edit = unit_edit
 
     def routes(self) -> list[Route]:
         return [
@@ -185,31 +187,39 @@ class LibraryPostRoutes:
     def _schedule(self, handler: Any, request: RouteRequest) -> None:
         """Plan a library entry on one day as a local unit, without a remote write.
 
-        Request: path `{id}`, the library entry's local id; JSON body
-        `{"date": "YYYY-MM-DD"}` and no other field. It runs the batch behind the
-        Coach's `apply_workout_library_plan`; the next explicit sync exports the
-        new unit.
+        Request: path `{id}`, the library entry's local id; JSON body `{"date":
+        "YYYY-MM-DD"}`, optionally `"plan_id"` (an active training plan the unit
+        joins; its period follows the unit) and `"accept_plan_findings"` (the codes
+        of blocking plan checks the athlete accepts, `illness_hard`), and no other
+        field. It runs the Coach's `apply_workout_library_plan` under the same plan
+        checks; the next explicit sync exports the new unit.
 
-        Response: 200 `{"status", "planned", "change"}`: `status` is `local`, or
-        `already_planned` when the entry already sits on that day (then without
-        `change`); `planned` is the planned unit; `change` is the undo reference.
+        Response: 200 `{"status", "planned", "plan_check_notes", "change"}`:
+        `status` is `local`, or `already_planned` when the entry already sits on that
+        day (then without `change`); `planned` is the planned unit; `change` is the
+        undo reference.
 
         Errors: 400 "Die Anfrage muss ein Objekt sein." or "Unbekannte Felder: …"
         for another body; 400 for an id that is no UUID or a date that is no
-        JJJJ-MM-TT date; 404 "Bibliothekseinheit nicht gefunden."; 409 "Planung
-        wegen bestehender Kalendereinheiten nicht möglich: …" for a day the
-        calendar rules out.
+        JJJJ-MM-TT date; 404 "Bibliothekseinheit nicht gefunden." or
+        "Trainingsplan nicht gefunden."; 409 "Planung wegen bestehender
+        Kalendereinheiten nicht möglich: …" for a day the calendar rules out; 409
+        `plan_not_available` for an archived plan; 409 `illness_hard` for a hard or
+        long unit within days of a reported illness (resend with
+        `accept_plan_findings`).
         """
-        payload = _read_fields(handler, {"date"})
-        with change_history.collect_changes() as changes:
-            result = self._library_plan_service().apply(
-                [
-                    {
-                        "library_workout_id": request.params["id"],
-                        "date": payload.get("date"),
-                    }
-                ]
-            )
+        payload = _read_fields(handler, {"date", "plan_id", "accept_plan_findings"})
+        plan_id, accept = payload.get("plan_id"), payload.get("accept_plan_findings")
+        try:
+            with change_history.collect_changes() as changes:
+                result = self._unit_edit().schedule(
+                    request.params["id"],
+                    payload.get("date"),
+                    plan_id=plan_id if isinstance(plan_id, str) else None,
+                    accept=accept if isinstance(accept, list) else None,
+                )
+        except PlanCheckError as error:
+            raise illness_block(error) from error
         planned = result["planned"][0]
         created = [item for item in changes if item["entity_type"] == "planned_unit"]
         handler.send_json(
@@ -217,6 +227,7 @@ class LibraryPostRoutes:
             {
                 "status": planned["status"],
                 "planned": planned["library_entry"],
+                "plan_check_notes": result["plan_check_notes"],
                 **({"change": created[-1]} if created else {}),
             },
         )

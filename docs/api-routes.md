@@ -1310,20 +1310,26 @@ gefunden."; 409 for a planned unit.
 
 ### `POST /api/library/{id}/schedule`
 
-Request: path `{id}`, the library entry's local id; JSON body
-`{"date": "YYYY-MM-DD"}` and no other field. It runs the batch behind the
-Coach's `apply_workout_library_plan`; the next explicit sync exports the
-new unit.
+Request: path `{id}`, the library entry's local id; JSON body `{"date":
+"YYYY-MM-DD"}`, optionally `"plan_id"` (an active training plan the unit
+joins; its period follows the unit) and `"accept_plan_findings"` (the codes
+of blocking plan checks the athlete accepts, `illness_hard`), and no other
+field. It runs the Coach's `apply_workout_library_plan` under the same plan
+checks; the next explicit sync exports the new unit.
 
-Response: 200 `{"status", "planned", "change"}`: `status` is `local`, or
-`already_planned` when the entry already sits on that day (then without
-`change`); `planned` is the planned unit; `change` is the undo reference.
+Response: 200 `{"status", "planned", "plan_check_notes", "change"}`:
+`status` is `local`, or `already_planned` when the entry already sits on that
+day (then without `change`); `planned` is the planned unit; `change` is the
+undo reference.
 
 Errors: 400 "Die Anfrage muss ein Objekt sein." or "Unbekannte Felder: …"
 for another body; 400 for an id that is no UUID or a date that is no
-JJJJ-MM-TT date; 404 "Bibliothekseinheit nicht gefunden."; 409 "Planung
-wegen bestehender Kalendereinheiten nicht möglich: …" for a day the
-calendar rules out.
+JJJJ-MM-TT date; 404 "Bibliothekseinheit nicht gefunden." or
+"Trainingsplan nicht gefunden."; 409 "Planung wegen bestehender
+Kalendereinheiten nicht möglich: …" for a day the calendar rules out; 409
+`plan_not_available` for an archived plan; 409 `illness_hard` for a hard or
+long unit within days of a reported illness (resend with
+`accept_plan_findings`).
 
 ### `POST /api/library/{id}/update`
 

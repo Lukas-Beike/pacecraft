@@ -14,7 +14,7 @@ from typing import Any
 from backend.canonical.planning_fields import SESSION_FOCUS_KEYS
 from backend.errors import AppError
 from backend.planning import library, plan_checks
-from backend.planning.plan_guard_service import PlanGuardService
+from backend.planning.plan_guard_service import PlanCheckError, PlanGuardService
 from backend.planning.sport import planned_stored_sport
 
 # Fields a create or an edit takes; the day and time go with them.
@@ -42,6 +42,17 @@ _REQUIRED_NEW = ("date", "sport", "name", "description", "duration_minutes")
 _WAIVED = plan_checks.REQUIRED_CODES
 
 
+def illness_block(error: PlanCheckError) -> Exception:
+    """The athlete's answer to a plan check that blocks: only the health rule can, and a second tap accepts it."""
+    if {item["code"] for item in error.findings} != set(plan_checks.BLOCKING_CODES):
+        return error
+    return AppError(
+        409,
+        "Krankheit gemeldet: In den nächsten Tagen keine harte oder lange Einheit.",
+        reason="illness_hard",
+    )
+
+
 class PlannedUnitEditService:
     """Apply one athlete edit as the Coach's change batch, under the plan checks."""
 
@@ -51,11 +62,46 @@ class PlannedUnitEditService:
         change_service: Callable[[], Any],
         library_service: Callable[[], Any],
         plan_guard: Callable[[], PlanGuardService],
+        library_plan_service: Callable[[], Any] | None = None,
     ) -> None:
         self._database_manager = database_manager
         self._change_service = change_service
         self._library_service = library_service
         self._plan_guard = plan_guard
+        self._library_plan_service = library_plan_service
+
+    def schedule(
+        self,
+        library_workout_id: str,
+        date: Any,
+        *,
+        plan_id: str | None = None,
+        accept: list[str] | None = None,
+    ) -> dict[str, Any]:
+        """Plan a library entry on a day, optionally into a plan, under the plan checks.
+
+        The same local apply the Coach's ``apply_workout_library_plan`` runs; the
+        health rule blocks a hard or long unit within days of a reported illness
+        unless the athlete accepts it (``accept``), the rules written for the
+        Coach's data stay waived (#4055).
+        """
+        library_plans = self._library_plan_service
+        if library_plans is None:
+            raise AppError(500, "Die Bibliotheksplanung ist nicht verfügbar.")
+        guard = self._plan_guard()
+        with self._database_manager.unit_of_work():
+            before = guard.findings()
+            result = library_plans().apply(
+                [
+                    {
+                        "library_workout_id": library_workout_id,
+                        "date": date,
+                        **({"plan_id": plan_id} if plan_id else {}),
+                    }
+                ]
+            )
+            notes = guard.verify(before, accept or [], waived=_WAIVED)
+        return {**result, "plan_check_notes": notes}
 
     def create(
         self,

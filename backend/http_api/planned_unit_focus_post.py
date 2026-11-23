@@ -9,8 +9,8 @@ from backend import change_history
 from backend.canonical.planning_fields import FOCUS_ONLY_KEYS
 from backend.errors import AppError
 from backend.http_api.route_table import Access, Route, RouteRequest
-from backend.planning import plan_checks
 from backend.planning.plan_guard_service import PlanCheckError
+from backend.planning.planned_unit_edit_service import illness_block
 
 
 class PlannedUnitFocusPostRoutes:
@@ -134,17 +134,7 @@ class PlannedUnitFocusPostRoutes:
             with change_history.collect_changes() as changes:
                 result = apply()
         except PlanCheckError as error:
-            # Only the health rule blocks the athlete's own edit; a second tap with
-            # `accept_plan_findings: ["illness_hard"]` saves it.
-            if {item["code"] for item in error.findings} != set(
-                plan_checks.BLOCKING_CODES
-            ):
-                raise
-            raise AppError(
-                409,
-                "Krankheit gemeldet: In den nächsten Tagen keine harte oder lange Einheit.",
-                reason="illness_hard",
-            ) from error
+            raise illness_block(error) from error
         units = [item for item in changes if item["entity_type"] == "planned_unit"]
         handler.send_json(200, {**result, **({"change": units[-1]} if units else {})})
 

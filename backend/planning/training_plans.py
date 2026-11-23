@@ -225,6 +225,17 @@ class TrainingPlanService:
         self._revisions.bump(db)
         return {"status": "updated", "plan_id": plan_id, "plan": updated}
 
+    def active_plan(self, db: Any, plan_id: Any) -> dict[str, Any]:
+        """The plan new units may join, in the caller's transaction (#4054)."""
+        plan = self._repository.get(db, self._normalize_id(plan_id))
+        if not plan:
+            raise AppError(404, "Trainingsplan nicht gefunden.")
+        if plan.get("status") == "archived":
+            raise AppError(
+                409, "Der Trainingsplan ist nicht aktiv.", reason="plan_not_available"
+            )
+        return plan
+
     def update_bounds(self, db: Any, plan_ids: Iterable[str]) -> None:
         for plan_id in sorted(set(plan_ids)):
             plan = self._repository.get(db, plan_id)
