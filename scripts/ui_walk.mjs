@@ -103,8 +103,9 @@ export function releaseMarks(serviceWorker, indexHtml) {
   return { cache, assetVersions: [...new Set(versions)].sort((a, b) => a.localeCompare(b)) };
 }
 
-// How load times are measured; walks measured another way are not compared (#2581).
-export const LOAD_MEASURE = "ready";
+// How load times are measured; walks measured another way are not compared (#2581);
+// since #3969 a loading text line also counts as not ready.
+export const LOAD_MEASURE = "ready-text";
 const EVENT_STREAM = "GET /api/state/events";
 const READY_CAP_MS = 15000;
 const QUIET_MS = 300;
@@ -139,7 +140,8 @@ export function requestKey(method, url, appOrigin) {
   return `${method} ${parsed.origin === appOrigin ? "" : parsed.origin}${parsed.pathname}`;
 }
 
-// A view is loaded once its active panel shows no visible loading marker and no
+// A view is loaded once its active panel shows no visible loading marker or
+// "… wird geladen…" line (some views load behind a text line, #3969) and no
 // request started for it has been open for QUIET_MS (the event stream stays open
 // by design). Network idle never came on the Coach view since 2.1.6 (#2581).
 export async function rendered(page, route, open) {
@@ -159,7 +161,9 @@ export async function rendered(page, route, open) {
   while (Date.now() - started < READY_CAP_MS) {
     const busy = await page.evaluate(() => {
       const panel = document.querySelector(".panel.active");
-      return !panel || [...panel.querySelectorAll(".loading-state, [aria-busy='true'], .skeleton")].some((node) => node.checkVisibility());
+      // A loading line is a text element of its own, not a button label or a Coach message quoting one.
+      const line = (node) => !node.children.length && node.textContent.trim().endsWith("wird geladen…") && !node.closest("button, #messages");
+      return !panel || [...panel.querySelectorAll(".loading-state, [aria-busy='true'], .skeleton")].some((node) => node.checkVisibility()) || [...panel.querySelectorAll("p, div, span, small")].some((node) => line(node) && node.checkVisibility());
     }).catch(() => true);
     if (busy || pending().length) quietSince = null;
     else if (quietSince === null) quietSince = Date.now();
