@@ -103,3 +103,51 @@ test("@responsive the calendar adds, edits and archives a unit", async ({ page, 
   await expect(page.locator(".planned-entry", { hasText: "E2E Ausdauer neu" })).toHaveCount(1);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBeTruthy();
 });
+
+// #3950: the training plans sit at the top of the Bibliothek; a plan is created, archived, restored and deleted there.
+test("@responsive the Bibliothek creates, archives, restores and deletes a training plan", async ({ page, request }) => {
+  test.setTimeout(180_000);
+  const posts = [];
+  page.on("request", (item) => {
+    if (item.method() === "POST" && /^\/api\/training-plans/.test(new URL(item.url()).pathname)) posts.push([new URL(item.url()).pathname, item.postDataJSON()]);
+  });
+  await openApp(page, request, "/#plan/library");
+  const dialog = page.locator("#unitEditDialog");
+  await page.locator("#library").getByRole("button", { name: "+ Plan" }).click();
+  await expect(dialog.getByRole("heading", { name: "Plan hinzufügen" })).toBeVisible();
+  await dialog.getByLabel("Name", { exact: true }).fill("E2E Aufbau");
+  await dialog.getByLabel("Ziel", { exact: true }).fill("Grundlage");
+  await dialog.getByRole("button", { name: "Speichern" }).click();
+  await expect(dialog).toBeHidden();
+  expect(posts.at(-1)).toEqual(["/api/training-plans", expect.objectContaining({ name: "E2E Aufbau", goal: "Grundlage", status: "planned" })]);
+  const card = () => page.locator("#library .library-card", { has: page.locator("h4", { hasText: "E2E Aufbau" }) });
+  const lead = page.locator("#library > .planned-move-status");
+  await expect(card().locator(":scope > .planned-move-status")).toContainText("Angelegt: E2E Aufbau");
+  await expect(card().locator(":scope > .planned-activity-actions").getByRole("button")).toHaveText(["Bearbeiten", "Archivieren", "Löschen"]);
+
+  // The plan is above the units.
+  const above = await page.locator("#library").evaluate((root) => {
+    const plan = [...root.querySelectorAll(".library-card")].find((node) => node.querySelector("h4")?.textContent === "E2E Aufbau");
+    const units = root.querySelector("details.library-sport");
+    return Boolean(plan && units && plan.compareDocumentPosition(units) & Node.DOCUMENT_POSITION_FOLLOWING);
+  });
+  expect(above).toBeTruthy();
+
+  await card().getByRole("button", { name: "Archivieren" }).click();
+  await expect(lead).toContainText("Archiviert: E2E Aufbau");
+  expect(posts.at(-1)).toEqual([expect.stringMatching(/\/update$/), { status: "archived", confirmed: true }]);
+  await page.locator("#library .chip", { hasText: "Archiviert" }).click();
+  await expect(card().locator(":scope > .planned-activity-actions").getByRole("button")).toHaveText(["Wiederherstellen", "Löschen"]);
+  await card().getByRole("button", { name: "Wiederherstellen" }).click();
+  await expect(lead).toContainText("Wiederhergestellt: E2E Aufbau");
+  await page.locator("#library .chip", { hasText: "Aktiv" }).click();
+  await expect(card().getByRole("button", { name: "Bearbeiten" })).toBeVisible();
+
+  await card().getByRole("button", { name: "Löschen" }).click();
+  await expect(lead).toContainText("Gelöscht: E2E Aufbau");
+  expect(posts.at(-1)).toEqual([expect.stringMatching(/\/delete$/), { confirmed: true }]);
+  await expect(card()).toHaveCount(0);
+  await lead.getByRole("button", { name: "Rückgängig" }).click();
+  await expect(card()).toHaveCount(1);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBeTruthy();
+});

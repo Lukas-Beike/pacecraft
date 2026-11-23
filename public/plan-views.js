@@ -3028,12 +3028,82 @@ async function loadArchivedLibrary() {
   renderLibrary(state.data?.library || [], true);
 }
 
+// The training plans at the top of the Bibliothek (#3950): "+ Plan", "Bearbeiten", "Archivieren", "Löschen" (the
+// plan only; its units stay) and, among the archived, "Wiederherstellen". Receipts offer "Rückgängig".
+const planReceipts = new Map();
+const PLAN_STATUS_LABELS = { draft: "Entwurf", planned: "Geplant", active: "Aktiv", paused: "Pausiert", completed: "Beendet", cancelled: "Abgebrochen", archived: "Archiviert" };
+
+async function planChanged(text, result) {
+  planReceipts.clear();
+  planReceipts.set(String(result.plan_id), { text, change: result.change });
+  await globalThis.load?.();
+  announcePlanChange(text);
+}
+
+function openPlanForm(plan = null) {
+  openPlanEditor({ plan, onSaved: (result, body) => planChanged(`${plan ? "Gespeichert" : "Angelegt"}: ${body.name}`, result) });
+}
+
+function planPost(plan, path, body, text) {
+  return async () => planChanged(text, await api(`/api/training-plans/${encodeURIComponent(plan.id)}/${path}`, { method: "POST", body: JSON.stringify(body) }));
+}
+
+// A restored plan runs again when today lies in its period, else it is planned.
+function planRestoredStatus(plan) {
+  const today = timezoneDateKey(state.data?.profile?.timezone, new Date());
+  return plan.start_date <= today && today <= plan.end_date ? "active" : "planned";
+}
+
+function planCard(plan) {
+  const id = String(plan.id);
+  const status = h("p", { className: "planned-move-status", role: "status" });
+  const receipt = planReceipts.get(id);
+  if (receipt) libraryReceiptLine(status, id, receipt, planReceipts);
+  const [remove, removeNote] = inCardDelete(planPost(plan, "delete", { confirmed: true }, `Gelöscht: ${plan.name}`));
+  const buttons = [];
+  const notes = [removeNote];
+  if (plan.status === "archived") {
+    const restore = h("button", { type: "button", className: "secondary-button" }, "Wiederherstellen");
+    restore.addEventListener("click", () => void planPost(plan, "update", { status: planRestoredStatus(plan) }, `Wiederhergestellt: ${plan.name}`)().catch((error) => { status.textContent = error.message; }));
+    buttons.push(restore);
+  } else {
+    const edit = h("button", { type: "button", className: "secondary-button" }, "Bearbeiten");
+    edit.addEventListener("click", () => openPlanForm(plan));
+    const [archive, archiveNote] = inCardDelete(planPost(plan, "update", { status: "archived", confirmed: true }, `Archiviert: ${plan.name}`));
+    archive.textContent = "Archivieren";
+    archive.classList.remove("danger-button");
+    buttons.push(edit, archive);
+    notes.push(archiveNote);
+  }
+  const range = [plan.start_date, plan.end_date].filter(Boolean).map((day) => dateLabel(day)).join(" – ");
+  return h("article", "library-card",
+    h("div", null, h("h4", null, plan.name), h("span", null, PLAN_STATUS_LABELS[plan.status] || plan.status)),
+    h("p", null, [range, plan.goal].filter(Boolean).join("\n")),
+    h("div", "planned-activity-actions", ...buttons, remove), ...notes, status);
+}
+
+function libraryPlans(archivedView) {
+  const plans = (Array.isArray(state.data?.plans) ? state.data.plans : []).filter((plan) => (plan.status === "archived") === archivedView);
+  const shown = new Set(plans.map((plan) => String(plan.id)));
+  const head = [];
+  if (!archivedView) {
+    const add = h("button", { type: "button", className: "secondary-button" }, "+ Plan");
+    add.addEventListener("click", () => openPlanForm());
+    head.push(h("div", "library-toolbar library-plans-head", h("strong", null, "Pläne"), add));
+  }
+  // A deleted plan's card is gone, so its receipt leads the plans.
+  const lost = [...planReceipts].filter(([id]) => !shown.has(id)).map(([id, receipt]) => libraryReceiptLine(h("p", { className: "planned-move-status", role: "status" }), id, receipt, planReceipts));
+  return [...head, ...lost, ...plans.map(planCard)];
+}
+
 function libraryToolbar() {
   const group = h("div", { className: "chip-group", role: "radiogroup", "aria-label": "Bibliothek" });
   for (const [value, label] of [["active", "Aktiv"], ["archived", "Archiviert"]]) {
     const input = h("input", { type: "radio", name: "libraryView", value, checked: libraryView === value });
     input.addEventListener("change", () => {
       libraryView = value;
+      // A receipt belongs to the view the change was made in.
+      planReceipts.clear();
       renderLibrary(state.data?.library || []);
       $("#library input[name=libraryView]:checked")?.focus();
     });
@@ -3086,8 +3156,8 @@ function archivedLibraryCard(workout) {
     h("div", "planned-activity-actions", ...buttons), ...notes);
 }
 
-function libraryReceiptLine(status, id, receipt) {
-  status.append(receipt.text, ...(receipt.change?.id ? plannedMoveUndo(id, receipt, status, libraryReceipts) : []));
+function libraryReceiptLine(status, id, receipt, receipts = libraryReceipts) {
+  status.append(receipt.text, ...(receipt.change?.id ? plannedMoveUndo(id, receipt, status, receipts) : []));
   return status;
 }
 
@@ -3117,8 +3187,8 @@ function renderLibrary(workouts, archivedFresh = false) {
   if (!root) return;
   if (libraryView === "archived" && !archivedFresh) void loadArchivedLibrary();
   const openSports = new Set([...root.querySelectorAll("details.library-sport[open]")].map((section) => section.dataset.sport));
-  root.replaceChildren(libraryToolbar());
   const archivedView = libraryView === "archived";
+  root.replaceChildren(libraryToolbar(), ...libraryPlans(archivedView));
   if (!archivedView) appendHistoryPageButton(root, "library");
   const allWorkouts = Array.isArray(workouts) ? workouts : [];
   const visible = archivedView ? libraryArchived : allWorkouts.filter((workout) => !workout.archived && !workout.date);

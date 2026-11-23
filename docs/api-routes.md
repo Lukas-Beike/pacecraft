@@ -169,6 +169,9 @@ handler's docstring. Regenerate it with
 | POST | `/api/sync/jobs` | Session + CSRF | after access | Queue a sync job. |
 | GET | `/api/sync/jobs/{id}` | Session | no | Result of one sync job. |
 | GET | `/api/sync/status` | Session | no | Synchronization status. |
+| POST | `/api/training-plans` | Session + CSRF | after access | Save a new local plan without units. |
+| POST | `/api/training-plans/{id}/delete` | Session + CSRF | after access | Delete a plan's metadata after the athlete confirmed it; its units stay. |
+| POST | `/api/training-plans/{id}/update` | Session + CSRF | after access | Change a plan's name, goal, dates or status; its units stay as they are. |
 | GET | `/api/wahoo/callback` | Public | no | Wahoo OAuth redirect target; answers 302 to the app. |
 | POST | `/api/wahoo/connect` | Session + CSRF | after access | Start the Wahoo OAuth connection or disconnect Wahoo. |
 | POST | `/api/wahoo/disconnect` | Session + CSRF | after access | Start the Wahoo OAuth connection or disconnect Wahoo. |
@@ -2429,6 +2432,40 @@ Response: 200 with `status`, `phase`, `progress` (0 to 100),
 (`active`, `running_operations`) and `jobs` (the recent sync jobs).
 
 Errors: none beyond the common ones.
+
+### `POST /api/training-plans`
+
+Request: JSON body `{"name", "goal", "start_date", "end_date", "status"}`
+(dates `YYYY-MM-DD`, status one of `planned`, `active`, `paused`, `draft`,
+`completed`, `archived`, `cancelled`; default `planned`) and no other field.
+A unit joins the plan when it is planned with the plan's id.
+
+Response: 200 `{"status": "created", "plan_id", "plan", "change"}`;
+`change` is the undo reference.
+
+Errors: 400 for an unknown field, a missing name, a date that is no
+JJJJ-MM-TT date or a start after the end, or an invalid status.
+
+### `POST /api/training-plans/{id}/delete`
+
+Request: path `{id}`; JSON body `{"confirmed": true}` and no other field.
+
+Response: 200 `{"status": "deleted", "plan_id", "change"}`.
+
+Errors: 409 `confirmation_required` "Das Löschen muss bestätigt werden."
+without `confirmed: true`; 400 for an id that is no UUID; 404
+"Trainingsplan nicht gefunden.".
+
+### `POST /api/training-plans/{id}/update`
+
+Request: path `{id}`; the fields of the create route (a missing field keeps
+its stored value) and, for `status: "archived"`, `"confirmed": true`.
+
+Response: 200 `{"status": "updated", "plan_id", "plan", "change"}`.
+
+Errors: as the create route; 409 `confirmation_required` "Das Archivieren
+muss bestätigt werden." for an archive without `confirmed`; 400 for an id
+that is no UUID; 404 "Trainingsplan nicht gefunden.".
 
 ### `GET /api/wahoo/callback`
 
