@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import threading
+from collections.abc import Callable
 from typing import Any
 
 from backend.canonical.labels import provider_name
@@ -15,7 +16,13 @@ from backend.sync.conflict_commands import SyncConflictCommandService
 from backend.sync.plan_commands import PlanPushCommandService
 from backend.sync.plan_repair import PlanRepairManifestService
 from backend.sync.plan_selection import StructuredPlanSyncService
+from backend.sync.provider_registry import DEFAULT_PROVIDER_REGISTRY
 from backend.sync.queue import SyncJobQueueService
+
+# The providers Anbindungen offers a full resync for, as its routes do.
+_FULL_RESYNC_PROVIDERS = frozenset(
+    str(provider) for _path, provider in DEFAULT_PROVIDER_REGISTRY.full_resync_routes()
+)
 
 
 class CoachSyncToolService:
@@ -31,7 +38,17 @@ class CoachSyncToolService:
         plan_push: PlanPushCommandService,
         provider_refresh: ProviderRefreshCommandService,
         nutrition_diary: Any | None = None,
+        *,
+        connection_checks: Any = None,
+        yazio_check: Callable[[], dict[str, Any]] | None = None,
+        full_resync: Any = None,
+        operation_id: Callable[[], str] = lambda: "",
     ) -> None:
+        # Anbindungen's checks and full resync (#3960).
+        self._connection_checks = connection_checks
+        self._yazio_check = yazio_check
+        self._full_resync = full_resync
+        self._operation_id = operation_id
         self._queue = queue
         self._authority = authority
         self._conflicts = conflicts
@@ -54,6 +71,8 @@ class CoachSyncToolService:
             return self._start_plan_sync(arguments, intent, sync_job_ids)
         if name == "push_strength_to_garmin":
             return self._push_strength_to_garmin(arguments, intent, sync_job_ids)
+        if name == "check_provider_connection":
+            return self._check_connection(arguments, intent)
         if name == "get_sync_job":
             job_id = str(arguments.get("job_id") or "").strip()
             if job_id not in sync_job_ids:
@@ -133,12 +152,45 @@ class CoachSyncToolService:
             )
         provider = str(intent.get("target_system") or "")
         require_coach_scope(intent, f"{provider}_refresh")
+        if arguments.get("full_resync") is True:
+            return self._start_full_resync(provider)
         result = self._provider_refresh.start(
             provider, arguments, cancel_event=cancel_event
         )
         if result.get("status") == "queued":
             sync_job_ids.append(result["sync_job_id"])
         return result
+
+    def _start_full_resync(self, provider: str) -> dict[str, Any]:
+        """The confirmed full resync of Anbindungen, in the background (#3960).
+
+        It reads only and keeps the existing data; a run in progress is
+        returned instead of a second one, as the route does.
+        """
+        if provider not in _FULL_RESYNC_PROVIDERS or self._full_resync is None:
+            raise AppError(
+                400,
+                "Ein vollständiger Resync ist nur für Garmin und Wahoo möglich.",
+                reason="invalid_job_request",
+            )
+        result = self._full_resync.start(provider, self._operation_id())
+        return {"ok": True, **result}
+
+    def _check_connection(
+        self, arguments: dict[str, Any], intent: dict[str, Any]
+    ) -> dict[str, Any]:
+        """One read-only connection check of Anbindungen (#3960)."""
+        if "check_provider_connection" not in authorized_operations(intent):
+            raise AppError(
+                403, STRUCTURED_AUTHORIZATION_ERROR, reason="intent_scope_denied"
+            )
+        provider = str(arguments.get("provider") or "")
+        if provider == "yazio" and self._yazio_check is not None:
+            return {"ok": True, "provider": provider, **self._yazio_check()}
+        checks = self._connection_checks
+        if checks is None or provider not in checks.providers():
+            raise AppError(404, "Unbekannter Anbieter.", reason="unknown_provider")
+        return {"ok": True, "provider": provider, **checks.check(provider)}
 
     def _start_plan_sync(
         self, arguments: dict[str, Any], intent: dict[str, Any], sync_job_ids: list[str]

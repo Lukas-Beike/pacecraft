@@ -921,6 +921,7 @@ const COACH_RECEIPT_LABELS = {
   update_training_plan: "Trainingsplan geändert", undo_training_change: "Rücknahme zur Prüfung bereit",
   preview_adaptive_replan: "Plananpassung zur Prüfung bereit", apply_adaptive_replan: "Plananpassung gespeichert",
   start_provider_refresh: "Datenabruf beauftragt", refresh_current_performance: "Leistungsdatenabruf beauftragt",
+  check_provider_connection: "Verbindung geprüft",
   sync_competitions: "Wettkampfsynchronisierung beauftragt",
   resolve_training_sync_conflict: "Synchronisierungsentscheidung gespeichert",
   start_intervals_plan_sync: "Intervals-Synchronisierung beauftragt",

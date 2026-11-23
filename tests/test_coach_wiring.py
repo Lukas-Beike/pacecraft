@@ -507,7 +507,18 @@ class CoachCommandToolBuilderTests(unittest.TestCase):
             commands.plan_push.return_value,
             commands.provider_refresh.return_value,
             nutrition_diary=ctx.nutrition.diary_service.return_value,
+            connection_checks=ctx.provider_connection_checks,
+            yazio_check=ANY,
+            full_resync=ctx.provider_resync.full_resync_service.return_value,
+            operation_id=ctx.ids,
         )
+        # #3960: the Yazio check reads the food database only when called.
+        yazio_check = constructors["CoachSyncToolService"].call_args.kwargs[
+            "yazio_check"
+        ]
+        database = ctx.nutrition.meal_library_service.return_value.food_database
+        database.check_yazio_connection.assert_not_called()
+        self.assertIs(database.check_yazio_connection.return_value, yazio_check())
         constructors["CoachAthleteRecordToolService"].assert_called_once_with(
             ctx.athlete.checkin.return_value,
             ctx.athlete.activity_feedback.return_value,

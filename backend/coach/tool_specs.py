@@ -147,6 +147,16 @@ TOOL_SPECS: tuple[ToolSpec, ...] = (
     ),
     _read("list_training_plans", requirements=("training-plans-and-adaptation/TP4",)),
     _read("get_sync_job", SYNC, requirements=("coach-context-and-provenance/CP6",)),
+    # It contacts the provider (a Garmin check logs in), so it is no plain read:
+    # only a turn started by the athlete's own message offers it.
+    ToolSpec(
+        "check_provider_connection",
+        SYNC,
+        PROVIDER_READ_JOB,
+        done="Verbindung geprüft",
+        action="Verbindung prüfen",
+        requirements=("provider-connections/Coach connection checks and full resync",),
+    ),
     _read(
         "read_nutrition",
         requirements=(CA1, CA2),

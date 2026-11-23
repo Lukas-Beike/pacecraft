@@ -101,6 +101,8 @@ class CoachStructuredToolExecutionService:
         local_transaction = name not in {
             "start_provider_refresh",
             "apply_adaptive_replan",
+            # A connection check may wait 45 s for the provider (#3960).
+            "check_provider_connection",
             *EXTERNAL_FOOD_LOOKUP_TOOLS,
         }
         transaction = (
