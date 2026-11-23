@@ -177,6 +177,11 @@ class DayInputs:
     unfinished: bool = False
     # Logged kcal its entries' macros do not cover (#3617 item 3).
     uncovered_kcal: float = 0.0
+    # The known salt of its entries and the share of their values that report it,
+    # and whether a session of the day was long: only for the water hint (#4047).
+    salt_g: float | None = None
+    salt_known_share: float = 0.0
+    long_session: bool = False
 
 
 @dataclass(frozen=True)

@@ -400,6 +400,27 @@ The energy card SHALL show two non-blocking notes as its last lines and, for tod
 
 Evidence: `backend/nutrition/energy_guard.py`, `backend/nutrition/energy_expected.py`, `public/analysis.js::energyUsage`; `tests/analysis-presentation.test.cjs::the diary's usage card draws the outlined source's parts, its day total and the info behind the small i (#3252, #3703)`.
 
+### Requirement: A marked weigh-in step is explained as probable water
+The energy read SHALL carry `water_hint` for the latest weigh-in of today or yesterday: a hint only, with no kilogram figure, that changes no weight, trend or energy estimate. The weigh-in is marked when it lies beyond twice the robust scatter of the athlete's own weigh-ins around their trend, and at least 0.7 kg; the cause is read from the previous day against the athlete's usual 28 days.
+
+#### Scenario: A jump after salt or carbohydrates
+- **WHEN** the weigh-in is marked upward and the previous day's logged salt or carbohydrates were clearly above the usual level
+- **THEN** the hint names `up` with the causes that apply, and the weight row of Körper shows "Wahrscheinlich Wasser: gestern viel Salz und Kohlenhydrate" (or "viel Salz", "viele Kohlenhydrate") under its source line.
+
+#### Scenario: A drop after a long session
+- **WHEN** the weigh-in is marked downward after a session of at least 90 minutes and the previous day's carbohydrates were clearly below the usual level
+- **THEN** the hint names `down`, and the row shows "Wahrscheinlich Wasser: gestern wenig Kohlenhydrate nach langer Einheit".
+
+#### Scenario: Nothing to say
+- **WHEN** the deviation is not marked, the direction does not match the previous day, or the salt data of that day is sparse (under half of its values report salt)
+- **THEN** there is no hint, and without usable salt data the hint never names salt.
+
+#### Scenario: The Coach reads the same hint
+- **WHEN** the Coach reads the energy of a day
+- **THEN** it receives the same `water_hint` and its rules say to name the cause, to give no kilogram figure, and that salt binds water only for a short time and never causes tissue or fat gain.
+
+Evidence: `backend/nutrition/water_hint.py`, `backend/nutrition/energy_view.py::read_energy_view`, `public/analysis.js::waterHintText`; `tests/test_water_hint.py`, `tests/test_coach_tool_coverage.py::test_the_energy_read_takes_the_asked_day`, `tests/analysis-presentation.test.cjs::body overview: the newest own body fat with its source, weight with its source, lean mass derived (#3402)`.
+
 ### Requirement: Correction and meal-extension semantics
 A correction SHALL accept only meal date, time, time knowledge, meal type, description, kcal, macros (and their aliases), `food_ingredients`, `components` and `packaging_label`, SHALL keep the stored source, and SHALL mark hand-edited nutrients with the basis `manual_correction`. Adding a product to a meal SHALL keep the earlier values as the first component.
 

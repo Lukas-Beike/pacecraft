@@ -14,7 +14,7 @@ import statistics
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import date, timedelta
-from typing import Final, Literal
+from typing import TYPE_CHECKING, Final, Literal
 
 from backend.athlete.body_records import MIN_LINE_WEIGHINS, weight_trend
 
@@ -35,6 +35,9 @@ CLEAR_SD: Final = 1.5
 CLEAR_SHARE: Final = 0.3
 # Salt counts only on days whose logged items mostly report it.
 MIN_SALT_KNOWN_SHARE: Final = 0.5
+
+if TYPE_CHECKING:
+    from backend.nutrition.energy_balance import DayInputs
 
 Cause = Literal["salt", "carbs", "carbs_after_session"]
 Direction = Literal["up", "down"]
@@ -98,6 +101,38 @@ def _level(value: float | None, usual: Sequence[float | None], high: bool) -> bo
     if high:
         return value >= median * (1 + CLEAR_SHARE) and value >= median + CLEAR_SD * sd
     return value <= median * (1 - CLEAR_SHARE) and value <= median - CLEAR_SD * sd
+
+
+def water_hint_for_latest(
+    days: Mapping[date, DayInputs], end: date
+) -> dict[str, object] | None:
+    """The hint for the latest weigh-in of the energy read, as its payload.
+
+    Only a weigh-in of ``end`` or the day before is the current one; the
+    intake of days without entries is unknown and left out.
+    """
+    weights = {d: v.weight_kg for d, v in days.items() if v.weight_kg is not None}
+    weighed = [d for d in weights if d <= end]
+    if not weighed or max(weighed) < end - timedelta(days=1):
+        return None
+    day = max(weighed)
+    hint = water_hint(
+        weights,
+        {
+            d: DayIntake(v.carbohydrate_g, v.salt_g, v.salt_known_share)
+            for d, v in days.items()
+            if v.entries
+        },
+        frozenset(d for d, v in days.items() if v.long_session),
+        day,
+    )
+    if hint is None:
+        return None
+    return {
+        "date": day.isoformat(),
+        "direction": hint.direction,
+        "causes": list(hint.causes),
+    }
 
 
 def water_hint(

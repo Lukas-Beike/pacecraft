@@ -72,6 +72,7 @@ from backend.nutrition.energy_inputs import (
     resolve_body,
     skinfold_state,
 )
+from backend.nutrition.water_hint import water_hint_for_latest
 from backend.performance.activity_energy import TEF_ERROR_KCAL
 from backend.performance.daily_health import complete_garmin_day
 from backend.providers.source_labels import SourceView, provider_label
@@ -1625,6 +1626,8 @@ def read_energy_view(
     )
     # Digestion counts kcal without macros at 10 %, so it is estimated (#3617).
     view["tef_estimated"] = inputs.days.get(day, DayInputs()).uncovered_kcal > 0
+    # A marked weigh-in step read as probable water; a hint only (#4047).
+    view["water_hint"] = water_hint_for_latest(inputs.days, end)
     # The day's strength sessions with the RPE and MET that priced them (#3530).
     view["strength"] = [
         {"rpe": cost.rpe, "met": cost.met, "kcal": _round(cost.kcal)}

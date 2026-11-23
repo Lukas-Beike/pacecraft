@@ -2106,6 +2106,9 @@ class CoachToolCoverageTests(DialogueHarness, unittest.TestCase):
         diary = server.APP.nutrition.energy_view(today.isoformat())
         self.assertEqual(diary["goal"], energy_today["goal"])
         self.assertEqual(diary["rows"], energy_today["rows"])
+        # #4047: the card and the Coach read the one water flag of the weigh-in step.
+        self.assertIn("water_hint", energy_today)
+        self.assertEqual(diary["water_hint"], energy_today["water_hint"])
         tomorrow = (today + timedelta(days=1)).isoformat()
         future, _ = self.turn(
             message_for("read_nutrition"),

@@ -5,7 +5,15 @@ from __future__ import annotations
 import unittest
 from datetime import date, timedelta
 
-from backend.nutrition.water_hint import DayIntake, WaterHint, water_hint, weight_step
+from backend.nutrition.energy_balance import DayInputs
+from backend.nutrition.intake_totals import salt_totals
+from backend.nutrition.water_hint import (
+    DayIntake,
+    WaterHint,
+    water_hint,
+    water_hint_for_latest,
+    weight_step,
+)
 
 START = date(2026, 9, 1)
 DAYS = 40
@@ -132,6 +140,44 @@ class WaterHintTests(unittest.TestCase):
         before = dict(weights)
         water_hint(weights, intake(PREVIOUS, carbs=450.0, salt=11.0), frozenset(), DAY)
         self.assertEqual(weights, before)
+
+    def test_the_energy_read_payload_names_the_day_direction_and_causes(self) -> None:
+        weights = steady(STEP, 1.6)
+        usual = intake(PREVIOUS, carbs=450.0, salt=11.0)
+        days = {
+            d: DayInputs(
+                carbohydrate_g=usual[d].carbs_g or 0.0,
+                salt_g=usual[d].salt_g,
+                salt_known_share=usual[d].salt_known_share,
+                entries=2,
+                weight_kg=weights[d],
+            )
+            for d in weights
+        }
+        self.assertEqual(
+            water_hint_for_latest(days, DAY + timedelta(days=0)),
+            {"date": DAY.isoformat(), "direction": "up", "causes": ["salt", "carbs"]},
+        )
+        # A weigh-in older than yesterday is not the current one; a usual day gives none.
+        self.assertIsNone(water_hint_for_latest(days, DAY + timedelta(days=5)))
+        self.assertIsNone(water_hint_for_latest({}, DAY))
+
+    def test_a_days_salt_is_summed_with_the_share_of_values_that_report_it(
+        self,
+    ) -> None:
+        def entry(salt: float | None) -> dict[str, object]:
+            product = {"basis_amount": 100.0, "salt_g": salt}
+            return {
+                "nutrition_basis": {
+                    "kind": "local_product",
+                    "product": product,
+                    "amount": 50.0,
+                }
+            }
+
+        self.assertEqual(salt_totals([entry(2.0), entry(None)]), (1.0, 0.5))
+        self.assertEqual(salt_totals([entry(None)]), (None, 0.0))
+        self.assertEqual(salt_totals([]), (None, 0.0))
 
 
 if __name__ == "__main__":
