@@ -212,6 +212,23 @@ class LibraryPostRoutesTests(unittest.TestCase):
         )
         self.assertEqual("planned_unit", body["change"]["entity_type"])
 
+    def test_schedule_accepts_a_non_canonical_plan_id_and_moves_the_period(
+        self,
+    ) -> None:
+        plan_id = self.plans.create(
+            {"name": "Aufbau", "start_date": "2026-10-01", "end_date": "2026-10-31"}
+        )["plan_id"]
+
+        status, _ = self.post(
+            "schedule", {"date": "2026-09-22", "plan_id": plan_id.upper()}
+        )
+
+        plan = self.plans.list()[0]
+        self.assertEqual(
+            (200, plan_id, "2026-09-22"),
+            (status, self.rows("planned_units")[0]["plan_id"], plan["start_date"]),
+        )
+
     def test_schedule_refuses_an_archived_or_unknown_plan(self) -> None:
         plan_id = self.plans.create(
             {"name": "Alt", "start_date": "2026-10-01", "end_date": "2026-10-31"}

@@ -116,10 +116,16 @@ class WorkoutLibraryPlanService:
         ids = {request["plan_id"] for request in requested if request.get("plan_id")}
         if ids and self._training_plan_service is None:
             raise AppError(400, "Ein Trainingsplan ist hier nicht verfügbar.")
-        return {
+        plans = {
             plan_id: self._training_plan_service.active_plan(db, plan_id)  # type: ignore[union-attr]
             for plan_id in sorted(ids)
         }
+        # The service accepts a non-canonical id; the plans are keyed and the requests named by the canonical one.
+        for request in requested:
+            plan = plans.get(request.get("plan_id") or "")
+            if plan is not None:
+                request["plan_id"] = str(plan["id"])
+        return {str(plan["id"]): plan for plan in plans.values()}
 
     @staticmethod
     def _library_plan_request(db: Any, item: Any) -> dict[str, Any]:

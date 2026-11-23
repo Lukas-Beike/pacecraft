@@ -42,7 +42,7 @@ _REQUIRED_NEW = ("date", "sport", "name", "description", "duration_minutes")
 _WAIVED = plan_checks.REQUIRED_CODES
 
 
-def illness_block(error: PlanCheckError) -> Exception:
+def illness_block(error: PlanCheckError) -> PlanCheckError | AppError:
     """The athlete's answer to a plan check that blocks: only the health rule can, and a second tap accepts it."""
     if {item["code"] for item in error.findings} != set(plan_checks.BLOCKING_CODES):
         return error
