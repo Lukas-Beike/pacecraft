@@ -353,7 +353,12 @@ class ReleaseDispatchTests(unittest.TestCase):
             {"number": 6, "mergedAt": "2999-01-01T00:00:00Z"},
         ]
         outage = release_dispatch.CliError("HTTP 503: unavailable")
-        answers = [idle, recent, outage, idle, [], []]
+        # #4045: GitHub's GraphQL failure and a dropped connection are only pending too.
+        graphql = release_dispatch.CliError(
+            "gh pr list failed: GraphQL: Something went wrong while executing your query."
+        )
+        dropped = release_dispatch.CliError("error connecting to api.github.com")
+        answers = [idle, recent, outage, graphql, dropped, idle, [], []]
         clock = iter(range(0, 10**6, 30))
         out = io.StringIO()
         with (

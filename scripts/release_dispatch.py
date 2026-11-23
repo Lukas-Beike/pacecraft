@@ -43,7 +43,10 @@ VERSION_PR = re.compile(
 )
 GREEN = {"success", "skipped", "neutral"}
 TRANSIENT = re.compile(
-    r"HTTP 5\d\d|No server is currently available|timed out|timeout", re.IGNORECASE
+    r"HTTP 5\d\d|No server is currently available|timed out|timeout"
+    # GitHub's own GraphQL failure and a dropped connection (#4045).
+    r"|Something went wrong while executing your query|error connecting to",
+    re.IGNORECASE,
 )
 RETRY_DELAYS = (2, 5, 10)
 # How often --when-green and --wait look again, and their default time limits.
