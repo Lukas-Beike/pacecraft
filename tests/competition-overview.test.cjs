@@ -111,6 +111,10 @@ test("long planned units ask for fuelling and show drinking and carbohydrates wi
   assert.match(text, /Thomas, Erdman und Burke 2016.*Pro Stunde60–120 g\/h/);
   const generic = rendered.plannedFuellingBlock({ sweat_rate: null, drinking: { generic_l_per_h: [0.4, 0.8] }, carbohydrates: { step: "moderate", low_g: 30, high_g: 60 } }).map(textOf).join("|");
   assert.match(generic, /Startwert ohne eigene Daten.*Pro Stunde0,4–0,8 l/);
+  // A rinse is advice, not a number: no value column for the carbohydrates (#3932 K-12).
+  const rinse = rendered.plannedFuellingBlock({ sweat_rate: null, drinking: { generic_l_per_h: [0.4, 0.8] }, carbohydrates: { step: "mouth_rinse" } });
+  assert.equal(textOf(rinse.at(-1)), "kleine Mengen oder Mund spülen");
+  assert.equal(rinse.at(-1).className, "muted");
   assert.equal(rendered.plannedFuellingRows({ max_l_per_h: 1.2 }).filter(Boolean).map((row) => row.join(":")).join("|"), "Pro Stunde:bis 1,2 l");
   // #3012: a loss within 2 % of the weight needs no drink; the card says so instead of "0 l".
   assert.equal(

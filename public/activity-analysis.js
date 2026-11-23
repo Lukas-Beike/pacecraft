@@ -53,7 +53,14 @@
       { key: "altitude_m", label: "Höhe", unit: "m", color: "elevation", format: (v) => numberText(v), elevation: true },
       // Running dynamics per second, named like their averages in the values (#2258).
       ...ActivityDetails.RUNNING_DYNAMICS.map(([key, label, unit, digits]) => ({ key, label, unit, color: "dynamics", format: (v) => numberText(v, digits), average: metrics[key] })),
-    ].filter((channel) => Array.isArray(streams.channels?.[channel.key]?.values));
+    ].filter((channel) => Array.isArray(streams.channels?.[channel.key]?.values)).filter((channel, _index, shown) => !duplicateStamina(channel, shown, streams));
+  }
+
+  // Garmin's two stamina channels often carry the same values; the second one then says nothing new (#3932 K-16).
+  function duplicateStamina(channel, shown, streams) {
+    if (channel.key !== "stamina_138_pct" || !shown.some((item) => item.key === "stamina_137_pct")) return false;
+    const [first, second] = [streams.channels.stamina_137_pct.values, streams.channels.stamina_138_pct.values];
+    return first.length === second.length && first.every((value, index) => value === second[index]);
   }
 
   function percentile(sorted, share) {
