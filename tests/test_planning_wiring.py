@@ -63,7 +63,7 @@ class PlanningDataBuilderTests(unittest.TestCase):
             self.services.planned_unit()
 
         args = service.call_args.args
-        self.assertEqual(9, len(args))
+        self.assertEqual(10, len(args))
         (
             manager,
             revisions,
@@ -74,12 +74,17 @@ class PlanningDataBuilderTests(unittest.TestCase):
             conflicts,
             publish,
             resync,
+            follow_plans,
         ) = args
         self.assertIs(self.ctx.database.return_value, manager)
         self.assertIs(self.ctx.planning_revision, revisions)
         self.assertIs(runtime_clock.utc_now, utc_now)
         self.assertIs(local_date(), self.ctx.clock.now.return_value.date.return_value)
         self.assertIs(uuid.uuid4, ids)
+        # The plans of a moved unit follow its days through the plan owner (#4144).
+        with patch.object(planning_wiring, "TrainingPlanService") as plans:
+            follow_plans("db", {"plan"})
+        plans.return_value.update_bounds.assert_called_once_with("db", {"plan"})
         self.assertIs(self.ctx.redactor.redact_text, redact)
         self.assertIs(
             self.ctx.planning_workflows.calendar_conflict_service.return_value,
