@@ -277,7 +277,7 @@ function nutritionEstimateChip(item) {
 
 // A logged meal's ingredients, its estimate mark and its removal.
 function nutritionEntryActions(item) {
-  const estimate = h("button", { type: "button", className: "secondary-button" }, item.estimate_uncertain ? "Nicht geschätzt" : "Als geschätzt markieren");
+  const estimate = h("button", { type: "button", className: "secondary-button" }, item.estimate_uncertain ? "Markierung entfernen" : "Als geschätzt markieren");
   estimate.addEventListener("click", () => void markNutritionEstimate(item));
   const remove = h("button", { type: "button", className: "secondary-button danger-button", "aria-label": `Mahlzeit löschen: ${item.description}` }, "Löschen");
   remove.addEventListener("click", async () => {
