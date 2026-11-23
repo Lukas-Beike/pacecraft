@@ -1956,7 +1956,8 @@ function plannedFuellingBlock(plan) {
     racePlanHeading("Trinken", basis),
     rows(plannedFuellingRows(plan.drinking || {})),
     racePlanHeading("Kohlenhydrate", plan.carbohydrate_source),
-    rows([["Pro Stunde", racePlanDuring(plan.carbohydrates) || "–"]]),
+    // A step without grams is advice, not a number: it reads as a line, not in the value column (#3932 K-12).
+    ["none", "mouth_rinse"].includes(plan.carbohydrates?.step) ? h("p", "muted", racePlanDuring(plan.carbohydrates)) : rows([["Pro Stunde", racePlanDuring(plan.carbohydrates) || "–"]]),
   ];
 }
 
