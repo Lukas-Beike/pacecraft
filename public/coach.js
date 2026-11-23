@@ -2143,15 +2143,17 @@ function contextTextNode(text) {
 
 const CONTEXT_ENVIRONMENTS = { virtual: "Indoor", outdoor: "Draußen", indoor: "Indoor", unknown: "Unbekannt" };
 
+// A `_local` value is already the athlete's wall time; converting it would shift it by the browser zone.
+function contextWallTime(value) {
+  const wall = /^(\d{4}-\d{2}-\d{2})[T ](\d{2}:\d{2})/.exec(value);
+  return wall ? `${AppFormat.date(wall[1]) ?? wall[1]}, ${wall[2]}` : value;
+}
+
 function contextScalarText(key, value) {
   if (value === null || value === undefined || value === "") return "–";
   if (typeof value === "boolean") return value ? "Ja" : "Nein";
   if (typeof value === "number") return AppFormat.number(value, { digits: 2 }) ?? String(value);
-  // A `_local` value is already the athlete's wall time; converting it would shift it by the browser zone.
-  if (typeof value === "string" && key.endsWith("_local")) {
-    const wall = /^(\d{4}-\d{2}-\d{2})[T ](\d{2}:\d{2})/.exec(value);
-    return wall ? `${AppFormat.date(wall[1]) ?? wall[1]}, ${wall[2]}` : value;
-  }
+  if (typeof value === "string" && key.endsWith("_local")) return contextWallTime(value);
   if (typeof value === "string" && key.endsWith("_at")) return formatTime(value);
   if (typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value)) return AppFormat.date(value) ?? value;
   if (key === "sports" || key === "sport") return profileSportsLabel(value);

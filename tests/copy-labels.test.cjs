@@ -34,7 +34,7 @@ test("a nutrition entry without a recorded basis is labelled by its source and l
 });
 
 function contextValueNodeFor() {
-  return extractFunctions("coach.js", ["CONTEXT_PREVIEW_MAX_DEPTH", "CONTEXT_PREVIEW_MAX_ITEMS", "CONTEXT_HIDDEN_KEYS", "CONTEXT_KEY_LABELS", "CONTEXT_ENVIRONMENTS", "contextScalarText", "contextPreNode", "contextTextNode", "contextListNode", "contextObjectNode", "contextValueNode"], {
+  return extractFunctions("coach.js", ["CONTEXT_PREVIEW_MAX_DEPTH", "CONTEXT_PREVIEW_MAX_ITEMS", "CONTEXT_HIDDEN_KEYS", "CONTEXT_KEY_LABELS", "CONTEXT_ENVIRONMENTS", "contextWallTime", "contextScalarText", "contextPreNode", "contextTextNode", "contextListNode", "contextObjectNode", "contextValueNode"], {
     document: fakeDocument(),
     formatTime: (value) => value,
     profileSportsLabel: extractFunctions("views.js", ["PROFILE_SPORT_LABELS", "profileSportsLabel"]).profileSportsLabel,
