@@ -198,9 +198,9 @@ cause as below. On each wake:
   the required `SonarCloud Code Analysis` cancelled, and only a new push
   re-runs it (pr-state names this; #2934, #3243).
 - If checks fail, read the logs, fix the cause, and push. The `Gitar` check is
-  required (see `.github/AGENTS.md`); no bypass. If it never reports on an
-  otherwise green head, note the PR number in the issue (#1906 tracks its
-  reliability) and ask the user before any admin merge.
+  required (see `.github/AGENTS.md`); no bypass or admin merge without the user.
+  If pr-merge names Gitar silent repo-wide, keep heads stable, no re-push; an
+  app reinstall, then `gitar review` on each PR, ended it twice (#4043).
 - If Sonar reports new issues, list them with
   [sonar-check](../pacecraft-sonar-check/SKILL.md) `--pr <number>`, fix the findings on changed lines,
   and push. Do not accept issues to clear the gate without an evidence line in

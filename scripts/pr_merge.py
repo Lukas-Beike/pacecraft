@@ -47,6 +47,7 @@ import re
 import sys
 import time
 from collections.abc import Callable
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from gh_cli import TRANSIENT_GH, CliError, gh, gh_json, git, positive_int
@@ -159,6 +160,12 @@ def gitar_gate(sha: str, minutes: int) -> int | None:
         if poll < polls - 1:
             time.sleep(60 / POLLS_PER_MINUTE)
     print(f"refused: Gitar has not reviewed {sha[:10]} yet; run again once it has")
+    try:
+        silence = gitar_silence(datetime.now(UTC))
+    except CliError:
+        silence = ""  # only a hint; the refusal above stands either way
+    if silence:
+        print(silence)
     return 3 if minutes > 0 else 1
 
 
@@ -171,6 +178,48 @@ def poll_failed(before: str, exc: CliError, *, last: bool) -> str:
     if not before:
         print(f"a read failed, polling on: {exc}")
     return str(exc)
+
+
+# Gitar silent on several heads an hour after their CI finished is an outage of
+# the service, not of one PR (#4043): it is named once, the same for every lane.
+GITAR_SILENT_MINUTES = 60
+
+
+def gitar_waits(rollup: list[dict[str, Any]], cutoff: str) -> tuple[str, bool]:
+    """(newest finished Gitar run, whether the head still waits for Gitar an hour
+    after its other checks finished) from a PR's check rollup."""
+    runs = [item for item in rollup if item.get("__typename") == "CheckRun"]
+    done = [
+        str(item.get("completedAt") or "")
+        for item in runs
+        if item.get("name") == GITAR and item.get("status") == "COMPLETED"
+    ]
+    others = [item for item in runs if item.get("name") != GITAR]
+    finished = bool(others) and all(item.get("status") == "COMPLETED" for item in others)
+    last_ci = max((str(item.get("completedAt") or "") for item in others), default="")
+    return max(done, default=""), not done and finished and last_ci <= cutoff
+
+
+def gitar_silence(now: datetime) -> str:
+    """One line when at least two open PRs wait for Gitar an hour after their CI
+    finished, else ""."""
+    prs = gh_json(
+        "pr", "list", "--base", "develop", "--state", "open", "--limit", "100",
+        "--json", "number,statusCheckRollup",
+    ) or []  # fmt: skip
+    cutoff = (now - timedelta(minutes=GITAR_SILENT_MINUTES)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    last, waiting = "", []
+    for pr in prs:
+        done, waits = gitar_waits(pr.get("statusCheckRollup") or [], cutoff)
+        last = max(last, done)
+        if waits:
+            waiting.append(f"#{pr.get('number')}")
+    if len(waiting) < 2:
+        return ""
+    return (
+        f"Gitar silent repo-wide since {last or 'unknown'}: {', '.join(waiting)} wait"
+        f" over {GITAR_SILENT_MINUTES} min after CI; keep heads stable, no re-push (#4043)"
+    )
 
 
 class GateRefused(Exception):
