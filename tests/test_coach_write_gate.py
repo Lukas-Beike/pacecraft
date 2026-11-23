@@ -1441,6 +1441,12 @@ class GarminTierTests(unittest.TestCase):
             ("Keinen vollständigen Garmin-Resync bitte", "garmin"),
             ("Was macht ein vollständiger Garmin-Resync?", "garmin"),
             ("Mach einen vollständigen Resync", "garmin"),
+            # A later retraction takes it back (Gitar on #4083).
+            (
+                "Mach einen vollständigen Garmin-Resync. Nein, doch lieber nicht.",
+                "garmin",
+            ),
+            ("Vollständiger Garmin-Resync bitte, aber nicht jetzt.", "garmin"),
         ):
             with self.subTest(text=text):
                 decision = _check(

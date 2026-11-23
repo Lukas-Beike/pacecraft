@@ -347,14 +347,19 @@ _RESYNC_WORDS = _compile(_words("resync,vollständig,komplett,full"))
 def full_resync_requests(text: str) -> frozenset[str]:
     """The providers whose full resync the athlete's own text asks for (#3960).
 
-    A part must name the provider and a resync word; a negated part, or an
-    information question, asks nothing.
+    A part must name the provider and a resync word; an information question
+    asks nothing. Any negated part ("Nein, doch lieber nicht.") takes back what
+    came before, until a later part asks again: the resync is a heavy job, so
+    a retraction needs no repeated words (Gitar on #4083).
     """
     found: set[str] = set()
     for _index, part in _request_parts(text):
-        if _negates(part) or not _RESYNC_WORDS.search(_loose(part)):
-            continue
-        found.update(str(match.lastgroup) for match in _PROVIDER_TARGETS.finditer(part))
+        if _negates(part):
+            found.clear()
+        elif _RESYNC_WORDS.search(_loose(part)):
+            found.update(
+                str(match.lastgroup) for match in _PROVIDER_TARGETS.finditer(part)
+            )
     return frozenset(found)
 
 
