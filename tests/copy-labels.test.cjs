@@ -57,7 +57,9 @@ test("the context preview shows readable values and keeps deeply nested provider
   assert.deepEqual(profile.children.map((node) => node.textContent), ["Ziele", "Marathon", "Trainingshintergrund", "Lauf", "Verfügbarkeit", "Abends", "Sportarten", "Radfahren, Laufen"]);
   // A competition row: no ids or sync flags, German keys, readable dates and categories (#3981).
   const race = contextValueNode({ id: 7, local_id: "x", sync_dirty: 1, name: "Rennen", event_date: "2026-11-21", category: "RACE_A", sport: "ride", environment: "virtual", starts_at_local: "2026-11-21T10:00" });
-  assert.deepEqual(race.children.map((node) => node.textContent), ["Name", "Rennen", "Datum", "21.11.2026", "Kategorie", "Wettkampf A", "Sportart", "Radfahren", "Umgebung", "Indoor", "Beginn", "2026-11-21T10:00"]);
+  assert.deepEqual(race.children.map((node) => node.textContent), ["Name", "Rennen", "Datum", "21.11.2026", "Kategorie", "Wettkampf A", "Sportart", "Radfahren", "Umgebung", "Indoor", "Beginn", "21.11.2026, 10:00"]);
+  // A local wall time is shown as stored, never converted between zones (Gitar, #3981).
+  assert.equal(contextValueNode({ starts_at_local: "2026-11-21T23:30:00" }).children[1].textContent, "21.11.2026, 23:30");
   assert.equal(contextValueNode("Langer Text", "content").tag, "pre");
   const longList = contextValueNode(Array.from({ length: 30 }, (_, index) => index));
   assert.equal(longList.children.length, 26);
