@@ -409,8 +409,7 @@ def inert(words: list[str]) -> bool:
     name, after = words[0], words[1:2]
     if name == SED_LINES:
         return all(
-            SED_FILE.fullmatch(word) and not word.startswith("-")
-            for word in words[1:]
+            SED_FILE.fullmatch(word) and not word.startswith("-") for word in words[1:]
         )
     if not PROGRAM.fullmatch(name):
         return False
