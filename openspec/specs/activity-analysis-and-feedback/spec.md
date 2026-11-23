@@ -455,7 +455,7 @@ Evidence:
 - `e2e/calendar-detail-pane.spec.js`, `e2e/analysis-on-demand.spec.js`
 
 ### Requirement: Pace at heart rate
-The system SHALL derive per run with full-resolution streams the time and distance per 5 bpm heart-rate bin (method `pace-at-heart-rate-v2`) and compare runs in one fixed 10 bpm band; it SHALL make no fitness claim from it. The LT1 pace of M9 reads the same bins.
+The system SHALL derive per run with full-resolution streams the time and distance per 5 bpm heart-rate bin (method `pace-at-heart-rate-v3`) and compare runs in one fixed 10 bpm band; it SHALL make no fitness claim from it. The LT1 pace of M9 reads the same bins.
 
 #### Scenario: Eligible run
 - **WHEN** a non-trail run lasts at least 1800 s

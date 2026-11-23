@@ -31,12 +31,12 @@ SERVICE_TIER_OPTIONS = (
     },
     {
         "id": "fast",
-        "label": "Fast",
+        "label": "Schnell",
         "description": "Mit Aufpreis",
     },
     {
         "id": "ultrafast",
-        "label": "Ultrafast",
+        "label": "Sehr schnell",
         "description": "Mit Aufpreis",
     },
 )

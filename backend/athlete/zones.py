@@ -56,7 +56,7 @@ def _invalid(reason: Any) -> str:
 
 # Metrics whose zones are placed relative to the threshold, so it must be given.
 _THRESHOLD_REQUIRED: Final = {
-    ZoneConfigurationMetric.HEART_RATE: "Schwellenpuls (LSHF) fehlt",
+    ZoneConfigurationMetric.HEART_RATE: "LSHF fehlt",
     ZoneConfigurationMetric.POWER: "FTP fehlt",
 }
 
@@ -171,7 +171,7 @@ def _check_heart_rate_limits(
     """Reject a maximum below the threshold and limits above the maximum."""
     if threshold is not None and maximum is not None and maximum < threshold:
         raise AppError(
-            400, "Die maximale Herzfrequenz darf nicht unter dem Schwellenpuls liegen."
+            400, "Die maximale Herzfrequenz darf nicht unter der LSHF liegen."
         )
     if maximum is None:
         return

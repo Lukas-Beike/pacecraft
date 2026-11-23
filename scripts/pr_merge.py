@@ -53,7 +53,7 @@ from typing import Any
 from gh_cli import TRANSIENT_GH, CliError, gh, gh_json, git, positive_int
 from pr_state import base_overlap, check_outcome, unresolved_threads
 
-FIELDS = "state,baseRefName,headRefName,headRefOid,autoMergeRequest,mergeCommit,statusCheckRollup,comments,reviews,mergeStateStatus"
+FIELDS = "state,baseRefName,headRefName,headRefOid,autoMergeRequest,mergeCommit,statusCheckRollup,comments,reviews,mergeStateStatus,body,commits"
 POLLS_PER_MINUTE = 3
 # Just after a push GitHub can still report the old head (#3174); it catches up in seconds.
 HEAD_POLLS, HEAD_POLL_SECONDS = 10, 3
@@ -280,10 +280,35 @@ def arm(
         pr = gated
 
 
+CHANGELOG_LINE = re.compile(r"^Changelog:(.+)$", re.MULTILINE)
+CO_AUTHOR_LINE = re.compile(
+    r"^Co-authored-by:[ \t]*\S.*$", re.MULTILINE | re.IGNORECASE
+)
+
+
+def squash_body(pr: dict[str, Any]) -> list[str]:
+    """`--body` for the squash commit: the PR description's `Changelog:` line (#3981).
+
+    GitHub's squash body is blank apart from co-author lines, so the release
+    changelog would see nothing. A body given to `gh` replaces that default, so the
+    commits' `Co-authored-by:` lines follow the Changelog line. Without the line:
+    no argument, the default stays.
+    """
+    found = CHANGELOG_LINE.search(pr.get("body") or "")
+    if not found or not found[1].strip():
+        return []
+    authors = dict.fromkeys(
+        line.strip()
+        for commit in pr.get("commits") or []
+        for line in CO_AUTHOR_LINE.findall(commit.get("messageBody") or "")
+    )
+    return ["--body", "\n".join([f"Changelog: {found[1].strip()}", *authors])]
+
+
 def _arm_once(number: int, pr: dict[str, Any]) -> str:
     if pr.get("autoMergeRequest"):
         return "auto-merge already armed"
-    pin = ["--squash", "--match-head-commit", pr["headRefOid"]]
+    pin = ["--squash", *squash_body(pr), "--match-head-commit", pr["headRefOid"]]
     try:
         gh("pr", "merge", str(number), "--auto", *pin)
         return f"auto-merge armed on {pr['headRefOid'][:10]}"

@@ -84,8 +84,8 @@ _GARMIN_KIND_NOTES: Final[Mapping[tuple[MetricKind, Sport | None], str]] = {
     (MetricKind.FTP, Sport.RIDE): "Garmin Connect FTP",
     (MetricKind.FTP, Sport.RUN): "Garmin Connect Lauf-Schwellenleistung",
     (MetricKind.THRESHOLD_PACE, Sport.RUN): "Garmin Connect Lauf-Schwellenpace",
-    (MetricKind.THRESHOLD_HR, Sport.RUN): "Garmin Connect Lauf-Schwellenpuls",
-    (MetricKind.THRESHOLD_HR, Sport.RIDE): "Garmin Connect Rad-Schwellenpuls",
+    (MetricKind.THRESHOLD_HR, Sport.RUN): "Garmin Connect Lauf-LSHF",
+    (MetricKind.THRESHOLD_HR, Sport.RIDE): "Garmin Connect Rad-LSHF",
 }
 # Garmin record ids are "<section>:<YYYY-MM-DD>", then optionally ":<index>" and
 # ":<suffix>", as built by backend.providers.garmin_health_mapping._entry.

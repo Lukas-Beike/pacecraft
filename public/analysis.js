@@ -1225,16 +1225,16 @@ function renderAnalysisHistory(history) { // NOSONAR
   const development = trendHistoryFor(developmentPeriod, BASE_PERIOD_DAYS, rerenderAnalysisTrend)?.history || history;
   const developmentMetrics = development.metrics;
   const load = loadHistory.load || { points: [] };
-  const loadSeries = [{ label: "Akute Belastung", legendLabel: "Akute Belastung", source: load.source, unit: "", color: 0,
+  const loadSeries = [{ label: "Akute Garmin-Belastung", legendLabel: "Akute Garmin-Belastung", source: load.source, unit: "", color: 0,
     cadenceDays: weekly ? 7 : 1, average: true, averageInHeading: true,
     points: weekly ? analysisWeeklyLastPoints(load.points.filter((point) => point.date >= start && point.date <= end).map((point) => ({ date: point.date, value: point.value })), start, end) : load.points.filter((point) => point.date >= start && point.date <= end).map((point) => ({ date: point.date, value: point.value })),
     currentPoint: load.points.filter((point) => point.date >= start && point.date <= end).map((point) => ({ date: point.date, value: point.value })).findLast(analysisValidPoint) }];
   const loadValues = loadSeries[0].points.filter(analysisValidPoint).map((point) => Number(point.value));
   const loadAverage = loadValues.length ? loadValues.reduce((sum, value) => sum + value, 0) / loadValues.length : null;
-  const loadTitle = loadAverage == null ? "Akute Belastung" : `Akute Belastung \u00b7 \u00d8 ${analysisValue(loadAverage, "")}`;
+  const loadTitle = loadAverage == null ? "Akute Garmin-Belastung" : `Akute Garmin-Belastung \u00b7 \u00d8 ${analysisValue(loadAverage, "")}`;
   const sourcePrefix = (source) => (source ? `${source}: ` : "");
   const loadMissing = [];
-  const loadChart = collectAnalysisChart(loadMissing, loadTitle, loadSeries, "", start, end, `${sourcePrefix(load.source)}gemessene akute Belastung. Gestrichelte Linie: Durchschnitt der angezeigten Werte. Fehlende Messungen bleiben L\u00fccken.`, { calendarWeeks: weekly, caption: analysisBasisCaption("Belastungspunkte", weekly, "state") });
+  const loadChart = collectAnalysisChart(loadMissing, loadTitle, loadSeries, "", start, end, `${sourcePrefix(load.source)}gemessene akute Garmin-Belastung. Gestrichelte Linie: Durchschnitt der angezeigten Werte. Fehlende Messungen bleiben L\u00fccken.`, { calendarWeeks: weekly, caption: analysisBasisCaption("Belastungspunkte", weekly, "state") });
   if (loadChart) {
     loadChart.querySelector(".analysis-chart-legend")?.remove();
     loadRoot.append(loadChart);
@@ -1417,7 +1417,7 @@ function appendDailyActivityGroup(activity, loadRoot, loadMissing, start, end) {
 }
 
 function providerMetricLabel(key) {
-  return { endurance_score: "Ausdauer-Score", running_tolerance: "Lauf-Belastbarkeit", training_readiness_history: "Trainingsbereitschaft", weekly_training_status: "Trainingsstatus · akute Belastung" }[key] || key;
+  return { endurance_score: "Ausdauer-Score", running_tolerance: "Lauf-Belastbarkeit", training_readiness_history: "Trainingsbereitschaft", weekly_training_status: "Trainingsstatus · akute Garmin-Belastung" }[key] || key;
 }
 
 function providerMetricUnit(key) {
@@ -2268,7 +2268,7 @@ function energyUsage(read) {
 function energyGuardNotes({ energy_availability: availability, loss_rate: loss }) {
   const notes = [];
   if (availability?.below) notes.push(`Energieverfügbarkeit (7 Tage) ${formatWhole(availability.kcal_per_kg_ffm)} kcal/kg FFM · unter ${formatWhole(availability.floor_kcal_per_kg_ffm)}`);
-  if (loss?.fast) notes.push(`Gewicht fällt ${loss.pct_per_week.toLocaleString("de-DE")} %/Woche · schneller als ${formatWhole(loss.limit_pct_per_week)} %`);
+  if (loss?.fast) notes.push(`Gewicht fällt ${AppFormat.number(loss.pct_per_week, { digits: 2 })} %/Woche · schneller als ${formatWhole(loss.limit_pct_per_week)} %`);
   return notes.map((text) => h("small", { className: "energy-note", dataset: { energyNote: "" } }, text));
 }
 
@@ -3026,7 +3026,7 @@ function recoveryPeriodPoints(history, dates, today, weekly) {
 }
 
 function renderRecoveryCharts(report, root) {
-  const metrics = [["sleep", "Schlafdauer", "h", 0], ["hrv", "HRV", "ms", 2], ["resting_hr", "Ruhepuls", "bpm", 3]];
+  const metrics = [["sleep", "Schlafdauer", "h", 0], ["hrv", "HRV", "ms", 2], ["resting_hr", "Ruheherzfrequenz", "bpm", 3]];
   // The base read's baselines hold 84 days: 3 Monate and more read their own history once (#3839);
   // until it arrives the charts keep the base read.
   const long = trendHistoryFor(recoveryHistoryPeriod, 28, () => renderPersonalRecovery(report))?.personal_recovery;
@@ -3112,7 +3112,7 @@ function renderTrainingFocus(report) {
 
   const categories = [["low_aerobic", "Leicht aerob"], ["high_aerobic", "Hoch aerob"], ["anaerobic", "Anaerob"]];
   const info = h("button", { className: "analysis-legend-info analysis-info-icon", type: "button", "aria-label": "Trainingsfokus: Informationen" }, "i");
-  const explanation = h("div", { className: "analysis-info-tooltip", id: `focus-info-${++analysisInfoId}` }, `${trainingFocusPeriodLabel(report)}: ${dateLabel(report.start)} bis ${dateLabel(report.end)}. ${report.coverage?.known_sessions ?? 0} erfasste Garmin-Einheiten im Zeitraum${report.coverage?.observed_start && report.coverage?.observed_end ? ` · erfasste Daten ${dateLabel(report.coverage.observed_start)} bis ${dateLabel(report.coverage.observed_end)}` : ""}. Garmin: aufgezeichnete Belastung nach der Hauptwirkung der Einheit (Training Effect). Keine aus Zonen abgeleitete Einteilung und nicht Garmins separat berechnete Load-Focus-Metrik. ${AppFormat.plural(report.unclassified_sessions || 0, "Einheit", "Einheiten")} ohne bekannte Wirkung oder Belastung ${report.unclassified_sessions === 1 ? "bleibt" : "bleiben"} ausgeschlossen.`); // NOSONAR
+  const explanation = h("div", { className: "analysis-info-tooltip", id: `focus-info-${++analysisInfoId}` }, `${trainingFocusPeriodLabel(report)}: ${dateLabel(report.start)} bis ${dateLabel(report.end)}. ${report.coverage?.known_sessions ?? 0} erfasste Garmin-Einheiten im Zeitraum${report.coverage?.observed_start && report.coverage?.observed_end ? ` · erfasste Daten ${dateLabel(report.coverage.observed_start)} bis ${dateLabel(report.coverage.observed_end)}` : ""}. Aufgezeichnete Garmin-Belastung nach der Hauptwirkung der Einheit (Trainingseffekt). Keine aus Zonen abgeleitete Einteilung und nicht Garmins separat berechneter Belastungsfokus. ${AppFormat.plural(report.unclassified_sessions || 0, "Einheit", "Einheiten")} ohne bekannte Wirkung oder Garmin-Belastung ${report.unclassified_sessions === 1 ? "bleibt" : "bleiben"} ausgeschlossen.`); // NOSONAR
   bindAnalysisPopover(info, explanation); root.firstChild.append(info); root.firstChild.after(explanation);
   appendTrainingFocusShare(report, categories, root);
   appendTrainingFocusZones(report, zones);
@@ -3163,6 +3163,13 @@ function equipmentCard(item, source, parents, place) {
   return card;
 }
 
+// Garmin's status words in German; a stored "Garmin | active" keeps only what follows the source.
+function equipmentGarminStatusText(value) {
+  const word = String(value || "").split("|").pop().trim();
+  if (!word) return "";
+  return normalizeEquipmentStatus(word) === "archived" ? "ausgemustert" : "aktiv";
+}
+
 // Garmin's status of the item and the conflict with the local status; none for a local item Garmin does not know.
 function equipmentGarmin(item, local, title) {
   const garminStatus = String(item.garmin_status || "").trim();
@@ -3170,8 +3177,8 @@ function equipmentGarmin(item, local, title) {
   const conflict = local && normalizeEquipmentStatus(garminStatus) !== item.status;
   const coach = item.status === "archived" ? "archiviert" : "aktiv";
   return equipmentSection(title, [
-    h("p", null, garminStatus || "Unbekannter Garmin-Status"),
-    conflict ? h("p", "muted", `Statuskonflikt · Coach: ${coach} · Garmin: ${garminStatus}`) : null,
+    h("p", null, equipmentGarminStatusText(garminStatus) || "Unbekannter Garmin-Status"),
+    conflict ? h("p", "muted", `Statuskonflikt · Coach: ${coach} · Garmin: ${equipmentGarminStatusText(garminStatus)}`) : null,
   ]);
 }
 

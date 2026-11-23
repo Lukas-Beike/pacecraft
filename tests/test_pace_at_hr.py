@@ -236,7 +236,7 @@ class SessionComparisonTests(unittest.TestCase):
         )
         result = session_comparison([no_hr, *self._records(3)[1:]], "2026-11-02")
         self.assertEqual("not_covered", result["status"])
-        self.assertIn("Puls", result["reason"])
+        self.assertIn("Herzfrequenz", result["reason"])
 
     def test_unknown_session_is_not_covered(self):
         self.assertEqual(

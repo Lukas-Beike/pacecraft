@@ -170,6 +170,58 @@ class PrMergeTests(unittest.TestCase):
         code, out, writes, _ = run(self, 7, freeze="ERROR")
         self.assertEqual((code, writes), (2, []))
 
+    def test_a_changelog_line_in_the_description_becomes_the_squash_body_with_the_co_authors(
+        self,
+    ):
+        # #3981: the squash body is blank by default; the line must reach develop.
+        commits = [
+            {"messageBody": "Co-authored-by: A <a@x>\nCo-Authored-By: B <b@x>"},
+            {"messageBody": "Co-authored-by: A <a@x>"},
+        ]
+        code, _, writes, _ = run(
+            self,
+            7,
+            views=[
+                view(
+                    body="Text\nChangelog: Die Woche zählt Belastung.\n",
+                    commits=commits,
+                )
+            ],
+        )
+        body = "Changelog: Die Woche zählt Belastung.\nCo-authored-by: A <a@x>\nCo-Authored-By: B <b@x>"
+        self.assertEqual(
+            (code, writes),
+            (
+                0,
+                [
+                    [
+                        "pr",
+                        "merge",
+                        "7",
+                        "--auto",
+                        "--squash",
+                        "--body",
+                        body,
+                        "--match-head-commit",
+                        "feedc0de",
+                    ]
+                ],
+            ),
+        )
+
+    def test_without_a_changelog_line_the_squash_arguments_stay_as_they_were(self):
+        code, _, writes, _ = run(
+            self,
+            7,
+            views=[
+                view(
+                    body="No line here.",
+                    commits=[{"messageBody": "Co-authored-by: A <a@x>"}],
+                )
+            ],
+        )
+        self.assertEqual((code, writes), (0, [["pr", "merge", "7", "--auto", *PIN]]))
+
     def test_arms_only_after_gitar_completed_on_the_current_head(self):
         # #3308: right after a push Gitar's check for the new head is pending or
         # missing, and a run for the head before the push does not count.

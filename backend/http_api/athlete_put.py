@@ -403,8 +403,8 @@ class AthletePutRoutes:
         Errors: 400 "Die Zonen sind ungültig: {reason}." with the invalid field
         named in German ("Sportart", "Messgröße", "Umgebung", "Obergrenzen oder
         Prozentgrenzen", "3 bis 7 {field} erforderlich", "Schwelle", "Maximum",
-        "Schwellenpuls (LSHF) fehlt", "FTP fehlt", "Gültig ab"); 400 "Die maximale Herzfrequenz darf nicht unter dem
-        Schwellenpuls liegen."; 400 "Die Zonenobergrenzen dürfen nicht über der
+        "LSHF fehlt", "FTP fehlt", "Gültig ab"); 400 "Die maximale Herzfrequenz darf nicht unter der
+        LSHF liegen."; 400 "Die Zonenobergrenzen dürfen nicht über der
         maximalen Herzfrequenz liegen."; 400 "Das Datum „Gilt ab“ darf nicht in der
         Zukunft liegen.".
 

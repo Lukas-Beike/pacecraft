@@ -433,7 +433,7 @@ The athlete SHALL be able to read and explicitly edit local zones and thresholds
 
 #### Scenario: Warning payload and dating
 - **WHEN** `GET /api/zones` carries `threshold_warnings`
-- **THEN** it is `{stale_after_days: 56, sdk_failure, items}`, `sdk_failure` being set only when a checked value is Garmin's, and each item names `metric`, `sport`, `label` ("FTP Rad", "FTP Laufen", "Schwellenpuls (LSHF) Rad", "Schwellenpuls (LSHF) Laufen", "Schwellenpace" or "Indoor-FTP" with metric `indoor_ftp`), `value`, `value_text` (a pace as "m:ss /km"), `source`, `source_label`, `dated_on`, `age_days` and `reason` (`stale`, `expired` or `sdk_failed`).
+- **THEN** it is `{stale_after_days: 56, sdk_failure, items}`, `sdk_failure` being set only when a checked value is Garmin's, and each item names `metric`, `sport`, `label` ("FTP Rad", "FTP Laufen", "LSHF Rad", "LSHF Laufen", "Schwellenpace" or "Indoor-FTP" with metric `indoor_ftp`), `value`, `value_text` (a pace as "m:ss /km"), `source`, `source_label`, `dated_on`, `age_days` and `reason` (`stale`, `expired` or `sdk_failed`).
 
 #### Scenario: Dating of a threshold
 - **WHEN** an active threshold is dated

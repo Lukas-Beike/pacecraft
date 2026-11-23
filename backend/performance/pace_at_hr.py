@@ -27,7 +27,8 @@ from backend.performance.session_analysis import _samples
 from backend.providers.source_labels import SESSION_SOURCES_LABEL
 
 # v2: treadmill and virtual runs are flat and never grade-adjusted.
-METHOD: Final = "pace-at-heart-rate-v2"
+# v3: the reasons name Herzfrequenz and Pace (#3981); the numbers are unchanged.
+METHOD: Final = "pace-at-heart-rate-v3"
 WARMUP_S: Final = 600
 MIN_DURATION_S: Final = 1800
 BIN_BPM: Final = 5
@@ -53,7 +54,7 @@ def _ineligible(activity: Mapping[str, Any]) -> str | None:
         return "Zu kurze oder fehlende Messreihe."
     for key in ("velocity_smooth", "heartrate"):
         if len(streams.get(key) or []) != len(times):
-            return "Geschwindigkeit oder Puls fehlt."
+            return "Geschwindigkeit oder Herzfrequenz fehlt."
     return None
 
 
@@ -136,7 +137,7 @@ def pace_at_heart_rate(
         return {
             **base,
             "status": "insufficient_data",
-            "reason": "Zu hügelig oder zu wenig Puls- und Geschwindigkeitsdaten.",
+            "reason": "Zu hügelig oder zu wenig Herzfrequenz- und Geschwindigkeitsdaten.",
             "bins": {},
         }
     return {
@@ -148,7 +149,8 @@ def pace_at_heart_rate(
     }
 
 
-POWER_METHOD: Final = "power-at-heart-rate-v1"
+# v2: the reasons name Herzfrequenz (#3981); the numbers are unchanged.
+POWER_METHOD: Final = "power-at-heart-rate-v2"
 # The heart rate trails power by up to a minute: each heart-rate sample is
 # paired with the mean power of the minute before it.
 POWER_SMOOTH_S: Final = 60
@@ -211,7 +213,7 @@ def power_at_heart_rate(
         return {
             **base,
             "status": "insufficient_data",
-            "reason": "Zu kurz, oder Leistung oder Puls fehlt.",
+            "reason": "Zu kurz, oder Leistung oder Herzfrequenz fehlt.",
             "bins": {},
         }
     start, end = float(times[0]) + WARMUP_S, float(times[-1])
@@ -237,7 +239,7 @@ def power_at_heart_rate(
         return {
             **base,
             "status": "insufficient_data",
-            "reason": "Keine Abschnitte mit Leistung und Puls.",
+            "reason": "Keine Abschnitte mit Leistung und Herzfrequenz.",
             "bins": {},
         }
     return {
@@ -546,7 +548,7 @@ def session_comparison(
     shared = _shared_band(own, peers)
     sources = {own.get("source")}
     if shared is None:
-        return _not_covered(base, "Kein gleichmäßiges Tempo in einem Pulsband.")
+        return _not_covered(base, "Keine gleichmäßige Pace in einem Herzfrequenzband.")
     low, mine, found = shared
     sources |= {p.get("source") for p in peers if _band_totals(p, low)}
     window = {"window_days": COMPARE_DAYS, "count": len(found)}

@@ -1223,7 +1223,7 @@ class RideBlockTests(unittest.TestCase):
         found = checks(session_report(_no_power_ride()))
         rise = found["heart_rate_rise"]
         self.assertEqual(("notable", 6.7), (rise["verdict"], rise["value"]["rise_pct"]))
-        self.assertEqual("Puls-Anstieg über die Wiederholungen", rise["title"])
+        self.assertEqual("Herzfrequenz-Anstieg über die Wiederholungen", rise["title"])
         self.assertIn("offen", rise["rule"])
         for key in ("rep_fade", "within_rep_fade", "start_change", "cardiac_drift"):
             self.assertEqual("unknown", found[key]["verdict"], key)

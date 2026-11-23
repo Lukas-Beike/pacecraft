@@ -57,7 +57,7 @@ _PACE = re.compile(
 _PERCENT_BASES: Final = {
     ("power", None): ("ftp", "Schwellenleistung (FTP)"),
     ("power", "FTP"): ("ftp", "Schwellenleistung (FTP)"),
-    ("hr", "LTHR"): ("threshold_hr", "Schwellenpuls"),
+    ("hr", "LTHR"): ("threshold_hr", "LSHF"),
     ("hr", "HR"): ("max_hr", "maximale Herzfrequenz"),
     ("pace", "PACE"): ("threshold_speed", "Schwellentempo"),
 }

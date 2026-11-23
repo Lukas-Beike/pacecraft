@@ -1328,7 +1328,7 @@ class RunPushTests(PushHarness):
         result = self.push((U1, self.insert(U1, unit)))
 
         self.assertEqual("error", result["status"])
-        self.assertIn("Schwellenpuls", result["results"][0]["error"])
+        self.assertIn("LSHF", result["results"][0]["error"])
         self.assertEqual([], self.garmin.calls)
 
     def test_a_second_push_updates_the_same_workout(self) -> None:
@@ -1357,7 +1357,7 @@ class RunPushTests(PushHarness):
         result = self.push((U1, relative), (U2, absolute))
 
         self.assertEqual("partial", result["status"])
-        self.assertIn("Schwellenpuls", result["results"][0]["error"])
+        self.assertIn("LSHF", result["results"][0]["error"])
         self.assertEqual("synced", result["results"][1]["status"])
         self.assertIsNone(self.link(U1))
         self.assertEqual([("upload", "501")], self.garmin.calls[:1])
@@ -1369,7 +1369,7 @@ class RunPushTests(PushHarness):
         result = self.push((U1, self.insert(U1, RUN)))
 
         self.assertEqual("error", result["status"])
-        self.assertIn("Schwellenpuls", result["results"][0]["error"])
+        self.assertIn("LSHF", result["results"][0]["error"])
         self.assertEqual([], self.garmin.calls)
         self.assertEqual(0, self.sessions)
         self.assertIsNone(self.link(U1))

@@ -147,12 +147,12 @@ def _garmin_performance_units(
         "bike_threshold_hr_bpm": (
             cycling_hr,
             "bpm",
-            "Garmin Connect Rad-Schwellenpuls",
+            "Garmin Connect Rad-LSHF",
         ),
         "run_threshold_hr_bpm": (
             running_hr,
             "bpm",
-            "Garmin Connect Lauf-Schwellenpuls",
+            "Garmin Connect Lauf-LSHF",
         ),
     }
 

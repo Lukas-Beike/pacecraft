@@ -144,6 +144,14 @@ const TEXT_FORMATS = [
   [/\bPortion\(en\)/, "an either-or plural"],
   [/\b[A-Z][A-Z0-9]+_[A-Z0-9_]+\b/, "an internal setting name"],
   [/\b(Ø Puls|Pulszonen|HF-Zonen|Kadenz|Power-Zonen|Kurzzeitbelastung|Session-RPE-Last|Athletenkontext|Nicht gesetzt|nicht konfiguriert)\b/, "a word the term list replaced"],
+  // #3981: the two loads, the English names and the stored step notation.
+  [/\b(Trainingsbelastung|Training Effect|Load-Focus|Thinking|Personal API|SDK-Login|Ultrafast|Ruhepuls|Schwellenpuls)\b/, "a word the term list replaced"],
+  [/^\s*-\s*\d+(h|m|s|km|mtr)\b/, "raw step notation"],
+  [/^\s*\d+x\s*$/, "a raw repeat header"],
+  [/\b(Main Set|Warmup|Cooldown)\b/, "a raw step section name"],
+  [/\bWeightTraining · \d/, "a sport type with a time"],
+  [/\b\d{4}-\d{2}-\d{2}T\d{2}:|\|\s*active\b|Datensätze in \d+ Zeitfenstern/, "an internal timestamp or status"],
+  [/(^|[^\d.])\d{2}\.\d{2}\.\d{2}($|[^\d.])/, "a two-digit year"],
 ];
 
 async function expectTextFormats(page, view) {

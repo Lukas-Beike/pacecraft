@@ -252,7 +252,7 @@
       ["Normalized Power", measure(metrics.normalized_power, "W")],
       ["Max. Leistung", measure(metrics.max_power_w, "W")],
       [`Ø ${cadence.label}`, dynamicsShown ? null : measure(cadence.average, cadence.unit)],
-      ["Anstieg", measure(metrics.elevation_gain_m, "m")],
+      ["Höhenmeter", measure(metrics.elevation_gain_m, "m")],
       ["Temperatur", ActivityDetails.weatherTemperature(weather)],
       ["Kalorien", measure(metrics.energy_kcal ?? metrics.calories_kcal, "kcal")],
       // Local session metrics (card M8): descriptive values, no verdict.
@@ -269,7 +269,8 @@
     return h("dl", "activity-analysis-stats", values.map(([label, value]) => h("div", null, h("dt", null, label), h("dd", null, value))));
   }
 
-  function zones(title, zone) {
+  // The source line stands once for sections that share it (#3981).
+  function zones(title, zone, named = new Set()) {
     const items = (zone?.buckets || []).filter((bucket) => finite(bucket.seconds) && bucket.seconds >= 0)
       .map((bucket) => ({ id: String(bucket.label || `Z${bucket.index}`), secs: bucket.seconds }));
     const total = items.reduce((sum, item) => sum + item.secs, 0);
@@ -282,7 +283,10 @@
       rows.append(h("li", { dataset: { zone: item.id.match(/^Z\d/)?.[0] || "" } }, h("span", "activity-analysis-zone-label", item.id.slice(0, 20)), bar, h("span", "activity-analysis-zone-value", `${clock(item.secs)} · ${Math.round(share * 100)} %`)));
     }
     // Derived zones use the zone settings of the session day, as the reports (#1743).
-    return h("section", "activity-analysis-zones", h("h4", null, title), rows, h("p", "muted", `Zonen laut ${zone.source?.label || "Anbieter"} am Tag der Einheit.`));
+    const source = zone.source?.label || "Anbieter";
+    const note = named.has(source) ? null : h("p", "muted", `Zonen laut ${source} am Tag der Einheit.`);
+    named.add(source);
+    return h("section", "activity-analysis-zones", h("h4", null, title), rows, note);
   }
 
   function laps(activity, lapSet) {
@@ -297,8 +301,8 @@
       // Garmin's own grade-adjusted lap speed, shown like the pace beside it.
       ["GAP Garmin", (lap) => speedText(speed, lap.avg_grade_adjusted_speed_mps)],
       ["Ø W", (lap) => (finite(lap.avg_power) ? numberText(lap.avg_power) : null)],
-      ["Ø HF", (lap) => (finite(lap.avg_hr) ? numberText(lap.avg_hr) : null)],
-      ["Anstieg", (lap) => (finite(lap.elevation_gain_m) ? `${numberText(lap.elevation_gain_m)} m` : null)],
+      ["Ø Herzfrequenz", (lap) => (finite(lap.avg_hr) ? numberText(lap.avg_hr) : null)],
+      ["Höhenmeter", (lap) => (finite(lap.elevation_gain_m) ? `${numberText(lap.elevation_gain_m)} m` : null)],
     ].filter(([, read]) => items.some((lap) => read(lap) != null));
     if (!columns.length) return null;
     const wrap = makeScrollRegionFocusable(h("div", "analysis-chart-table"), "Runden dieser Einheit");
@@ -400,7 +404,8 @@
     const streams = payload?.streams && { ...payload.streams, channels: { ...payload.streams.channels, ...payload.running_dynamics_streams } };
     const charts = streams ? channels(activity, metrics, streams).map((channel) => chart(streams, channel, chartTargets(planned, channel))).filter(Boolean) : [];
     if (charts.length) panel.append(h("div", "activity-analysis-charts", charts));
-    for (const section of [zones("Zeit in Herzfrequenzzonen", payload?.zones?.heart_rate), zones("Zeit in Leistungszonen", payload?.zones?.power), laps(activity, payload?.laps)]) {
+    const namedZoneSources = new Set();
+    for (const section of [zones("Zeit in Herzfrequenzzonen", payload?.zones?.heart_rate, namedZoneSources), zones("Zeit in Leistungszonen", payload?.zones?.power, namedZoneSources), laps(activity, payload?.laps)]) {
       if (section) panel.append(section);
     }
     if (!payload) return;
@@ -438,7 +443,7 @@
       finite(effect.aerobic_training_effect) && effectTile("Trainingseffekt aerob", effectText(effect.aerobic_training_effect), effect.aerobic_training_effect),
       finite(effect.anaerobic_training_effect) && effectTile("Trainingseffekt anaerob", effectText(effect.anaerobic_training_effect), effect.anaerobic_training_effect),
       effect.training_effect_label && effectTile("Hauptnutzen", effectBenefit(effect.training_effect_label)),
-      finite(effect.training_effect_load) && effectTile("Belastung", numberText(effect.training_effect_load)),
+      finite(effect.training_effect_load) && effectTile("Garmin-Belastung", numberText(effect.training_effect_load)),
     ].filter(Boolean);
     if (!tiles.length) return null;
     const source = String(effect.source || "");

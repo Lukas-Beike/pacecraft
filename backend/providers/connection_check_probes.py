@@ -193,7 +193,7 @@ def build_probes(
             reason_hints={
                 PERSONAL_KEY_REJECTED_REASON: (
                     "Personal-API-Schlüssel abgelehnt – in Garmin Connect Web "
-                    "erneuern und in der Garmin-Karte unter Personal API speichern"
+                    "erneuern und in der Garmin-Karte unter API-Schlüssel speichern"
                 )
             },
         ),

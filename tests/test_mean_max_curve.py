@@ -224,7 +224,7 @@ def store_run(db, provider_activity_id):
 
 # Digest of the golden sessions' stored curves with the format version it was pinned
 # under (#2821): an output change needs a CURVE_FORMAT_VERSION bump, then a new pin.
-GOLDEN_CURVE = (3, "0a89a43223f368a2da891e089f9bbdda9a5241e06d6b9cbfc2c2e9c158042e53")
+GOLDEN_CURVE = (4, "875875b2bef398b77b57614cbe02a2e0d3f8977ab014a41908897cdc132f524a")
 
 
 def watts_at(curve, duration):
@@ -269,7 +269,7 @@ class SessionCurveReaderTests(unittest.TestCase):
         # The power-at-heart-rate bins (#2427) come from the same streams; this
         # ride has no heart rate, so it gives none.
         self.assertEqual(
-            ("power-at-heart-rate-v1", "insufficient_data"),
+            ("power-at-heart-rate-v2", "insufficient_data"),
             (
                 curves["act_1"].power_at_hr["method"],
                 curves["act_1"].power_at_hr["status"],
