@@ -2,7 +2,7 @@
 
 - **Card:** M9
 - **Card version:** 2
-- **Method ID:** pace-at-heart-rate-v2 and power-at-heart-rate-v1, read by `backend/performance/pace_at_hr.py:output_at_heart_rate` (#2427)
+- **Method ID:** pace-at-heart-rate-v3 and power-at-heart-rate-v2 (v3 and v2 only reword the reasons in German, Herzfrequenz and Pace, #3981; the numbers of v2 and v1 are unchanged), read by `backend/performance/pace_at_hr.py:output_at_heart_rate` (#2427)
 - **Status:** implemented; LT1 origin `own_sessions` in `backend/performance/current_metrics.py:first_thresholds`
 - **Classification:** model estimate
 - **Literature checked:** 2026-11-12
@@ -32,10 +32,10 @@ low/moderate split of the 3-zone bands.
 
 ## Formula and units
 
-1. **Run profile** (`pace-at-heart-rate-v2`, unchanged): seconds, distance and
+1. **Run profile** (`pace-at-heart-rate-v3`, numbers unchanged since v2): seconds, distance and
    squared speed per 5 bpm heart-rate bin of steady, flat-ish samples after a
    10-minute warm-up; grade-adjusted speed (R44) where a slope is known.
-2. **Ride profile** (`power-at-heart-rate-v1`): seconds, work (J) and squared
+2. **Ride profile** (`power-at-heart-rate-v2`, numbers unchanged since v1): seconds, work (J) and squared
    power per 5 bpm heart-rate bin after a 10-minute warm-up. Each heart-rate
    sample is paired with the mean power of the 60 s before it, once at least
    54 s of that minute are recorded (so the first minute after a pause or gap
@@ -119,7 +119,7 @@ low/moderate split of the 3-zone bands.
   of variation of at most 0.15; otherwise no value, and the fixed share
   applies.
 - Ride profile: at least 30 minutes of recording with power and heart-rate
-  streams; run profile: the rules of `pace-at-heart-rate-v2`.
+  streams; run profile: the rules of `pace-at-heart-rate-v3`.
 
 ## Numeric rules
 
@@ -166,7 +166,7 @@ low/moderate split of the 3-zone bands.
 | `CURRENT_WEIGHT_LABEL` | `'aktuell'` | `backend/performance/current_metrics.py` | The weight is the weigh-in line's value, not one weigh-in (#3551, #3640). |
 | `LT1_OWN_SESSIONS` | `'own_sessions'` | `backend/performance/current_metrics.py` | Where an LT1 value comes from: the profile value (measured, or the adopted DFA-a1 estimate), the athlete's own steady sessions at the LT1 heart rate (pace and power only), or a fixed share of LT2 (the shown "Standardwert"). |
 | `LT1_FIXED_SHARE` | `'fixed_share'` | `backend/performance/current_metrics.py` |  |
-| `METHOD` | `'pace-at-heart-rate-v2'` | `backend/performance/pace_at_hr.py` | v2: treadmill and virtual runs are flat and never grade-adjusted. |
+| `METHOD` | `'pace-at-heart-rate-v3'` | `backend/performance/pace_at_hr.py` | v2: treadmill and virtual runs are flat and never grade-adjusted. v3: the reasons name Herzfrequenz and Pace (#3981); the numbers are unchanged. |
 | `WARMUP_S` | `600` | `backend/performance/pace_at_hr.py` |  |
 | `MIN_DURATION_S` | `1800` | `backend/performance/pace_at_hr.py` |  |
 | `BIN_BPM` | `5` | `backend/performance/pace_at_hr.py` |  |
@@ -177,7 +177,7 @@ low/moderate split of the 3-zone bands.
 | `MAX_SPEED_CV` | `0.15` | `backend/performance/pace_at_hr.py` |  |
 | `MIN_SESSIONS` | `2` | `backend/performance/pace_at_hr.py` |  |
 | `SCOPE` | `'Pace in a fixed heart-rate band on steady, flat-ish outdoor or indoor runs after a 10-minute war... (sha256 7624bc98)` | `backend/performance/pace_at_hr.py` |  |
-| `POWER_METHOD` | `'power-at-heart-rate-v1'` | `backend/performance/pace_at_hr.py` |  |
+| `POWER_METHOD` | `'power-at-heart-rate-v2'` | `backend/performance/pace_at_hr.py` | v2: the reasons name Herzfrequenz (#3981); the numbers are unchanged. |
 | `POWER_SMOOTH_S` | `60` | `backend/performance/pace_at_hr.py` | The heart rate trails power by up to a minute: each heart-rate sample is paired with the mean power of the minute before it. |
 | `LT1_DAYS` | `60` | `backend/performance/pace_at_hr.py` |  |
 | `LT1_MIN_SESSIONS` | `3` | `backend/performance/pace_at_hr.py` |  |

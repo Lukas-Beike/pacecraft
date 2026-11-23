@@ -78,7 +78,7 @@ Athlete decisions (2026-11-07, #1680):
      et al. (2002) cost of running `C(g)` at the sample's grade `g`, clamped
      to ±45 %. The grade is the stored grade stream, else the altitude change
      over the next 200 m of distance. This is the same adjustment as
-     `pace-at-heart-rate-v2`.
+     `pace-at-heart-rate-v3`.
    - The session report (#3084) gives an outdoor run's grade-adjusted pace
      with this adjustment over the moving samples of the detail streams
      (speed at least 1 m/s, stops longer than max(30 s, 3 × the median step)

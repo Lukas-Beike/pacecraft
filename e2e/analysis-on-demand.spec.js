@@ -173,7 +173,7 @@ test("@responsive running analysis shows no running technique card", async ({ pa
 const TRENDS = "/api/analysis/trends";
 const RUN_DAYS = ["2026-08-24", "2026-09-07", "2026-09-21", "2026-10-12", "2026-10-26", "2026-11-09"];
 const TRENDS_PAYLOAD = {
-  pace_at_heart_rate: { method: "pace-at-heart-rate-v2", unit: "s/km", run: {
+  pace_at_heart_rate: { method: "pace-at-heart-rate-v3", unit: "s/km", run: {
     outdoor: { status: "ok", heart_rate_band_bpm: [140, 149], sources: ["Garmin original speed/heart-rate streams"],
       sessions: RUN_DAYS.map((date, index) => ({ date, activity_id: `act_${index}`, pace_s_per_km: [349, 345, 347, 340, 337, 336][index] })),
       earlier: { sessions: 3, pace_s_per_km: 347 }, later: { sessions: 3, pace_s_per_km: 338 }, change_s_per_km: -9 },
