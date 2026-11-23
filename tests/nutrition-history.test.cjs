@@ -14,7 +14,7 @@ test("logout clears the diary's energy table and a diary refresh reads it again"
   const document = { getElementById: (id) => node(id), querySelector: (selector) => node(selector) };
   let resets = 0;
   const loads = [];
-  const ctx = extractFunctions("nutrition.js", ["resetNutritionView", "nutritionRefresh"], {
+  const ctx = extractFunctions("nutrition.js", ["resetNutritionView", "nutritionRefresh", "syncNutritionDateName", "nutritionDayName"], {
     document, resetSkinfolds() {}, stopNutritionBarcode() {}, resetEnergy: () => { resets += 1; },
     loadNutrition: (options) => loads.push(options),
     nutritionLoadSequence: 0, nutritionProductLoadSequence: 0, nutritionLookupResultShown: false,
@@ -191,4 +191,13 @@ test("a Verlauf week row reads Woche ab with its Monday, the current one Diese W
   assert.equal(ctx.nutritionRowLabel({ date: "2026-03-30" }), "30.03");
   assert.equal(ctx.nutritionRunLabel({ start: "2026-02-01", end: "2026-02-09" }), "01.02–09.02");
   assert.equal(ctx.nutritionRunLabel({ start: "2026-02-01", end: "2026-02-01" }), "01.02");
+});
+
+// #4037 N-10: the diary's date names its weekday, today says so; a BLS meal names its source short.
+test("the diary date names its weekday and a BLS source its short name", () => {
+  const ctx = extractFunctions("nutrition.js", ["nutritionDayName", "nutritionFoodSource"]);
+  assert.equal(ctx.nutritionDayName("2026-11-23", "2026-11-23"), "Heute · Montag");
+  assert.equal(ctx.nutritionDayName("2026-11-22", "2026-11-23"), "Sonntag");
+  assert.equal(ctx.nutritionFoodSource("Max Rubner-Institut (2025): Bundeslebensmittelschlüssel (BLS), Version 4.0"), "BLS");
+  assert.equal(ctx.nutritionFoodSource("Open Food Facts"), "Open Food Facts");
 });

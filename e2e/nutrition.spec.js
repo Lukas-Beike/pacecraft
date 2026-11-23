@@ -68,7 +68,9 @@ test("@responsive nutrition diary keeps saved meals in Produkte and preserves co
   const databaseCard = page.locator("#nutritionEntries .nutrition-card").filter({ hasText: "50 g Haferflocken" });
   await expect(databaseCard).toContainText("174 kcal");
   await expect(databaseCard).toContainText("Datenbankberechnung");
-  await expect(databaseCard).toContainText("Max Rubner-Institut");
+  // #4037: the card names the source short; the full citation stays in the stored basis.
+  await expect(databaseCard).toContainText("BLS: Hafer Flocken");
+  await expect(databaseCard).not.toContainText("Max Rubner-Institut");
   await expect(databaseCard).toContainText("50 g (Basis 100 g)");
   await page.reload();
   await expect(databaseCard).toContainText("174 kcal");

@@ -173,10 +173,15 @@ function setValueWithUnit(element, text) {
   return element;
 }
 
+// The full citation of the BLS stays in the stored basis; the card names it short (#4037).
+function nutritionFoodSource(source) {
+  return /Bundeslebensmittelschlüssel \(BLS\)/.test(source) ? "BLS" : source;
+}
+
 function nutritionBasisLabel(basis, sourceLabel) {
   if (basis?.kind === "composite") return "";
   if (basis?.kind === "database") {
-    return "Datenbankberechnung · " + basis.ingredients.map((food) => `${food.source}: ${food.name}, ${food.amount} ${food.unit} (Basis 100 ${food.basis_unit})`).join("; ");
+    return "Datenbankberechnung · " + basis.ingredients.map((food) => `${nutritionFoodSource(food.source)}: ${food.name}, ${food.amount} ${food.unit} (Basis 100 ${food.basis_unit})`).join("; ");
   }
   if (basis?.kind === "product" || basis?.kind === "local_product") {
     const product = basis.product || basis;
@@ -199,7 +204,7 @@ function nutritionComponentDetails(item) {
     h("ul", "nutrition-component-list", components.map((component) => h("li", null,
       h("strong", null, component.name || "Unbenannte Zutat"),
       h("span", null, ` · ${component.amount ?? "–"} ${component.unit || ""}`.trim()),
-      h("span", null, ` · ${nutritionNumber(component.kcal)} kcal · KH ${nutritionNumber(component.carbs_g, "g")} g · Protein ${nutritionNumber(component.protein_g, "g")} g · Fett ${nutritionNumber(component.fat_g, "g")} g`),
+      h("span", null, ` · ${nutritionNumber(component.kcal)} kcal · Kohlenhydrate ${nutritionNumber(component.carbs_g, "g")} g · Protein ${nutritionNumber(component.protein_g, "g")} g · Fett ${nutritionNumber(component.fat_g, "g")} g`),
       h("small", null, nutritionComponentSource(component.nutrition_basis, NUTRITION_SOURCE_LABELS[item.source]))))));
 }
 
@@ -258,7 +263,7 @@ function nutritionCard(item, template, sessions = []) {
     template ? title : h("div", "nutrition-card-head", title, nutritionEditButton(item)),
     template ? null : nutritionSessionBlock(item, sessions),
     h("p", null, item.description),
-    h("p", null, `${nutritionNumber(item.kcal)} kcal · KH ${nutritionNumber(item.carbs_g, "g")} g · Protein ${nutritionNumber(item.protein_g, "g")} g · Fett ${nutritionNumber(item.fat_g, "g")} g${template ? " / Portion" : ""}${volume}`),
+    h("p", "nutrition-macros", `${nutritionNumber(item.kcal)} kcal · Kohlenhydrate ${nutritionNumber(item.carbs_g, "g")} g · Protein ${nutritionNumber(item.protein_g, "g")} g · Fett ${nutritionNumber(item.fat_g, "g")} g${template ? " / Portion" : ""}${volume}`),
     sourceText ? h("small", null, sourceText) : null);
   if (!template) card.append(...nutritionEntryActions(item));
   return card;
@@ -612,8 +617,21 @@ function nutritionCoachDraft(date, today) {
   return `Ich habe ${when} gegessen: `;
 }
 
+// "Heute · Montag" or "Montag": the diary's date names its weekday (#4037).
+function nutritionDayName(date, today) {
+  const weekday = new Intl.DateTimeFormat("de-DE", { weekday: "long", timeZone: "UTC" }).format(new Date(`${date}T12:00:00Z`));
+  return date === today ? `Heute · ${weekday}` : weekday;
+}
+
+// The caption follows the field wherever the field changes; an empty field is today.
+function syncNutritionDateName() {
+  const today = todayIso();
+  document.querySelector("#nutritionDateName").textContent = nutritionDayName(document.querySelector("#nutritionDate").value || today, today);
+}
+
 function renderNutritionDay(day) {
   document.querySelector("#nutritionDate").value = day.date;
+  syncNutritionDateName();
   const intake = nutritionIntakeKey(day);
   // Another day is read again by the energy card itself (#3395); only a changed intake of the
   // same day drops the read here, so a day switch starts one read, not two.
@@ -641,6 +659,7 @@ function showNutritionDayLoadError(status, cached, error, dateInput, requestedDa
   }
   // The requested day stays in the date field so ← and → still have a day to move from.
   dateInput.value = requestedDate;
+  syncNutritionDateName();
   const retry = h("button", { type: "button", className: "secondary-button" }, "Erneut laden");
   retry.addEventListener("click", () => void loadNutrition());
   status.textContent = `Ernährung konnte nicht geladen werden: ${error.message}`;
@@ -678,7 +697,7 @@ async function loadNutrition({ preserve = false, expectedRoute = null, expectedD
   }
 }
 
-document.querySelector("#nutritionDate").addEventListener("change", () => void loadNutrition());
+document.querySelector("#nutritionDate").addEventListener("change", () => { syncNutritionDateName(); void loadNutrition(); });
 document.querySelector("#nutritionTellCoach").addEventListener("click", (event) => void globalThis.askCoach?.(nutritionCoachDraft(event.currentTarget.dataset.date, todayIso())));
 for (const [id, offset] of [["nutritionPrevious", -1], ["nutritionNext", 1]]) {
   document.getElementById(id).addEventListener("click", () => {
@@ -687,10 +706,11 @@ for (const [id, offset] of [["nutritionPrevious", -1], ["nutritionNext", 1]]) {
     const day = new Date(`${input.value}T12:00:00Z`);
     day.setUTCDate(day.getUTCDate() + offset);
     input.value = day.toISOString().slice(0, 10);
+    syncNutritionDateName();
     void loadNutrition();
   });
 }
-document.querySelector("#nutritionToday").addEventListener("click", () => { document.querySelector("#nutritionDate").value = ""; void loadNutrition(); });
+document.querySelector("#nutritionToday").addEventListener("click", () => { document.querySelector("#nutritionDate").value = ""; syncNutritionDateName(); void loadNutrition(); });
 
 const nutritionRefresh = AppViewRefresh.create({
   api,
@@ -743,6 +763,7 @@ function resetNutritionView() {
   document.querySelector("#nutritionProductUseDialog")?.close();
   nutritionProductForUse = null;
   document.querySelector("#nutritionDate").value = "";
+  syncNutritionDateName();
   nutritionWeekShown = null;
   for (const id of ["nutritionWeekBalance", "nutritionWeekStatus", "nutritionWeekMacros", "nutritionWeekDays", "nutritionWeekChart", "nutritionEntries", "nutritionTotals", "nutritionEnergy", "nutritionStatus", "nutritionProducts", "nutritionLookupResult", "nutritionProductStatus"]) document.getElementById(id)?.replaceChildren();
   document.querySelector("#nutritionLookupResult").hidden = true;
@@ -1156,7 +1177,7 @@ function nutritionProductCard(product, local) {
       h("h3", null, [product.brand, product.name].filter(Boolean).join(" · ") || "Unbenanntes Produkt"),
       nutritionUsageCount(product),
       local && product.id && product.local !== false ? nutritionFavoriteButton(product) : null),
-    h("p", null, `${kcalLabel} · KH ${nutritionNumber(product.carbs_g, "g")} g · Protein ${nutritionNumber(product.protein_g, "g")} g · Fett ${nutritionNumber(product.fat_g, "g")} g`),
+    h("p", null, `${kcalLabel} · Kohlenhydrate ${nutritionNumber(product.carbs_g, "g")} g · Protein ${nutritionNumber(product.protein_g, "g")} g · Fett ${nutritionNumber(product.fat_g, "g")} g`),
     h("div", "nutrition-product-marks",
       h("span", "nutrition-origin", nutritionOriginText(product)),
       nutritionLastUseText(product) ? h("span", "nutrition-last-use", nutritionLastUseText(product)) : null,

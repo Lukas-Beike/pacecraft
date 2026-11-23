@@ -164,8 +164,8 @@ test("composite meal components are shown as text with unknown values and source
   const [summary, list] = details.children;
   assert.equal(textOf(summary), "Zutaten anzeigen (2)");
   const [known, unknown] = list.children.map((row) => row.children.map(textOf));
-  assert.deepEqual(known, [name, "· 40 g", " · 150 kcal · KH 25 g · Protein – g · Fett – g", "Verpackungsangabe"]);
-  assert.deepEqual(unknown, ["Unbenannte Zutat", "· –", " · – kcal · KH – g · Protein – g · Fett – g", "Quelle unbekannt"]);
+  assert.deepEqual(known, [name, "· 40 g", " · 150 kcal · Kohlenhydrate 25 g · Protein – g · Fett – g", "Verpackungsangabe"]);
+  assert.deepEqual(unknown, ["Unbenannte Zutat", "· –", " · – kcal · Kohlenhydrate – g · Protein – g · Fett – g", "Quelle unbekannt"]);
   assert.equal(context.nutritionComponentDetails({ nutrition_basis: { kind: "composite", components: [] } }), null);
   assert.equal(context.nutritionComponentDetails({ nutrition_basis: { kind: "database", components: [{ name: "x" }] } }), null);
 });

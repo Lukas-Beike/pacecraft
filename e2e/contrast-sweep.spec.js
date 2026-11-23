@@ -63,12 +63,13 @@ async function finishAnimations(page) {
 
 // The dark page background is a flat colour under two soft radial glows (at most 15 % alpha) that axe cannot flatten
 // and reports every text on as undecided. The scan measures against the flat colour instead; the light theme has no glow.
-// The sticky save bar stays in the flow: where axe scrolls a node to, it can sit over the node and make its backdrop
-// undecidable. Its own contrast is measured at its place in the form.
+// The sticky save bar and the bottom navigation stay in the flow: a line of text that straddles their edge, at the
+// scroll position the scan has, makes its backdrop undecidable, and a few pixels of layout decide that (#3930).
+// Their own contrast is measured at their place in the page.
 async function flattenPageGlow(page) {
   await page.evaluate(() => {
     const sheet = new CSSStyleSheet();
-    sheet.replaceSync("body { background-image: none !important; } .save-bar { position: static !important; }");
+    sheet.replaceSync("body { background-image: none !important; } .save-bar, .bottom-nav { position: static !important; } .bottom-nav { transform: none !important; margin-inline: auto; }");
     document.adoptedStyleSheets = [...document.adoptedStyleSheets, sheet];
   });
 }
@@ -217,6 +218,52 @@ async function waitForStableLayout(page) {
   }, STABLE_MS, { polling: 100, timeout: 15_000 });
 }
 
+// A node that straddles the edge of the viewport cannot be sampled where it lies (axe reports it overlapped or
+// obscured); scrolled to the middle of the screen it can. A few pixels of layout decide which nodes straddle (#4037).
+const STRADDLING = /overlapped by another element|partially obscured/;
+
+function undecidedNodes(results) {
+  return results.flatMap((result) => result.nodes.map((node) => ({
+    target: node.target.join(" "), message: node.any[0]?.message || result.help,
+    by: (node.any[0]?.relatedNodes || []).map((related) => related.target.join(" ")).join(", "),
+  })));
+}
+
+const isAccepted = ({ target, message }) => INCOMPLETE_ALLOWED.some((allowed) => allowed.target.test(target) && allowed.message.test(message));
+
+function contrastText(view, theme, node) {
+  const data = node.any.find((check) => check.id === "color-contrast")?.data || {};
+  return `${view} [${theme}] ${node.target.join(" ")}: ${data.contrastRatio} < ${data.expectedContrastRatio} (${data.fgColor} on ${data.bgColor}, ${data.fontSize}, ${data.fontWeight})`;
+}
+
+// Measures each straddling node again in the middle of the screen: what it then fails is a violation, what stays
+// undecided stays undecided.
+async function remeasureStraddling(page, view, theme, nodes) {
+  const open = [];
+  const failures = [];
+  for (const entry of nodes) {
+    if (!STRADDLING.test(entry.message) || isAccepted(entry)) { open.push(entry); continue; }
+    await page.locator(entry.target).first().evaluate((node) => node.scrollIntoView({ block: "center" }));
+    const again = await new AxeBuilder({ page }).withRules(["color-contrast"]).include(entry.target).analyze();
+    failures.push(...again.violations.flatMap((violation) => violation.nodes.map((node) => contrastText(view, theme, node))));
+    // What lies over a node that stays undecided is the first thing to read in the failure.
+    const stack = again.incomplete.length ? await page.locator(entry.target).first().evaluate((node) => {
+      const box = node.getBoundingClientRect();
+      const name = (over) => over.tagName.toLowerCase() + (over.id ? "#" + over.id : "") + (over.className ? "." + String(over.className).trim().split(" ")[0] : "");
+      // The top element at nine points of the box: a point that is not the node itself is what overlaps it.
+      const tops = [0.1, 0.5, 0.9].flatMap((row) => [0.05, 0.5, 0.95].map((column) => {
+        const over = document.elementsFromPoint(box.left + box.width * column, box.top + box.height * row)[0];
+        if (!over) return "none";
+        return over === node ? "self" : name(over);
+      }));
+      return tops.join(",") + " box " + Math.round(box.left) + "," + Math.round(box.top) + " " + Math.round(box.width) + "x" + Math.round(box.height) + " of " + innerWidth + "x" + innerHeight + " fonts " + document.fonts.status;
+    }) : "";
+    open.push(...undecidedNodes(again.incomplete).map((node) => ({ ...node, by: node.by || stack })));
+  }
+  await page.evaluate(() => window.scrollTo(0, 0));
+  return { open, failures };
+}
+
 async function expectContrast(page, view, theme, scopes = SCOPES) {
   await page.mouse.move(0, 0);
   await finishAnimations(page);
@@ -226,17 +273,12 @@ async function expectContrast(page, view, theme, scopes = SCOPES) {
   const { violations, incomplete, passes } = await builder.analyze();
   // A scope that matches nothing would pass without measuring anything.
   expect(passes.concat(violations).reduce((count, rule) => count + rule.nodes.length, 0), `${view} [${theme}]: no node measured`).toBeGreaterThan(0);
-  const failures = violations.flatMap((violation) => violation.nodes.map((node) => {
-    const data = node.any.find((check) => check.id === "color-contrast")?.data || {};
-    return `${view} [${theme}] ${node.target.join(" ")}: ${data.contrastRatio} < ${data.expectedContrastRatio} (${data.fgColor} on ${data.bgColor}, ${data.fontSize}, ${data.fontWeight})`;
-  }));
+  const remeasured = await remeasureStraddling(page, view, theme, undecidedNodes(incomplete));
+  const failures = [...violations.flatMap((violation) => violation.nodes.map((node) => contrastText(view, theme, node))), ...remeasured.failures];
   expect(failures, `colour contrast violations: ${failures.join(" | ")}`).toEqual([]);
   // The elements axe names as covering the node say what to fix.
-  const undecided = incomplete.flatMap((result) => result.nodes.map((node) => ({
-    target: node.target.join(" "), message: node.any[0]?.message || result.help,
-    by: (node.any[0]?.relatedNodes || []).map((related) => related.target.join(" ")).join(", "),
-  })))
-    .filter(({ target, message }) => !INCOMPLETE_ALLOWED.some((allowed) => allowed.target.test(target) && allowed.message.test(message)))
+  const undecided = remeasured.open
+    .filter((entry) => !isAccepted(entry))
     .map(({ target, message, by }) => `${view} [${theme}] ${target}: ${message}` + (by ? " (by " + by + ")" : ""));
   expect(undecided, `colour contrast axe could not decide: ${undecided.join(" | ")}`).toEqual([]);
 }
