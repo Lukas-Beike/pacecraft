@@ -74,9 +74,9 @@ PASSWORD_FILE = re.compile(
 # change the directory, the interpreter's options, a function or alias named like
 # it, or the script itself. An allowlist: a status read, or one literal file read
 # into a pipe; everything else before the run blocks it.
-SAFE_BEFORE = re.compile(
-    r"(?:git\s+status(?:\s+(?:-s|--short))?|(?:get-content|cat|type)\s+[\w./\\:-]+)?",
-    re.IGNORECASE,
+SAFE_BEFORE = tuple(
+    re.compile(pattern, re.IGNORECASE)
+    for pattern in (r"git\s+status(?:\s+(?:-s|--short))?", r"(?:get-content|cat|type)\s+[\w./\\:-]+")
 )
 # What a pipe may feed the run's output into (#4075 review): a segment joined by
 # `|` runs alongside the run, so only a reader without a redirection,
@@ -97,6 +97,11 @@ STREAM_COPY = re.compile(r">&(?=[0-9-])")
 
 def names_secrets(text: str) -> bool:
     return bool(SECRETS.search(DOT_SEGMENT.sub("", QUOTES.sub("", text))))
+
+
+def safe_before(segment: str) -> bool:
+    """An empty segment or one of the SAFE_BEFORE shapes."""
+    return not segment or any(shape.fullmatch(segment) for shape in SAFE_BEFORE)
 
 
 def alongside_safe(segments: list[str], separators: list[str], index: int) -> bool:
@@ -124,7 +129,7 @@ def secret_mention_allowed(command: str) -> bool:
             ESCAPED_SEPARATOR.search(command)
             or not any(run.match(segment.strip()) for run in SECRET_RUN)
             or names_secrets(PASSWORD_FILE.sub(" ", segment))
-            or not all(SAFE_BEFORE.fullmatch(item.strip()) for item in segments[:index])
+            or not all(safe_before(item.strip()) for item in segments[:index])
             or not alongside_safe(segments, separators, index)
         ):
             return False
