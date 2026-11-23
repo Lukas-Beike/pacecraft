@@ -232,6 +232,12 @@
             <label>Geschlecht<select name="sex"><option value="">Keine Angabe (männlich angenommen)</option><option value="male">Männlich</option><option value="female">Weiblich</option></select></label>
             <label>Geburtsjahr<input name="birth_year" type="number" min="1920" max="2010" step="1" inputmode="numeric"></label>
             </div>
+            <fieldset class="profile-subsection"><legend>Standort</legend>
+              <div class="form-grid">
+              <label>Zeitzone<select name="timezone" autocomplete="off"><option value="Europe/Berlin">Europe/Berlin</option><option value="Europe/London">Europe/London</option><option value="Europe/Paris">Europe/Paris</option><option value="Europe/Zurich">Europe/Zurich</option><option value="America/New_York">America/New_York</option><option value="America/Chicago">America/Chicago</option><option value="America/Los_Angeles">America/Los_Angeles</option><option value="Asia/Tokyo">Asia/Tokyo</option><option value="Australia/Sydney">Australia/Sydney</option><option value="UTC">UTC</option></select></label>
+              <label>Wetter-/Urlaubsstandort<input name="weather_location" placeholder="Stadt oder PLZ, z. B. Münster"></label>
+              </div>
+            </fieldset>
           </details>
           <details class="profile-section collapsible-section">
             <summary class="collapsible-summary"><span class="collapsible-summary-title">Ziele &amp; Woche</span><span id="profileGoalsSummary" class="collapsible-summary-meta">Noch nicht ausgefüllt</span></summary>
@@ -269,7 +275,6 @@
           </details>
           <details class="profile-section collapsible-section">
             <summary class="collapsible-summary"><span class="collapsible-summary-title">Training</span><span id="profileTrainingSummary" class="collapsible-summary-meta">Noch nicht ausgefüllt</span></summary>
-            <label>Ausrüstung<textarea name="equipment" rows="2" placeholder="Rad, Smarttrainer, Gym, Powermeter…"></textarea></label>
             <fieldset class="profile-subsection"><legend>Trainingspräferenzen</legend>
               <label>Allgemein<textarea name="training_preferences" rows="2" placeholder="Drinnen/draußen, Ruhetage, Trainingszeiten…"></textarea></label>
               <label>Laufen<textarea name="training_preferences_running" rows="2" placeholder="Strecken, Untergrund, Laufband, bevorzugte Einheiten…"></textarea></label>
@@ -284,11 +289,7 @@
           <details class="profile-section collapsible-section">
             <summary class="collapsible-summary"><span class="collapsible-summary-title">Quellen &amp; Coach</span><span id="profileSourcesSummary" class="collapsible-summary-meta">Noch nicht ausgefüllt</span></summary>
             <label>Persönliches Schlafziel (Stunden)<input name="sleep_target_hours" type="number" min="4" max="12" step="0.25" placeholder="Optional, zum Beispiel 8"></label>
-            <div class="form-grid">
             <label>Coaching-Stil<input name="coaching_style" placeholder="Unterstützend, direkt und evidenzbasiert"></label>
-            <label>Zeitzone<select name="timezone" autocomplete="off"><option value="Europe/Berlin">Europe/Berlin</option><option value="Europe/London">Europe/London</option><option value="Europe/Paris">Europe/Paris</option><option value="Europe/Zurich">Europe/Zurich</option><option value="America/New_York">America/New_York</option><option value="America/Chicago">America/Chicago</option><option value="America/Los_Angeles">America/Los_Angeles</option><option value="Asia/Tokyo">Asia/Tokyo</option><option value="Australia/Sydney">Australia/Sydney</option><option value="UTC">UTC</option></select></label>
-            </div>
-            <label>Wetter-/Urlaubsstandort<input name="weather_location" placeholder="Stadt oder PLZ, z. B. Münster"></label>
           </details>
           <div class="save-bar"><span id="profileDirtyIndicator" class="dirty-indicator" hidden>Ungespeichert</span><button type="submit">Profil speichern</button></div>
         </form>
@@ -308,6 +309,10 @@
           <a href="#more/operations" data-more-segment="operations">Betrieb &amp; Diagnose</a>
         </nav>
         <section class="settings-section" data-more-segment-panel="equipment" hidden>
+          <details id="profileEquipmentNote" class="settings-section collapsible-section" hidden>
+            <summary class="collapsible-summary"><span class="collapsible-summary-title">Ausrüstungstext aus dem Profil</span></summary>
+            <p id="profileEquipmentText" class="fine-print"></p>
+          </details>
           <section id="equipmentItems" class="analysis-chart-card" aria-label="Ausrüstung und Wartung"></section>
         </section>
         <section class="settings-section appearance-settings" data-more-segment-panel="app" aria-labelledby="appearanceTitle">
@@ -595,8 +600,11 @@
             <div id="serviceTierRow" class="model-selector">
               <label for="serviceTierSelect">Geschwindigkeit<select id="serviceTierSelect"></select></label>
             </div>
-            <button id="coachChatResetButton" class="secondary-button danger-button" type="button">Chat zurücksetzen</button>
           </div>
+        </details>
+        <details class="settings-section collapsible-section" data-more-segment-panel="coach" open>
+          <summary class="collapsible-summary"><span class="collapsible-summary-title">Gespräch</span></summary>
+          <button id="coachChatResetButton" class="secondary-button danger-button" type="button">Chat zurücksetzen</button>
         </details>
         <details class="settings-section collapsible-section" data-more-segment-panel="coach">
           <summary class="collapsible-summary"><span class="collapsible-summary-title">Verbrauch</span><span id="usageSummary" class="collapsible-summary-meta">Verbrauch wird geladen…</span></summary>
@@ -635,17 +643,17 @@
           <pre id="logsOutput" class="logs-output">Logs werden beim Öffnen geladen…</pre>
         </details>
         <details id="privacySection" class="settings-section collapsible-section" data-more-segment-panel="operations">
-          <summary class="collapsible-summary"><span class="collapsible-summary-title">Datenschutz &amp; Backup</span></summary>
+          <summary class="collapsible-summary"><span class="collapsible-summary-title">Daten</span></summary>
           <div class="settings-inline-action">
             <button id="privacyExportButton" type="button" class="secondary-button">Daten exportieren</button>
-            <button id="privacyDeleteButton" type="button" class="secondary-button danger-button">Lokale Daten löschen</button>
           </div>
           <div class="settings-inline-action">
             <label class="chip"><input type="checkbox" id="gpsTracksToggle"><span>GPS-Spuren speichern</span></label>
             <button id="gpsTracksDeleteButton" type="button" class="secondary-button danger-button" hidden>GPS-Spuren löschen</button>
           </div>
-          <div id="privacyDeleteNotice" class="remote-delete-notice" hidden role="alert"></div>
-          <div id="privacyDeleteResult" class="fine-print" hidden aria-live="polite"></div>
+        </details>
+        <details class="settings-section collapsible-section" data-more-segment-panel="operations">
+          <summary class="collapsible-summary"><span class="collapsible-summary-title">Backup</span></summary>
           <div class="settings-inline-action backup-actions">
             <div><strong>Verschlüsseltes Datenbank-Backup</strong><span>Die Datei kann nur mit demselben App-Passwort wiederhergestellt werden.</span></div>
             <button id="backupDownloadButton" type="button" class="secondary-button">Backup herunterladen</button>
@@ -654,6 +662,14 @@
             <label>Backup-Datei<input id="backupFileInput" type="file" accept=".backup,.db,application/octet-stream"></label>
             <button id="backupRestoreButton" type="button" class="secondary-button danger-button">Backup wiederherstellen</button>
           </div>
+        </details>
+        <details class="settings-section collapsible-section" data-more-segment-panel="operations">
+          <summary class="collapsible-summary"><span class="collapsible-summary-title">Löschen</span></summary>
+          <div class="settings-inline-action">
+            <button id="privacyDeleteButton" type="button" class="secondary-button danger-button">Lokale Daten löschen</button>
+          </div>
+          <div id="privacyDeleteNotice" class="remote-delete-notice" hidden role="alert"></div>
+          <div id="privacyDeleteResult" class="fine-print" hidden aria-live="polite"></div>
         </details>
         <details class="settings-section collapsible-section" data-more-segment-panel="operations">
           <summary class="collapsible-summary"><span class="collapsible-summary-title">Diagnose</span></summary>

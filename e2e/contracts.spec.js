@@ -226,9 +226,9 @@ for (const provider of ["openai", "anthropic"]) {
     const section = page.locator("details", { has: page.locator("#modelSelect") });
     await section.locator("summary").click();
     await expect(page.locator("#modelSelect")).toHaveValue(`${provider}-fixture`);
-    // Claude hides the OpenAI-only speed row; the reset stays.
+    // Claude hides the OpenAI-only speed row; the reset stays, in its own section "Gespräch" (#3936 M-04).
     await expect(page.locator("#serviceTierRow")).toHaveJSProperty("hidden", provider === "anthropic");
-    const button = section.getByRole("button", { name: "Chat zurücksetzen", exact: true });
+    const button = page.locator("details", { has: page.locator("#coachChatResetButton") }).getByRole("button", { name: "Chat zurücksetzen", exact: true });
     await expect(button).toBeVisible();
     await expect(page.locator("#connection-openai").getByRole("button", { name: "Chat zurücksetzen" })).toHaveCount(0);
     await button.click();
