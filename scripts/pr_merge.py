@@ -337,6 +337,19 @@ def ci_round_rebase(
     return False
 
 
+def settled(number: int, pr: dict[str, Any], checks: list[tuple[str, str]]) -> int | None:
+    """0 once merged, 1 once closed or a check failed, else None, saying which."""
+    if pr.get("state") == "MERGED":
+        oid = (pr.get("mergeCommit") or {}).get("oid") or "?"
+        print(f"PR #{number} merged: {oid[:10]}")
+        return 0
+    failing = [name for name, outcome in checks if outcome == "failing"]
+    if pr.get("state") == "CLOSED" or failing:
+        print(f"PR #{number} {pr.get('state')}; failing: {failing}; read pr-state")
+        return 1
+    return None
+
+
 def wait(number: int, minutes: int, seen: int, rebased: str = "") -> int:
     polls = minutes * POLLS_PER_MINUTE + 1
     rechecked = False
@@ -350,15 +363,10 @@ def wait(number: int, minutes: int, seen: int, rebased: str = "") -> int:
             failed = poll_failed(failed, exc)
             continue
         failed = ""
-        if pr.get("state") == "MERGED":
-            oid = (pr.get("mergeCommit") or {}).get("oid") or "?"
-            print(f"PR #{number} merged: {oid[:10]}")
-            return 0
         checks = [check_outcome(check) for check in pr.get("statusCheckRollup") or []]
-        failing = [name for name, outcome in checks if outcome == "failing"]
-        if pr.get("state") == "CLOSED" or failing:
-            print(f"PR #{number} {pr.get('state')}; failing: {failing}; read pr-state")
-            return 1
+        code = settled(number, pr, checks)
+        if code is not None:
+            return code
         # An armed auto-merge would not wait for either (#2947); arming needed no thread.
         if feedback(pr) > seen or thread_open(number):
             refuse(number, pr, f"new feedback on PR #{number}; read pr-state")
