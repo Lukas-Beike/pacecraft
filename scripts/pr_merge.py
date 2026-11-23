@@ -280,8 +280,10 @@ def arm(
         pr = gated
 
 
-CHANGELOG_LINE = re.compile(r"^Changelog:[ \t]*(\S.*?)[ \t]*$", re.MULTILINE)
-CO_AUTHOR_LINE = re.compile(r"^Co-authored-by:[ \t]*\S.*$", re.MULTILINE | re.IGNORECASE)
+CHANGELOG_LINE = re.compile(r"^Changelog:(.+)$", re.MULTILINE)
+CO_AUTHOR_LINE = re.compile(
+    r"^Co-authored-by:[ \t]*\S.*$", re.MULTILINE | re.IGNORECASE
+)
 
 
 def squash_body(pr: dict[str, Any]) -> list[str]:
@@ -293,14 +295,14 @@ def squash_body(pr: dict[str, Any]) -> list[str]:
     no argument, the default stays.
     """
     found = CHANGELOG_LINE.search(pr.get("body") or "")
-    if not found:
+    if not found or not found[1].strip():
         return []
     authors = dict.fromkeys(
         line.strip()
         for commit in pr.get("commits") or []
         for line in CO_AUTHOR_LINE.findall(commit.get("messageBody") or "")
     )
-    return ["--body", "\n".join([f"Changelog: {found[1]}", *authors])]
+    return ["--body", "\n".join([f"Changelog: {found[1].strip()}", *authors])]
 
 
 def _arm_once(number: int, pr: dict[str, Any]) -> str:
