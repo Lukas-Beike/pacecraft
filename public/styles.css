@@ -1135,6 +1135,7 @@ output.planned-move-status { display: block; }
 .planned-conflict-button { min-height: 44px; margin-left: auto; }
 .planned-card-actions { display: grid; gap: 6px; padding: 0 10px 8px; }
 .planned-garmin-exercise { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; width: 100%; }
+.planned-suggestion-chip[aria-disabled="true"] { opacity: .55; cursor: wait; }
 .planned-suggestion-chip { min-height: 44px; padding: 4px 12px; border: 1px dashed currentColor; border-radius: 999px; background: none; color: inherit; font: inherit; font-size: .75rem; cursor: pointer; }
 .planned-group-items { display: grid; gap: 6px; padding: 0 6px 6px; }
 .planned-zone-legend { display: flex; flex-wrap: wrap; gap: 4px 12px; margin: 0; padding: 8px 16px; border-top: 1px solid var(--line); color: var(--muted); font-size: .72rem; }
@@ -1757,7 +1758,6 @@ button:focus-visible, a:focus-visible, summary:focus-visible {
 :root[data-theme="light"] .metric-grid small.metric-manual { color: var(--manual-ink); }
 
 @media (min-width: 1100px) {
-  #settingsPanel > .appearance-settings { grid-column: 2; }
 }
 
 

@@ -66,6 +66,8 @@ test("@responsive a strength unit says why it does not reach Garmin and offers t
   await expect.poll(() => posted.length).toBe(1);
   expect(posted[0]).toMatchObject({ exercise_index: 0, garmin_exercise: "V-grip Cable Row" });
   expect(posted[0].expected_payload_hash).toBeTruthy();
+  // The week is rebuilt after the pick; keyboard focus stays in the card, not on the page body.
+  await expect.poll(() => page.evaluate(() => Boolean(document.activeElement?.closest(".planned-card")))).toBe(true);
   // A chip beside the card keeps the card as it was.
   expect(await card.evaluate((element) => element.open)).toBe(wasOpen);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBeTruthy();

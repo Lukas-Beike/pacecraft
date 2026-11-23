@@ -75,6 +75,11 @@ test("@responsive an upcoming competition is added, edited and deleted at once w
   await expect(dialog).toBeHidden();
   const edited = card(page, "E2E Stadtlauf 10 km");
   await expect(edited).toHaveCount(1);
+  // The pencil stands beside the details: a rebuild of the list returns focus to it.
+  const pencil = edited.getByRole("button", { name: "Wettkampf bearbeiten" });
+  await pencil.focus();
+  await page.evaluate(() => renderCompetitions(structuredClone(state.data.competitions).map((item) => ({ ...item, notes: "neu" }))));
+  await expect(card(page, "E2E Stadtlauf 10 km").getByRole("button", { name: "Wettkampf bearbeiten" })).toBeFocused();
   await edited.locator("summary .competition-summary-main").click();
   await expect(edited).toContainText("Musterstadt");
   await expect(edited).toContainText("09:30");

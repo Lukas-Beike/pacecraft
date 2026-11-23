@@ -48,16 +48,20 @@ function rememberPlannedEntryState(root) {
   for (const key of plannedFocusStatuses.keys()) if (!openPlannedEntries.has(key)) plannedFocusStatuses.delete(key);
   for (const key of plannedMoveReceipts.keys()) if (!openPlannedEntries.has(key)) plannedMoveReceipts.delete(key);
   const active = document.activeElement;
-  const card = active?.closest?.(".planned-entry[data-entry-key]");
+  // The action row stands beside the card's details, so its control is found through the wrapper.
+  const wrapper = active?.closest?.(".planned-card");
+  const card = active?.closest?.(".planned-entry[data-entry-key]") || wrapper?.querySelector(":scope > .planned-entry[data-entry-key]");
   if (!card || !root.contains(card)) return null;
-  return { key: card.dataset.entryKey, name: active.matches("select") ? active.name : "" };
+  const action = active.closest(".planned-card-actions") ? [...wrapper.querySelectorAll(".planned-card-actions button")].indexOf(active) : -1;
+  return { key: card.dataset.entryKey, name: active.matches("select") ? active.name : "", action };
 }
 
 function restorePlannedEntryFocus(root, focused) {
   if (!focused) return;
   const card = [...root.querySelectorAll(".planned-entry[data-entry-key]")].find((node) => node.dataset.entryKey === focused.key);
   const target = focused.name ? card?.querySelector(`select[name="${focused.name}"]`) : null;
-  (target || card?.querySelector("summary"))?.focus({ preventScroll: true });
+  const action = focused.action >= 0 ? card?.parentElement.querySelectorAll(".planned-card-actions button")[focused.action] : null;
+  (target || action || card?.querySelector("summary"))?.focus({ preventScroll: true });
 }
 
 // The unit's description, or a placeholder when the card body would stay empty.
@@ -1501,13 +1505,15 @@ function plannedUnmappedExercise(entry, exercise, unit) {
   for (const suggestion of Array.isArray(exercise.suggestions) ? exercise.suggestions : []) {
     const chip = h("button", { type: "button", className: "planned-suggestion-chip" }, suggestion);
     chip.addEventListener("click", async () => {
-      chip.disabled = true;
+      // Not `disabled`: a disabled button drops keyboard focus while the pick is saved.
+      if (chip.ariaDisabled === "true") return;
+      chip.ariaDisabled = "true";
       try {
         await api(`/api/planned-units/${encodeURIComponent(entry.local_id)}/garmin-exercise`, { method: "POST", body: JSON.stringify({ exercise_index: exercise.index, garmin_exercise: suggestion, expected_payload_hash: entry.payload_hash }) });
         await globalThis.load?.();
         announcePlanChange(`Garmin-Übung „${suggestion}“ zugeordnet`);
       } catch (error) {
-        chip.disabled = false;
+        chip.ariaDisabled = "false";
         globalThis.toast?.(error.message, true);
       }
     });
@@ -3713,7 +3719,7 @@ function competitionCard(competition, todayKey, openIds) {
     if (card.open) loadRacePlan(plan, competition);
   }
   // The source and the pencil sit beside the details, not in the summary (WCAG 4.1.2), so they stay shown while it is closed.
-  return h("div", "competition-item", card, h("div", "competition-card-source", source, edit));
+  return h("div", { className: "competition-item", dataset: { competitionItem: String(competition.id) } }, card, h("div", "competition-card-source", source, edit));
 }
 
 function renderCompetitions(competitions) {
@@ -3723,7 +3729,9 @@ function renderCompetitions(competitions) {
   const snapshot = JSON.stringify([competitions, todayKey]);
   if (root.dataset.snapshot === snapshot) return;
   const openIds = new Set([...root.querySelectorAll("details[data-competition-id][open]")].map((node) => node.dataset.competitionId));
-  const focusedId = document.activeElement?.closest("details[data-competition-id]")?.dataset.competitionId;
+  const focused = document.activeElement?.closest("[data-competition-id], [data-competition-item]");
+  const focusedId = focused?.dataset.competitionId || focused?.dataset.competitionItem;
+  const pencilFocused = Boolean(focused) && document.activeElement.matches(".competition-card-source button");
   const archiveOpen = root.querySelector(".competition-archive")?.open || false;
   root.dataset.snapshot = snapshot;
   root.replaceChildren();
@@ -3751,7 +3759,8 @@ function renderCompetitions(competitions) {
     archive.append(...past.map((event) => competitionCard(event, todayKey, openIds)));
     root.append(archive);
   }
-  if (focusedId) [...root.querySelectorAll("details[data-competition-id]")].find((node) => node.dataset.competitionId === focusedId)?.querySelector("summary")?.focus();
+  const item = focusedId ? [...root.querySelectorAll(".competition-item")].find((node) => node.dataset.competitionItem === focusedId) : null;
+  (pencilFocused ? item?.querySelector(".competition-card-source button") : item?.querySelector("summary"))?.focus();
 }
 
 function renderCompetitionReadStatus(status) {
