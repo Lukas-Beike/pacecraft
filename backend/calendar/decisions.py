@@ -49,10 +49,10 @@ class ExternalCalendarDecisionService:
                 "WHERE start_local = ?",
                 (start_local[:_MAX_START_LENGTH],),
             ).fetchall()
-        uids = {row["uid"] for row in rows if str(row["name"])[:200] == name}
+        uids = sorted({row["uid"] for row in rows if str(row["name"])[:200] == name})
         if len(uids) != 1:
             raise AppError(404, "Termin nicht gefunden.")
-        result = self.decide(uids.pop(), None if series else start_local, impact)
+        result = self.decide(uids[0], None if series else start_local, impact)
         return {key: value for key, value in result.items() if key != "uid"}
 
     def decide(self, uid: Any, occurrence_start: Any, impact: Any) -> dict[str, Any]:
