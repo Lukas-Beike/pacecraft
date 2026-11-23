@@ -218,7 +218,7 @@ class GarminSourceLabelTests(unittest.TestCase):
         )
         self.assertEqual(
             observation_source_label(observation, SourceView.PERFORMANCE_NOTE),
-            "Garmin Connect Lauf-Schwellenpuls",
+            "Garmin Connect Lauf-LSHF",
         )
 
     def test_cycling_threshold_heart_rate_note(self) -> None:
@@ -229,7 +229,7 @@ class GarminSourceLabelTests(unittest.TestCase):
         )
         self.assertEqual(
             observation_source_label(observation, SourceView.PERFORMANCE_NOTE),
-            "Garmin Connect Rad-Schwellenpuls",
+            "Garmin Connect Rad-LSHF",
         )
 
     def test_ftp_without_sport_has_no_note_and_uses_the_base_label(self) -> None:

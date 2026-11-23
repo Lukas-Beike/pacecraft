@@ -3426,11 +3426,14 @@ function libraryStepLine(line) {
 const LIBRARY_SECTION_NAMES = { warmup: "Einlaufen", "main set": "Hauptteil", cooldown: "Auslaufen" };
 
 function libraryHeaderLine(line) {
-  // A header ends with its repeat count ("Main Set 5x", "5x"); what stands before it is the section.
+  // A header ends with its repeat count ("Main Set 5x", "5x") after a known section or nothing;
+  // a prose line such as "Bergsprints 6x" stays as written.
   const last = line.trim().split(" ").at(-1);
   if (/^\d{1,3}x$/i.test(last)) {
     const section = line.trim().slice(0, -last.length).trim();
-    return [LIBRARY_SECTION_NAMES[section.toLowerCase()] || section, `${last.slice(0, -1)}×`].filter(Boolean).join(" · ");
+    const known = LIBRARY_SECTION_NAMES[section.toLowerCase()];
+    if (section && !known) return line;
+    return [known, `${last.slice(0, -1)}×`].filter(Boolean).join(" · ");
   }
   const names = line.split("|").map((part) => LIBRARY_SECTION_NAMES[part.trim().toLowerCase()]);
   return names.every(Boolean) ? names.join(" und ") : line;

@@ -48,7 +48,7 @@ class FirstThresholdPostRoutes:
         ist gespeichert. Zum Ersetzen bitte bestätigen." without
         `replace_measured`; 409 "Dieser Stufentest liefert keinen guten Wert der
         ersten Schwelle."; 409 "Der Wert der ersten Schwelle ist nicht
-        plausibel."; 409 "Ohne Schwellenpuls lässt sich der Wert nicht
+        plausibel."; 409 "Ohne LSHF lässt sich der Wert nicht
         speichern."; 404 for an unknown session.
         """
         payload = handler.read_json()

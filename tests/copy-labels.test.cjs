@@ -92,6 +92,7 @@ test("a library card shows its stored step lines in German words (#3933)", () =>
   assert.equal(libraryDescriptionText("Warmup\n- 10m 55-65%\nMain Set 5x\n- 5m 250W\n- 3m 55%\n3x\nWarmup | Cooldown"), "Einlaufen\n10 min · 55–65 %\nHauptteil · 5×\n5 min · 250 W\n3 min · 55 %\n3×\nEinlaufen und Auslaufen");
   assert.equal(libraryDescriptionText(""), "");
   assert.equal(libraryDescriptionText("- Locker einlaufen"), "- Locker einlaufen", "a prose bullet stays as written");
+  assert.equal(libraryDescriptionText("Bergsprints 6x"), "Bergsprints 6x", "a prose line ending in a count is no header");
 });
 
 test("a change that rounds to zero carries no sign (#3933)", () => {

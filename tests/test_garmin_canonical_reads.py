@@ -84,8 +84,8 @@ PAYLOAD_FIXTURE_METRICS = {
         None,
         "Garmin Connect Lauf-Schwellenpace",
     ),
-    "bike_threshold_hr_bpm": (160, None, None, "Garmin Connect Rad-Schwellenpuls"),
-    "run_threshold_hr_bpm": (168, None, None, "Garmin Connect Lauf-Schwellenpuls"),
+    "bike_threshold_hr_bpm": (160, None, None, "Garmin Connect Rad-LSHF"),
+    "run_threshold_hr_bpm": (168, None, None, "Garmin Connect Lauf-LSHF"),
 }
 
 
