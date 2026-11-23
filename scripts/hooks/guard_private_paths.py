@@ -76,7 +76,10 @@ PASSWORD_FILE = re.compile(
 # into a pipe; everything else before the run blocks it.
 SAFE_BEFORE = tuple(
     re.compile(pattern, re.IGNORECASE)
-    for pattern in (r"git\s+status(?:\s+(?:-s|--short))?", r"(?:get-content|cat|type)\s+[\w./\\:-]+")
+    for pattern in (
+        r"git\s+status(?:\s+(?:-s|--short))?",
+        r"(?:get-content|cat|type)\s+[\w./\\:-]+",
+    )
 )
 # What a pipe may feed the run's output into (#4075 review): a segment joined by
 # `|` runs alongside the run, so only a reader without a redirection,
