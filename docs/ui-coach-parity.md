@@ -39,7 +39,7 @@ Counts: both 62, UI only 14, Coach only 10, neither 0, UI by rule 8.
 | Competitions | Delete a competition | Kalender › Wettkampf `PUT /api/competitions/remove` | `delete_competition` | delete confirmation | both | |
 | Competitions | Send competitions to Intervals.icu | Kalender › Wettkampf `POST /api/intervals/competitions/send` | `sync_competitions` | named sync | both | |
 | Planning | Read planned units and the planning view | Kalender `GET /api/plan` | `list_planned_workouts`, `read_training_state` | — | both | |
-| Planning | Create a planned unit | Kalender day "+ Einheit hinzufügen" `POST /api/planned-units` | `apply_training_patch` (`workouts`) | receipt, undo, plan checks | both | |
+| Planning | Create a planned unit | Bibliothek "+ Einheit" `POST /api/library`, then "Einplanen" `POST /api/library/{id}/schedule` | `apply_training_patch` (`workouts`) | receipt, undo, calendar rule check | both | "Einplanen" runs no illness plan check yet (#4055) |
 | Planning | Change a planned unit's content | Kalender card "Bearbeiten" `POST /api/planned-units/{id}/update` | `apply_training_patch` (`update`) | receipt, undo, plan checks | both | |
 | Planning | Move a planned unit to another day | Kalender card `POST /api/planned-units/{id}/date` | `apply_training_patch` (`update` with `date`) | receipt, undo | both | |
 | Planning | Delete a planned unit | Kalender card `POST /api/planned-units/{id}/delete` | `apply_training_patch` (`delete`) | delete confirmation | both | |

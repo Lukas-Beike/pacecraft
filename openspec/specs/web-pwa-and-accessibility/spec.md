@@ -373,9 +373,9 @@ The client SHALL present domain-provided planning, performance, activity, and eq
 - **WHEN** the athlete taps the red "Löschen" at the end of an opened planned unit's actions
 - **THEN** the unit is deleted at once, no question (the receipt adds "<provider names>: weg beim nächsten Sync" when an upcoming unit has a copy there); the tap posts `confirmed` with the unit's content hash to `POST /api/planned-units/{id}/delete`, which refuses an unconfirmed delete with 409, deletes the local unit as one Coach change batch and writes nothing remotely; an outdated hash answers 409, the calendar reloads and the card names the reason; the day shows "Gelöscht: <Name>" with "Rückgängig" while its week is shown, and undo restores the unit's content unchanged, waiting for the next sync like any local edit (#3027).
 
-#### Scenario: Add, edit and archive a planned unit
-- **WHEN** the athlete taps "+ Einheit hinzufügen" under a day from today on, "Bearbeiten" on an opened planned unit or "Archivieren"
-- **THEN** the unit editor opens (a dialog: sport, name, day and time, "Art der Einheit", target, the steps of an endurance unit as rows of minutes and zone or percent with "+ Schritt" and "+ Wiederholung" and the computed duration, or the exercises of a strength unit; "Aus Bibliothek" fills it from an entry) and saves through the Coach's change batch with `POST /api/planned-units` or `.../{id}/update` (with the unit's content hash), saving a from-scratch unit's library entry too; the card or the new unit's day shows "Angelegt:" or "Gespeichert: <Name>" with "Rückgängig"; an illness check offers "Trotzdem speichern" (`accept_plan_findings`); "Archivieren" posts `confirmed` to `.../{id}/archive` at once and the day shows "Archiviert: <Name>" with "Rückgängig"; a workout text the rows cannot show opens as text; nothing is written remotely.
+#### Scenario: Edit and archive a planned unit
+- **WHEN** the athlete taps "Bearbeiten" or "Archivieren" on an opened planned unit (a new unit is planned from the Bibliothek with "Einplanen"; the calendar has no add button)
+- **THEN** "Bearbeiten" opens the unit editor (a dialog: sport, name, day and time, "Art der Einheit", target, the steps of an endurance unit as rows of minutes and zone or percent with "+ Schritt" and "+ Wiederholung" and the computed duration, or the exercises of a strength unit) and saves through the Coach's change batch with `POST /api/planned-units/{id}/update` (with the unit's content hash); the card shows "Gespeichert: <Name>" with "Rückgängig"; an illness check offers "Trotzdem speichern" (`accept_plan_findings`); "Archivieren" posts `confirmed` to `.../{id}/archive` at once and the day shows "Archiviert: <Name>" with "Rückgängig"; a workout text the rows cannot show opens as text; nothing is written remotely.
 
 #### Scenario: Planned steps as a list
 - **WHEN** the athlete opens a planned unit whose workout has structured steps
@@ -440,7 +440,7 @@ Evidence:
 - `e2e/calendar-detail-pane.spec.js::@responsive a planned unit lists its steps with zone and target range instead of the workout notation`
 - `e2e/calendar-detail-pane.spec.js::@responsive Löschen acts at once, deletes a planned unit and Rückgängig brings it back`
 - `e2e/calendar-detail-pane.spec.js::@responsive Mit Coach besprechen puts the planned unit into the Coach field without sending`
-- `e2e/unit-editor.spec.js::@responsive the calendar adds, edits and archives a unit`
+- `e2e/unit-editor.spec.js::@responsive the calendar edits and archives a unit`
 - `e2e/calendar-detail-pane.spec.js::@responsive Verschieben moves a planned unit to a tapped day and Rückgängig puts it back`
 - `e2e/calendar-week-compact.spec.js::@responsive compact calendar week shows one week, groups repeats and keeps one conflict style`
 - `e2e/calendar-week-compact.spec.js::@responsive the Monat switch shows the month grid and the calendar returns to the week`

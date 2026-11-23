@@ -1464,27 +1464,21 @@ function plannedUnitActions(entry, dateKey, todayKey) {
   if (receipt) status.append(receipt.text, ...(receipt.change?.id ? plannedMoveUndo(key, receipt, status) : []));
   const [remove, confirm] = plannedDeleteControls(entry, dateKey, key);
   const edit = h("button", { type: "button", className: "secondary-button" }, "Bearbeiten");
-  edit.addEventListener("click", () => openUnitEditor({ kind: "unit", entry, onSaved: (result, editor) => plannedUnitSaved(result, editor, true) }));
+  edit.addEventListener("click", () => openUnitEditor({ kind: "unit", entry, onSaved: plannedUnitSaved }));
   const [archive, archiveNote] = plannedArchiveControls(entry, dateKey);
   return [h("div", "planned-activity-actions", edit, toggle, coach, archive, remove), confirm, archiveNote, days, status];
 }
 
-// "Bearbeiten", "+ Einheit hinzufügen" and "Archivieren" (#3950): the unit editor over the Coach's change batch;
-// the card shows the receipt with "Rückgängig" and the calendar jumps to the unit's day.
-async function plannedUnitSaved(result, editor, changed) {
+// "Bearbeiten" and "Archivieren" (#3950): the unit editor over the Coach's change batch; the card shows the receipt
+// with "Rückgängig" and the calendar jumps to the unit's day. A new unit is planned from the Bibliothek ("Einplanen").
+async function plannedUnitSaved(result, editor) {
   const key = `local:${result.local_id}`;
-  const text = `${changed ? "Gespeichert" : "Angelegt"}: ${editor.name.trim()}`;
-  plannedMoveReceipts.set(key, { text, change: result.change, from: changed ? String(editor.entry.date).slice(0, 10) : editor.date });
+  const text = `Gespeichert: ${editor.name.trim()}`;
+  plannedMoveReceipts.set(key, { text, change: result.change, from: String(editor.entry.date).slice(0, 10) });
   plannedForceOpen.add(key);
   showPlannedDay(editor.date);
   await globalThis.load?.();
   announcePlanChange(text);
-}
-
-function plannedAddButton(dateKey) {
-  const add = h("button", { type: "button", className: "secondary-button planned-add" }, "+ Einheit hinzufügen");
-  add.addEventListener("click", () => openUnitEditor({ kind: "unit", dateKey, onSaved: (result, editor) => plannedUnitSaved(result, editor, false) }));
-  return add;
 }
 
 // "Archivieren" takes the unit out of the calendar at once; the day's receipt offers "Rückgängig".
@@ -2321,7 +2315,6 @@ function renderPlannedDay(view, dateKey, weekHasPlan) {
       ? renderPlannedGroup(group.entries, dateKey, todayKey, dayContext, weekHasPlan)
       : renderPlannedEntry(group.entries[0], dateKey, todayKey, dayContext, weekHasPlan));
   }
-  if (dateKey >= todayKey) content.append(plannedAddButton(dateKey));
   day.append(plannedDayDate(day, dateKey), content);
   return day;
 }

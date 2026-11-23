@@ -64,7 +64,7 @@ test("@responsive the Bibliothek creates, edits, restores and deletes an entry",
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBeTruthy();
 });
 
-test("@responsive the calendar adds, edits and archives a unit", async ({ page, request }) => {
+test("@responsive the calendar edits and archives a unit", async ({ page, request }) => {
   test.setTimeout(180_000);
   const posts = [];
   page.on("request", (item) => {
@@ -72,17 +72,19 @@ test("@responsive the calendar adds, edits and archives a unit", async ({ page, 
   });
   await openApp(page, request, "/#plan/overview");
   const dialog = page.locator("#unitEditDialog");
-  // A day of next week: today's session of the fixture would absorb the new unit into its own row.
+  // The calendar has no add button: a unit is planned from the Bibliothek. It is made here through that path's own
+  // routes, on a day of next week (today's session of the fixture would absorb it into its own row).
+  await expect(page.getByRole("button", { name: "+ Einheit hinzufügen" })).toHaveCount(0);
+  await page.evaluate(async () => {
+    const made = await api("/api/library", { method: "POST", body: JSON.stringify({ name: "E2E Ausdauer", description: "- 10m 60%", sport: "Ride", duration_minutes: 10, target: "POWER" }) });
+    const today = timezoneDateKey(state.data.profile.timezone, new Date());
+    await api(`/api/library/${made.local_id}/schedule`, { method: "POST", body: JSON.stringify({ date: addDateKey(planWeekStart(today), 7) }) });
+    await globalThis.load();
+  });
   await page.getByRole("button", { name: "Nächste Woche" }).click();
-  await page.locator(".planned-day").first().getByRole("button", { name: "+ Einheit hinzufügen" }).click();
-  await expect(dialog.getByRole("heading", { name: "Einheit hinzufügen" })).toBeVisible();
-  await dialog.getByLabel("Name", { exact: true }).fill("E2E Ausdauer");
-  await dialog.getByRole("button", { name: "+ Schritt" }).click();
-  await dialog.getByRole("button", { name: "Speichern" }).click();
-  await expect(dialog).toBeHidden();
-  expect(posts.at(-1)).toEqual(["/api/planned-units", expect.objectContaining({ name: "E2E Ausdauer", duration_minutes: 10, description: "- 10m 60%" })]);
   const entry = page.locator(".planned-entry", { hasText: "E2E Ausdauer" });
-  await expect(entry.locator(".planned-move-status")).toContainText("Angelegt: E2E Ausdauer");
+  // The wide layout opens its default entry itself: a click would close it again.
+  if (!(await entry.first().evaluate((node) => node.open))) await entry.locator("summary").first().click();
 
   await entry.getByRole("button", { name: "Bearbeiten" }).click();
   await expect(dialog.getByRole("heading", { name: "Einheit bearbeiten" })).toBeVisible();
