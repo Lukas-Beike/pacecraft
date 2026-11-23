@@ -259,15 +259,14 @@ test("@responsive a plan's period is replaced in one change and Rückgängig tak
   await expect(page.locator("#library .library-card", { has: page.locator("h4", { hasText: "E2E Ersatzplan" }) })).toBeVisible();
 
   // A unit of next week joins the plan.
-  await page.goto("/#plan/overview");
-  await page.getByRole("button", { name: "Nächste Woche" }).click();
-  await page.locator(".planned-day").first().getByRole("button", { name: "+ Einheit hinzufügen" }).click();
-  await dialog.getByLabel("Name", { exact: true }).fill("E2E Alt");
-  await dialog.locator("select").filter({ has: page.locator("option", { hasText: "E2E Ersatzplan" }) }).selectOption({ label: "E2E Ersatzplan" });
-  await dialog.getByRole("button", { name: "+ Schritt" }).click();
-  await dialog.getByRole("button", { name: "Speichern" }).click();
-  await expect(dialog).toBeHidden();
-  await expect(page.locator(".planned-entry", { hasText: "E2E Alt" })).toBeVisible();
+  // It is planned from the Bibliothek into the plan, through the routes "Einplanen" sends (the calendar has no add button).
+  await page.evaluate(async () => {
+    const plan = (state.data.plans || []).find((item) => item.name === "E2E Ersatzplan");
+    const made = await api("/api/library", { method: "POST", body: JSON.stringify({ name: "E2E Alt", description: "- 10m 60%", sport: "Ride", duration_minutes: 10, target: "POWER" }) });
+    const today = timezoneDateKey(state.data.profile.timezone, new Date());
+    await api(`/api/library/${made.local_id}/schedule`, { method: "POST", body: JSON.stringify({ date: addDateKey(planWeekStart(today), 7), plan_id: plan.id }) });
+    await globalThis.load();
+  });
 
   await page.goto("/#plan/library");
   const card = page.locator("#library .library-card", { has: page.locator("h4", { hasText: "E2E Ersatzplan" }) });
