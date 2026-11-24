@@ -203,6 +203,11 @@ every named number the code fixes. A test fails when it is out of date.
 | `HR_CAP_METHOD` | `'heart-rate-cap-execution-v1'` | `backend/performance/planned_targets.py` |  |
 | `CAP_ABOVE_SHARE_PCT` | `10` | `backend/performance/planned_targets.py` | More than this share of the time above the cap, or a mean above it, is above the cap. |
 | `CAP_EDGE_SHARE` | `0.05` | `backend/performance/planned_targets.py` | A mean this close below the cap (share of the cap) sits at the upper edge. |
+| `TARGET_BELOW_BPM` | `5` | `backend/performance/planned_targets.py` | The target band (#4136, athlete 2026-11-23): the plan's own heart-rate range, a single target from this much below it, else this much below the cap; up to the cap. |
+| `CAP_BAND_BPM` | `10` | `backend/performance/planned_targets.py` |  |
+| `WARMUP_S` | `600` | `backend/performance/planned_targets.py` | The first minutes below the band are the warm-up, not a too easy session. |
+| `TOO_EASY_SHARE_PCT` | `25` | `backend/performance/planned_targets.py` | More than this share of the time after the warm-up below the band is too easy. |
+| `LEAN_BPM` | `1` | `backend/performance/planned_targets.py` | The heart rate after the warm-up within this many bpm of the band's middle is even. |
 | `HARD_ZONE` | `3` | `backend/performance/planned_targets.py` | A planned step in this zone or above is hard work (#3084). |
 | `MIN_SKIPPED_BLOCK_S` | `600.0` | `backend/performance/planned_targets.py` | Unmatched hard planned time from this many seconds on is a skipped block; less is a warm-up build or a fast finish (athlete, #3084, 2026-11-16). |
 | `MIN_BLOCK_STEP_S` | `30.0` | `backend/performance/planned_targets.py` | Two or more unmatched hard steps of at least this long, separated only by recovery steps, are a skipped block whatever their total (athlete, #3084 A', 2026-11-16); shorter ones are strides. |

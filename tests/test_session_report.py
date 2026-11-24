@@ -117,6 +117,28 @@ class EasySessionTests(unittest.TestCase):
         self.assertEqual("notable", found["heart_rate_cap"]["verdict"])
         self.assertEqual(["heart_rate_cap", "decoupling"], report["notable"])
         self.assertEqual(report["notable"], report["lead"])
+        # #4136: a run mostly below its target band after the warm-up is notable
+        # too, and the band's minutes come with the check.
+        band = {"band_bpm": [130, 140], "below_min": 40, "verdict": "too_easy"}
+        easy = checks(
+            session_report(
+                result(
+                    focus="long",
+                    execution={"data_quality": {"heart_rate": "ok", "speed": "ok"}},
+                    planned_targets={
+                        "heart_rate_cap": {
+                            "cap_bpm": 140,
+                            "time_above_cap_pct": 0,
+                            "verdict": "within_target",
+                            "target_band": band,
+                        }
+                    },
+                )
+            )
+        )["heart_rate_cap"]
+        self.assertEqual(
+            ("notable", band), (easy["verdict"], easy["value"]["target_band"])
+        )
 
     def test_unplanned_surges_count_as_time_above(self) -> None:
         # 600 s above the LT1 heart rate of 3600 s = 16.7 %; no plan excuses the laps.

@@ -613,6 +613,42 @@ class AnalysisTests(unittest.TestCase):
         self.assertEqual("above_cap", result["verdict"])
         self.assertGreater(result["time_above_cap_pct"], 10)
 
+    def test_the_target_band_names_minutes_below_in_and_above_it(self) -> None:
+        # #4136: 10 warm-up minutes 20 bpm below the cap, 50 minutes 7 below
+        # it inside a band from 10 below, one minute 3 above it: held, below
+        # the band's middle. Then 33 more minutes below after the warm-up.
+        cap = hr_cap(HR_CAP_PERCENT[FOCI[1]])
+        bpm = resolve_bpm(cap[PERCENT_KEY], LTHR) or 0
+        held = [bpm - 20] * 600 + [bpm - 7] * 3000 + [bpm + 3] * 60
+        band = heart_rate_cap_execution(cap, LTHR, self.streams(held), bpm - 10)[
+            "target_band"
+        ]
+        self.assertEqual(
+            {
+                "band_bpm": [bpm - 10, bpm],
+                "total_min": 61,
+                "in_band_min": 50,
+                "below_min": 10,
+                "below_in_warmup_min": 10,
+                "above_cap_min": 1,
+                "peak_bpm": bpm + 3,
+                "lean": "below",
+                "verdict": "held",
+            },
+            {
+                key: band[key]
+                for key in band
+                if key not in {"in_band_pct", "after_warmup_mean_bpm"}
+            },
+        )
+        easy = [bpm - 20] * 2600 + [bpm - 7] * 1000
+        self.assertEqual(
+            "too_easy",
+            heart_rate_cap_execution(cap, LTHR, self.streams(easy))["target_band"][
+                "verdict"
+            ],
+        )
+
     def test_without_a_stream_or_a_threshold_it_is_not_covered(self) -> None:
         cap = hr_cap(HR_CAP_PERCENT[FOCI[0]])
         self.assertEqual(
