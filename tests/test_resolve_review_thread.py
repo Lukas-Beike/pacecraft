@@ -491,6 +491,13 @@ class GuardHookTests(unittest.TestCase):
             "cat > f <<'EOF'\nx\nEOF \npython scripts/r*.py 1 PRRT_x",
             "cat <<'EOF' <<'END'\nx\nEOF\nEND\npython scripts/r*.py 1 PRRT_x",
             "cat scripts/*; python scripts/*/r*.py 1 PRRT_x",
+            # git grep runs a program only through -O/--open-files-in-pager.
+            "git grep -O python x scripts/r*.py",
+            "git grep -Opython x scripts/r*.py",
+            "git grep --open-files-in-pager=python x scripts/r*.py",
+            "git grep --open python x scripts/r*.py",
+            # #4155: a double-quoted pattern keeps the old rule (1b declined).
+            'git grep -n "planning_store\\.\\(insert\\|update\\)[a-z_]*" -- backend',
             # #3982: a single-quoted inside is read literally, nothing else is.
             "grep 'x’ ; python scripts/r*.py 1 PRRT_x ; grep ‘y' f",
             "grep $'\\x27' f; python scripts/r*.py 1 PRRT_x; grep $'\\x27' f",
@@ -573,6 +580,8 @@ class GuardHookTests(unittest.TestCase):
             "ls */*.py",
             'gh run list -q \'.[] | .name+" "+(.conclusion//"-")\'',
             "echo '" + "[" * 4000 + "]'",
+            # #4155: git grep is inert; its single-quoted pattern is literal (1a).
+            "git grep -n 'planning_store\\.\\(insert\\|update\\)[a-z_]*' -- backend",
             # #4155: a quoted-delimiter heredoc written to a file is literal text.
             "cat > body.md <<'EOF'\nGlobs such as */* or scripts/r*.py are text here.\nEOF",
             'cat > body.md <<"EOF"\nscripts/*/r*.py\nEOF\ngit status',

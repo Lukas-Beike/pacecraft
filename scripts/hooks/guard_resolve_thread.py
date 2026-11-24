@@ -395,6 +395,8 @@ INERT_SUBCOMMANDS = {
     "git": frozenset(
         {"status", "diff", "log", "show", "ls-files", "ls-tree", "rev-parse"}
         | {"rev-list", "branch", "blame", "add", "cat-file", "merge-base"}
+        # grep runs a program only with -O/--open-files-in-pager (RUNS_ARGUMENTS, #4155).
+        | {"grep"}
     ),
     "gh": frozenset(
         {"pr", "issue", "run", "api", "repo", "release", "label", "search"}
