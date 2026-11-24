@@ -2,9 +2,9 @@
 
 Worktree preparation uses `python scripts/prepare_worktree.py` to install Node
 development dependencies and the locked Playwright Chromium, the hash-locked
-`ruff`, `mypy` and `tzdata` pins from `requirements-dev.txt` into that
-interpreter (`tools/quality_baseline.py` runs the tools as `python -m`; Windows
-has no system time zone database), set up Graphify, generate the first graph,
+`ruff` and `mypy` pins from `requirements-dev.txt` into the worktree's
+`.quality-tools`, the runtime lock `requirements.txt` without the Docker-only
+`sqlcipher3-binary` into that interpreter for the tests (#4164), set up Graphify, generate the first graph,
 and build this checkout's browser-test app image (skipped when Docker is not
 running). Agent worktrees run it too, so each gets its own `node_modules`. When
 the GitHub CLI token lacks the `workflow` scope, it says that pushes touching

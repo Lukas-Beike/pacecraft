@@ -12,8 +12,11 @@ import urllib.request
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
-QUALITY_TOOLS = ("ruff", "mypy", "tzdata")
+QUALITY_TOOLS = ("ruff", "mypy")
 QUALITY_TOOLS_DIR = ".quality-tools"  # tools/quality_baseline.py runs them from here
+# No Windows wheel; the app image installs it, and its tests skip without it.
+DOCKER_ONLY = ("sqlcipher3-binary",)
+LOCK_BLOCK = re.compile(r"(?m)^(?=[A-Za-z0-9][\w.-]*==)")
 PIP_INPUTS = ("requirements.in", "requirements-dev.in", "requirements-graphify.in")
 PYPI_URL = "https://pypi.org/pypi/{}/json"
 CHECK_TIMEOUT = 5
@@ -22,13 +25,8 @@ NPM_TIMEOUT = 30
 
 def quality_requirements(lock_text: str, tools: tuple[str, ...] = QUALITY_TOOLS) -> str:
     """Return the hash-locked blocks for the given quality tools, with mypy's
-    dependencies when mypy is one of them.
-
-    tzdata is here because Windows has no system time zone database, and the
-    tests import zoneinfo. The full development lock needs SQLCipher, which has
-    no Windows wheel.
-    """
-    blocks = re.split(r"(?m)^(?=[A-Za-z0-9][\w.-]*==)", lock_text)[1:]
+    dependencies when mypy is one of them."""
+    blocks = LOCK_BLOCK.split(lock_text)[1:]
     selected = [
         block
         for block in blocks
@@ -41,20 +39,29 @@ def quality_requirements(lock_text: str, tools: tuple[str, ...] = QUALITY_TOOLS)
     return "".join(selected)
 
 
+def runtime_requirements(lock_text: str) -> str:
+    """The runtime lock's hash-locked blocks without the Docker-only ones, so the
+    tests' interpreter has every runtime package the host has a wheel for (#4164)."""
+    blocks = LOCK_BLOCK.split(lock_text)[1:]
+    return "".join(b for b in blocks if b.partition("==")[0] not in DOCKER_ONLY)
+
+
 def install_quality_tools(root: Path) -> int:
     """Ruff and mypy go into this worktree's own `.quality-tools`, which the quality
     ratchet runs: worktrees on different pins no longer reset one shared version
-    (#3217). tzdata stays with the interpreter, which runs the tests."""
+    (#3217). The runtime packages go to the interpreter, which runs the tests."""
     target = ["--target", str(root / QUALITY_TOOLS_DIR), "--upgrade"]
-    lock_text = (root / "requirements-dev.txt").read_text(encoding="utf-8")
+    dev = (root / "requirements-dev.txt").read_text(encoding="utf-8")
+    runtime = (root / "requirements.txt").read_text(encoding="utf-8")
+    print(f"Skipping Docker-only {', '.join(DOCKER_ONLY)}", flush=True)
     code = 0
     with tempfile.TemporaryDirectory(prefix="quality-tools-") as directory:
-        for tools, place in (
-            (("ruff", "mypy"), target),
-            (("tzdata",), []),
+        for text, place in (
+            (quality_requirements(dev), target),
+            (runtime_requirements(runtime), []),
         ):
             lock = Path(directory) / "requirements.txt"
-            lock.write_text(quality_requirements(lock_text, tools), encoding="utf-8")
+            lock.write_text(text, encoding="utf-8")
             command = [
                 sys.executable,
                 "-m",
@@ -68,7 +75,7 @@ def install_quality_tools(root: Path) -> int:
                 "-r",
                 str(lock),
             ]
-            # Both installs run: a failed Ruff/mypy install still gets the tests tzdata.
+            # Both installs run: a failed Ruff/mypy install still gets the tests theirs.
             result = subprocess.run(command, cwd=root, check=False).returncode
             code = code or result
     return code
