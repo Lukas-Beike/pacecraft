@@ -611,12 +611,13 @@ function loadReleaseChangelog() {
 function renderReleaseChangelog(releases) {
   const line = $("#settingsAppVersion")?.closest(".settings-app-version");
   if (!line || !Array.isArray(releases) || !releases.length) return false;
-  const [current, ...older] = releases;
+  // Only releases with Changelog lines (#3981) are listed; a newest one without them shows the last with (#4175).
+  const [current, ...older] = releases.filter((release) => release.commits?.length);
   const label = (release) => (release.version ? `Version ${release.version}` : `Seit ${release.after}`);
+  const heading = !current || (current === releases[0] && current.version) ? null : h("h4", null, label(current));
   const changelog = h("details", { className: "release-changelog", open: true },
     h("summary", null, ...line.childNodes, " · Änderungen"),
-    current.version ? null : h("h4", null, label(current)),
-    releaseChangeList(current),
+    ...(current ? [heading, releaseChangeList(current)] : [h("p", null, "Keine Änderungen vermerkt")]),
     older.length ? h("details", null, h("summary", null, `Frühere Versionen (${older.length})`),
       older.map((release) => h("details", null, h("summary", null, label(release)), releaseChangeList(release)))) : null);
   line.replaceWith(changelog);

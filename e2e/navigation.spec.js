@@ -151,7 +151,10 @@ test("@responsive Alt+1 to Alt+5 switch the main views outside text fields and a
 
 test("@responsive Betrieb & Diagnose lists the release changes from the image as plain text, a build without them keeps the version line", async ({ page }) => {
   const releases = [
-    { version: "2.1.15", commits: ["feat(calendar): sport filter (#2853)", "fix(sync): keeps the error", "docs(spec): <img src=x onerror=\"window.injected=1\">"] },
+    // The newest release without Changelog lines is left out; the last one with them opens (#4175).
+    { version: null, after: "2.1.16", commits: [] },
+    { version: "2.1.16", commits: [] },
+    { version: "2.1.15", commits:["feat(calendar): sport filter (#2853)", "fix(sync): keeps the error", "docs(spec): <img src=x onerror=\"window.injected=1\">"] },
     { version: "2.1.14", commits: ["feat(analysis): pace zones (#2839)"] },
   ];
   let served = true;
@@ -161,7 +164,7 @@ test("@responsive Betrieb & Diagnose lists the release changes from the image as
   const changelog = page.locator(".release-changelog");
   await expect(changelog.locator(":scope > summary")).toHaveText(/^Version v\d+\.\d+\.\d+ · Änderungen$/);
   // The newest release is open; older ones are collapsed (#2899).
-  await expect(changelog.locator(":scope > h4")).toHaveText(["Neu", "Behoben"]);
+  await expect(changelog.locator(":scope > h4")).toHaveText(["Version 2.1.15", "Neu", "Behoben"]);
   await expect(changelog.locator(":scope > ul").first()).toHaveText("calendar: sport filter");
   await changelog.locator(":scope > details > summary", { hasText: "Technik (1)" }).click();
   await expect(changelog.getByText("spec: <img src=x onerror=\"window.injected=1\">")).toBeVisible();
@@ -177,6 +180,11 @@ test("@responsive Betrieb & Diagnose lists the release changes from the image as
   }
   await expect(changelog.getByText("analysis: pace zones")).toBeHidden();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  // Without any lines, one neutral line instead of an empty section.
+  releases.splice(0, releases.length, { version: "2.1.16", commits: [] });
+  await page.reload();
+  await expect(changelog.locator(":scope > p")).toHaveText("Keine Änderungen vermerkt");
+  await expect(changelog.locator("ul, details")).toHaveCount(0);
   served = false;
   await page.reload();
   await expect(page.locator("#settingsAppVersion")).toHaveText(/^v\d+\.\d+\.\d+/);
