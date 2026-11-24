@@ -2016,7 +2016,7 @@ function appendOpenedPlannedFrame(details, head, entry, actual) {
   const detailProfile = details.querySelector(".planned-detail-profile") ? null : plannedDetailProfile(actual?.workout_profile || entry.workout_profile);
   head.after(...(detailProfile ? [detailProfile, plannedZoneLegend(detailProfile)].filter(Boolean) : []));
   if (details.querySelector(":scope > .planned-card-close")) return;
-  const close = h("button", { type: "button", className: "icon-button planned-card-close", "aria-label": "Einheit schließen" }, "✕");
+  const close = h("button", { type: "button", className: "secondary-button planned-card-close" }, "Einheit schließen");
   // `details` is the card's body; the card is the <details> element that closes.
   close.addEventListener("click", () => {
     const card = details.closest("details");
