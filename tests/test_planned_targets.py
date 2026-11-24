@@ -178,6 +178,10 @@ class PlannedHeartRateFloorTests(unittest.TestCase):
         self.assertEqual(
             130.0, self.floor("Warmup\n- 10m Z1 HR\n\nMain\n- 70m 130-140bpm")
         )
+        # A 15 km main step outweighs a 10-minute warm-up with its own floor.
+        self.assertEqual(
+            130.0, self.floor("Warmup\n- 10m 110-120bpm\n\nMain\n- 15km 130-140bpm")
+        )
         self.assertIsNone(self.floor("- 70m 60%"))
 
 

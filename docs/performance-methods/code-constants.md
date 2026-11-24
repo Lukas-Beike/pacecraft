@@ -208,6 +208,7 @@ every named number the code fixes. A test fails when it is out of date.
 | `WARMUP_S` | `600` | `backend/performance/planned_targets.py` | The first minutes below the band are the warm-up, not a too easy session. |
 | `TOO_EASY_SHARE_PCT` | `25` | `backend/performance/planned_targets.py` | More than this share of the time after the warm-up below the band is too easy. |
 | `LEAN_BPM` | `1` | `backend/performance/planned_targets.py` | The heart rate after the warm-up within this many bpm of the band's middle is even. |
+| `STEP_SECONDS_PER_M` | `0.36` | `backend/performance/planned_targets.py` | A distance step's length for choosing the main step, at an easy 6:00 min/km. |
 | `HARD_ZONE` | `3` | `backend/performance/planned_targets.py` | A planned step in this zone or above is hard work (#3084). |
 | `MIN_SKIPPED_BLOCK_S` | `600.0` | `backend/performance/planned_targets.py` | Unmatched hard planned time from this many seconds on is a skipped block; less is a warm-up build or a fast finish (athlete, #3084, 2026-11-16). |
 | `MIN_BLOCK_STEP_S` | `30.0` | `backend/performance/planned_targets.py` | Two or more unmatched hard steps of at least this long, separated only by recovery steps, are a skipped block whatever their total (athlete, #3084 A', 2026-11-16); shorter ones are strides. |

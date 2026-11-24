@@ -185,7 +185,7 @@ def planned_heart_rate_floor(
     if isinstance(ranges, dict):
         return None
     found = [
-        (float(step.get("duration") or 0), target)
+        (_step_seconds(step), target)
         for step, target in zip(steps, ranges, strict=True)
         if target.metric == "heartrate" and target.low and target.high is not None
     ]
@@ -197,6 +197,23 @@ def planned_heart_rate_floor(
         high * (1 - SINGLE_TARGET_SHARE), low * (1 + SINGLE_TARGET_SHARE)
     )
     return low / (1 - SINGLE_TARGET_SHARE) - TARGET_BELOW_BPM if single else low
+
+
+# A distance step's length for choosing the main step, at an easy 6:00 min/km.
+STEP_SECONDS_PER_M: Final = 0.36
+
+
+def _step_seconds(step: Mapping[str, Any]) -> float:
+    """A step's planned seconds; a distance step's at ``STEP_SECONDS_PER_M``."""
+    duration = step.get("duration")
+    if isinstance(duration, (int, float)) and duration > 0:
+        return float(duration)
+    distance = step.get("distance")
+    return (
+        float(distance) * STEP_SECONDS_PER_M
+        if isinstance(distance, (int, float))
+        else 0.0
+    )
 
 
 def heart_rate_cap_execution(
