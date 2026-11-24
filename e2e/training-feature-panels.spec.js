@@ -388,6 +388,8 @@ test("@responsive active local gear offers a maintenance button with receipt and
   await expect(active).toHaveAttribute("open", "");
   // A background state load re-renders the list (renderPerformance); the receipt and its undo stay (#2614).
   await page.evaluate(() => renderTrainingRecords());
+  // The receipt stays right under the heading row, above the tabs.
+  expect(await page.evaluate(() => [...document.querySelector("#equipmentItems").children].map((node) => node.className.split(" ")[0]).slice(0, 3))).toEqual(["equipment-head", "maintenance-receipt", "segmented-control"]);
   await receipt.getByRole("button", { name: "Rückgängig" }).click();
   await expect.poll(() => undone).toEqual({ change_id: "change-a", expected_current_hash: "hash-a" });
   await expect(receipt).toHaveCount(1);

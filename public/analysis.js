@@ -2839,7 +2839,8 @@ async function renderTrainingRecords({ background = false } = {}) { // NOSONAR
       }
       gear.append(other);
     }
-    gear.querySelector(".equipment-head").after(tabs);
+    // A kept receipt stays right under the heading row, the tabs follow it.
+    (gear.querySelector(":scope > .maintenance-receipt") || gear.querySelector(".equipment-head")).after(tabs);
     gear.querySelectorAll("details").forEach((details) => { details.open = openDetails.has(details.dataset.key); });
     if (equipment.garmin_synced_at) gear.append(h("p", "muted", `Garmin \u00b7 Stand ${formatTime(equipment.garmin_synced_at)}${equipment.garmin_freshness === "stale" ? " \u00b7 letzter erfolgreicher Abruf" : ""}`));
   } catch (error) {
