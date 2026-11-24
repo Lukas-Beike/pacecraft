@@ -14,10 +14,13 @@ test("@responsive activity details preserve calendar without Coach shortcuts", a
   const entry = page.locator(".planned-entry").filter({ hasText: "Synthetic ride <img src=x>" }).first();
   // On wide screens a unit of the week may already be open as the detail pane.
   if (!(await entry.evaluate((element) => element.open))) await entry.locator(":scope > summary").click();
-  const open = entry.getByRole("button", { name: "Feedback" });
+  const open = entry.getByRole("button", { name: "Alle Details" });
   await open.click();
   const dialog = page.getByRole("dialog", { name: "Synthetic ride <img src=x>" });
   await expect(dialog).toBeVisible();
+  // The details show the session only; its feedback has its own sheet (#4199).
+  await expect(dialog.getByText("Dein Feedback")).toHaveCount(0);
+  await expect(dialog.getByRole("button", { name: "Feedback speichern" })).toHaveCount(0);
   await expect(dialog.getByRole("img", { name: "Leistung, Zeitachse in Minuten" })).toBeVisible();
   // The sampled charts carry no helper line any more (#3933).
   await expect(dialog.getByText(/Diagramme vereinfacht/)).toHaveCount(0);
@@ -33,17 +36,21 @@ test("@responsive activity details preserve calendar without Coach shortcuts", a
   await page.goBack();
   await expect(dialog).not.toBeVisible();
   await expect(entry).toHaveAttribute("open", "");
-  await open.click();
-  await expect(dialog.getByRole("button", { name: "Feedback speichern" })).toBeVisible();
-  const rpe = dialog.getByLabel("Session-RPE (0–10)");
-  await expect(rpe.locator("option", { hasText: "5 · Schwer" })).toHaveCount(1);
-  await rpe.selectOption("6.5");
-  await dialog.getByLabel("Abweichungsgrund").fill("Heat");
-  await dialog.getByLabel("Notizen").fill("Synthetic feedback");
-  await dialog.getByRole("button", { name: "Feedback speichern" }).click();
-  await expect(dialog.locator('[role="status"]').filter({ hasText: "Feedback gespeichert" })).toBeVisible();
-  await expect(dialog.getByText("RPE-Belastung: 403 RPE-Punkte · RPE 6,5 (Athletenfeedback) × 62 min")).toBeVisible();
-  await dialog.getByRole("button", { name: "Zurück zum Kalender" }).click();
+  // One tap on the effort row saves; the note and the reason save when their field is left.
+  await entry.getByRole("button", { name: "Feedback", exact: true }).click();
+  const sheet = page.getByRole("dialog", { name: "Wie war die Einheit?" });
+  await expect(sheet.getByRole("button", { name: "Feedback speichern" })).toHaveCount(0);
+  await sheet.getByRole("button", { name: "6", exact: true }).click();
+  await expect(sheet.locator('[role="status"]').filter({ hasText: "Feedback gespeichert" })).toBeVisible();
+  await expect(sheet.getByRole("button", { name: "6", exact: true })).toHaveAttribute("aria-pressed", "true");
+  await sheet.getByText("Mehr angeben").click();
+  await sheet.getByLabel("Abweichung vom Plan").fill("Heat");
+  await sheet.getByLabel("Abweichung vom Plan").press("Tab");
+  await sheet.getByLabel("Notiz").fill("Synthetic feedback");
+  await sheet.getByLabel("Notiz").press("Tab");
+  await expect.poll(async () => (await (await request.get("/api/activities/9000001")).json()).activity_feedback?.notes).toBe("Synthetic feedback");
+  await expect(sheet.getByText("RPE-Belastung: 372 RPE-Punkte · RPE 6 (Athletenfeedback) × 62 min")).toBeVisible();
+  await sheet.getByRole("button", { name: "Schließen" }).click();
   await page.reload();
   const response = await request.get("/api/activities/9000001");
   const payload = await response.json();
@@ -51,7 +58,8 @@ test("@responsive activity details preserve calendar without Coach shortcuts", a
   expect(payload.detail_data.display_sampled).toBe(true);
   expect(payload.streams.time_s.length).toBe(2000);
   expect(payload.session.started_at_local).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}$/);
-  expect(payload.activity_feedback.session_rpe).toBe(6.5);
+  expect(payload.activity_feedback.session_rpe).toBe(6);
+  expect(payload.activity_feedback.deviation_reason).toBe("Heat");
   expect(payload.activity_feedback.notes).toBe("Synthetic feedback");
 });
 
@@ -477,17 +485,16 @@ test("@responsive feedback save and undo show the returned load without a detail
       if (url === "/api/change-history/undo") return { status: "undone", session_rpe_load: null };
       return data;
     };
-    await ActivityDetails.open({ id: "load-1" }, { api: fakeApi, showDialog: (dialog) => dialog.showModal() });
+    await ActivityFeedback.open({ id: "load-1" }, { api: fakeApi, showDialog: (dialog) => dialog.showModal() });
   });
-  const dialog = page.getByRole("dialog", { name: "Synthetic load ride" });
-  await dialog.getByLabel("Session-RPE (0–10)").selectOption("5");
-  await dialog.getByRole("button", { name: "Feedback speichern" }).click();
+  const dialog = page.getByRole("dialog", { name: "Wie war die Einheit?" });
+  await dialog.getByRole("button", { name: "5", exact: true }).click();
   await expect(dialog.locator("[data-session-rpe-load]")).toContainText("300 RPE-Punkte");
   await dialog.getByRole("button", { name: "Rückgängig" }).click();
   await expect(dialog.locator("[data-session-rpe-load]")).toBeHidden();
   expect(await page.evaluate(() => undoBody.activity_id)).toBe("load-1");
   expect(await page.evaluate(() => syntheticCalls.filter((url) => url === "/api/activities/load-1").length)).toBe(1);
-  await page.evaluate(() => ActivityDetails.close(false));
+  await page.evaluate(() => ActivityFeedback.close(false));
 });
 
 test("@responsive marking the session purpose sends it with a receipt whose undo restores the previous one", async ({ page }) => {
@@ -505,26 +512,26 @@ test("@responsive marking the session purpose sends it with a receipt whose undo
       if (url === "/api/change-history/undo") return { status: "undone" };
       return data;
     };
-    await ActivityDetails.open({ id: "mark-1" }, { api: fakeApi, showDialog: (dialog) => dialog.showModal() });
+    await ActivityFeedback.open({ id: "mark-1" }, { api: fakeApi, showDialog: (dialog) => dialog.showModal() });
   });
-  const dialog = page.getByRole("dialog", { name: "Synthetic marked ride" });
+  const dialog = page.getByRole("dialog", { name: "Wie war die Einheit?" });
+  await dialog.getByText("Mehr angeben").click();
   const purpose = dialog.getByLabel("Art der Einheit");
   await expect(purpose).toHaveValue("");
   await expect(purpose.locator("option").first()).toHaveText("Automatisch · Wettkampf");
   await purpose.selectOption("training");
-  await dialog.getByRole("button", { name: "Feedback speichern" }).click();
   await expect(dialog.locator('[role="status"]').filter({ hasText: "Feedback gespeichert" })).toBeVisible();
   expect(await page.evaluate(() => feedbackBodies.at(-1).purpose)).toBe("training");
   await dialog.getByRole("button", { name: "Rückgängig" }).click();
   await expect(purpose).toHaveValue("");
   await purpose.selectOption("commute");
-  await dialog.getByRole("button", { name: "Feedback speichern" }).click();
+  await expect(dialog.locator('[role="status"]').filter({ hasText: "Feedback gespeichert" })).toBeVisible();
   await expect(purpose).toHaveValue("commute");
   expect(await page.evaluate(() => feedbackBodies.at(-1).purpose)).toBe("commute");
   await purpose.selectOption("");
-  await dialog.getByRole("button", { name: "Feedback speichern" }).click();
+  await expect(dialog.locator('[role="status"]').filter({ hasText: "Feedback entfernt" })).toBeVisible();
   expect(await page.evaluate(() => feedbackBodies.at(-1).purpose)).toBeNull();
-  await page.evaluate(() => ActivityDetails.close(false));
+  await page.evaluate(() => ActivityFeedback.close(false));
 });
 
 test("@responsive provider copies split with a receipt whose undo restores the bundle", async ({ page }) => {

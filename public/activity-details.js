@@ -59,7 +59,7 @@
     return values;
   }
 
-  function render(payload, content, api, activityId, reload, notice, edit = null) {
+  function render(payload, content, api, activityId, reload, notice) {
     content.replaceChildren();
     const session = payload.session || {};
     renderMetadata(session, metricValues(payload), content, payload.weather);
@@ -74,116 +74,6 @@
     renderPower(payload, content);
     for (const item of payload.equipment || []) content.append(h("p", null, `Ausrüstung: ${item.name} · ${item.usage.distance_km} km${item.usage.maintenance_due ? " · persönliches Wartungsintervall erreicht" : ""}`));
     renderBundle(payload.session_bundle, api, content, reload, notice);
-    renderFeedback(payload.activity_feedback, session, api, activityId, content, payload.session_rpe_load, edit);
-  }
-
-  // CR-10 anchors after Foster et al. 2001; the other steps have no verbal anchor.
-  const RPE_ANCHORS = { 0: "Ruhe", 1: "Sehr, sehr leicht", 2: "Leicht", 3: "Moderat", 4: "Etwas schwer", 5: "Schwer", 7: "Sehr schwer", 10: "Maximal" };
-
-  function rpeOption(value) {
-    const anchor = RPE_ANCHORS[value];
-    const number = value.toLocaleString("de-DE");
-    return h("option", { value: String(value) }, anchor ? `${number} · ${anchor}` : number);
-  }
-
-  function setRpe(select, value) {
-    const number = value == null || value === "" ? Number.NaN : Number(value);
-    if (!Number.isFinite(number)) { select.value = ""; return; }
-    // A stored rating off the half-point grid keeps its own option, in order, instead of being rounded.
-    if (![...select.options].some((option) => option.value === String(number))) {
-      const next = [...select.options].find((option) => option.value !== "" && Number(option.value) > number);
-      select.insertBefore(rpeOption(number), next || null);
-    }
-    select.value = String(number);
-  }
-
-  function rpeSelect(value) {
-    const select = h("select", { name: "session_rpe" }, h("option", { value: "" }, "Keine Angabe"));
-    for (let step = 0; step <= 20; step += 1) select.append(rpeOption(step / 2));
-    setRpe(select, value);
-    return select;
-  }
-
-  // The athlete's own marking wins over Garmin's event type and a competition hint; "" removes it.
-  const PURPOSES = [["training", "Training"], ["race", "Wettkampf"], ["commute", "Pendeln"], ["warmup", "Einfahren"], ["cooldown", "Ausfahren"]];
-
-  function purposeSelect(marked, detected) {
-    const detectedLabel = PURPOSES.find(([key]) => key === detected)?.[1];
-    const automatic = h("option", { value: "" }, !marked && detectedLabel ? `Automatisch · ${detectedLabel}` : "Automatisch");
-    const select = h("select", { name: "purpose" }, automatic, PURPOSES.map(([key, label]) => h("option", { value: key }, label)));
-    select.value = PURPOSES.some(([key]) => key === marked) ? marked : "";
-    return select;
-  }
-
-  const SESSION_LOAD_REASONS = { no_rating: "kein RPE", conflicting_provider_ratings: "widersprüchliche Provider-RPE", no_elapsed_duration: "keine Gesamtdauer", invalid_duration: "ungültige Dauer" };
-
-  function sessionLoadText(load) {
-    if (!load || load.reason === "no_rating") return "";
-    if (load.value == null) return `RPE-Belastung: offen · ${SESSION_LOAD_REASONS[load.reason] || "unbekannt"}`;
-    const value = AppFormat.number(load.value, { digits: 1 });
-    const rpe = Number(load.rpe).toLocaleString("de-DE");
-    const minutes = AppFormat.number(load.duration_min, { digits: 1 });
-    const text = `RPE-Belastung: ${value} RPE-Punkte · RPE ${rpe} (${load.rpe_source_label}) × ${minutes} min`;
-    if (load.duration_flag !== "deviating_duration") return text;
-    const moving = AppFormat.number(load.moving_duration_min, { digits: 1 });
-    return `${text} · lange Unterbrechung, ${moving} min in Bewegung`;
-  }
-
-  // `edit` is a rejected queued feedback from the outbox (#3817): the form starts with its fields
-  // and its save replaces the queued entry once.
-  function renderFeedback(feedback, session, api, activityId, content, sessionLoad, edit = null) {
-    const purpose = purposeSelect(feedback?.purpose, session?.purpose);
-    const rpe = rpeSelect(feedback?.session_rpe);
-    const reason = h("input", { name: "deviation_reason", maxLength: 500, value: feedback?.deviation_reason || "" });
-    const notes = h("textarea", { name: "notes", rows: 3, maxLength: 4000, value: feedback?.notes || "" });
-    const status = h("p", "muted", ""); status.setAttribute("role", "status");
-    const save = h("button", { type: "submit" }, "Feedback speichern");
-    const load = h("p", { dataset: { sessionRpeLoad: "" } });
-    const showLoad = (value) => { load.textContent = sessionLoadText(value); load.hidden = !load.textContent; };
-    showLoad(sessionLoad);
-    const form = h("form", "activity-feedback-form", h("label", null, "Art der Einheit", purpose), h("label", null, "Session-RPE (0–10)", rpe), h("label", null, "Abweichungsgrund", reason), h("label", null, "Notizen", notes), save);
-    content.append(h("section", "activity-feedback", h("h3", null, "Dein Feedback"), load, form, status));
-    let shown = feedback;
-    const fill = (value) => { purpose.value = PURPOSES.some(([key]) => key === value?.purpose) ? value.purpose : ""; setRpe(rpe, value?.session_rpe); reason.value = value?.deviation_reason || ""; notes.value = value?.notes || ""; };
-    let replaces = edit;
-    if (edit) fill(edit.payload);
-    // The save and undo responses carry the load recomputed from the saved feedback and its provider fallback.
-    let loadGeneration = 0;
-    // Only the newest request may write, so a slow save response cannot overwrite a later undo.
-    const applyLoad = async (generation, response) => {
-      if (response && "session_rpe_load" in response) {
-        if (generation === loadGeneration) {
-          showLoad(response.session_rpe_load);
-        }
-        return;
-      }
-      // The response had no load (it could not be read): fall back to the served detail.
-      try {
-        const payload = await api(`/api/activities/${encodeURIComponent(activityId)}`);
-        if (generation === loadGeneration) showLoad(payload.session_rpe_load);
-      } catch { /* the saved feedback stays shown */ }
-    };
-    form.addEventListener("submit", async (event) => {
-      event.preventDefault(); save.disabled = true; status.textContent = "Speichere …";
-      try {
-        const raw = rpe.value; const value = { activity_name: session?.name || "", activity_date: session?.started_at_local || "", notes: notes.value, deviation_reason: reason.value, session_rpe: raw === "" ? null : Number(raw), purpose: purpose.value || null };
-        if (raw !== "" && (!Number.isFinite(value.session_rpe) || value.session_rpe < 0 || value.session_rpe > 10)) throw new Error("RPE muss zwischen 0 und 10 liegen.");
-        const generation = ++loadGeneration;
-        const path = `/api/activities/${encodeURIComponent(activityId)}/feedback`;
-        const result = await saveOwnEntry({ kind: "feedback", method: "POST", path, payload: value, label: `Feedback ${session?.name || "zur Einheit"}`, send: api, replaces });
-        if (result.outboxEntry) { replaces = null; status.textContent = "Feedback wartet, noch nicht gesendet."; return; }
-        const previous = shown; shown = result.activity_feedback;
-        // A strength session's RPE sets its energy (#3530): the next energy table reads it anew.
-        resetEnergy();
-        status.textContent = result.activity_feedback ? "Feedback gespeichert. " : "Feedback entfernt. ";
-        if (result.change?.id) status.append(feedbackUndoButton(api, result.change, activityId, status, () => ++loadGeneration, (response, generation) => { shown = previous; fill(previous); resetEnergy(); void applyLoad(generation, response); }));
-        void applyLoad(generation, result);
-      } catch (error) {
-        // A queued entry gone meanwhile: the next save goes out as a new one (review on #3817).
-        if (error?.reason === "outbox_entry_gone") replaces = null;
-        status.textContent = error.message;
-      } finally { save.disabled = false; }
-    });
   }
 
   function recordingText(entry) {
@@ -254,20 +144,6 @@
     });
     return undo;
   }
-
-  // Undo restores the feedback rows as they were before this save or removal.
-  function feedbackUndoButton(api, change, activityId, status, begin, restored) {
-    const undo = h("button", { className: "message-undo", type: "button" }, "Rückgängig");
-    undo.addEventListener("click", async () => {
-      undo.disabled = true; const generation = begin();
-      try {
-        const response = await api("/api/change-history/undo", { method: "POST", body: JSON.stringify({ change_id: change.id, expected_current_hash: change.after_hash, activity_id: activityId }) });
-        restored(response, generation); status.textContent = "Zurückgenommen.";
-      } catch (error) { undo.disabled = false; status.textContent = error.message; }
-    });
-    return undo;
-  }
-
 
   // A session's temperature is only its activity weather, named with its source (#3036):
   // the watch sensor reads body-warmed values.
@@ -660,7 +536,7 @@
   }
 
   // `backLabel` names where closing returns to; Analyse › Rekorde passes its own (#3847).
-  async function open(activity, { api, showDialog, edit = null, backLabel = "Zurück zum Kalender" }) {
+  async function open(activity, { api, showDialog, backLabel = "Zurück zum Kalender" }) {
     close(false);
     const activityId = String(activity.id ?? activity.activity_id ?? "");
     if (!activityId) return;
@@ -692,8 +568,7 @@
     async function load(notice) {
       const payload = await api(`/api/activities/${encodeURIComponent(activityId)}`);
       if (!isCurrent()) return;
-      render(payload, content, api, activityId, load, notice, edit);
-      edit = null;
+      render(payload, content, api, activityId, load, notice);
       title.textContent = payload.session?.name || activity.name || "Aktivitätsdetails";
       status.textContent = "";
       actions.replaceChildren(refreshActions(payload, {

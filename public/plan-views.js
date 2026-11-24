@@ -1558,8 +1558,11 @@ function plannedActivityActions(actual, dateKey, title, entryKey) {
   // The one main action of an opened session; "Feedback" stays the quiet second one (#4129 K-11).
   const coach = plannedCoachButton("Mit Coach besprechen", prompt, "push-button", "session_analysis");
   const feedback = h("button", { type: "button", className: "secondary-button planned-activity-feedback" }, "Feedback");
-  feedback.addEventListener("click", () => globalThis.ActivityDetails.open({ ...actual, name: title }, { api, showDialog: showAccessibleDialog }));
-  return [more, h("div", "planned-activity-actions", coach, feedback)];
+  feedback.addEventListener("click", () => globalThis.ActivityFeedback.open({ ...actual, name: title }, { api, showDialog: showAccessibleDialog }));
+  // The session's own data (route, laps, recordings) is its details dialog; the feedback has its own sheet (#4199).
+  const details = h("button", { type: "button", className: "secondary-button planned-activity-details" }, "Alle Details");
+  details.addEventListener("click", () => globalThis.ActivityDetails.open({ ...actual, name: title }, { api, showDialog: showAccessibleDialog }));
+  return [more, h("div", "planned-activity-actions", coach, details, feedback)];
 }
 
 // "Aus Garmin entfernen" (#4022): the Garmin workouts the app made for this unit go after a confirmation card; the unit

@@ -214,11 +214,11 @@ async function outboxReplace({ key, epoch }, { payload, label }) {
   return next;
 }
 
-// A rejected queued feedback opens in its session's detail view, the form filled with its fields.
+// A rejected queued feedback opens in its feedback sheet, filled with its fields.
 function editQueuedFeedback(edit) {
   const id = decodeURIComponent(/^\/api\/activities\/([^/]+)\/feedback$/.exec(edit.path)?.[1] ?? "");
   if (!id) return;
-  return globalThis.ActivityDetails.open({ id, name: edit.payload.activity_name }, { api, showDialog: showAccessibleDialog, edit });
+  return globalThis.ActivityFeedback.open({ id, name: edit.payload.activity_name }, { api, showDialog: showAccessibleDialog, edit });
 }
 
 function outboxEdit(key) {

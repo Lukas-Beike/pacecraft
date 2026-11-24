@@ -759,7 +759,7 @@ The system SHALL store when the athlete last set a feedback row's session RPE, k
 - **WHEN** a session's load has no value or a long interruption
 - **THEN** the line reads "RPE-Belastung: offen · <reason>" with "widersprüchliche Provider-RPE", "keine Gesamtdauer" or "ungültige Dauer", nothing is shown for `no_rating`, and a marked session adds " · lange Unterbrechung, <min> min in Bewegung".
 
-Evidence: `backend/db/repositories.py:ActivityFeedbackRepository.upsert`, `backend/performance/detail_envelope.py:DetailEnvelopeReader`, `public/activity-details.js:rpeSelect`; `tests/test_activity_feedback.py::test_rating_time_is_recorded_only_on_an_rpe_change`, `tests/test_detail_envelope.py`, `e2e/activity-details.spec.js`.
+Evidence: `backend/db/repositories.py:ActivityFeedbackRepository.upsert`, `backend/performance/detail_envelope.py:DetailEnvelopeReader`, `public/activity-feedback.js::effortRow`; `tests/test_activity_feedback.py::test_rating_time_is_recorded_only_on_an_rpe_change`, `tests/test_detail_envelope.py`, `e2e/activity-details.spec.js`.
 
 ### Requirement: One activity list entry per canonical session
 The activity list (`GET /api/activities`) and the Coach tool `list_recent_activities` SHALL list each live canonical session exactly once, from every provider, as its session summary keyed by the local session id, newest first. Paging SHALL use a version-3 keyset cursor; any other cursor SHALL restart at page one. Rows SHALL carry no `detail_error`: Intervals.icu details are never served (#1685), so their failure notes mark no session.
@@ -821,11 +821,7 @@ Evidence:
 
 ### Requirement: Activity dialog actions
 
-The activity dialog SHALL offer a feedback form with "Art der Einheit" (Automatisch, Training, Wettkampf, Pendeln, Einfahren, Ausfahren), a session RPE from 0 to 10 in half steps, a deviation reason (500 characters) and notes (4000), saved with `POST /api/activities/{id}/feedback`. Under "Aufzeichnungen" it SHALL offer split, confirm, merge and local delete through `POST /api/activities/{id}/session`. Every result SHALL carry "Rückgängig".
-
-#### Scenario: Stored rating off the grid
-- **WHEN** a stored RPE is not a half step
-- **THEN** it is shown as its own option and not rounded
+The activity dialog SHALL show the session only and carry no feedback form. Under "Aufzeichnungen" it SHALL offer split, confirm, merge and local delete through `POST /api/activities/{id}/session`. Every result SHALL carry "Rückgängig".
 
 #### Scenario: Detail refresh
 - **WHEN** a provider entry is refreshable and its button is used
@@ -835,7 +831,21 @@ The activity dialog SHALL offer a feedback form with "Art der Einheit" (Automati
 - **WHEN** the browser goes back while the dialog is open
 - **THEN** the dialog closes and the view below stays
 
-Evidence: `public/activity-details.js::renderFeedback`; `public/activity-details.js::rpeSelect`; `public/activity-details.js::setRpe`; `public/activity-details.js::renderBundle`; `public/activity-details.js::requestDetails`; `public/activity-details.js::open`. Tests: `e2e/activity-details.spec.js::provider copies split with a receipt whose undo restores the bundle`; `e2e/activity-details.spec.js::deleting an activity locally asks first and can be undone`; `tests/activity-route.test.cjs::renaming posts the route id and name, then shows the new label`.
+Evidence: `public/activity-details.js::renderBundle`; `public/activity-details.js::requestDetails`; `public/activity-details.js::open`. Tests: `e2e/activity-details.spec.js::provider copies split with a receipt whose undo restores the bundle`; `e2e/activity-details.spec.js::deleting an activity locally asks first and can be undone`; `tests/activity-route.test.cjs::renaming posts the route id and name, then shows the new label`.
+
+### Requirement: Feedback sheet
+
+The feedback of a session SHALL have its own sheet "Wie war die Einheit?", opened by "Feedback" on the calendar card and by "Bearbeiten" of a refused outbox entry. It SHALL hold an effort row of the steps 1 to 10, the note (4000 characters) and, under "Mehr angeben", "Art der Einheit" and the deviation reason (500). A tap or a left field SHALL save through `POST /api/activities/{id}/feedback` with "Rückgängig"; there SHALL be no save button.
+
+#### Scenario: Value of the watch
+- **WHEN** the watch delivered an effort and the athlete has none
+- **THEN** that step is marked dashed and a tap takes it over as the athlete's own value
+
+#### Scenario: Stored rating off the grid
+- **WHEN** a stored RPE is not a whole step
+- **THEN** the sheet names it ("Gespeichert: 6,5") and presses no step
+
+Evidence: `public/activity-feedback.js::renderSheet`; `public/activity-feedback.js::effortRow`; `public/activity-feedback.js::open`. Tests: `e2e/activity-details.spec.js::activity details preserve calendar without Coach shortcuts`; `e2e/canonical-extensions.spec.js::activity feedback save shows a receipt whose undo restores it`.
 
 ### Requirement: Field contract of the activity detail document
 Each part of `activity_detail.v1` SHALL have the fields listed in the detailed contract. A metric entry SHALL be `{value, unit, source, alternatives}` with the other records' values as alternatives; a series SHALL hold at most 2000 evenly spaced points that include the first and the last, at the same positions for the time axis and every channel, and `detail_data.display_sampled` SHALL be true when the merged stream was longer.
