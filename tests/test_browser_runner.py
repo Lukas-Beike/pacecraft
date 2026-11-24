@@ -704,10 +704,12 @@ class BrowserRunnerTests(unittest.TestCase):
                 path.write_text("- Location: e2e/x.spec.js:1:1\n", encoding="utf-8")
             unreadable = output / "artifacts" / "a" / "error-context.md"
             original = Path.read_bytes
+
             def read_bytes(path):
                 if path.name == "error-context.md" and path.parent.name == "a":
                     raise OSError("locked")
                 return original(path)
+
             with mock.patch.object(Path, "read_bytes", read_bytes):
                 self.assertEqual("b", runner.first_report(output).parent.name)
             self.assertEqual(unreadable.name, runner.first_report(output).name)
