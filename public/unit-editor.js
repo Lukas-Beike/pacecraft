@@ -2,7 +2,7 @@
 // steps of an endurance unit or the exercises of a strength unit as rows. The server stores it through the
 // Coach's use cases and checks it the same way; nothing goes to a provider.
 const UNIT_SPORTS = [["Run", "Lauf"], ["Ride", "Rad"], ["VirtualRide", "Rad indoor"], ["WeightTraining", "Kraft"]];
-const UNIT_TARGETS = [["POWER", "Leistung"], ["HR", "Puls"], ["PACE", "Tempo"], ["AUTO", "Auto"]];
+const UNIT_TARGETS = [["POWER", "Leistung"], ["HR", "Herzfrequenz"], ["PACE", "Pace"], ["AUTO", "Auto"]];
 const UNIT_LOADS = [["", "Ohne Last"], ["kg", "kg"], ["pct_1rm", "% 1RM"], ["rpe", "RPE"], ["rir", "RIR"]];
 const UNIT_STEP = /^-\s*(\d+)m\s+(\d+(?:[.,]\d+)?%|Z[1-7]\s+(?:HR|Pace))$/;
 const UNIT_REPEAT = /^(?:(.*\S)\s+)?(\d+)x$/;
