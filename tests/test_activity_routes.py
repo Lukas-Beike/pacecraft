@@ -220,12 +220,39 @@ class IndexTests(unittest.TestCase):
         self.assertIsNone(sessions["s4"]["route"])
         self.assertEqual({"r1", "r2"}, set(index["routes"]))
 
+    def test_an_unnamed_route_is_labelled_by_its_distance(self) -> None:
+        def ref(distance_m: float) -> dict[str, Any]:
+            return {"s": [1, 1], "e": [1, 1], "d": distance_m, "c": [[1, 1]]}
+
+        index = {
+            "routes": {
+                "r1": {"name": None, "ref": ref(9800.0)},
+                "r2": {"name": "Hausrunde", "ref": ref(9800.0)},
+                "r3": {"name": None, "ref": ref(5000.0)},
+                "r4": {"name": None, "ref": ref(5040.0)},
+                "r5": {"name": None},
+            }
+        }
+        labels = {key: routes.label_of(index, key) for key in index["routes"]}
+        self.assertEqual(
+            {
+                "r1": "Strecke 9,8 km",
+                "r2": "Hausrunde",
+                # Two unnamed routes of one length tell themselves apart by number.
+                "r3": "Strecke 5,0 km (3)",
+                "r4": "Strecke 5,0 km (4)",
+                # Without a reference the number is all there is.
+                "r5": "Strecke 5",
+            },
+            labels,
+        )
+
     def test_the_block_counts_repeats_by_start_and_names_by_default(self) -> None:
         index = self.index_of(*[make(loop(seed=n)) for n in range(1, 6)])
         block = routes.route_block(index, "s5")
         self.assertEqual(
             {
-                "label": "Strecke 1",
+                "label": "Strecke 5,0 km",
                 "repeat_index": 5,
                 "repeat_count": 5,
                 "route_id": "r1",
@@ -396,12 +423,12 @@ class StageTests(StageCase):
         last = self._block("act_g7")
         assert last is not None
         self.assertEqual(
-            {"label": "Strecke 1", "repeat_index": 6, "repeat_count": 6},
+            {"label": "Strecke 5,0 km (1)", "repeat_index": 6, "repeat_count": 6},
             {k: v for k, v in last.items() if k != "route_id"},
         )
         other = self._block("act_g6")
         assert other is not None
-        self.assertEqual("Strecke 2", other["label"])
+        self.assertEqual("Strecke 5,0 km (2)", other["label"])
         self.assertEqual((1, 1), (other["repeat_index"], other["repeat_count"]))
 
     def test_visits_list_every_session_of_the_route_newest_first(self) -> None:
@@ -707,7 +734,7 @@ class RenameTests(StageCase):
                 with self.assertRaises(AppError) as raised:
                     self.service.rename(self.route_id, bad)
                 self.assertEqual(400, raised.exception.status)
-        self.assertEqual("Strecke 1", (self._block("act_g1") or {})["label"])
+        self.assertEqual("Strecke 5,0 km", (self._block("act_g1") or {})["label"])
 
     def test_an_unknown_route_is_not_found(self) -> None:
         for unknown in ("r99", "", None, 7, ["r1"]):

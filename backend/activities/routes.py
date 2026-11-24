@@ -237,10 +237,32 @@ def _sequence(route_id: str) -> int:
     return int(route_id[1:]) if route_id[1:].isdigit() else 0
 
 
+def _default_label(route: Mapping[str, Any], route_id: str) -> str:
+    """ "Strecke 9,8 km" from the reference distance; "Strecke <n>" without one."""
+    reference = decode(route.get("ref"))
+    if reference is None:
+        return f"Strecke {_sequence(route_id)}"
+    return f"Strecke {reference.distance_m / 1000:.1f} km".replace(".", ",")
+
+
 def label_of(index: Mapping[str, Any], route_id: str) -> str:
-    """The athlete's name of a route, or "Strecke <n>" until it has one."""
-    name = index["routes"][route_id].get("name")
-    return name if isinstance(name, str) and name else f"Strecke {_sequence(route_id)}"
+    """The athlete's name of a route, or its distance until it has one.
+
+    Two unnamed routes of the same length tell themselves apart by their number.
+    """
+    routes = index["routes"]
+    name = routes[route_id].get("name")
+    if isinstance(name, str) and name:
+        return name
+    label = _default_label(routes[route_id], route_id)
+    twins = [
+        other
+        for other, route in routes.items()
+        if other != route_id
+        and not route.get("name")
+        and _default_label(route, other) == label
+    ]
+    return f"{label} ({_sequence(route_id)})" if twins else label
 
 
 def route_block(index: Mapping[str, Any], session_id: str) -> dict[str, Any] | None:
