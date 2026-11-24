@@ -2381,9 +2381,11 @@ function deficitSpanDays(start, end) {
 }
 
 // The Körperfett box, built like the Gewicht box (athlete decision, #3704): the change, from → to,
-// and the readings' own days, which span the phase that sets the fat share, not the period (#3598).
+// and the readings' own days; only readings of the period are compared (#4037).
 function deficitFatBox(card) {
   if (card.fat_pct_start == null) {
+    // No reading of the period: the last one stands alone, named, not compared (#4037).
+    if (card.fat_last_only && card.fat_pct_end != null) return ["–", `${deficitDecimal(card.fat_pct_end)} %`, `Letzte Messung ${deficitDay(card.fat_date_end)}`];
     return ["–", card.fat_pct_end == null ? "keine Messung" : "nur eine Messung", card.fat_date_end ? `vom ${deficitDay(card.fat_date_end)}` : null];
   }
   const change = Math.round((card.fat_pct_end - card.fat_pct_start) * 10) / 10;

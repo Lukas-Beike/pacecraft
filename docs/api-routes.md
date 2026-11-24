@@ -530,7 +530,9 @@ edges do not come apart; #3739),
 #3618), `fat_pct_start` (the first
 measurement used, else null), `fat_pct_end` (the last one, else the
 latest skinfold or null), `fat_date_start` and `fat_date_end` (their
-days: the phase's span, which can start before the window, #3598),
+days; only readings of the period are compared, so a first reading
+before the period gives null `fat_pct_start` and `fat_date_start`, and
+`fat_last_only` is true when the last one lies before it too, #4037),
 `weight_last_kg` (the window's last weigh-in), `weight_date_start` and
 `weight_date_end` (the edges' mean days, else the first and last
 weigh-in, #3704, #3739), `fat_change_kg`, `fat_share_pct` (of the

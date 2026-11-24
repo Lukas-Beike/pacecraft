@@ -440,6 +440,9 @@ test("Verlauf's deficit card: hero, goal marker, boxes and text agree, measured 
   assert.deepEqual(surplus.children[2].children.map(textOf), ["Gewicht+1,0 kg70,0 → 71,0 kg", "Körperfett–nur eine Messungvom 13.11.","davon Fett≈ 0,7 kg≈ 70 % · Faustregel 70 %", "pro Tag≈ 300 kcal8.400 kcal ÷ 28 Tage"]);
   assert.equal(textOf(surplus.children[3]), "Echter Verbrauch: ≈ 3.800 kcal am Tag (Garmin: 3.100).");
   assert.equal(surplus.dataset.goalDistance, undefined, "no goal, no distance class");
+  // A last reading before the period stands alone, named (#4037).
+  const earlier = energyDeficitCard({ rows, deficit: { ...prior, fat_pct_end: 12, fat_date_end: "2026-10-10", fat_last_only: true } });
+  assert.equal(textOf(earlier.children[2].children[1]), "Körperfett–12,0 %Letzte Messung 10.10.");
   // Two readings that do not weigh yet keep the rule of thumb but are not "missing" (Gitar on #3581).
   const light = energyDeficitCard({ rows, deficit: { ...measured, method: "prior", fat_share: { share_pct: 70, prior_pct: 70, measured_pct: 0 } } });
   assert.equal(textOf(light.children[4].children[1]), "Körperfett−1,4 %-Pkt.15,5 → 14,1 %07.10. → 13.11.");
