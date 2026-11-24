@@ -337,7 +337,39 @@ def matching_word(command: str) -> str | None:
     # closes on further quote marks, so the words could differ (#3982 review).
     if command.isascii() and only_inert_programs(raw):
         return None
+    # A heredoc with a quoted delimiter is literal text: without its body, the
+    # command may take the same inert path (#4155); anything else reads it all.
+    rest = heredoc_removed(command) if command.isascii() else None
+    if rest is not None and only_inert_programs(rest.casefold()):
+        return None
     return reaching_word(text, raw)
+
+
+# One heredoc whose delimiter word is quoted, so bash expands nothing in its body.
+HEREDOC = re.compile(r"<<[ \t]*(['\"])([A-Za-z0-9_]+)\1")
+
+
+def heredoc_removed(command: str) -> str | None:
+    """The command without its one quoted-delimiter heredoc (the `<<'WORD'`
+    and the lines up to the first line that is exactly WORD), else None."""
+    if command.count("<<") != 1 or "<<<" in command:
+        return None
+    opener = HEREDOC.search(command)
+    if opener is None:
+        return None
+    # Inside quotes, after an escape or in a comment `<<` starts no heredoc, and
+    # the lines after it run: the text before it must read plainly.
+    before = QUOTED.sub("@", command[: opener.start()])
+    if "'" in before or '"' in before or UNREADABLE.search(before):
+        return None
+    line_end = command.find("\n", opener.end())
+    if line_end < 0:
+        return None
+    lines = command[line_end + 1 :].split("\n")
+    if opener[2] not in lines:
+        return None
+    after = lines[lines.index(opener[2]) + 1 :]
+    return "\n".join([command[: opener.start()] + command[opener.end() : line_end], *after])
 
 
 # The direct resolve mutation through an API call, outside the script (#3759);
