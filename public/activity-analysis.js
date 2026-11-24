@@ -334,8 +334,8 @@
     const pace = step.target_pace_s_per_km;
     if (pace) {
       const [fastest, slowest] = pace;
-      if (fastest == null) return slowest == null ? null : `schneller als ${clock(slowest)}/km`;
-      return slowest == null ? `langsamer als ${clock(fastest)}/km` : `${clock(fastest)}–${clock(slowest)}/km`;
+      if (fastest == null) return slowest == null ? null : `schneller als ${clock(slowest)} /km`;
+      return slowest == null ? `langsamer als ${clock(fastest)} /km` : `${clock(fastest)}–${clock(slowest)} /km`;
     }
     if (step.target_bpm) return boundsText(step.target_bpm, "bpm");
     if (step.target_watts) return boundsText(step.target_watts, "W");

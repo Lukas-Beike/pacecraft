@@ -520,6 +520,20 @@ function taskSelectId(task, name) {
   return task === "conversation" ? `#${name[0].toLowerCase()}${name.slice(1)}Select` : `#${task}${name}Select`;
 }
 
+// A control of a task whose provider has no key is off and says which key is missing (#4129 M-03).
+const KEY_OFF_PREFIX = "Der Schlüssel für ";
+function keyOffTitle(model, task) {
+  const id = model?.tasks?.[task]?.model ?? model?.selected;
+  const provider = (model?.options || []).find((option) => option.id === id)?.provider;
+  return `${KEY_OFF_PREFIX}${MODEL_PROVIDER_GROUPS[provider] || "den Coach"} fehlt (Mehr › Anbindungen).`;
+}
+
+function setKeyOff(button, off, title = "") {
+  button.disabled = off;
+  if (off) button.title = title;
+  else if (button.title.startsWith(KEY_OFF_PREFIX)) button.removeAttribute("title");
+}
+
 function renderModel(model) {
   for (const task of COACH_TASKS) {
     const taskModel = model && { ...model, selected: model.tasks?.[task]?.model ?? model.selected };
@@ -537,10 +551,11 @@ function renderModel(model) {
   // calendar's "Mit Coach besprechen" (#2744).
   const planningOff = model?.tasks?.planning?.ready === false;
   const planning = $("#quickAnalysisButton");
-  if (planning) planning.disabled = planningOff;
-  document.querySelectorAll("[data-request-kind]:not([data-request-kind=morning_checkin])").forEach((button) => { button.disabled = planningOff; });
+  const planningTitle = keyOffTitle(model, "planning");
+  if (planning) setKeyOff(planning, planningOff, planningTitle);
+  document.querySelectorAll("[data-request-kind]:not([data-request-kind=morning_checkin])").forEach((button) => setKeyOff(button, planningOff, planningTitle));
   const label = $("#nutritionLabelButton");
-  if (label) label.disabled = model?.tasks?.nutrition?.ready === false;
+  if (label) setKeyOff(label, model?.tasks?.nutrition?.ready === false, keyOffTitle(model, "nutrition"));
   // Speed modes exist only at OpenAI.
   const tierRow = $("#serviceTierRow");
   const provider = (id) => (model?.options || []).find((option) => option.id === id)?.provider;

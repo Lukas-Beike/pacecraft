@@ -19,7 +19,8 @@ test("@responsive activity details preserve calendar without Coach shortcuts", a
   const dialog = page.getByRole("dialog", { name: "Synthetic ride <img src=x>" });
   await expect(dialog).toBeVisible();
   await expect(dialog.getByRole("img", { name: "Leistung, Zeitachse in Minuten" })).toBeVisible();
-  await expect(dialog.getByText(/Diagramme vereinfacht/)).toBeVisible();
+  // The sampled charts carry no helper line any more (#3933).
+  await expect(dialog.getByText(/Diagramme vereinfacht/)).toHaveCount(0);
   expect(await dialog.locator(".activity-series").first().locator("svg text").count()).toBeGreaterThan(3);
   await dialog.locator(".activity-values summary").first().click();
   await expect(dialog.locator(".activity-values table tbody tr").first()).toBeVisible();
@@ -634,7 +635,7 @@ test("@responsive a completed session's card shows its equipment as a chip and a
   // The chip is in the head line right after opening, without "Details".
   const chip = card.locator(".planned-equipment-chip");
   await expect(chip).toBeVisible();
-  await expect(chip).toHaveText("\u{1F45F} Pegasus 40 · Vorschlag ▾");
+  await expect(chip).toHaveText("\u{1F45F} Pegasus 40 · vorgeschlagen ▾");
   await expect(card.locator(".planned-activity-more")).not.toHaveAttribute("open", "");
   expect(posts).toEqual([]);
   await chip.click();
@@ -657,7 +658,7 @@ test("@responsive a completed session's card shows its equipment as a chip and a
   await expect(row.getByRole("combobox", { name: "Schuh" })).toBeHidden();
   await receipt.getByRole("button", { name: "Rückgängig" }).click();
   await expect(receipt).toContainText("Zurückgenommen.");
-  await expect(chip).toHaveText("\u{1F45F} Pegasus 40 · Vorschlag ▾");
+  await expect(chip).toHaveText("\u{1F45F} Pegasus 40 · vorgeschlagen ▾");
   await expect(row.getByRole("combobox", { name: "Schuh" })).toBeHidden();
   await chip.click();
   await expect(row.getByRole("combobox", { name: "Schuh" })).toHaveValue("shoe-a");

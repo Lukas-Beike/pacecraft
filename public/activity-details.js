@@ -431,7 +431,6 @@
       facts.push(...providerFacts(entry));
     }
     // The simplified-charts note changes how the charts read, so it stays outside the folded details.
-    if (detail.display_sampled) notes.push(h("p", "muted", "Diagramme vereinfacht dargestellt"));
     if (facts.length) {
       notes.push(h("details", "provenance-details", h("summary", null, "Herkunft im Detail"), facts));
     }

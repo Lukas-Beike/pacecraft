@@ -290,7 +290,7 @@ The system SHALL group repeated rides and runs with a stored GPS track that are 
 
 #### Scenario: Repeats of one loop
 - **WHEN** several outdoor sessions, or sessions of unknown environment, follow the same loop, also with GPS jitter or in the reverse direction: distances within 10 %, start in or beside the other's start (or end) cell and a Jaccard overlap of the coarse grid cells of at least 0.6
-- **THEN** they share one route and `get_activity_details` returns `route` with the label ("Strecke n" until renamed), `repeat_index` by start time and `repeat_count`
+- **THEN** they share one route and `get_activity_details` returns `route` with the label (its distance, "Strecke 9,8 km", until renamed), `repeat_index` by start time and `repeat_count`
 
 #### Scenario: Different or short tracks
 - **WHEN** another loop from the same start, a distance more than 10 % apart, an indoor or virtual session, a short track or a session without positions is compared

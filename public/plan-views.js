@@ -135,7 +135,7 @@ function plannedCoachButton(label, prompt, className = "secondary-button planned
   const button = h("button", { type: "button", className, dataset: requestKind ? { requestKind } : undefined }, label);
   // Several hand-over buttons of one card share the label; the name starts with it and says what each is for.
   if (purpose) button.setAttribute("aria-label", `${label}: ${purpose}`);
-  button.disabled = Boolean(requestKind) && !coachConfigured(null, requestKind);
+  setKeyOff(button, Boolean(requestKind) && !coachConfigured(null, requestKind), keyOffTitle(state.data?.model, "planning"));
   button.addEventListener("click", () => { void globalThis.askCoach?.(prompt, { requestKind }); });
   return button;
 }
@@ -398,6 +398,11 @@ function plannedWeatherFlags(weather) {
   const pollen = plannedPollenPeak(weather.pollen);
   if (pollen) flags.push({ text: `🌿 ${pollen.value}`, label: `Pollen: ${pollen.name} ${pollen.value}` });
   return flags;
+}
+
+// A planned unit's distance: its own, else the sum of its distance steps (#4129 K-12); the row and the week total read the same.
+function plannedEntryDistance(entry) {
+  return Math.max(0, Number(entry.distance) || Number(entry.workout_profile?.distance_m) || 0);
 }
 
 // Every activity with a positive distance adds to the total; only distance sports without one count as missing.
@@ -935,7 +940,7 @@ function plannedWeekMetrics(planned, actual) {
   const totals = h("span", { className: "planned-week-metrics", dataset: { columns: String(columns.length) } });
   const plannedSeconds = planned.reduce((total, entry) => total + plannedDurationSeconds(entry), 0);
   const actualSeconds = actual.reduce((total, entry) => total + Math.max(0, Number(AppFormat.sessionSeconds(entry)) || 0), 0);
-  const plannedDistance = planned.reduce((total, entry) => total + Math.max(0, Number(entry.distance) || 0), 0);
+  const plannedDistance = planned.reduce((total, entry) => total + plannedEntryDistance(entry), 0);
   const rows = [
     ["Dauer", { planned: plannedSeconds > 0 ? { value: calendarHours(plannedSeconds) } : null, actual: { value: calendarHours(actualSeconds) } }],
     ["Distanz", { planned: plannedDistance > 0 ? { value: AppFormat.distance(plannedDistance) } : null, actual: calendarWeekDistance(actual) }],
@@ -1272,7 +1277,7 @@ function plannedSessionHeader(entry, actual, title, appendStatus, slim = false) 
   // A done or missed unit's icon names the sport; its line keeps the time and the status.
   const line = h("span", { className: "planned-session-line", textContent: [slim ? null : sportLabel, actual ? calendarStartTime(actual.started_at_local) : plannedUnitStartTime(entry.starts_at_local)].filter(Boolean).join(" · ") });
   appendStatus(line);
-  const shownDistance = actual ? actual.distance_m : entry.distance;
+  const shownDistance = actual ? actual.distance_m : plannedEntryDistance(entry);
   const value = h("span", "planned-session-value",
     h("strong", { title: durationTitle(actual) }, plannedEntryDurationLabel(actual, entry) || "–"),
     shownDistance > 0 ? h("span", null, distanceLabel(shownDistance)) : null);
@@ -1550,7 +1555,8 @@ function plannedActivityActions(actual, dateKey, title, entryKey) {
     plannedEntryDurationLabel(actual, actual),
     /^[\w:.-]{1,80}$/.test(id) ? `ID ${id}` : null,
   ].filter(Boolean).join(", ")}).`;
-  const coach = plannedCoachButton("Mit Coach besprechen", prompt, "secondary-button", "session_analysis");
+  // The one main action of an opened session; "Feedback" stays the quiet second one (#4129 K-11).
+  const coach = plannedCoachButton("Mit Coach besprechen", prompt, "push-button", "session_analysis");
   const feedback = h("button", { type: "button", className: "secondary-button planned-activity-feedback" }, "Feedback");
   feedback.addEventListener("click", () => globalThis.ActivityDetails.open({ ...actual, name: title }, { api, showDialog: showAccessibleDialog }));
   return [more, h("div", "planned-activity-actions", coach, feedback)];
@@ -2004,11 +2010,24 @@ function loadPlannedFuelling(section, query) {
   });
 }
 
+// The opened card's own close control (narrow view; the wide pane keeps its unit shown) and the profile with its zone key,
+// which stands under the profile it explains, not only at the end of the week (#4129 K-11, K-13).
+function appendOpenedPlannedFrame(details, head, entry, actual) {
+  const detailProfile = details.querySelector(".planned-detail-profile") ? null : plannedDetailProfile(actual?.workout_profile || entry.workout_profile);
+  head.after(...(detailProfile ? [detailProfile, plannedZoneLegend(detailProfile)].filter(Boolean) : []));
+  if (details.querySelector(":scope > .planned-card-close")) return;
+  const close = h("button", { type: "button", className: "secondary-button planned-card-close" }, "Einheit schließen");
+  // `details` is the card's body; the card is the <details> element that closes.
+  close.addEventListener("click", () => {
+    const card = details.closest("details");
+    if (card) card.open = false;
+    card?.querySelector(":scope > summary")?.focus();
+  });
+  details.prepend(close);
+}
+
 function appendOpenedPlannedParts(details, head, entry, actual) {
-  if (!details.querySelector(".planned-detail-profile")) {
-    const detailProfile = plannedDetailProfile(actual?.workout_profile || entry.workout_profile);
-    if (detailProfile) head.after(detailProfile);
-  }
+  appendOpenedPlannedFrame(details, head, entry, actual);
   const upcoming = details.dataset.dateKey >= timezoneDateKey(state.data?.profile?.timezone, new Date());
   const fuellingQuery = actual || !upcoming ? null : plannedFuellingQuery(entry, details.dataset.dateKey);
   if (fuellingQuery) {
@@ -2068,7 +2087,7 @@ function plannedEquipmentShown(choice) {
   const preset = current ?? choice.suggested ?? null;
   let tag = "";
   if (effective) tag = plannedEquipmentSourceLabel(effective.source);
-  else if (own === null && preset !== null) tag = "Vorschlag";
+  else if (own === null && preset !== null) tag = "vorgeschlagen";
   const shown = preset === null ? "–" : named(preset) || "Nicht mehr verfügbar";
   return { own, current, preset, shown, tag };
 }
@@ -3623,7 +3642,7 @@ function racePlanPacing(pacing) {
     const span = `km ${RACE_PLAN_KM.format(section.from_km)}–${RACE_PLAN_KM.format(section.to_km)}`;
     const cells = ride
       ? [span, grade, section.power_w == null ? racePlanSigned(section.power_pct, "±") : `${section.power_w} W`]
-      : [span, grade, `${AppFormat.clock(section.pace_s_per_km)}/km`, AppFormat.clock(section.time_s)];
+      : [span, grade, `${AppFormat.clock(section.pace_s_per_km)} /km`, AppFormat.clock(section.time_s)];
     // The column name rides on each cell: a narrow row shows it above the value.
     return cells.map((value, index) => h("td", { dataset: { label: columns[index] } }, value));
   });

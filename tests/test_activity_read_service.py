@@ -569,7 +569,7 @@ class ActivityReadServiceTests(unittest.TestCase):
 
         self.assertEqual(
             {
-                "label": "Strecke 1",
+                "label": "Strecke 5,0 km",
                 "repeat_index": 1,
                 "repeat_count": 1,
                 "route_id": "r1",

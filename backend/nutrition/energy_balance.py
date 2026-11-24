@@ -419,7 +419,7 @@ def _weighins_short(weighins: Sequence[date]) -> str | None:
     return None
 
 
-def _fat_series(inputs: EnergyInputs) -> list[dict[date, float]]:
+def fat_series(inputs: EnergyInputs) -> list[dict[date, float]]:
     """The dated body fat measurements per method: skinfold, entered, device."""
     entered = {d: v for d, (v, p) in inputs.device_body_fat.items() if p is None}
     device = {d: v for d, (v, p) in inputs.device_body_fat.items() if p is not None}
@@ -496,7 +496,7 @@ def fat_share(inputs: EnergyInputs, trend: Mapping[date, float], end: date) -> F
     """
     value, source = fat_share_prior(inputs, trend, end)
     prior = FatShare(value, FAT_SHARE_PRIOR_SD, prior=value, prior_source=source)
-    for method, series in enumerate(_fat_series(inputs)):
+    for method, series in enumerate(fat_series(inputs)):
         days = sorted(d for d in series if d <= end and d in trend)
         if len(days) >= 2 and (days[-1] - days[0]).days >= MIN_FAT_SPAN_DAYS:
             break

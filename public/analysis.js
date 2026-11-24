@@ -126,12 +126,8 @@ function analysisChart(title, series, unit, start, end, note, {
     if (item.referenceLabel) info.append(h("span", "analysis-metric-context", item.referenceLabel));
     const readings = item.points.filter(valid);
     info.append(h("span", "analysis-metric-meta", item.coverageShort || analysisCoverageText(readings.length, item.cadenceDays === 7 ? periodCount[7] : item.points.length, item.cadenceDays === 7 ? "Wochen" : "Tagen")));
-    if (readings.length > 1) {
-      const first = readings[0];
-      const delta = Number(latest.value) - Number(first.value);
-      const change = analysisChange(delta, item.unit || unit);
-      info.append(h("span", "analysis-metric-change", `Seit ${dateLabel(first.observedDate || first.date)}: ${change}`));
-    }
+    const changeText = analysisChangeText(item, latest, readings, item.unit || unit);
+    if (changeText) info.append(h("span", "analysis-metric-change", changeText));
     legend.append(entry);
   });
   if (showLegend && analysisLegendRepeatsTitle(shown, title)) analysisLegendInfoToHeading(heading, legend, title);
@@ -185,6 +181,22 @@ function analysisLegendInfoToHeading(heading, legend, title) {
 function analysisLineStyle(item, index) {
   if (item.bars) return "solid";
   return item.line || (index ? "dashed" : "solid");
+}
+
+// A body series (``edgeMeans`` null or set) names its change by the edge means only, and none while an edge
+// is empty: never last minus first, the second definition (#4037). Every other series keeps "Seit".
+function analysisChangeText(item, latest, readings, unit) {
+  if (item.edgeMeans !== undefined) return item.edgeMeans ? analysisEdgeChangeText(item.edgeMeans, unit) : null;
+  if (readings.length < 2) return null;
+  const first = readings[0];
+  return `Seit ${dateLabel(first.observedDate || first.date)}: ${analysisChange(Number(latest.value) - Number(first.value), unit)}`;
+}
+
+// Weight and body fat: the mean of the last days minus the mean of the first, the one definition of the
+// Körper charts, the Verlauf card and the Coach (#4037).
+function analysisEdgeChangeText(edges, unit) {
+  const span = edges.span_days === 7 ? "Wochenmittel" : `Mittel von ${edges.span_days / 7} Wochen`;
+  return `Änderung (${span}): ${analysisChange(edges.change, unit)} · Ø ${analysisValue(edges.first_mean, unit)} → Ø ${analysisValue(edges.last_mean, unit)}`;
 }
 
 // A change that rounds to zero carries no sign.
@@ -1498,6 +1510,7 @@ function bodyMetricChart(metric, title, unit, window, period, preferred = {}) {
     // A single measured week is still drawn as a point.
     minPoints: weekly ? 1 : 2,
     cadenceDays: weekly ? 7 : 1,
+    edgeMeans: power ? undefined : item.edge_means ?? null,
     explanation: metric === "cycling_w_per_kg"
       ? "Tageswert aus FTP geteilt durch das letzte Körpergewicht der vorherigen sieben Tage."
       : "Nur gemessene Tageswerte; fehlende Tage bleiben Lücken.",
@@ -2368,9 +2381,11 @@ function deficitSpanDays(start, end) {
 }
 
 // The Körperfett box, built like the Gewicht box (athlete decision, #3704): the change, from → to,
-// and the readings' own days, which span the phase that sets the fat share, not the period (#3598).
+// and the readings' own days; only readings of the period are compared (#4037).
 function deficitFatBox(card) {
   if (card.fat_pct_start == null) {
+    // No reading of the period: the last one stands alone, named, not compared (#4037).
+    if (card.fat_last_only && card.fat_pct_end != null) return ["–", `${deficitDecimal(card.fat_pct_end)} %`, `Letzte Messung ${deficitDay(card.fat_date_end)}`];
     return ["–", card.fat_pct_end == null ? "keine Messung" : "nur eine Messung", card.fat_date_end ? `vom ${deficitDay(card.fat_date_end)}` : null];
   }
   const change = Math.round((card.fat_pct_end - card.fat_pct_start) * 10) / 10;
@@ -2767,6 +2782,9 @@ async function renderTrainingRecords({ background = false } = {}) { // NOSONAR
     const archivedRunItems = archivedLocalItems.filter((item) => isRunEquipment(item) || item.kind === "shoes");
     const uncategorizedItems = activeLocalItems.filter((item) => !bikeItems.includes(item) && !runItems.includes(item));
     const archivedUncategorizedItems = archivedLocalItems.filter((item) => !archivedBikeItems.includes(item) && !archivedRunItems.includes(item));
+    // "+ Hinzufügen" sits right of the heading and adds to the shown tab; its form opens in that tab (#4129 M-06).
+    const [addButton, addForm] = equipmentAddControl(equipmentTab);
+    gear.querySelector(":scope > h3").replaceWith(h("div", "equipment-head", heading(), addButton));
     const groups = {
       bike: { label: "Fahrrad", items: bikeItems },
       run: { label: "Laufschuhe", items: runItems },
@@ -2790,11 +2808,11 @@ async function renderTrainingRecords({ background = false } = {}) { // NOSONAR
       tab.setAttribute("role", "tab"); tabs.append(tab);
       const panel = h("div", { className: "equipment-tab-panel", id: `equipmentPanel-${key}`, "aria-labelledby": tab.id, tabIndex: 0, hidden: equipmentTab !== key });
       panel.setAttribute("role", "tabpanel");
-      // The defaults choose among items, so they wait until there is one (#3936 G-13).
-      panel.append(equipmentAddRow(key));
-      if (groups[key].items.length) panel.append(equipmentRuleTable(key, equipment.rules, groups[key].items));
+      if (key === equipmentTab) panel.append(addForm);
       for (const item of groups[key].items) panel.append(card(key)({ item, source: "local" }));
       for (const item of garminGroups[key]) panel.append(card(key)({ item, source: "provider" }));
+      // The defaults choose among items, so they wait until there is one (#3936 G-13); they follow the cards as a flat section.
+      if (groups[key].items.length) panel.append(equipmentRuleTable(key, equipment.rules, groups[key].items));
       if (archivedGroups[key].length) panel.append(archive(key, archivedGroups[key]));
       if (!groups[key].items.length && !garminGroups[key].length && !archivedGroups[key].length) {
         panel.append(h("p", "muted", key === "bike" ? "Noch keine Fahrräder oder Komponenten erfasst." : "Noch keine Laufschuhe erfasst."));
@@ -2823,7 +2841,8 @@ async function renderTrainingRecords({ background = false } = {}) { // NOSONAR
       }
       gear.append(other);
     }
-    gear.prepend(tabs);
+    // A kept receipt stays right under the heading row, the tabs follow it.
+    (gear.querySelector(":scope > .maintenance-receipt") || gear.querySelector(".equipment-head")).after(tabs);
     gear.querySelectorAll("details").forEach((details) => { details.open = openDetails.has(details.dataset.key); });
     if (equipment.garmin_synced_at) gear.append(h("p", "muted", `Garmin \u00b7 Stand ${formatTime(equipment.garmin_synced_at)}${equipment.garmin_freshness === "stale" ? " \u00b7 letzter erfolgreicher Abruf" : ""}`));
   } catch (error) {
@@ -3387,14 +3406,15 @@ function equipmentRuleReceipt(status, result) {
   return [text, undo];
 }
 
-function equipmentAddRow(tab) {
+// The button and the form of the shown tab: the button toggles the form.
+function equipmentAddControl(tab) {
   const form = equipmentForm(tab, null);
-  const add = h("button", { className: "secondary-button equipment-add", type: "button", "aria-expanded": "false" }, "+ Hinzufügen");
+  const add = h("button", { className: "push-button equipment-add", type: "button", "aria-expanded": "false" }, "+ Hinzufügen");
   add.addEventListener("click", () => {
     form.hidden = !form.hidden;
     add.setAttribute("aria-expanded", String(!form.hidden));
   });
-  return h("div", "equipment-add-row", add, form);
+  return [add, h("div", "equipment-add-row", form)];
 }
 
 function equipmentForm(tab, item) {
@@ -3504,7 +3524,7 @@ function showMaintenanceReceipt(change, message = "Wartung erfasst. ") {
   status.setAttribute("role", "status");
   const gear = document.getElementById("equipmentItems");
   gear?.querySelector(":scope > .maintenance-receipt")?.remove();
-  gear?.querySelector("h3")?.after(status);
+  gear?.querySelector(":scope > :is(.equipment-head, h3)")?.after(status);
   if (!change?.id) return;
   const undo = h("button", { className: "message-undo", type: "button" }, "Rückgängig");
   undo.addEventListener("click", async () => {

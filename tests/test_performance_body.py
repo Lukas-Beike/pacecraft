@@ -55,6 +55,39 @@ class BodyHistoryTests(unittest.TestCase):
         self.assertEqual(list(base["windows"]), ["28d", "91d"])
         self.assertEqual(base["default_window"], "91d")
 
+    def test_the_change_is_the_last_edge_mean_minus_the_first(self):
+        # 28 days ending 2026-10-06: first edge 2026-09-09..15, last edge 2026-09-30..10-06.
+        weigh_ins = [
+            ("2026-09-09", 74.2),
+            ("2026-09-12", 73.9),
+            ("2026-09-15", 73.4),
+            ("2026-09-20", 99.0),
+            ("2026-09-30", 72.8),
+            ("2026-10-02", 72.1),
+            ("2026-10-06", 72.4),
+        ]
+        garmin = {"weight": [{"date": day, "weightKg": kg} for day, kg in weigh_ins]}
+        result = body_history({}, garmin, TODAY)
+        edges = _series(result, "28d", "weight_kg", "Garmin Connect")["edge_means"]
+        # Hand-worked: (74.2 + 73.9 + 73.4) / 3 = 73.83; (72.8 + 72.1 + 72.4) / 3 = 72.43.
+        self.assertEqual(
+            edges,
+            {
+                "span_days": 7,
+                "first_mean": 73.83,
+                "last_mean": 72.43,
+                "change": -1.4,
+                "first_count": 3,
+                "last_count": 3,
+            },
+        )
+        # An edge without a weigh-in gives no change.
+        sparse = {"weight": [{"date": "2026-09-09", "weightKg": 74.0}]}
+        lone = body_history({}, sparse, TODAY)
+        self.assertIsNone(
+            _series(lone, "28d", "weight_kg", "Garmin Connect")["edge_means"]
+        )
+
     def test_windows_and_gaps_come_from_garmin_alone(self):
         result = body_history(
             {},

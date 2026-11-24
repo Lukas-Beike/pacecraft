@@ -137,3 +137,20 @@ test("a quick action needs the planning model's key, the morning check-in the ch
   assert.equal(coachConfigured({ coach: false }, "session_analysis"), true);
   assert.equal(coachConfigured({ coach: false }), false);
 });
+
+test("a control of a task without a key is off with its reason, and loses it when the key is there", () => {
+  const { setKeyOff, keyOffTitle } = extractFunctions("views.js", ["MODEL_PROVIDER_GROUPS", "KEY_OFF_PREFIX", "keyOffTitle", "setKeyOff"]);
+  const model = { selected: "gpt-6-luna", tasks: { planning: { model: "claude-opus" } }, options: [{ id: "gpt-6-luna", provider: "openai" }, { id: "claude-opus", provider: "anthropic" }] };
+  assert.equal(keyOffTitle(model, "planning"), "Der Schlüssel für Claude fehlt (Mehr › Anbindungen).");
+  assert.equal(keyOffTitle(model, "nutrition"), "Der Schlüssel für OpenAI fehlt (Mehr › Anbindungen).");
+  const button = { disabled: false, title: "", removeAttribute(name) { this[name] = ""; } };
+  setKeyOff(button, true, keyOffTitle(model, "planning"));
+  assert.equal(button.disabled, true);
+  assert.equal(button.title, "Der Schlüssel für Claude fehlt (Mehr › Anbindungen).");
+  setKeyOff(button, false);
+  assert.equal(button.disabled, false);
+  assert.equal(button.title, "");
+  button.title = "own title";
+  setKeyOff(button, false);
+  assert.equal(button.title, "own title");
+});

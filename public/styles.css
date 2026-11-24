@@ -809,7 +809,10 @@ a.message-retry { display: grid; place-items: center; text-decoration: none; }
 .planned-equipment-status:empty, .planned-equipment [hidden] { display: none; }
 .planned-equipment[hidden] { display: none; }
 .planned-equipment-line { display: flex; }
-.equipment-rules { display: grid; gap: 6px; margin: 12px 0; }
+.equipment-rules { display: grid; gap: 6px; margin: 12px 0 0; padding-top: 12px; border-top: 1px solid var(--line); }
+.equipment-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; }
+.equipment-head h3 { margin: 0; }
+.equipment-tabs { margin: 10px 0 12px; }
 .equipment-rules h4 { margin: 0; }
 .equipment-rules select { width: 100%; min-height: 44px; }
 .equipment-rule-status { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; font-size: .85rem; }
@@ -1351,7 +1354,8 @@ output.planned-move-status { display: block; }
 .equipment-card > summary::after { order: 1; }
 .equipment-card > summary > :is(.equipment-card-line, progress) { order: 2; flex: 1 1 100%; }
 .equipment-card > summary progress { height: 4px; }
-.equipment-add-row { display: grid; grid-template-columns: minmax(0, 1fr); gap: 10px; margin-bottom: 12px; justify-items: start; }
+.equipment-add-row { display: grid; grid-template-columns: minmax(0, 1fr); gap: 10px; justify-items: start; }
+.equipment-add-row:has(> .equipment-form[hidden]) { display: none; }
 .equipment-form { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 12rem), 1fr)); gap: 10px; width: 100%; margin-top: 10px; }
 .equipment-form[hidden], .equipment-form [hidden] { display: none; }
 .equipment-form label { display: grid; gap: 4px; color: var(--muted); font-size: .8rem; }
@@ -2211,6 +2215,9 @@ button:focus-visible, a:focus-visible, summary:focus-visible {
 .week-review-head span { margin-left: auto; color: var(--muted); font-size: .76rem; font-variant-numeric: tabular-nums; }
 .week-review > .loading-state, .week-review > .error-state { margin: 0 12px 12px; }
 .week-review-tiles { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; padding: 0 12px 12px; }
+.week-review-tile:last-child:nth-child(odd) { grid-column: 1 / -1; }
+.planned-card-close { display: flex; align-items: center; justify-content: center; min-height: 44px; margin: 0 0 0 auto; }
+@media (min-width: 1100px) { .planned-card-close { display: none; } }
 .week-review-tile { min-width: 0; padding: 8px 10px; border-radius: var(--radius-sm); background: var(--surface); }
 .week-review-tile small { display: block; color: var(--muted); font-size: .72rem; }
 .week-review-tile b { font-size: 1rem; font-variant-numeric: tabular-nums; }
