@@ -22,6 +22,7 @@ makes read-only requests only. The action appears when Garmin Connect is set up.
 Load time, a changed summary and data coverage are noted per provider; while a
 provider's details are outdated, the session analysis is withheld. The detail
 view, the session analysis and the Coach read only Garmin, Wahoo and local data.
+The session analysis first checks the session against its planned target, compares it only with earlier sessions of the same session type, and says whether the athlete got better, stayed the same or got worse (#4153, #4160, #4165, #4166).
 While credentials are missing, a setup notice on all tabs links to Mehr › Anbindungen (More › Connections); it can
 be dismissed for the browser session. On errors the previous detail data is
 kept; normal synchronizations do not replace it. Missing sensor values stay
