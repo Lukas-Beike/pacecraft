@@ -564,17 +564,24 @@ function analysisTickStep(tickCount, maxLabels) {
   return [1, 2, 3, 4, 7, 14, 28, 56, 91].find(fits) || Math.ceil((tickCount - 1) / (maxLabels - 1));
 }
 
-// Tick marks sit on every day (or every week start of a weekly chart); labels repeat at an even step counted back from the latest tick.
+// Tick marks sit on every day (or every week start of a weekly chart); the first and the last tick are always labelled,
+// the labels between repeat at an even step counted back from the latest tick and keep clear of the two ends (#4025).
+const TICK_LABEL_GAP = 40;
+
 function appendAnalysisDateTicks(svg, start, end, { chartWidth, x }, tickLabel = analysisDayTickLabel) {
   const weekly = tickLabel === analysisWeekTickLabel;
   const dates = analysisTickDates(start, end, weekly);
   const maxLabels = chartWidth < 600 ? 4 : 7;
   const step = analysisTickStep(dates.length, maxLabels);
+  const last = dates.length - 1;
+  const clearOfEnds = (index) => Math.abs(x(dates[index]) - x(dates[0])) >= TICK_LABEL_GAP && Math.abs(x(dates[index]) - x(dates[last])) >= TICK_LABEL_GAP;
   dates.forEach((date, index) => {
-    const labelled = (dates.length - 1 - index) % step === 0;
+    const labelled = index === 0 || index === last || ((last - index) % step === 0 && clearOfEnds(index));
     if (!labelled && dates.length > 31) return;
     svg.append(svgNode("line", { x1: x(date), x2: x(date), y1: 160, y2: labelled ? 168 : 164, class: "analysis-tick-mark" }));
-    if (labelled) svg.append(svgNode("text", { x: x(date), y: 188, "text-anchor": "middle", class: "analysis-date-tick" }, tickLabel(date)));
+    // A label at the right end stays inside the drawing instead of being clipped.
+    const clipped = x(date) + 18 > chartWidth;
+    if (labelled) svg.append(svgNode("text", { x: clipped ? chartWidth - 2 : x(date), y: 188, "text-anchor": clipped ? "end" : "middle", class: "analysis-date-tick" }, tickLabel(date)));
   });
   // At the top right, clear of the first tick label.
   if (weekly) svg.append(svgNode("text", { x: chartWidth - 8, y: 15, "text-anchor": "end", class: "analysis-week-caption" }, "Woche ab"));
