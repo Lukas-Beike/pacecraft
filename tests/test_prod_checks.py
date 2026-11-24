@@ -474,7 +474,9 @@ class ProdChecksTests(unittest.TestCase):
                 "collectors": {
                     "get_sleep_data": {"dailySleepDTO.someSkinTempKey": 3},
                     "stored": {"dailySleepDTO.someSkinTempKey": 2},
+                    "get_sleep_daily": {},
                 },
+                "scanned_days": {"get_sleep_data": 20, "get_sleep_daily": 4},
                 "date_range": {"from": "2026-11-01", "to": "2026-11-20"},
                 "none_found": False,
                 "planted": "value",
@@ -487,6 +489,9 @@ class ProdChecksTests(unittest.TestCase):
         self.assertIn("collectors.get_sleep_data.dailySleepDTO.someSkinTempKey", joined)
         self.assertIn("collectors.stored.dailySleepDTO.someSkinTempKey", joined)
         self.assertIn("none_found", joined)
+        # A collector that ran shows its scanned nights, also without matches (#4017).
+        self.assertIn("scanned_days.get_sleep_data", joined)
+        self.assertIn("scanned_days.get_sleep_daily", joined)
         # Dates and unknown fields are never printed.
         self.assertNotIn("date_range", joined)
         self.assertNotIn("planted", joined)
