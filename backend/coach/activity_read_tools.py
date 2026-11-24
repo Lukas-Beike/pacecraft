@@ -723,7 +723,9 @@ class CoachActivityReadToolService:
         }
         if isinstance(session, dict) and day is not None:
             result.update(
-                self._session_checks(session, day, paired, units, nearby, calendar)
+                self._session_checks(
+                    session, day, paired, units, nearby, calendar, _erg_like(detail)
+                )
             )
             focus = result.get("focus")
             if unpaired_reason and isinstance(focus, dict) and not paired:
@@ -942,6 +944,7 @@ class CoachActivityReadToolService:
         units: list[dict[str, Any]] | None,
         nearby: list[Any] | None,
         paired: bool = False,
+        erg: bool = False,
     ) -> dict[str, Any]:
         checks: dict[str, Any] = {
             "focus": matched_focus(session, around, paired=paired)
@@ -992,6 +995,7 @@ class CoachActivityReadToolService:
                 stored_activity_key(own),
                 covered_from=covered_from,
                 types=types,
+                erg=erg,
             )
         return checks
 
@@ -1148,6 +1152,13 @@ def _weather_gap(session: Mapping[str, Any], now: datetime) -> dict[str, Any]:
         "status": "missing",
         "reason": "Datenlücke: Die App ruft das Wetter für Läufe und Radfahrten draußen ab, zu dieser Einheit ist keins gespeichert.",
     }
+
+
+def _erg_like(detail: Mapping[str, Any]) -> bool:
+    """Whether the trainer held the session's power (the execution's erg_like)."""
+    analysis = detail.get("analysis")
+    execution = analysis.get("execution") if isinstance(analysis, Mapping) else None
+    return isinstance(execution, Mapping) and execution.get("erg_like") is True
 
 
 def _unit_plan(unit: Mapping[str, Any]) -> dict[str, Any]:

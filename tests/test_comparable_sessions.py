@@ -326,6 +326,49 @@ class SessionTypeCohortTests(unittest.TestCase):
         self.assertEqual(("ok", 2), (result["status"], result["count"]))
         self.assertEqual("not_covered", result["progress"]["status"])
 
+    def test_an_erg_ride_is_judged_by_its_heart_rate_at_the_same_power(
+        self,
+    ) -> None:
+        # Athlete 2026-11-24: 3 x 12 min at 220 W in ERG; the peers closed
+        # their reps at 150 bpm. 3 bpm more is "gleich", 5 less "besser",
+        # 5 more "schlechter".
+        def sweet_spot(day: str, heart: int) -> dict[str, Any]:
+            return _row(
+                day,
+                {
+                    "structure": "interval",
+                    "output_unit": "W",
+                    "rep_count": 3,
+                    "median_rep_s": 720,
+                    "rep_output_mean": 220,
+                    "heart_rate_end_mean": heart,
+                },
+                sport="ride",
+                environment="indoor",
+            )
+
+        peers = [
+            sweet_spot(day, 150) for day in ("2026-08-30", "2026-08-23", "2026-08-16")
+        ]
+        for heart, verdict in ((153, "gleich"), (145, "besser"), (155, "schlechter")):
+            records = [sweet_spot("2026-09-06", heart), *peers]
+            types = session_types(
+                records,
+                {row["activity_id"]: {"focus": "sweet_spot"} for row in records},
+                None,
+            )
+            with self.subTest(heart=heart):
+                found = comparable_sessions(
+                    records, "act_2026-09-06", types=types, erg=True
+                )
+                self.assertEqual(
+                    ("heart_rate_at_same_power", verdict),
+                    (found["progress"]["marker"], found["progress"]["verdict"]),
+                )
+        # A ride whose power the athlete set keeps power against heart rate.
+        free = comparable_sessions(records, "act_2026-09-06", types=types)
+        self.assertEqual("rep_output_mean", free["progress"]["marker"])
+
     def test_faster_at_a_clearly_higher_heart_rate_is_level(self) -> None:
         # The athlete's threshold example: 6 s/km faster than the median 280,
         # but 5 bpm higher (157 against 152), is "gleich"; 1 bpm higher is
