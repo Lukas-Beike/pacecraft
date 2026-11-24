@@ -151,6 +151,18 @@ def failed_tests(output):
     return failures
 
 
+def first_report(output):
+    """The first readable error report: the one `failed_tests` takes its first
+    failure from (it skips unreadable ones), or None."""
+    for report in error_reports(output):
+        try:
+            report.read_bytes()
+        except OSError:
+            continue
+        return report
+    return None
+
+
 def failure_message(child, code, failures, report=None):
     """The child's failure line; `report` names the first failing test's
     error-context.md, whose full text the 300-character line may cut (#4158)."""
@@ -1300,10 +1312,7 @@ class Execution:
                     )
                 failures = failed_tests(output)
                 evidence.child(child, failures=failures)
-                reports = error_reports(output)
-                message = failure_message(
-                    child, code, failures, reports[0] if reports else None
-                )
+                message = failure_message(child, code, failures, first_report(output))
                 if not self.args.keep_going:
                     raise RunnerError(message)
                 self.kept_failures.append(message)

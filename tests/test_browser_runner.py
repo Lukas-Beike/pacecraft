@@ -689,9 +689,28 @@ class BrowserRunnerTests(unittest.TestCase):
         report = Path("out") / "artifacts" / "a" / "error-context.md"
         message = runner.failure_message(child, 1, [failure], report)
         self.assertTrue(message.endswith(f"; report: {report}"))
-        extended = runner.failure_message(child, 1, [failure], "\\\\?\\C:\\r\\error-context.md")
+        extended = runner.failure_message(
+            child, 1, [failure], "\\\\?\\C:\\r\\error-context.md"
+        )
         self.assertTrue(extended.endswith("; report: C:\\r\\error-context.md"))
         self.assertNotIn("report:", runner.failure_message(child, 1, [failure]))
+        # The path is the first readable report's, the one the shown error comes from.
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory)
+            self.assertIsNone(runner.first_report(output))
+            for name in ("a", "b"):
+                path = output / "artifacts" / name / "error-context.md"
+                path.parent.mkdir(parents=True)
+                path.write_text("- Location: e2e/x.spec.js:1:1\n", encoding="utf-8")
+            unreadable = output / "artifacts" / "a" / "error-context.md"
+            original = Path.read_bytes
+            def read_bytes(path):
+                if path.name == "error-context.md" and path.parent.name == "a":
+                    raise OSError("locked")
+                return original(path)
+            with mock.patch.object(Path, "read_bytes", read_bytes):
+                self.assertEqual("b", runner.first_report(output).parent.name)
+            self.assertEqual(unreadable.name, runner.first_report(output).name)
 
     def test_first_error_line_stays_inside_the_error_block(self):
         self.assertEqual("", runner.first_error_line(["# Test info"]))
