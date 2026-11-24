@@ -50,6 +50,7 @@ from backend.weather.activity_weather import (
     heat_note,
     reduce_hourly,
     utc_days,
+    weather_pending,
 )
 from backend.weather.activity_weather_store import (
     home_coordinates,
@@ -139,6 +140,23 @@ class RequestTests(unittest.TestCase):
         self.assertEqual(
             datetime(2026, 9, 9, 23, 0, tzinfo=UTC), activity_window(local, 60)[0]
         )
+
+
+class WeatherPendingTests(unittest.TestCase):
+    def test_a_session_before_2022_or_of_the_last_48_hours_is_not_a_gap(
+        self,
+    ) -> None:
+        # #4136: the stage looks a session up 48 hours after its end, from
+        # 2022-01-01 on; only then is a missing weather a gap.
+        now = datetime(2026, 9, 7, 23, 59, tzinfo=UTC)
+        for start, expected in (
+            (datetime(2021, 12, 31, 10, tzinfo=UTC), "before_first_day"),
+            (datetime(2026, 9, 6, 10, tzinfo=UTC), "not_settled"),
+            (datetime(2026, 9, 5, 10, tzinfo=UTC), None),
+        ):
+            with self.subTest(start=start):
+                end = start + timedelta(hours=1)
+                self.assertEqual(expected, weather_pending(start, end, now))
 
 
 class ReductionTests(unittest.TestCase):

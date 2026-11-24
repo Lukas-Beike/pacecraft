@@ -40,11 +40,12 @@ from backend.nutrition.energy_inputs import (
     session_streams,
 )
 from backend.nutrition.energy_view import (
+    DAYS_BEFORE_SESSION,
     FIT_PERIODS,
     LONG_PERIODS,
     OwnHistory,
+    days_before,
     own_history,
-    read_days_before,
     read_energy_view,
     read_fit_inputs,
     selected_day,
@@ -303,8 +304,21 @@ def build_nutrition(ctx: AppContext) -> NutritionServices:
             )
 
     def energy_before(day: date) -> dict[str, Any]:
-        with ctx.database().reader() as db:
-            return read_days_before(db, energy_sources(), day)
+        # The days before a session (#4136): from the kept history the energy
+        # view reads, so the balance is the app's own and costs no new read;
+        # an older session's days from their own history.
+        days = [day - timedelta(days=n) for n in range(DAYS_BEFORE_SESSION, 0, -1)]
+        end = ctx.clock.now().date() - timedelta(days=1)
+        if history_start(end) <= days[0] and days[-1] <= end:
+            kept_end, history = kept_history()
+            if kept_end != end:
+                kept_end, history = yesterdays_history()
+        else:
+            with ctx.database().reader() as db:
+                history = own_history(db, energy_sources(), days[-1])
+        inputs, windows, health = history
+        own = own_totals(inputs, windows, health, days)
+        return days_before(days, inputs, own, health)
 
     return NutritionServices(
         # Runtime-only provider tokens for the log redactor.

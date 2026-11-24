@@ -1544,28 +1544,19 @@ def read_own_day_totals(
 DAYS_BEFORE_SESSION: Final = 3
 
 
-def read_days_before(db: Any, sources: EnergySources, day: date) -> dict[str, Any]:
-    """Intake, expenditure and balance of the ``DAYS_BEFORE_SESSION`` days before
-    ``day``, for a session's analysis (#4136).
-
-    The expenditure is the own day total (the diary's own day row), else the
-    whole day's Garmin total, named per day; a day without either, or without
-    intake, has no balance. The mean balance needs every day.
-    """
-    days = [day - timedelta(days=n) for n in range(DAYS_BEFORE_SESSION, 0, -1)]
-    inputs, windows, health = own_history(db, sources, days[-1])
-    return days_before(
-        days, inputs, own_day_totals(inputs, windows, health, days), health
-    )
-
-
 def days_before(
     days: Sequence[date],
     inputs: EnergyInputs,
     own: Mapping[date, float | None],
     health: Mapping[str, Mapping[str, Any]],
 ) -> dict[str, Any]:
-    """The rows and mean balance ``read_days_before`` returns. Pure."""
+    """Intake, expenditure and balance of ``days``, the days before a session,
+    for its analysis (#4136). Pure.
+
+    The expenditure is the own day total (the diary's own day row), else the
+    device's whole-day total, named per day; a day without either, or without
+    intake, has no balance. The mean balance needs every day.
+    """
     rows = [
         _day_before(d, inputs, own.get(d), health.get(d.isoformat(), {})) for d in days
     ]

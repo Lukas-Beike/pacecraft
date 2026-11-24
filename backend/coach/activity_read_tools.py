@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import re
 from collections.abc import Callable, Mapping, Sequence
-from datetime import date, datetime, time, timedelta
+from datetime import UTC, date, datetime, time, timedelta
 from typing import Any, Final
 
 from backend.activities.hr_cap import stored_cap
@@ -16,6 +16,7 @@ from backend.athlete.profile import ProfileService
 from backend.canonical.activity_summary import (
     legacy_activity_keys,
     stored_activity_key,
+    summary_duration_s,
     summary_is_electric,
 )
 from backend.coach.context import (
@@ -62,6 +63,7 @@ from backend.planning import leg_strength
 from backend.planning.race_plan import race_plan
 from backend.planning.sport import planned_sport_environment
 from backend.sync.garmin import GarminPayloadService
+from backend.weather.activity_weather import activity_window, weather_pending
 
 # Per-field source labels, zone-time arrays and executed strength sets stay in
 # get_activity_details; the list keeps each session's scalar values and its
@@ -757,8 +759,10 @@ class CoachActivityReadToolService:
         found: dict[str, Any] = {}
         if self._energy_before is not None:
             found["energy_before"] = self._energy_before(day)
-        if "weather" not in detail:
-            found["weather"] = _weather_gap(session)
+        if not detail.get("weather"):
+            # The end of the athlete's today stands in for now.
+            now = datetime.combine(self._today(), time.max, tzinfo=UTC)
+            found["weather"] = _weather_gap(session, now)
         return found
 
     def _step_test(
@@ -1114,11 +1118,29 @@ class CoachActivityReadToolService:
             raise AppError(400, error, reason="invalid_list_request") from exc
 
 
-def _weather_gap(session: Mapping[str, Any]) -> dict[str, Any]:
-    """Why a run or ride has no stored weather: indoors none is looked up,
-    outdoors the app's look-up left a gap."""
+# Why the weather stage has not looked a session up yet (#4136): no gap.
+_WEATHER_PENDING: Final = {
+    "before_first_day": "Für Einheiten vor 2022 ruft die App kein Wetter ab.",
+    "not_settled": "Das Wetter wird erst 48 Stunden nach der Einheit abgerufen.",
+}
+
+
+def _weather_gap(session: Mapping[str, Any], now: datetime) -> dict[str, Any]:
+    """Why a run or ride has no stored weather: indoors none is looked up, a
+    session before 2022 or of the last 48 hours not yet; else the app's own
+    look-up left a gap."""
     if session.get("environment") in INDOOR_ENVIRONMENTS:
         return {"status": "not_applicable", "reason": "Drinnen: kein Wetter."}
+    try:
+        window = activity_window(
+            datetime.fromisoformat(str(session.get("started_at"))),
+            session.get("elapsed_duration_s") or summary_duration_s(session),
+        )
+    except ValueError:
+        window = None
+    pending = None if window is None else weather_pending(*window, now)
+    if pending is not None:
+        return {"status": "pending", "reason": _WEATHER_PENDING[pending]}
     return {
         "status": "missing",
         "reason": "Datenlücke: Die App ruft das Wetter für Läufe und Radfahrten draußen ab, zu dieser Einheit ist keins gespeichert.",

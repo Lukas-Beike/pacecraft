@@ -2317,7 +2317,9 @@ def _fact_checks(facts: _Facts) -> list[dict[str, Any]]:
             )
         )
     weather = _mapping(facts.result.get("weather"))
-    if weather and facts.sport in ("run", "ride"):
+    # Indoors there is no weather to explain anything (#4136).
+    outdoors = weather.get("status") != "not_applicable"
+    if weather and outdoors and facts.sport in ("run", "ride"):
         checks.append(_heat(facts, weather))
     inputs = _mapping(facts.result.get(session_conditions.INPUTS))
     if facts.sport in ("run", "ride"):
