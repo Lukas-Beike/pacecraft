@@ -496,6 +496,10 @@ class GuardHookTests(unittest.TestCase):
             "git grep -Opython x scripts/r*.py",
             "git grep --open-files-in-pager=python x scripts/r*.py",
             "git grep --open python x scripts/r*.py",
+            "git grep -nOpython x -- 'scripts/r*'",
+            "git grep --op=python x -- 'scripts/r*'",
+            'cat <<\'echo\' "\n" ; python scripts/r*.py 1 PRRT_x ; echo "\necho\n"\necho',
+            "echo @'\nx'\n<<'EOF'\n'@ ; python scripts/r*.py 1 PRRT_x\nEOF",
             # #4155: a double-quoted pattern keeps the old rule (1b declined).
             'git grep -n "planning_store\\.\\(insert\\|update\\)[a-z_]*" -- backend',
             # #3982: a single-quoted inside is read literally, nothing else is.

@@ -357,21 +357,20 @@ def heredoc_removed(command: str) -> str | None:
     opener = HEREDOC.search(command)
     if opener is None:
         return None
-    # Inside quotes, after an escape or in a comment `<<` starts no heredoc, and
-    # the lines after it run: the text before it must read plainly.
-    before = QUOTED.sub("@", command[: opener.start()])
-    if "'" in before or '"' in before or UNREADABLE.search(before):
-        return None
+    # Inside a string (a PowerShell here-string too), after an escape or in a
+    # comment `<<` starts no heredoc, and a quote on its line spans the body:
+    # its whole line must read plainly, without any quote mark (#4155 review).
     line_end = command.find("\n", opener.end())
     if line_end < 0:
+        return None
+    line = command[: opener.start()] + command[opener.end() : line_end]
+    if "'" in line or '"' in line or UNREADABLE.search(line):
         return None
     lines = command[line_end + 1 :].split("\n")
     if opener[2] not in lines:
         return None
     after = lines[lines.index(opener[2]) + 1 :]
-    return "\n".join(
-        [command[: opener.start()] + command[opener.end() : line_end], *after]
-    )
+    return "\n".join([line, *after])
 
 
 # The direct resolve mutation through an API call, outside the script (#3759);
@@ -413,6 +412,8 @@ RUNS_ARGUMENTS = re.compile(
     r"|--(?:exe|ext|upl|rec|open|hostname|shell|pre|python|config)\S*"
     r"|alias|extension|config|bisect|submodule|foreach)(?![\w-])|[{%]"
 )
+# `git grep`'s pager option, bundled (`-nO…`) or abbreviated (`--op`) (#4155).
+PAGER_OPTION = re.compile(r"(?<![\w-])(?:-[a-np-z\d]+o|--op)")
 # Text whose words the shells may split differently than this reading:
 # escapes, comments, history and alias marks, ANSI-C, substitutions,
 # typographic quotes PowerShell closes on, and heredocs, whose body a lone
@@ -495,7 +496,7 @@ def only_inert_programs(raw: str) -> bool:
         or RAW_UNREADABLE.search(raw)
         or UNREADABLE.search(QUOTED.sub(single_quoted_blank, raw))
         or any(
-            RUNS_ARGUMENTS.search(form)
+            RUNS_ARGUMENTS.search(form) or PAGER_OPTION.search(form)
             for form in (QUOTED.sub(" ", raw), unquoted(raw))
         )
     ):
