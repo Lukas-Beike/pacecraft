@@ -626,6 +626,7 @@ class AnalysisTests(unittest.TestCase):
         self.assertEqual(
             {
                 "band_bpm": [bpm - 10, bpm],
+                "floor_source": "plan",
                 "total_min": 61,
                 "in_band_min": 50,
                 "below_min": 10,
@@ -641,12 +642,20 @@ class AnalysisTests(unittest.TestCase):
                 if key not in {"in_band_pct", "after_warmup_mean_bpm"}
             },
         )
-        easy = [bpm - 20] * 2600 + [bpm - 7] * 1000
+        # 33 of 50 minutes after the warm-up below the plan's floor: too easy.
+        # A cap alone is a ceiling, so the same run below it is held.
+        easy = self.streams([bpm - 20] * 2600 + [bpm - 7] * 1000)
         self.assertEqual(
-            "too_easy",
-            heart_rate_cap_execution(cap, LTHR, self.streams(easy))["target_band"][
-                "verdict"
-            ],
+            ("too_easy", ("held", "cap")),
+            (
+                heart_rate_cap_execution(cap, LTHR, easy, bpm - 10)["target_band"][
+                    "verdict"
+                ],
+                tuple(
+                    heart_rate_cap_execution(cap, LTHR, easy)["target_band"][key]
+                    for key in ("verdict", "floor_source")
+                ),
+            ),
         )
 
     def test_without_a_stream_or_a_threshold_it_is_not_covered(self) -> None:

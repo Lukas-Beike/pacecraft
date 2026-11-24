@@ -756,7 +756,7 @@ A run unit whose focus has a cap in `HR_CAP_PERCENT` (`backend/activities/hr_cap
 
 #### Scenario: Minutes in the target band (#4136)
 - **WHEN** a capped run is judged
-- **THEN** `target_band` runs from the plan's own heart-rate floor (a single target from 5 bpm below it), else 10 bpm below the cap, up to the cap, and names the minutes in it, below it (with those of the first 10 minutes), above the cap, the peak and whether the heart rate after the warm-up sat below, at or above the band's middle; its verdict is `too_hard` like `above_cap`, `too_easy` with more than 25 % of the time after the warm-up below the band, else `held`, and `too_easy` makes the report's cap check notable.
+- **THEN** `target_band` runs from the floor of the plan's longest heart-rate step (a single target from 5 bpm below it), else 10 bpm below the cap (`floor_source` plan or cap), up to the cap, and names the minutes in it, below it (with those of the first 10 minutes), above the cap, the peak and whether the heart rate after the warm-up sat below, at or above the band's middle; its verdict is `too_hard` like `above_cap`, `too_easy` with more than 25 % of the time after the warm-up below a planned floor (a cap alone is a ceiling), else `held`, and `too_easy` makes the report's cap check notable.
 
 #### Scenario: Export to Wahoo
 - **WHEN** a run unit with a cap becomes a Wahoo plan

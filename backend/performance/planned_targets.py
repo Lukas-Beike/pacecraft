@@ -27,6 +27,7 @@ from backend.activities.hr_cap import (
     resolve_bpm,
 )
 from backend.activities.workout_load import (
+    SINGLE_TARGET_SHARE,
     TargetRange,
     ZoneSettings,
     hr_reference,
@@ -173,21 +174,29 @@ LEAN_BPM: Final = 1
 def planned_heart_rate_floor(
     steps: Sequence[Mapping[str, Any]], thresholds: ZoneSettings, sport: str
 ) -> float | None:
-    """The lower bound of the plan's first heart-rate target, None without one.
+    """The lower bound of the plan's main heart-rate target, None without one.
 
-    A range keeps its own floor; a single value (bounds within 1 bpm) has
-    ``TARGET_BELOW_BPM`` below it (#4136).
+    The main target is the longest step with a heart-rate target, so a warm-up
+    step's zone never sets it. A range keeps its own floor; a single value
+    (widened by ``SINGLE_TARGET_SHARE`` when resolved) has ``TARGET_BELOW_BPM``
+    below it (#4136). A floor of 0 (a zone from the bottom) is none.
     """
     ranges = _ranges(steps, thresholds, sport)
     if isinstance(ranges, dict):
         return None
-    for found in ranges:
-        if found.metric != "heartrate" or found.low is None or found.high is None:
-            continue
-        if math.isinf(found.high) or found.high - found.low >= 1:
-            return found.low
-        return (found.low + found.high) / 2 - TARGET_BELOW_BPM
-    return None
+    found = [
+        (float(step.get("duration") or 0), target)
+        for step, target in zip(steps, ranges, strict=True)
+        if target.metric == "heartrate" and target.low and target.high is not None
+    ]
+    if not found:
+        return None
+    main = max(found, key=lambda item: item[0])[1]
+    low, high = float(main.low or 0), float(main.high or 0)
+    single = math.isfinite(high) and math.isclose(
+        high * (1 - SINGLE_TARGET_SHARE), low * (1 + SINGLE_TARGET_SHARE)
+    )
+    return low / (1 - SINGLE_TARGET_SHARE) - TARGET_BELOW_BPM if single else low
 
 
 def heart_rate_cap_execution(
@@ -255,9 +264,11 @@ def _target_band(
     """Minutes in the target band, below it (and how many in the warm-up) and
     above the cap, the peak above it, where the heart rate sat after the warm-up
     and the verdict: ``too_hard`` like ``above_cap``, ``too_easy`` with more
-    than ``TOO_EASY_SHARE_PCT`` of the time after the warm-up below the band,
-    else ``held``."""
-    low = floor if floor is not None and floor < cap else cap - CAP_BAND_BPM
+    than ``TOO_EASY_SHARE_PCT`` of the time after the warm-up below the plan's
+    own floor, else ``held``. A cap alone is a ceiling: below it is never too
+    easy."""
+    planned = floor is not None and floor < cap
+    low = floor if floor is not None and planned else cap - CAP_BAND_BPM
     total = sum(span for _, span in spans)
     below = sum(span for value, span in spans if value < low)
     above = sum(span for value, span in spans if value > cap)
@@ -272,21 +283,28 @@ def _target_band(
     middle = (low + cap) / 2
     if above / total * 100 > CAP_ABOVE_SHARE_PCT:
         verdict = "too_hard"
-    elif after and (below - warmup) / after * 100 > TOO_EASY_SHARE_PCT:
+    elif planned and after and (below - warmup) / after * 100 > TOO_EASY_SHARE_PCT:
         verdict = "too_easy"
     else:
         verdict = "held"
-    lean = "middle"
+    lean = None if settled is None else "middle"
     if settled is not None and abs(settled - middle) > LEAN_BPM:
         lean = "below" if settled < middle else "above"
+    minutes = {
+        "total_min": round(total / 60),
+        "below_min": round(below / 60),
+        "above_cap_min": round(above / 60),
+    }
     return {
         "band_bpm": [round(low), round(cap)],
-        "total_min": round(total / 60),
-        "in_band_min": round((total - below - above) / 60),
+        "floor_source": "plan" if planned else "cap",
+        **minutes,
+        # The parts add up to the rounded total.
+        "in_band_min": max(
+            minutes["total_min"] - minutes["below_min"] - minutes["above_cap_min"], 0
+        ),
         "in_band_pct": round((total - below - above) / total * 100),
-        "below_min": round(below / 60),
         "below_in_warmup_min": round(warmup / 60),
-        "above_cap_min": round(above / 60),
         "peak_bpm": round(max((value for value, _ in spans), default=0.0)),
         "after_warmup_mean_bpm": None if settled is None else round(settled),
         "lean": lean,

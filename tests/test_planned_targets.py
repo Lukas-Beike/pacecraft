@@ -17,6 +17,7 @@ from backend.coach.activity_read_tools import CoachActivityReadToolService
 from backend.performance.activity_read_service import ActivityAnalysisReadService
 from backend.performance.planned_targets import (
     adherence_band,
+    planned_heart_rate_floor,
     planned_step_adherence,
     planned_target_execution,
 )
@@ -159,6 +160,25 @@ class StepTargetRangeTests(unittest.TestCase):
         )
         self.assertIsNone(target.metric)
         self.assertIsNotNone(target.unknown)
+
+
+class PlannedHeartRateFloorTests(unittest.TestCase):
+    """#4136: the target band's floor from the plan's main heart-rate step."""
+
+    def floor(self, description: str) -> float | None:
+        return planned_heart_rate_floor(
+            structured_steps(description), THRESHOLDS, "run"
+        )
+
+    def test_a_range_a_single_target_and_a_warm_up_step(self) -> None:
+        self.assertEqual(130.0, self.floor("- 70m 130-140bpm"))
+        # A single 140 bpm target: from 135 bpm, not its widened 136.5.
+        self.assertAlmostEqual(135.0, self.floor("- 70m 140bpm") or 0.0)
+        # The longer main step decides, never the warm-up's zone from 0 bpm.
+        self.assertEqual(
+            130.0, self.floor("Warmup\n- 10m Z1 HR\n\nMain\n- 70m 130-140bpm")
+        )
+        self.assertIsNone(self.floor("- 70m 60%"))
 
 
 class OpenTopZoneTests(unittest.TestCase):
