@@ -151,7 +151,42 @@ def _day_series(
     for point in series["points"]:
         if point["value"] is not None:
             point["source_label"] = labels[date.fromisoformat(point["date"])]
+    series["edge_means"] = _edge_means(series["points"], start, end)
     return series
+
+
+def _edge_means(
+    points: list[dict[str, Any]], start: date, end: date
+) -> dict[str, Any] | None:
+    """The change of a window as the mean of its last days minus the mean of its first.
+
+    One definition for every reader (the Körper charts, the Coach; the Verlauf
+    card shows the same edge means): 7 days at each end of a 4-week window, 14
+    for a longer one. A single weigh-in does not move it by itself. ``None``
+    while an edge has no value or the edges would meet (#4037, athlete decision
+    2026-11-24).
+    """
+    days = (end - start).days + 1
+    span = 7 if days <= 28 else 14
+    if days < 2 * span:
+        return None
+    first_end = (start + timedelta(days=span - 1)).isoformat()
+    last_start = (end - timedelta(days=span - 1)).isoformat()
+    values = [(p["date"], p["value"]) for p in points if p["value"] is not None]
+    first = [value for day, value in values if day <= first_end]
+    last = [value for day, value in values if day >= last_start]
+    if not first or not last:
+        return None
+    first_mean = sum(first) / len(first)
+    last_mean = sum(last) / len(last)
+    return {
+        "span_days": span,
+        "first_mean": round(first_mean, 2),
+        "last_mean": round(last_mean, 2),
+        "change": round(last_mean - first_mean, 2),
+        "first_count": len(first),
+        "last_count": len(last),
+    }
 
 
 def _quotient_series(

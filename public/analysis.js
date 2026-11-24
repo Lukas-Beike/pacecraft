@@ -126,12 +126,8 @@ function analysisChart(title, series, unit, start, end, note, {
     if (item.referenceLabel) info.append(h("span", "analysis-metric-context", item.referenceLabel));
     const readings = item.points.filter(valid);
     info.append(h("span", "analysis-metric-meta", item.coverageShort || analysisCoverageText(readings.length, item.cadenceDays === 7 ? periodCount[7] : item.points.length, item.cadenceDays === 7 ? "Wochen" : "Tagen")));
-    if (readings.length > 1) {
-      const first = readings[0];
-      const delta = Number(latest.value) - Number(first.value);
-      const change = analysisChange(delta, item.unit || unit);
-      info.append(h("span", "analysis-metric-change", `Seit ${dateLabel(first.observedDate || first.date)}: ${change}`));
-    }
+    const changeText = analysisChangeText(item, latest, readings, item.unit || unit);
+    if (changeText) info.append(h("span", "analysis-metric-change", changeText));
     legend.append(entry);
   });
   if (showLegend && analysisLegendRepeatsTitle(shown, title)) analysisLegendInfoToHeading(heading, legend, title);
@@ -185,6 +181,22 @@ function analysisLegendInfoToHeading(heading, legend, title) {
 function analysisLineStyle(item, index) {
   if (item.bars) return "solid";
   return item.line || (index ? "dashed" : "solid");
+}
+
+// A body series (``edgeMeans`` null or set) names its change by the edge means only, and none while an edge
+// is empty: never last minus first, the second definition (#4037). Every other series keeps "Seit".
+function analysisChangeText(item, latest, readings, unit) {
+  if (item.edgeMeans !== undefined) return item.edgeMeans ? analysisEdgeChangeText(item.edgeMeans, unit) : null;
+  if (readings.length < 2) return null;
+  const first = readings[0];
+  return `Seit ${dateLabel(first.observedDate || first.date)}: ${analysisChange(Number(latest.value) - Number(first.value), unit)}`;
+}
+
+// Weight and body fat: the mean of the last days minus the mean of the first, the one definition of the
+// Körper charts, the Verlauf card and the Coach (#4037).
+function analysisEdgeChangeText(edges, unit) {
+  const span = edges.span_days === 7 ? "Wochenmittel" : `Mittel von ${edges.span_days / 7} Wochen`;
+  return `Änderung (${span}): ${analysisChange(edges.change, unit)} · Ø ${analysisValue(edges.first_mean, unit)} → Ø ${analysisValue(edges.last_mean, unit)}`;
 }
 
 // A change that rounds to zero carries no sign.
@@ -1498,6 +1510,7 @@ function bodyMetricChart(metric, title, unit, window, period, preferred = {}) {
     // A single measured week is still drawn as a point.
     minPoints: weekly ? 1 : 2,
     cadenceDays: weekly ? 7 : 1,
+    edgeMeans: power ? undefined : item.edge_means ?? null,
     explanation: metric === "cycling_w_per_kg"
       ? "Tageswert aus FTP geteilt durch das letzte Körpergewicht der vorherigen sieben Tage."
       : "Nur gemessene Tageswerte; fehlende Tage bleiben Lücken.",
