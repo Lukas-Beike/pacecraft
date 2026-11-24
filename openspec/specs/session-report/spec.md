@@ -74,7 +74,7 @@ The system SHALL add to every `get_activity_details` result a `session_report` (
 
 #### Scenario: Each planned segment against its window (#4136)
 - **WHEN** a run or ride has a paired planned unit whose steps were scored against their windows
-- **THEN** the report's fact `plan_segments` lists every step in order (warm-up, each work step and recovery, cool-down) with its planned target, minutes, time in target and band, its pace or power and its heart rate (mean, over its first and last 30 s, peak); a work step at least 1 % faster than the work step before names `faster_than_previous_work_pct`, so a rep started too fast shows.
+- **THEN** the report's fact `plan_segments` lists every step in order (warm-up, each work step and recovery, cool-down) with its planned target, minutes, time in target and band, its pace or power and its heart rate (mean, over its first and last 30 s, peak); a work step at least 1 % faster than the work step before with the same planned target names `faster_than_previous_work_pct`, so a rep started too fast shows and a planned progression does not.
 
 #### Scenario: Wind at body height
 - **WHEN** an outdoor run or ride has a stored headwind on its own track (#3084 Part 3b)

@@ -1458,8 +1458,9 @@ _SEGMENT_KEYS: Final = (
 
 def _plan_segments(facts: _Facts) -> dict[str, Any] | None:
     """Every planned segment against its window: warm-up, each work step and
-    recovery, cool-down; a work step faster than the one before names by how
-    much (pace s/km lower, power higher), so a rep started too fast shows."""
+    recovery, cool-down; a work step faster than the one before with the same
+    planned target names by how much (pace s/km lower, power higher), so a rep
+    started too fast shows and a planned progression does not."""
     steps = facts.result.get("plan_segments")
     if not isinstance(steps, list) or not steps:
         return None
@@ -1474,7 +1475,11 @@ def _plan_segments(facts: _Facts) -> dict[str, Any] | None:
         if row.get("role") == "work" and (output := _number(row.get("output")))
     ]
     pace = facts.execution.get("output") == "pace"
-    for (_, before), (row, output) in itertools.pairwise(work):
+    for (earlier, before), (row, output) in itertools.pairwise(work):
+        # A planned progression is no rep started too fast: only reps with the
+        # same planned target are compared.
+        if earlier.get("planned_target") != row.get("planned_target"):
+            continue
         faster = (before - output if pace else output - before) / before * 100
         if faster >= FASTER_SEGMENT_PCT:
             row["faster_than_previous_work_pct"] = round(faster, 1)
