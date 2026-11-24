@@ -48,6 +48,7 @@ from backend.performance.pace_at_hr import COMPARE_DAYS, session_comparison
 from backend.performance.planned_targets import (
     heart_rate_above,
     heart_rate_cap_execution,
+    planned_heart_rate_floor,
     planned_step_adherence,
     planned_target_execution,
     unit_steps,
@@ -1004,7 +1005,8 @@ class CoachActivityReadToolService:
         """The run's heart rate against the matched unit's stored cap, if it has one.
 
         The cap is stored in percent; the threshold HR in effect on the unit's
-        date resolves it to bpm.
+        date resolves it to bpm. The target band runs from the plan's own
+        heart-rate floor up to it.
         """
         if session.get("sport") != "run" or self._unit_thresholds is None:
             return None
@@ -1012,8 +1014,17 @@ class CoachActivityReadToolService:
         cap = None if unit is None else stored_cap(unit)
         if unit is None or cap is None:
             return None
-        lthr = self._unit_thresholds.thresholds(unit).lthr
-        return heart_rate_cap_execution(cap, lthr, detail.get("streams"))
+        thresholds = self._unit_thresholds.thresholds(unit)
+        steps = unit_steps(unit)
+        # The plan's own heart-rate range sets the target band's floor (#4136).
+        floor = (
+            planned_heart_rate_floor(steps, thresholds, "run")
+            if isinstance(steps, list)
+            else None
+        )
+        return heart_rate_cap_execution(
+            cap, thresholds.lthr, detail.get("streams"), floor
+        )
 
     def _planned_targets(
         self,

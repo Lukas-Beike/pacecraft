@@ -293,6 +293,22 @@ class ScorerTests(unittest.TestCase):
         self.assertEqual("long", report["focus"]["session_focus"])
         cap = report["planned_targets"]["heart_rate_cap"]
         self.assertEqual((140, "within_target"), (cap["cap_bpm"], cap["verdict"]))
+        # #4136: the plan's own 130-140 bpm range; the 10 warm-up minutes and 5
+        # more below it, one minute up to 143 bpm above the cap.
+        band = cap["target_band"]
+        self.assertEqual(
+            ([130, 140], 70, 15, 10, 1, 143, "held", "below"),
+            (
+                band["band_bpm"],
+                band["in_band_min"],
+                band["below_min"],
+                band["below_in_warmup_min"],
+                band["above_cap_min"],
+                band["peak_bpm"],
+                band["verdict"],
+                band["lean"],
+            ),
+        )
         self.assertEqual(
             {"hrv": 59.0, "resting_hr": 47.0, "sleep": 7.4},
             {row["metric"]: row["value"] for row in report["recovery_before"]},

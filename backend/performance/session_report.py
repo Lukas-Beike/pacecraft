@@ -663,6 +663,8 @@ def _heart_rate_cap(facts: _Facts, cap: Mapping[str, Any]) -> dict[str, Any]:
             str(cap.get("reason") or "Zeit über dem Deckel unbekannt."),
             basis="plan",
         )
+    # The minutes in, below and above the target band lead the analysis (#4136).
+    band = _mapping(cap.get("target_band"))
     return _judged(
         "heart_rate_cap",
         title,
@@ -672,13 +674,14 @@ def _heart_rate_cap(facts: _Facts, cap: Mapping[str, Any]) -> dict[str, Any]:
             "time_above_cap_pct": share,
             "cap_verdict": verdict,
             "max_bpm": facts.metric("max_hr"),
+            **({"target_band": dict(band)} if band else {}),
         },
         unit="%",
-        rule="Mittel über dem geplanten Herzfrequenz-Deckel oder mehr als 10 % der Zeit darüber",
+        rule="Mittel über dem geplanten Herzfrequenz-Deckel oder mehr als 10 % der Zeit darüber; nach dem Einlaufen mehr als 25 % der Zeit unter dem Zielband",
         threshold=CAP_ABOVE_SHARE_PCT,
         measure=share,
         basis="plan",
-        notable=verdict == "above_cap",
+        notable=verdict == "above_cap" or band.get("verdict") == "too_easy",
     )
 
 
