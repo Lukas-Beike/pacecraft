@@ -1,6 +1,9 @@
 """Squash-merge one develop pull request through auto-merge and optionally wait.
 
-    python scripts/pr_merge.py <pr> [--wait MINUTES] [--allow-behind]
+    python scripts/pr_merge.py <pr> [--wait MINUTES] [--allow-behind] [--any-branch]
+
+Refuses an open PR whose head is not this checkout's branch, unless --any-branch
+(#4182); it prints the PR's title and head branch first.
 
 Refuses a head when develop changed files this PR changes since it branched
 off, and disarms an armed auto-merge then (#2901: "up to date before merge" is
@@ -33,7 +36,7 @@ check completes, and refuses a failed one.
 A PR GitHub reports BEHIND develop is rebased right after arming, and once more
 with --wait after its first finished CI round (#3872): rebase only, pinned to the
 head, through the update-branch API; a refused rebase is reported and arming stands.
-Exit 0: merged (or armed, without --wait); 1: refused (a merge freeze, base is not develop, no Changelog line, an
+Exit 0: merged (or armed, without --wait); 1: refused (a merge freeze, base is not develop, another branch, no Changelog line, an
 unresolved review thread, develop changed this PR's files, or GitHub kept
 reporting another head than the pushed one, or Gitar has not reviewed the head
 or failed it), closed unmerged,
@@ -529,6 +532,11 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="arm even when develop has commits the head lacks (#2901)",
     )
+    top.add_argument(
+        "--any-branch",
+        action="store_true",
+        help="arm a PR whose head is not this checkout's branch (#4182)",
+    )
     args = top.parse_args(argv)
     # Review threads carry emoji; a Windows console is cp1252.
     if hasattr(sys.stdout, "reconfigure"):
@@ -541,6 +549,12 @@ def main(argv: list[str] | None = None) -> int:
             return 1
         rebased = ""
         if pr.get("state") == "OPEN":
+            # A mistyped number would arm another lane's PR (#4182).
+            head = pr.get("headRefName")
+            print(f"PR #{args.number}: {pr.get('title')} ({head})")
+            if not args.any_branch and head != git("branch", "--show-current").strip():
+                print("refused: not this checkout's branch; --any-branch arms it")
+                return 1
             gated = arming_gates(args.number, pr, current=current, minutes=args.wait)
             if isinstance(gated, int):
                 return gated
