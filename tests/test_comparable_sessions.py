@@ -358,11 +358,16 @@ class SessionTypeCohortTests(unittest.TestCase):
                 None,
             )
             with self.subTest(heart=heart):
-                found = comparable_sessions(records, "act_2026-09-06", types=types)
+                found = comparable_sessions(
+                    records, "act_2026-09-06", types=types, erg=True
+                )
                 self.assertEqual(
                     ("heart_rate_at_same_power", verdict),
                     (found["progress"]["marker"], found["progress"]["verdict"]),
                 )
+        # A ride whose power the athlete set keeps power against heart rate.
+        free = comparable_sessions(records, "act_2026-09-06", types=types)
+        self.assertEqual("rep_output_mean", free["progress"]["marker"])
 
     def test_faster_at_a_clearly_higher_heart_rate_is_level(self) -> None:
         # The athlete's threshold example: 6 s/km faster than the median 280,

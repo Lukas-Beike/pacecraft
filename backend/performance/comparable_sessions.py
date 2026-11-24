@@ -172,8 +172,12 @@ def comparable_sessions(
     *,
     covered_from: date | None = None,
     types: Mapping[str, Mapping[str, Any]] | None = None,
+    erg: bool = False,
 ) -> dict[str, Any]:
     """Compare one session's execution with its comparable earlier sessions.
+
+    ``erg`` marks a ride whose power the trainer held (``erg_like``): its
+    progress at the same power is the heart rate it cost (#4136).
 
     ``covered_from`` is the first day the records cover; an earlier peer window
     is cut there and named as truncated. ``types`` (``session_types``) keeps
@@ -219,6 +223,8 @@ def comparable_sessions(
     median, difference, median_peers, quartile = _medians(mine, peers, metrics)
     peers.sort(key=lambda row: str(row.get("date")), reverse=True)
     this, rows = _cohort_rows(own, peers, metrics)
+    if erg:
+        this["erg_like"] = True
     return {
         **base,
         "status": "ok",
@@ -377,10 +383,12 @@ def progress(
             "status": "not_covered",
             "reason": "Puls der vergleichbaren Einheiten fehlt, keine Entwicklung ablesbar.",
         }
-    # The same power (an ERG ride holds it): the heart rate it cost decides
-    # (athlete, 2026-11-24, #4136).
+    # An ERG ride at the same power: the heart rate it cost decides (athlete,
+    # 2026-11-24, #4136); any other ride keeps power against heart rate.
     same_power = (
-        this.get("output_unit") == "W" and abs(change) <= SAME_OUTPUT_SHARE * 100
+        this.get("erg_like") is True
+        and this.get("output_unit") == "W"
+        and abs(change) <= SAME_OUTPUT_SHARE * 100
     )
     return {
         "status": "ok",
