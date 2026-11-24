@@ -635,7 +635,7 @@ test("@responsive a completed session's card shows its equipment as a chip and a
   // The chip is in the head line right after opening, without "Details".
   const chip = card.locator(".planned-equipment-chip");
   await expect(chip).toBeVisible();
-  await expect(chip).toHaveText("\u{1F45F} Pegasus 40 · Vorschlag ▾");
+  await expect(chip).toHaveText("\u{1F45F} Pegasus 40 · vorgeschlagen ▾");
   await expect(card.locator(".planned-activity-more")).not.toHaveAttribute("open", "");
   expect(posts).toEqual([]);
   await chip.click();
@@ -658,7 +658,7 @@ test("@responsive a completed session's card shows its equipment as a chip and a
   await expect(row.getByRole("combobox", { name: "Schuh" })).toBeHidden();
   await receipt.getByRole("button", { name: "Rückgängig" }).click();
   await expect(receipt).toContainText("Zurückgenommen.");
-  await expect(chip).toHaveText("\u{1F45F} Pegasus 40 · Vorschlag ▾");
+  await expect(chip).toHaveText("\u{1F45F} Pegasus 40 · vorgeschlagen ▾");
   await expect(row.getByRole("combobox", { name: "Schuh" })).toBeHidden();
   await chip.click();
   await expect(row.getByRole("combobox", { name: "Schuh" })).toHaveValue("shoe-a");

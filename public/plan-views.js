@@ -1555,7 +1555,8 @@ function plannedActivityActions(actual, dateKey, title, entryKey) {
     plannedEntryDurationLabel(actual, actual),
     /^[\w:.-]{1,80}$/.test(id) ? `ID ${id}` : null,
   ].filter(Boolean).join(", ")}).`;
-  const coach = plannedCoachButton("Mit Coach besprechen", prompt, "secondary-button", "session_analysis");
+  // The one main action of an opened session; "Feedback" stays the quiet second one (#4129 K-11).
+  const coach = plannedCoachButton("Mit Coach besprechen", prompt, "push-button", "session_analysis");
   const feedback = h("button", { type: "button", className: "secondary-button planned-activity-feedback" }, "Feedback");
   feedback.addEventListener("click", () => globalThis.ActivityDetails.open({ ...actual, name: title }, { api, showDialog: showAccessibleDialog }));
   return [more, h("div", "planned-activity-actions", coach, feedback)];
@@ -2009,11 +2010,19 @@ function loadPlannedFuelling(section, query) {
   });
 }
 
+// The opened card's own close control (narrow view; the wide pane keeps its unit shown) and the profile with its zone key,
+// which stands under the profile it explains, not only at the end of the week (#4129 K-11, K-13).
+function appendOpenedPlannedFrame(details, head, entry, actual) {
+  const detailProfile = details.querySelector(".planned-detail-profile") ? null : plannedDetailProfile(actual?.workout_profile || entry.workout_profile);
+  head.after(...(detailProfile ? [detailProfile, plannedZoneLegend(detailProfile)].filter(Boolean) : []));
+  if (details.querySelector(":scope > .planned-card-close")) return;
+  const close = h("button", { type: "button", className: "icon-button planned-card-close", "aria-label": "Einheit schließen" }, "✕");
+  close.addEventListener("click", () => { details.open = false; details.querySelector("summary")?.focus(); });
+  details.querySelector("summary")?.after(close);
+}
+
 function appendOpenedPlannedParts(details, head, entry, actual) {
-  if (!details.querySelector(".planned-detail-profile")) {
-    const detailProfile = plannedDetailProfile(actual?.workout_profile || entry.workout_profile);
-    if (detailProfile) head.after(detailProfile);
-  }
+  appendOpenedPlannedFrame(details, head, entry, actual);
   const upcoming = details.dataset.dateKey >= timezoneDateKey(state.data?.profile?.timezone, new Date());
   const fuellingQuery = actual || !upcoming ? null : plannedFuellingQuery(entry, details.dataset.dateKey);
   if (fuellingQuery) {
@@ -2073,7 +2082,7 @@ function plannedEquipmentShown(choice) {
   const preset = current ?? choice.suggested ?? null;
   let tag = "";
   if (effective) tag = plannedEquipmentSourceLabel(effective.source);
-  else if (own === null && preset !== null) tag = "Vorschlag";
+  else if (own === null && preset !== null) tag = "vorgeschlagen";
   const shown = preset === null ? "–" : named(preset) || "Nicht mehr verfügbar";
   return { own, current, preset, shown, tag };
 }

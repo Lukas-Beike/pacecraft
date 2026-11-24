@@ -2215,6 +2215,9 @@ button:focus-visible, a:focus-visible, summary:focus-visible {
 .week-review-head span { margin-left: auto; color: var(--muted); font-size: .76rem; font-variant-numeric: tabular-nums; }
 .week-review > .loading-state, .week-review > .error-state { margin: 0 12px 12px; }
 .week-review-tiles { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; padding: 0 12px 12px; }
+.week-review-tile:last-child:nth-child(odd) { grid-column: 1 / -1; }
+.planned-card-close { display: flex; align-items: center; justify-content: center; min-width: 44px; min-height: 44px; margin: 0 8px 0 auto; }
+@media (min-width: 1100px) { .planned-card-close { display: none; } }
 .week-review-tile { min-width: 0; padding: 8px 10px; border-radius: var(--radius-sm); background: var(--surface); }
 .week-review-tile small { display: block; color: var(--muted); font-size: .72rem; }
 .week-review-tile b { font-size: 1rem; font-variant-numeric: tabular-nums; }
