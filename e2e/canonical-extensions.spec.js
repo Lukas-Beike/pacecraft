@@ -9,21 +9,21 @@ async function openFixtureActivity(page, request) {
   const entry = page.locator(".planned-entry").filter({ hasText: "Synthetic ride <img src=x>" }).first();
   // On wide screens a unit of the week may already be open as the detail pane.
   if (!(await entry.evaluate((element) => element.open))) await entry.locator(":scope > summary").click();
-  await entry.getByRole("button", { name: "Feedback" }).click();
-  const dialog = page.getByRole("dialog", { name: "Synthetic ride <img src=x>" });
-  await expect(dialog.getByRole("button", { name: "Feedback speichern" })).toBeVisible();
+  await entry.getByRole("button", { name: "Feedback", exact: true }).click();
+  const dialog = page.getByRole("dialog", { name: "Wie war die Einheit?" });
+  await expect(dialog.getByLabel("Notiz")).toBeVisible();
   return dialog;
 }
 
 test("@responsive activity feedback save shows a receipt whose undo restores it", async ({ page, request }) => {
   const dialog = await openFixtureActivity(page, request);
-  await dialog.getByLabel("Notizen").fill("Undo me");
-  await dialog.getByRole("button", { name: "Feedback speichern" }).click();
+  await dialog.getByLabel("Notiz").fill("Undo me");
+  await dialog.getByLabel("Notiz").press("Tab");
   const status = dialog.locator('.activity-feedback [role="status"]');
   await expect(status).toContainText("Feedback gespeichert");
   await status.getByRole("button", { name: "Rückgängig" }).click();
   await expect(status).toHaveText("Zurückgenommen.");
-  await expect(dialog.getByLabel("Notizen")).toHaveValue("");
+  await expect(dialog.getByLabel("Notiz")).toHaveValue("");
   const payload = await (await request.get("/api/activities/9000001")).json();
   expect(payload.activity_feedback ?? null).toBeNull();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBeTruthy();
