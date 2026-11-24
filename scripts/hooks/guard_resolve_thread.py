@@ -347,7 +347,7 @@ def matching_word(command: str) -> str | None:
 
 # One heredoc whose delimiter word is quoted, so bash expands nothing in its body.
 # Blanks around it: bash glues an adjacent word to the delimiter (#4155 review).
-HEREDOC = re.compile(r"(?<=[ \t])<<[ \t]*(['\"])([A-Za-z0-9_]+)\1(?=[ \t\n])")
+HEREDOC = re.compile(r"(?<=[ \t])<<[ \t]*(['\"])(\w+)\1(?=[ \t\n])")
 # The rest of the opener's line: plain words, redirections and separators only;
 # no quote, escape, comment, substitution or arithmetic (#4155 reviews).
 HEREDOC_LINE = re.compile(r"[\w \t./=>|;&-]*")
