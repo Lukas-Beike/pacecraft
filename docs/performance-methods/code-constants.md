@@ -69,6 +69,7 @@ every named number the code fixes. A test fails when it is out of date.
 | `PROGRESS_PCT` | `1.0` | `backend/performance/comparable_sessions.py` | Progress (#4136): the type's marker changed by at least this share of the peers' median; a heart rate at most this much higher keeps "besser"; a decoupling change of at least this many points decides a level pace. |
 | `PROGRESS_HEART_RATE_BPM` | `2` | `backend/performance/comparable_sessions.py` |  |
 | `PROGRESS_DECOUPLING_PTS` | `2.0` | `backend/performance/comparable_sessions.py` |  |
+| `SAME_POWER_HEART_RATE_BPM` | `4` | `backend/performance/comparable_sessions.py` | At the same power (within SAME_OUTPUT_SHARE) a heart rate this many bpm lower is better, as much higher worse; a smaller change is day-to-day noise (athlete, 2026-11-24: +3 bpm in ERG is "gleich"). |
 | `RECENT_PEERS` | `3` | `backend/performance/comparable_sessions.py` | The duration change is measured against this many of the newest peers. |
 | `SAME_OUTPUT_SHARE` | `0.05` | `backend/performance/comparable_sessions.py` | Interval peers within this share of the session's rep power (#3084, ERG). |
 | `EFFORT_METHOD` | `'equal-effort-trend-v1'` | `backend/performance/comparable_sessions.py` |  |

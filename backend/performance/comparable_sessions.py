@@ -94,6 +94,10 @@ MIN_LISTED: Final = 2
 PROGRESS_PCT: Final = 1.0
 PROGRESS_HEART_RATE_BPM: Final = 2
 PROGRESS_DECOUPLING_PTS: Final = 2.0
+# At the same power (within SAME_OUTPUT_SHARE) a heart rate this many bpm lower
+# is better, as much higher worse; a smaller change is day-to-day noise
+# (athlete, 2026-11-24: +3 bpm in ERG is "gleich").
+SAME_POWER_HEART_RATE_BPM: Final = 4
 # The duration change is measured against this many of the newest peers.
 RECENT_PEERS: Final = 3
 _UNTYPED: Final = {
@@ -373,10 +377,17 @@ def progress(
             "status": "not_covered",
             "reason": "Puls der vergleichbaren Einheiten fehlt, keine Entwicklung ablesbar.",
         }
+    # The same power (an ERG ride holds it): the heart rate it cost decides
+    # (athlete, 2026-11-24, #4136).
+    same_power = (
+        this.get("output_unit") == "W" and abs(change) <= SAME_OUTPUT_SHARE * 100
+    )
     return {
         "status": "ok",
-        "marker": output_key,
-        "verdict": _verdict(better, heart),
+        "marker": "heart_rate_at_same_power" if same_power else output_key,
+        "verdict": _same_power_verdict(heart)
+        if same_power
+        else _verdict(better, heart),
         "peers": len(outputs),
         "output_unit": this.get("output_unit"),
         "output": own_output,
@@ -384,6 +395,14 @@ def progress(
         "change_pct": round(change, 1),
         "heart_rate_change_bpm": heart,
     }
+
+
+def _same_power_verdict(heart: float) -> str:
+    """besser when the same power cost at least ``SAME_POWER_HEART_RATE_BPM``
+    less heart rate, schlechter when as much more; else gleich."""
+    if heart <= -SAME_POWER_HEART_RATE_BPM:
+        return "besser"
+    return "schlechter" if heart >= SAME_POWER_HEART_RATE_BPM else "gleich"
 
 
 def _verdict(better: float, heart: float, limit: float = PROGRESS_PCT) -> str:

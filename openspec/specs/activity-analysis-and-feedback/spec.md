@@ -273,7 +273,7 @@ The system SHALL set a run's or ride's execution against comparable earlier sess
 
 #### Scenario: Progress of the session type (#4136)
 - **WHEN** at least three peers carry the type's marker
-- **THEN** `progress.verdict` is `besser`, `gleich` or `schlechter`: steady easy and long runs by the pace in the shared heart-rate band, 1 % against the peers' median, a level pace decided by a decoupling change of 2 points; other sessions by their main or rep output, 1 % against the median, "gleich" when it came with a heart rate more than 2 bpm higher (better) or lower (worse); the session report states it as the `type_progress` fact.
+- **THEN** `progress.verdict` is `besser`, `gleich` or `schlechter`: steady easy and long runs by the pace in the shared heart-rate band, 1 % against the peers' median, a level pace decided by a decoupling change of 2 points; other sessions by their main or rep output, 1 % against the median, "gleich" when it came with a heart rate more than 2 bpm higher (better) or lower (worse); a ride at the same power (within 5 %, as ERG holds it) by its heart rate, 4 bpm lower better, 4 bpm higher worse (athlete, 2026-11-24); the session report states it as the `type_progress` fact.
 
 #### Scenario: Too few peers
 - **WHEN** fewer than two sessions compare, or the session lies outside the curve window
