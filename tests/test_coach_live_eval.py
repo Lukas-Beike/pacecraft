@@ -314,6 +314,15 @@ class ScorerTests(unittest.TestCase):
             {row["metric"]: row["value"] for row in report["recovery_before"]},
         )
         self.assertEqual(14.0, report["weather"]["temperature_c"])
+        # #4136: 1700 kcal logged against Garmin's 2400 on each of the three
+        # days before; yesterday's run without stored weather is not a gap,
+        # its weather is looked up 48 hours after the run.
+        facts = {
+            fact["id"]: fact["value"] for fact in report["session_report"]["facts"]
+        }
+        self.assertEqual(-700, facts["energy_before"]["mean_balance_kcal"])
+        bare = live.session_report_snapshot(CASES["a02-session-numbers-from-report"])
+        self.assertEqual("pending", bare["weather"]["status"])
         # #4136: only the four earlier long runs, never the easy run of the
         # same shape; 86 minutes against 80, faster in the same heart-rate band.
         compared = report["comparable_sessions"]

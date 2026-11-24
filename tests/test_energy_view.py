@@ -32,6 +32,7 @@ from backend.nutrition.energy_inputs import (
     read_energy_inputs,
 )
 from backend.nutrition.energy_view import (
+    days_before,
     energy_view,
     own_day_totals,
     own_history,
@@ -121,6 +122,28 @@ def learned_kcal(item: dict[str, Any]) -> int:
 
 
 class EnergyViewTests(unittest.TestCase):
+    def test_the_days_before_a_session_name_their_balance(self) -> None:
+        # #4136: 1700 kcal eaten against the own total 2500 (-800) or, without
+        # one, Garmin's whole day 2400 (-700); a day Garmin ended early and an
+        # unlogged day have no balance, so there is no mean.
+        days = [END - timedelta(days=n) for n in (3, 2, 1)]
+        inputs = EnergyInputs(
+            {day: DayInputs(intake_kcal=1700.0) for day in days[:2]}, {}, None
+        )
+        own = {days[0]: 2500.0, days[1]: None, days[2]: None}
+        health = {
+            days[1].isoformat(): {"calories": 2400},
+            days[2].isoformat(): {"calories": 1900, "wellness_end_min": 900},
+        }
+        found = days_before(days, inputs, own, health)
+        self.assertEqual(
+            [(-800, "own"), (-700, "device"), (None, None)],
+            [(row["balance_kcal"], row["expenditure_source"]) for row in found["days"]],
+        )
+        self.assertIsNone(found["mean_balance_kcal"])
+        both = days_before(days[:2], inputs, own, health)
+        self.assertEqual(-750, both["mean_balance_kcal"])
+
     def test_rows_price_rest_from_lean_mass_with_a_band(self) -> None:
         # 80 kg at 15 % body fat: 68 kg lean mass. Katch-McArdle 370 + 21.6 x 68
         # = 1,838.8; band hypot(10 % = 183.88, 1.96 x 21.6 x 80 x 3.5 % = 118.54)

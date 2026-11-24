@@ -276,6 +276,19 @@ class EasySessionTests(unittest.TestCase):
         )
         self.assertNotIn("type_progress", [fact["id"] for fact in untyped["facts"]])
 
+    def test_the_energy_before_and_a_weather_gap_are_named(self) -> None:
+        # #4136: the days-before balance comes as a fact; a missing weather
+        # makes the heat check unknown with the gap's own reason.
+        energy = {"days": [], "mean_balance_kcal": -700, "reason": None}
+        gap = {"status": "missing", "reason": "Datenlücke: kein Wetter gespeichert."}
+        report = session_report(result(focus="long", energy_before=energy, weather=gap))
+        self.assertEqual(
+            energy,
+            {fact["id"]: fact["value"] for fact in report["facts"]}["energy_before"],
+        )
+        heat = checks(report)["heat"]
+        self.assertEqual(("unknown", gap["reason"]), (heat["verdict"], heat["reason"]))
+
     def test_heart_rate_spikes_make_heart_rate_checks_unknown(self) -> None:
         report = session_report(
             result(

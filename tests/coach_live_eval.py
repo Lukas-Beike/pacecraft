@@ -1229,6 +1229,16 @@ def _seed_long_runs(server: Any, unit: Any) -> None:
             db,
             {
                 "synced_at": "2026-09-07T08:00:00",
+                # Whole-day totals of the three days before the long run: with
+                # about 1700 kcal logged, about 700 kcal short a day.
+                "daily_stats": [
+                    {
+                        "calendarDate": d,
+                        "totalKilocalories": 2400,
+                        "bmrKilocalories": 1700,
+                    }
+                    for d in ("2026-09-03", "2026-09-04", "2026-09-05")
+                ],
                 "sleep": [
                     {"calendarDate": d, "sleepTimeSeconds": 26_640} for d in nights
                 ],
@@ -1443,6 +1453,12 @@ def snapshot(server: Any) -> dict[str, Any]:
     return state
 
 
+def _no_weather_look_up(stage: Any, _database: Any) -> None:
+    """The weather stage's prefetch without a request: nothing is fetched, so
+    every stored weather row is kept."""
+    stage._fetched, stage._halted = {}, False
+
+
 @contextlib.contextmanager
 def case_server(
     base_url: str,
@@ -1472,6 +1488,7 @@ def case_server(
 
     from backend.errors import AppError
     from backend.providers.open_food_facts import OpenFoodFactsClient
+    from backend.sync.activity_weather import ActivityWeatherStage
 
     server = fixtures.server
     with (
@@ -1507,6 +1524,11 @@ def case_server(
                     ),
                 )
         server.SETTINGS.save_thinking_level(thinking)
+        # The activity weather stays as seeded: the backfill worker never looks
+        # it up, so it neither reaches Open-Meteo nor replaces a seeded value.
+        stack.enter_context(
+            patch.object(ActivityWeatherStage, "prefetch", _no_weather_look_up)
+        )
         # Food lookups stay offline: Open Food Facts is unreachable and BLS finds
         # nothing; the web search is replaced per case in run_case.
         offline = AppError(503, "offline", reason="food_database_unavailable")

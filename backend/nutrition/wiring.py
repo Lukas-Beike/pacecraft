@@ -40,9 +40,11 @@ from backend.nutrition.energy_inputs import (
     session_streams,
 )
 from backend.nutrition.energy_view import (
+    DAYS_BEFORE_SESSION,
     FIT_PERIODS,
     LONG_PERIODS,
     OwnHistory,
+    days_before,
     own_history,
     read_energy_view,
     read_fit_inputs,
@@ -84,6 +86,8 @@ class NutritionServices:
     energy_basis: Callable[[Any], dict[str, Any]]
     # Resting and daily expenditure per source and their fit (#3099).
     energy_view: EnergyView
+    # The balance of the days before a session's day, for its analysis (#4136).
+    energy_before: Callable[[date], dict[str, Any]]
     # One run re-checking every product (#3299); stopped at shutdown.
     product_refresh: ProductRefreshRunner
 
@@ -299,6 +303,23 @@ def build_nutrition(ctx: AppContext) -> NutritionServices:
                 db, energy_sources(), end, day, periods, days, today
             )
 
+    def energy_before(day: date) -> dict[str, Any]:
+        # The days before a session (#4136): from the kept history the energy
+        # view reads, so the balance is the app's own and costs no new read;
+        # an older session's days from their own history.
+        days = [day - timedelta(days=n) for n in range(DAYS_BEFORE_SESSION, 0, -1)]
+        end = ctx.clock.now().date() - timedelta(days=1)
+        if history_start(end) <= days[0] and days[-1] <= end:
+            kept_end, history = kept_history()
+            if kept_end != end:
+                kept_end, history = yesterdays_history()
+        else:
+            with ctx.database().reader() as db:
+                history = own_history(db, energy_sources(), days[-1])
+        inputs, windows, health = history
+        own = own_totals(inputs, windows, health, days)
+        return days_before(days, inputs, own, health)
+
     return NutritionServices(
         # Runtime-only provider tokens for the log redactor.
         secret_values=food_database.yazio_secret_values,
@@ -313,6 +334,7 @@ def build_nutrition(ctx: AppContext) -> NutritionServices:
             db, energy_sources(), ctx.clock.now().date()
         ),
         energy_view=energy_view,
+        energy_before=energy_before,
         product_refresh=ProductRefreshRunner(
             # Every product, not the first 1000 the list shows.
             lambda: meal_library_service().product_catalog.list_all_products(
