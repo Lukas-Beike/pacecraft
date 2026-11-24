@@ -454,6 +454,10 @@ The client SHALL show the nutrition area as Tagebuch, Verlauf, Körper and Produ
 - **WHEN** a day has no entries
 - **THEN** no total tiles show, the status reads "Noch keine Mahlzeiten erfasst." and "Dem Coach sagen" writes "Ich habe heute gegessen: " into the composer without sending it
 
+#### Scenario: Future day
+- **WHEN** the diary shows a day after today that has no entries
+- **THEN** no total tiles show, the status reads "Dieser Tag liegt in der Zukunft." and "Dem Coach sagen" is not offered
+
 #### Scenario: Failed load
 - **WHEN** a day cannot be loaded and no cached copy exists
 - **THEN** the requested date stays in the field and one error with "Erneut laden" is shown; with a cached copy the status reads "Gespeicherter Stand. Aktualisierung fehlgeschlagen: …".
