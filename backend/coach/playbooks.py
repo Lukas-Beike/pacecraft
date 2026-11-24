@@ -92,7 +92,7 @@ _RUN_SESSION = """Run block (session.sport run):
 - Beyond it cite only the averages of cadence and ground_contact_time_ms; prefer lap_pace for short reps."""
 
 _RIDE_SESSION = """Ride block (session.sport ride):
-- session_report judges VI, IF against the focus and climb cadence; erg_like: no power fade, equal-power heart rate judged, unless focus.test_evaluation says otherwise. Power and heart rate, never speed (speed_note). Reps in % of FTP, elevation and stops are facts; current_performance.thresholds.ftp_w is today's.
+- session_report judges VI, IF against the focus and climb cadence; erg_like: fade and progress are the heart rate at the same power, unless focus.test_evaluation says otherwise. Never speed (speed_note). Reps in % of FTP, elevation and stops are facts; current_performance.thresholds.ftp_w is today's.
 - Beyond it cite normalized_power; explain VI, IF and decoupling_pct in plain words or leave them out."""
 
 _SPORT_BLOCKS = {"run": _RUN_SESSION, "ride": _RIDE_SESSION}

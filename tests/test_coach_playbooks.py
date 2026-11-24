@@ -386,6 +386,9 @@ class PlaybookInjectionTests(unittest.TestCase):
             self.assertIn(marker, text)
         self.assertIn("lap_pace", playbook_for("session_analysis", "run"))
         ride = playbook_for("session_analysis", "ride")
+        # An ERG ride's progress is its heart rate at the same power (athlete,
+        # 2026-11-24, #4136).
+        self.assertIn("heart rate at the same power", ride)
         for marker in (
             "erg_like",
             "normalized_power",
