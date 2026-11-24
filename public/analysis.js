@@ -633,7 +633,8 @@ function appendAnalysisPointInspectors(section, svg, series, unit, { x, y, chart
       root?.querySelectorAll(".analysis-day-marker").forEach((node) => node.classList.toggle("is-selected", node.dataset.date === date));
       // The keyboard focus ring sits on the day's points, not around the tall hit column (#4025).
       svg.querySelectorAll(".analysis-focus-ring").forEach((ring) => ring.remove());
-      if (marker.matches(":focus-visible")) readings.forEach(({ point }) => svg.append(svgNode("circle", { cx: x(date), cy: y(point.value), r: 8, class: "analysis-focus-ring" })));
+      // Only series that are drawn get a ring (Gitar, #4204).
+      if (marker.matches(":focus-visible")) readings.filter(({ item }) => analysisPlottable(item)).forEach(({ point }) => svg.append(svgNode("circle", { cx: x(date), cy: y(point.value), r: 8, class: "analysis-focus-ring" })));
     });
     marker.addEventListener("blur", () => svg.querySelectorAll(".analysis-focus-ring").forEach((ring) => ring.remove()));
     svg.append(marker);
