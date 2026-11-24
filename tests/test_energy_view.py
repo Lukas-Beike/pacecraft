@@ -1120,11 +1120,11 @@ class DeficitCardTests(unittest.TestCase):
                 self.assertEqual(band, card["band_kcal"])
 
     def test_the_card_shows_the_stores_terms_and_the_real_expenditure(self) -> None:
-        # #3598: the readings span the phase (from 07.10.), not the window, and
-        # the window ends on its last weigh-in.
+        # #4037: the readings are the period's own (from 18.10.); the window ends
+        # on its last weigh-in.
         card = self.view(
             MEASURED._replace(
-                fat_date_start=date(2026, 10, 7),
+                fat_date_start=date(2026, 10, 20),
                 fat_date_end=date(2026, 11, 13),
                 weight_last_kg=89.24,
             )
@@ -1153,8 +1153,9 @@ class DeficitCardTests(unittest.TestCase):
                 "kcal_per_kg": 7916,
                 "fat_pct_start": 15.5,
                 "fat_pct_end": 14.1,
-                "fat_date_start": "2026-10-07",
+                "fat_date_start": "2026-10-20",
                 "fat_date_end": "2026-11-13",
+                "fat_last_only": False,
                 "weight_last_kg": 89.2,
                 "weight_date_start": None,
                 "weight_date_end": None,
@@ -1169,6 +1170,26 @@ class DeficitCardTests(unittest.TestCase):
             },
             card,
         )
+        # A first reading before the period leaves no comparison; a last one
+        # before it too is named alone (28 days end 14.11., so the period starts 18.10.).
+        for start, end, expected in (
+            (date(2026, 10, 7), date(2026, 11, 13), (None, None, False)),
+            (date(2026, 9, 3), date(2026, 10, 10), (None, None, True)),
+        ):
+            with self.subTest(start=start, end=end):
+                reaching = self.view(
+                    MEASURED._replace(fat_date_start=start, fat_date_end=end)
+                )
+                self.assertEqual(
+                    expected,
+                    (
+                        reaching["fat_pct_start"],
+                        reaching["fat_date_start"],
+                        reaching["fat_last_only"],
+                    ),
+                )
+                self.assertEqual(14.1, reaching["fat_pct_end"])
+                self.assertEqual(end.isoformat(), reaching["fat_date_end"])
         # The prior alone has one percentage at most; a surplus is a
         # negative deficit.
         prior = self.view(

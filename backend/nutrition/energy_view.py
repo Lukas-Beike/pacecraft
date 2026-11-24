@@ -805,10 +805,15 @@ def _goal_status(
     return {"goal": kind, "goal_kcal": kcal, "status": status, "distance": distance}
 
 
-def _measured_terms(store: StoredEnergy) -> dict[str, Any]:
+def _measured_terms(store: StoredEnergy, period_start: date) -> dict[str, Any]:
     """The deficit card's measured values, each null when missing: the body fat
-    readings and their days, which span the phase that sets the fat share, not
-    the window (#3598), and the window's last weigh-in."""
+    readings of the shown period and their days, and the window's last weigh-in.
+
+    The fat share rests on the phase's readings, which may reach back beyond the
+    period; the card compares only readings of the period itself (#4037). A
+    first reading before the period leaves no comparison, and a last reading
+    before it too is named by ``fat_last_only`` as "Letzte Messung dd.mm.".
+    """
 
     def one(value: float | None) -> float | None:
         return None if value is None else round(value, 1)
@@ -816,11 +821,14 @@ def _measured_terms(store: StoredEnergy) -> dict[str, Any]:
     def day(value: date | None) -> str | None:
         return None if value is None else value.isoformat()
 
+    before = store.fat_date_start is not None and store.fat_date_start < period_start
+    outside = store.fat_date_end is not None and store.fat_date_end < period_start
     return {
-        "fat_pct_start": one(store.fat_pct_start),
+        "fat_pct_start": None if before else one(store.fat_pct_start),
         "fat_pct_end": one(store.fat_pct_end),
-        "fat_date_start": day(store.fat_date_start),
+        "fat_date_start": None if before else day(store.fat_date_start),
         "fat_date_end": day(store.fat_date_end),
+        "fat_last_only": outside,
         "weight_last_kg": one(store.weight_last_kg),
         "weight_date_start": day(store.weight_date_start),
         "weight_date_end": day(store.weight_date_end),
@@ -897,7 +905,7 @@ def _deficit(
         # kcal per kg of weight change at the blended share, for the goal's
         # weekly weight (#3618).
         "kcal_per_kg": _round(energy_density(store.fat_share)),
-        **_measured_terms(store),
+        **_measured_terms(store, latest.end - timedelta(days=latest.days - 1)),
         "fat_change_kg": round(store.fat_change_kg, 1),
         # The fat share of the weight change (#3555).
         "fat_share_pct": round(100 * store.fat_change_kg / change)
