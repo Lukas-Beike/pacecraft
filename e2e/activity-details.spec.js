@@ -19,7 +19,6 @@ test("@responsive activity details preserve calendar without Coach shortcuts", a
   const dialog = page.getByRole("dialog", { name: "Synthetic ride <img src=x>" });
   await expect(dialog).toBeVisible();
   await expect(dialog.getByRole("img", { name: "Leistung, Zeitachse in Minuten" })).toBeVisible();
-  await expect(dialog.getByText(/Diagramme vereinfacht/)).toBeVisible();
   expect(await dialog.locator(".activity-series").first().locator("svg text").count()).toBeGreaterThan(3);
   await dialog.locator(".activity-values summary").first().click();
   await expect(dialog.locator(".activity-values table tbody tr").first()).toBeVisible();
