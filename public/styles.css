@@ -389,7 +389,9 @@ h2 {
 .analysis-day-marker.is-selected rect { fill: var(--ink); fill-opacity: .08; }
 .analysis-chart-card svg :is(.analysis-axis-unit, .analysis-week-caption) { font-size: 11px; }
 .analysis-chart-legend { display: flex; flex-wrap: wrap; gap: 8px 16px; margin: 12px 0; padding: 0; list-style: none; color: var(--ink); font-size: .75rem; }
-.analysis-legend-info { display: inline; min-height: 0; width: auto; padding: 4px 0; border: 0; border-radius: 0; background: none; color: inherit; font: inherit; text-align: left; text-decoration: underline dotted; text-underline-offset: 3px; cursor: pointer; }
+.analysis-legend-info { display: inline; min-height: 0; width: auto; padding: 4px 0; border: 0; border-radius: 0; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+/* A tappable legend entry is plain text with a small info dot behind it, in every chart (#4025). */
+.analysis-legend-info:not(.analysis-info-icon)::after { content: "i"; display: inline-grid; place-items: center; flex: none; box-sizing: border-box; width: 1.2rem; height: 1.2rem; margin-left: 6px; border: 1.5px solid currentColor; border-radius: 50%; font-size: .72rem; font-weight: 700; line-height: 1; }
 .analysis-legend-info:focus-visible { outline: 2px solid var(--accent-bright); outline-offset: 3px; }
 .analysis-chart-legend .analysis-legend-info { display: inline-flex; align-items: center; justify-content: center; box-sizing: border-box; min-width: 44px; min-height: 44px; }
 .analysis-info-icon { position: relative; display: inline-grid; place-items: center; box-sizing: border-box; width: 44px; min-width: 44px; height: 44px; min-height: 44px; margin: -12px -8px -12px .2em; padding: 0; vertical-align: middle; text-decoration: none; font-size: .8rem; font-weight: 700; line-height: 1; }

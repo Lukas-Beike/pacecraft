@@ -74,6 +74,8 @@
         "Schwellenpace · 08.10.2026: 4:50 /km"
     <svg:path d="M60.00,95.00 L310.67,78.75 L436.00,62.50 " data-color="0" data-line="solid" data-series="0" fill="none">
     <svg:rect class="analysis-baseline-band" height="97.5" width="376" x="60" y="46.25">
+    <svg:text class="analysis-point-value analysis-average-value" paint-order="stroke" stroke="var(--surface)" stroke-linejoin="round" stroke-width="4" text-anchor="end" x="436" y="42.25">
+      "Mittlere Hälfte"
     <svg:circle cx="60" cy="127.5" data-color="1" data-series="1" r="2.5">
       <svg:title>
         "Zielpace · 05.10.2026: 5:10 /km"
@@ -83,7 +85,7 @@
     <svg:path d="M60.00,127.50 L436.00,111.25 " data-color="1" data-line="dashed" data-series="1" fill="none">
     <svg:text class="analysis-point-value" data-value-series="0" text-anchor="middle" x="72" y="85">
       "5:00"
-    <svg:text class="analysis-point-value" data-value-series="0" text-anchor="middle" x="436" y="52.5">
+    <svg:text class="analysis-point-value" data-value-series="0" text-anchor="middle" x="436" y="80.5">
       "4:50"
     <svg:text class="analysis-point-value" data-value-series="1" text-anchor="middle" x="72" y="145.5">
       "5:10"
