@@ -498,6 +498,8 @@ class GuardHookTests(unittest.TestCase):
             "git grep --open python x scripts/r*.py",
             "git grep -nOpython x -- 'scripts/r*'",
             "git grep --op=python x -- 'scripts/r*'",
+            "git grep -[O]python x -- 'scripts/r*'",
+            "(( ls <<'EOF' ))\npython scripts/r*.py 1 PRRT_x\nEOF",
             'cat <<\'echo\' "\n" ; python scripts/r*.py 1 PRRT_x ; echo "\necho\n"\necho',
             "echo @'\nx'\n<<'EOF'\n'@ ; python scripts/r*.py 1 PRRT_x\nEOF",
             # #4155: a double-quoted pattern keeps the old rule (1b declined).
