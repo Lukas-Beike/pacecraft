@@ -64,7 +64,7 @@ test("@responsive compact calendar week shows one week, groups repeats and keeps
   // Weeks with workout profiles show a legend of the zones they use.
   const profileWeeks = page.locator(".planned-week").filter({ has: page.locator(".calendar-workout-profile") });
   expect(await profileWeeks.count()).toBeGreaterThan(0);
-  for (const profileWeek of await profileWeeks.all()) await expect(profileWeek.locator(".planned-zone-legend")).toHaveText("Z1Z4");
+  for (const profileWeek of await profileWeeks.all()) await expect(profileWeek.locator(":scope > .planned-zone-legend")).toHaveText("Z1Z4");
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   // #2985: on a Sunday the next day is in the next week; step back to today's week.
   await showCalendarDay(page, days.today);
@@ -462,4 +462,25 @@ test("@responsive a planned run counted in distance shows its total distance", a
   const day = await page.evaluate(() => addDateKey(timezoneDateKey(state.data?.profile?.timezone, new Date()), 1));
   await showCalendarDay(page, day);
   await expect(page.locator(`.planned-day[data-date="${day}"] .planned-session-value`)).toContainText("8,0 km");
+});
+
+// #4129 K-11/K-13: an opened session has its zone key under its profile, one accent action and a close control.
+test("@responsive an opened session shows its zone key, one accent action and closes with its own control", async ({ page, request }) => {
+  await openCalendar(page, request);
+  await renderSyntheticCalendar(page);
+  const card = page.locator(".planned-day.is-today .planned-entry", { hasText: "Heutige Ausfahrt" }).first();
+  await setEntryOpen(card, true);
+  await expect(card.locator(".planned-detail-profile + .planned-zone-legend")).toHaveText("Z1Z4");
+  const actions = card.locator(".planned-activity-actions").last();
+  await expect(actions.getByRole("button", { name: "Mit Coach besprechen" })).toHaveClass(/push-button/);
+  await expect(actions.getByRole("button", { name: "Feedback" })).not.toHaveClass(/push-button/);
+  const close = card.getByRole("button", { name: "Einheit schließen" });
+  if (page.viewportSize().width >= 1100) {
+    // The wide calendar shows the unit in its pane; the close control belongs to the narrow view.
+    await expect(close).toBeHidden();
+    return;
+  }
+  await close.click();
+  await expect(card).not.toHaveAttribute("open", "");
+  await expect(card.locator(":scope > summary")).toBeFocused();
 });
