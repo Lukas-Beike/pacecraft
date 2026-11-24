@@ -370,6 +370,7 @@ class CoachActivityReadToolService:
         report_counts: Any = None,
         competitions: Callable[[], Any] | None = None,
         energy_before: Callable[[date], dict[str, Any]] | None = None,
+        now: Callable[[], datetime] | None = None,
     ) -> None:
         self._activity_read = activity_read
         self._garmin_payload = garmin_payload
@@ -382,6 +383,8 @@ class CoachActivityReadToolService:
         self._report_counts = report_counts
         self._competitions = competitions
         self._energy_before = energy_before
+        # The live clock, for whether a session's weather is due yet (#4136).
+        self._now = now or (lambda: datetime.now(UTC))
 
     def execute(self, name: str, arguments: dict[str, Any]) -> dict[str, Any] | None:
         if name == "read_training_records":
@@ -760,9 +763,7 @@ class CoachActivityReadToolService:
         if self._energy_before is not None:
             found["energy_before"] = self._energy_before(day)
         if not detail.get("weather"):
-            # The end of the athlete's today stands in for now.
-            now = datetime.combine(self._today(), time.max, tzinfo=UTC)
-            found["weather"] = _weather_gap(session, now)
+            found["weather"] = _weather_gap(session, self._now())
         return found
 
     def _step_test(

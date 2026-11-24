@@ -352,6 +352,7 @@ class CoachReadToolBuilderTests(unittest.TestCase):
                 ctx.planning.competition,
                 # The days before a session's balance (#4136).
                 ctx.nutrition.energy_before,
+                ctx.clock.now,
             ),
         )
 
