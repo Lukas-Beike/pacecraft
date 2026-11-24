@@ -475,11 +475,12 @@ test("@responsive an opened session shows its zone key, one accent action and cl
   await expect(actions.getByRole("button", { name: "Mit Coach besprechen" })).toHaveClass(/push-button/);
   await expect(actions.getByRole("button", { name: "Feedback" })).not.toHaveClass(/push-button/);
   const close = card.getByRole("button", { name: "Einheit schließen" });
-  if (await close.isVisible()) {
-    await close.click();
-    await expect(card).not.toHaveAttribute("open", "");
-  } else {
+  if (page.viewportSize().width >= 1100) {
     // The wide calendar shows the unit in its pane; the close control belongs to the narrow view.
     await expect(close).toBeHidden();
+    return;
   }
+  await close.click();
+  await expect(card).not.toHaveAttribute("open", "");
+  await expect(card.locator(":scope > summary")).toBeFocused();
 });

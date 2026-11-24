@@ -2017,8 +2017,13 @@ function appendOpenedPlannedFrame(details, head, entry, actual) {
   head.after(...(detailProfile ? [detailProfile, plannedZoneLegend(detailProfile)].filter(Boolean) : []));
   if (details.querySelector(":scope > .planned-card-close")) return;
   const close = h("button", { type: "button", className: "icon-button planned-card-close", "aria-label": "Einheit schließen" }, "✕");
-  close.addEventListener("click", () => { details.open = false; details.querySelector("summary")?.focus(); });
-  details.querySelector("summary")?.after(close);
+  // `details` is the card's body; the card is the <details> element that closes.
+  close.addEventListener("click", () => {
+    const card = details.closest("details");
+    if (card) card.open = false;
+    card?.querySelector(":scope > summary")?.focus();
+  });
+  details.prepend(close);
 }
 
 function appendOpenedPlannedParts(details, head, entry, actual) {
