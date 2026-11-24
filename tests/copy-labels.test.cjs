@@ -110,6 +110,17 @@ test("a change that rounds to zero carries no sign (#3933)", () => {
   assert.equal(analysisChange(0.2, "s/km"), "0:00 /km");
 });
 
+// Weight and body fat name their change by the edge means, never last minus first (#4037).
+test("the body charts name the change by the edge means", () => {
+  const AppFormat = require("../public/format.js");
+  const { analysisEdgeChangeText } = extractFunctions("analysis.js", ["analysisEdgeChangeText", "analysisChange"], {
+    analysisValue: (value, unit) => `${AppFormat.number(value, { digits: 1, minDigits: 1 })} ${unit}`,
+    formatPace: AppFormat.pace,
+  });
+  assert.equal(analysisEdgeChangeText({ span_days: 7, first_mean: 73.83, last_mean: 72.43, change: -1.4 }, "kg"), "Änderung (Wochenmittel): −1,4 kg · Ø 73,8 kg → Ø 72,4 kg");
+  assert.equal(analysisEdgeChangeText({ span_days: 14, first_mean: 20, last_mean: 20.04, change: 0.04 }, "%"), "Änderung (Mittel von 2 Wochen): 0,0 % · Ø 20,0 % → Ø 20,0 %");
+});
+
 // The term list of docs/view-catalogue.md: one word per thing, none of the others in the client source (#3933).
 test("the client source holds one word per thing", () => {
   const fs = require("node:fs");
