@@ -47,7 +47,7 @@
         <span>
           "2"
         <span>
-          "4:38–5:03/km · 2:00 · Ø 4:50"
+          "4:38–5:03 /km · 2:00 · Ø 4:50"
         <span class="activity-adherence-share">
           "100 %"
       <li data-band="none">

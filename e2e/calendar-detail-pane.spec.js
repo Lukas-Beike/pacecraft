@@ -118,8 +118,8 @@ test("@responsive an opened completed session rates each planned step against it
   const rows = section.locator(".activity-adherence-steps li");
   await expect(rows).toHaveCount(12);
   await expect(rows.nth(0)).toContainText("Einlaufen · 120–140 bpm · 15:00 · Ø 132 bpm");
-  await expect(rows.nth(1)).toContainText("4:05–4:15/km · 4:00 · Ø 4:10");
-  await expect(rows.nth(2)).toContainText("Pause · langsamer als 5:30/km · 2:00");
+  await expect(rows.nth(1)).toContainText("4:05–4:15 /km · 4:00 · Ø 4:10");
+  await expect(rows.nth(2)).toContainText("Pause · langsamer als 5:30 /km · 2:00");
   await expect(rows.nth(9).locator(".activity-adherence-share")).toHaveText("31 %");
   await expect(rows.nth(9)).toHaveAttribute("data-band", "poor");
   await expect(rows.nth(11).locator(".activity-adherence-share")).toHaveText("–");
