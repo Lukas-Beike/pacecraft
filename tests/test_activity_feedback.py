@@ -46,9 +46,9 @@ class ActivityFeedbackNormalizationTests(unittest.TestCase):
                     value, normalize_activity_feedback("one", {"feel": value})["feel"]
                 )
         self.assertNotIn("feel", normalize_activity_feedback("one", {"notes": "x"}))
-        for value in (0, 6, -1, 2.5, 3.0, True, "3", "gut"):
-            with self.subTest(value=value), self.assertRaises(AppError) as caught:
-                normalize_activity_feedback("one", {"feel": value})
+        for refused in (0, 6, -1, 2.5, 3.0, True, "3", "gut"):
+            with self.subTest(value=refused), self.assertRaises(AppError) as caught:
+                normalize_activity_feedback("one", {"feel": refused})
             self.assertEqual(
                 "Das Gefühl muss zwischen 1 und 5 liegen.", caught.exception.message
             )
@@ -209,7 +209,9 @@ class ActivityFeedbackServiceTests(unittest.TestCase):
         first = self.service.save("one", {"notes": "schwer", "feel": 4})
         self.assertEqual(4, first["activity_feedback"]["feel"])
         rated = self.service.save("one", {"session_rpe": 7})["activity_feedback"]
-        self.assertEqual(("schwer", 7, 4), (rated["notes"], rated["session_rpe"], rated["feel"]))
+        self.assertEqual(
+            ("schwer", 7, 4), (rated["notes"], rated["session_rpe"], rated["feel"])
+        )
         with self.manager.reader() as db:
             before = self.service.current(db, "activity:one")[0]
         cleared = self.service.save("one", {"feel": None})["activity_feedback"]
@@ -337,6 +339,10 @@ class ActivityFeedbackServiceTests(unittest.TestCase):
             (empty.exception.status, empty.exception.message),
             (400, "Die Rückmeldung darf nicht leer sein."),
         )
+        # #4199: the Coach removes a feel with null; the note stays.
+        service.save_coach("i-1", {"feel": 2})
+        kept = service.save_coach("i-1", {"feel": None})["activity_feedback"]
+        self.assertEqual(("athlete note", False), (kept["notes"], "feel" in kept))
         for unknown_id in ("unknown", "act_unknown"):
             with self.assertRaises(AppError) as unknown:
                 service.save_coach(unknown_id, {"notes": "not allowed"})

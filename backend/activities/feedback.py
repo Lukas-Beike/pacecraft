@@ -106,12 +106,7 @@ def normalize_activity_feedback(activity_id: Any, value: Any) -> dict[str, Any]:
         ],
     }
     if "session_rpe" in value:
-        rpe = value["session_rpe"]
-        # The range test alone rejects NaN and infinity and, unlike
-        # math.isfinite, accepts any int, however large.
-        if rpe is not None and (type(rpe) not in {int, float} or not 0 <= rpe <= 10):
-            raise AppError(400, "Der Aktivitäts-RPE muss zwischen 0 und 10 liegen.")
-        normalized["session_rpe"] = rpe
+        normalized["session_rpe"] = _normalize_rpe(value["session_rpe"])
     if "deviation_reason" in value:
         normalized["deviation_reason"] = str(
             value.get("deviation_reason") or ""
@@ -121,6 +116,14 @@ def normalize_activity_feedback(activity_id: Any, value: Any) -> dict[str, Any]:
     if "feel" in value:
         normalized["feel"] = _normalize_feel(value["feel"])
     return normalized
+
+
+def _normalize_rpe(rpe: Any) -> Any:
+    # The range test alone rejects NaN and infinity and, unlike
+    # math.isfinite, accepts any int, however large.
+    if rpe is not None and (type(rpe) not in {int, float} or not 0 <= rpe <= 10):
+        raise AppError(400, "Der Aktivitäts-RPE muss zwischen 0 und 10 liegen.")
+    return rpe
 
 
 def _normalize_feel(feel: Any) -> int | None:
@@ -629,7 +632,8 @@ class ActivityFeedbackService:
             and normalized.get("session_rpe") is None
             and not normalized.get("deviation_reason")
             and "purpose" not in normalized
-            and normalized.get("feel") is None
+            # A named feel, null included, edits it (null removes it).
+            and "feel" not in normalized
         ):
             raise AppError(400, "Die Rückmeldung darf nicht leer sein.")
         with self._database_manager.reader() as db:
