@@ -610,7 +610,7 @@ function analysisPointTooltip(section, marker, title, lines) {
   section.append(tooltip);
 }
 
-function appendAnalysisPointInspectors(section, svg, series, unit, { x, chartRight }) {
+function appendAnalysisPointInspectors(section, svg, series, unit, { x, y, chartRight }) {
   const dates = [...new Set(series.flatMap((item) => item.points.map((point) => point.date)))].sort((a, b) => a.localeCompare(b));
   const hitWidth = Math.min(44, (chartRight - 60) / Math.max(1, dates.length - 1));
   const candidates = [];
@@ -631,7 +631,11 @@ function appendAnalysisPointInspectors(section, svg, series, unit, { x, chartRig
     marker.addEventListener("focus", () => {
       const root = section.closest(".analysis-history-charts");
       root?.querySelectorAll(".analysis-day-marker").forEach((node) => node.classList.toggle("is-selected", node.dataset.date === date));
+      // The keyboard focus ring sits on the day's points, not around the tall hit column (#4025).
+      svg.querySelectorAll(".analysis-focus-ring").forEach((ring) => ring.remove());
+      if (marker.matches(":focus-visible")) readings.forEach(({ point }) => svg.append(svgNode("circle", { cx: x(date), cy: y(point.value), r: 8, class: "analysis-focus-ring" })));
     });
+    marker.addEventListener("blur", () => svg.querySelectorAll(".analysis-focus-ring").forEach((ring) => ring.remove()));
     svg.append(marker);
   });
   if (!candidates.length) return;

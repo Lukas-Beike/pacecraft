@@ -324,6 +324,15 @@ test("@responsive Garmin acute load switches four weeks and three months with re
   for (const svg of await loadRoot.locator("svg").all()) expect(await chartLabelCollisions(svg)).toMatchObject({ outside: 0, onMarks: 0, onLabels: 0 });
   expect((await new AxeBuilder({ page }).include("#analysisLoadCharts").analyze()).violations).toEqual([]);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  // The keyboard focus ring sits on the day's point, and leaves with the focus (#4025).
+  await root.locator(".analysis-day-marker").last().focus();
+  await page.keyboard.press("ArrowLeft");
+  await expect(root.locator(".analysis-focus-ring")).toHaveCount(1);
+  const ring = await root.locator(".analysis-focus-ring").evaluate((node) => [Number(node.getAttribute("cx")), Number(node.getAttribute("cy"))]);
+  const dot = await root.locator("circle[data-series='0']").nth(-2).evaluate((node) => [Number(node.getAttribute("cx")), Number(node.getAttribute("cy"))]);
+  expect(ring).toEqual(dot);
+  await page.keyboard.press("Tab");
+  await expect(root.locator(".analysis-focus-ring")).toHaveCount(0);
 });
 
 test("@responsive steps and floors show per-day units, whole numbers and the plotted basis", async ({ page }) => {

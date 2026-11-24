@@ -103,11 +103,11 @@
     <svg:line class="analysis-tick-mark" x1="286" x2="286" y1="160" y2="168">
     <svg:text class="analysis-date-tick" text-anchor="middle" x="286" y="188">
       "08.10"
-    <svg:g aria-describedby="point-info-3" aria-expanded="false" aria-label="05.10.2026" class="analysis-day-marker" data-date="2026-10-05" on:click="1" on:focus="2" on:keydown="2" on:mouseenter="1" on:mouseleave="1" role="button" tabindex="-1">
+    <svg:g aria-describedby="point-info-3" aria-expanded="false" aria-label="05.10.2026" class="analysis-day-marker" data-date="2026-10-05" on:blur="1" on:click="1" on:focus="2" on:keydown="2" on:mouseenter="1" on:mouseleave="1" role="button" tabindex="-1">
       <svg:rect fill="transparent" height="137" width="44" x="60" y="26">
-    <svg:g aria-describedby="point-info-4" aria-expanded="false" aria-label="07.10.2026" class="analysis-day-marker" data-date="2026-10-07" on:click="1" on:focus="2" on:keydown="2" on:mouseenter="1" on:mouseleave="1" role="button" tabindex="-1">
+    <svg:g aria-describedby="point-info-4" aria-expanded="false" aria-label="07.10.2026" class="analysis-day-marker" data-date="2026-10-07" on:blur="1" on:click="1" on:focus="2" on:keydown="2" on:mouseenter="1" on:mouseleave="1" role="button" tabindex="-1">
       <svg:rect fill="transparent" height="137" width="44" x="188.66666666666666" y="26">
-    <svg:g aria-describedby="point-info-5" aria-expanded="false" aria-label="08.10.2026" class="analysis-day-marker" data-date="2026-10-08" on:click="1" on:focus="2" on:keydown="2" on:mouseenter="1" on:mouseleave="1" role="button" tabindex="0">
+    <svg:g aria-describedby="point-info-5" aria-expanded="false" aria-label="08.10.2026" class="analysis-day-marker" data-date="2026-10-08" on:blur="1" on:click="1" on:focus="2" on:keydown="2" on:mouseenter="1" on:mouseleave="1" role="button" tabindex="0">
       <svg:rect fill="transparent" height="137" width="22" x="264" y="26">
     <svg:rect aria-hidden="true" class="analysis-plot-hit" fill="transparent" height="137" on:click="1" on:pointerleave="1" on:pointermove="1" width="226" x="60" y="26">
   <details>

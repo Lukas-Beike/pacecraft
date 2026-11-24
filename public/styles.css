@@ -1983,7 +1983,8 @@ button:focus-visible, a:focus-visible, summary:focus-visible {
 .analysis-day-marker { cursor: pointer; }
 .analysis-plot-hit { cursor: crosshair; }
 .analysis-day-marker:hover rect, .analysis-day-marker:focus rect { fill: var(--ink); fill-opacity: .06; }
-.analysis-day-marker:focus { outline: 2px solid var(--accent); }
+.analysis-day-marker:focus { outline: none; }
+.analysis-focus-ring { fill: none; stroke: var(--accent); stroke-width: 2; pointer-events: none; }
 
 
 
