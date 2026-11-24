@@ -369,7 +369,9 @@ def heredoc_removed(command: str) -> str | None:
     if opener[2] not in lines:
         return None
     after = lines[lines.index(opener[2]) + 1 :]
-    return "\n".join([command[: opener.start()] + command[opener.end() : line_end], *after])
+    return "\n".join(
+        [command[: opener.start()] + command[opener.end() : line_end], *after]
+    )
 
 
 # The direct resolve mutation through an API call, outside the script (#3759);
