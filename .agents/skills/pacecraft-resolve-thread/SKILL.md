@@ -18,7 +18,7 @@ python scripts/resolve_review_thread.py <pr> <thread-id>
   blocks commands that only mention it, such as its test module, `grep`,
   `git diff` or a reply text. The match stays this broad by decision (#3103).
   Never disguise the name to get past it. Use routes that do not name it:
-  - the Read and Grep tools;
+  - the Read and Grep tools, or a `grep` pattern in single quotes, never double (#4155);
   - `python tests/run_tests.py --changed`, which selects its tests;
   - a directory path for `git diff`;
   - `--body-file` for a text.

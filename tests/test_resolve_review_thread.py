@@ -477,6 +477,33 @@ class GuardHookTests(unittest.TestCase):
                 "cat <<true\necho '\ntrue\npython scripts/resolve_review_threa?.py 1 PRRT_x\n"
                 "cat <<true\necho '\ntrue"
             ),
+            # #4155: a heredoc's body is skipped only when bash keeps it literal and
+            # the rest is inert; here the lines after `<<` run, or feed a runner.
+            "echo \"<<'EOF'\"\npython scripts/r*.py 1 PRRT_x\nEOF",
+            "echo \\<<'EOF'\npython scripts/r*.py 1 PRRT_x\nEOF",
+            "echo # <<'EOF'\npython scripts/r*.py 1 PRRT_x\nEOF",
+            "echo '\n<<'EOF'\npython scripts/r*.py 1 PRRT_x\nEOF",
+            "cat <<EOF\n$(python scripts/r*.py 1 PRRT_x)\nEOF",
+            "bash <<'EOF'\npython scripts/r*.py 1 PRRT_x\nEOF",
+            "cat <<'EOF' | bash\npython scripts/r*.py 1 PRRT_x\nEOF",
+            "python - <<'EOF'\nimport runpy; runpy.run_path(next(__import__('glob').iglob('scripts/r*.py')))\nEOF",
+            "cat > f <<'EOF'\nx\nEOF\npython scripts/r*.py 1 PRRT_x",
+            "cat > f <<'EOF'\nx\nEOF \npython scripts/r*.py 1 PRRT_x",
+            "cat <<'EOF' <<'END'\nx\nEOF\nEND\npython scripts/r*.py 1 PRRT_x",
+            "cat scripts/*; python scripts/*/r*.py 1 PRRT_x",
+            # git grep runs a program only through -O/--open-files-in-pager.
+            "git grep -O python x scripts/r*.py",
+            "git grep -Opython x scripts/r*.py",
+            "git grep --open-files-in-pager=python x scripts/r*.py",
+            "git grep --open python x scripts/r*.py",
+            "git grep -nOpython x -- 'scripts/r*'",
+            "git grep --op=python x -- 'scripts/r*'",
+            "git grep -[O]python x -- 'scripts/r*'",
+            "(( ls <<'EOF' ))\npython scripts/r*.py 1 PRRT_x\nEOF",
+            'cat <<\'echo\' "\n" ; python scripts/r*.py 1 PRRT_x ; echo "\necho\n"\necho',
+            "echo @'\nx'\n<<'EOF'\n'@ ; python scripts/r*.py 1 PRRT_x\nEOF",
+            # #4155: a double-quoted pattern keeps the old rule (1b declined).
+            'git grep -n "planning_store\\.\\(insert\\|update\\)[a-z_]*" -- backend',
             # #3982: a single-quoted inside is read literally, nothing else is.
             "grep 'x’ ; python scripts/r*.py 1 PRRT_x ; grep ‘y' f",
             "grep $'\\x27' f; python scripts/r*.py 1 PRRT_x; grep $'\\x27' f",
@@ -559,6 +586,11 @@ class GuardHookTests(unittest.TestCase):
             "ls */*.py",
             'gh run list -q \'.[] | .name+" "+(.conclusion//"-")\'',
             "echo '" + "[" * 4000 + "]'",
+            # #4155: git grep is inert; its single-quoted pattern is literal (1a).
+            "git grep -n 'planning_store\\.\\(insert\\|update\\)[a-z_]*' -- backend",
+            # #4155: a quoted-delimiter heredoc written to a file is literal text.
+            "cat > body.md <<'EOF'\nGlobs such as */* or scripts/r*.py are text here.\nEOF",
+            'cat > body.md <<"EOF"\nscripts/*/r*.py\nEOF\ngit status',
             # #3982: quoted grep patterns and a printed line range are no paths.
             "sed -n '10,40p' backend/performance/threshold_staleness.py | grep -n '\"[a-z_]*\":'",
             "grep -n 'within the weeks ahead.\\s*$' docs/features.md",

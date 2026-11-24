@@ -337,7 +337,44 @@ def matching_word(command: str) -> str | None:
     # closes on further quote marks, so the words could differ (#3982 review).
     if command.isascii() and only_inert_programs(raw):
         return None
+    # A heredoc with a quoted delimiter is literal text: without its body, the
+    # command may take the same inert path (#4155); anything else reads it all.
+    rest = heredoc_removed(command) if command.isascii() else None
+    if rest is not None and only_inert_programs(rest.casefold()):
+        return None
     return reaching_word(text, raw)
+
+
+# One heredoc whose delimiter word is quoted, so bash expands nothing in its body.
+# Blanks around it: bash glues an adjacent word to the delimiter (#4155 review).
+HEREDOC = re.compile(r"(?<=[ \t])<<[ \t]*(['\"])(\w+)\1(?=[ \t\n])")
+# The rest of the opener's line: plain words, redirections and separators only;
+# no quote, escape, comment, substitution or arithmetic (#4155 reviews).
+HEREDOC_LINE = re.compile(r"[\w \t./=>|;&-]*")
+
+
+def heredoc_removed(command: str) -> str | None:
+    """The command without its one quoted-delimiter heredoc (the `<<'WORD'`
+    and the lines up to the first line that is exactly WORD), else None."""
+    if command.count("<<") != 1 or "<<<" in command:
+        return None
+    opener = HEREDOC.search(command)
+    if opener is None:
+        return None
+    # Inside a string (a PowerShell here-string too), after an escape, in a
+    # comment or in arithmetic `<<` starts no heredoc, and a quote on its line
+    # spans the body: its whole line must read plainly.
+    line_end = command.find("\n", opener.end())
+    if line_end < 0:
+        return None
+    line = command[: opener.start()] + " " + command[opener.end() : line_end]
+    if not HEREDOC_LINE.fullmatch(line):
+        return None
+    lines = command[line_end + 1 :].split("\n")
+    if opener[2] not in lines:
+        return None
+    after = lines[lines.index(opener[2]) + 1 :]
+    return "\n".join([line, *after])
 
 
 # The direct resolve mutation through an API call, outside the script (#3759);
@@ -363,6 +400,8 @@ INERT_SUBCOMMANDS = {
     "git": frozenset(
         {"status", "diff", "log", "show", "ls-files", "ls-tree", "rev-parse"}
         | {"rev-list", "branch", "blame", "add", "cat-file", "merge-base"}
+        # grep runs a program only with -O/--open-files-in-pager (RUNS_ARGUMENTS, #4155).
+        | {"grep"}
     ),
     "gh": frozenset(
         {"pr", "issue", "run", "api", "repo", "release", "label", "search"}
@@ -377,6 +416,9 @@ RUNS_ARGUMENTS = re.compile(
     r"|--(?:exe|ext|upl|rec|open|hostname|shell|pre|python|config)\S*"
     r"|alias|extension|config|bisect|submodule|foreach)(?![\w-])|[{%]"
 )
+# `git grep`'s pager option, bundled (`-nO…`), abbreviated (`--op`) or globbed
+# (`-[O]…`) (#4155 reviews).
+PAGER_OPTION = re.compile(r"(?<![\w-])(?:-[a-np-z\d]+o|--op|-{1,2}[a-z\d]*[[*?])")
 # Text whose words the shells may split differently than this reading:
 # escapes, comments, history and alias marks, ANSI-C, substitutions,
 # typographic quotes PowerShell closes on, and heredocs, whose body a lone
@@ -459,7 +501,7 @@ def only_inert_programs(raw: str) -> bool:
         or RAW_UNREADABLE.search(raw)
         or UNREADABLE.search(QUOTED.sub(single_quoted_blank, raw))
         or any(
-            RUNS_ARGUMENTS.search(form)
+            RUNS_ARGUMENTS.search(form) or PAGER_OPTION.search(form)
             for form in (QUOTED.sub(" ", raw), unquoted(raw))
         )
     ):
