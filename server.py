@@ -95,6 +95,7 @@ from backend.performance.morning_battery_service import (
     MorningBatteryStore,
     MorningBodyBatteryService,
 )
+from backend.performance.second_threshold_service import GarminThresholdStore
 from backend.performance.threshold_staleness import ThresholdStalenessService
 from backend.performance.wiring import (
     build_activity_reads,
@@ -892,6 +893,15 @@ SESSION_FOCUS_BACKFILL = SessionFocusBackfill(
     ),
 )
 
+# Garmin's LT2 values in effect become local values once (athlete, #4135).
+GARMIN_THRESHOLD_STORE = GarminThresholdStore(
+    key_values=KEY_VALUE_REPOSITORY,
+    zones=lambda: ATHLETE_DATA.zones(),
+    reader=CanonicalTableReader,
+    today=lambda: ATHLETE_CLOCK.now().date(),
+    clock=runtime_clock.utc_now,
+)
+
 PROFILE_WEEKLY_PLAN_REMOVAL = ProfileWeeklyPlanRemoval(
     key_values=KEY_VALUE_REPOSITORY, clock=runtime_clock.utc_now
 )
@@ -929,6 +939,7 @@ CANONICAL_BACKFILL = build_canonical_backfill(
         RATING_BACKFILL_REMOVAL,
         SESSION_REBUNDLE,
         SESSION_FOCUS_BACKFILL,
+        GARMIN_THRESHOLD_STORE,
     ),
     # Weather during outdoor sessions (#1868); only 2-decimal coordinates leave.
     activity_weather_fetch=lambda *position: (

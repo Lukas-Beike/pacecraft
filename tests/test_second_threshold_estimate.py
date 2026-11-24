@@ -11,12 +11,16 @@ from datetime import date, timedelta
 from typing import Any
 from unittest.mock import Mock
 
+from canonical_domain_support import provenance, zone_configuration
+from performance_day_support import StubReader
 from support import dispatch_route
 
-from backend.athlete.zones import local_configuration
+from backend.activities.zone_settings import effective_zone_configuration
+from backend.athlete.zones import ZoneConfigurationService, local_configuration
 from backend.canonical.activity_detail import ActivityDfaAlpha1, DfaWindow
 from backend.canonical.vocabulary import DfaQuality, MetricKind, ProviderId, Sport
 from backend.coach.context import CoachStructuredContextService
+from backend.db import canonical_domain_store
 from backend.db.repositories import KeyValueRepository
 from backend.errors import AppError
 from backend.http_api.athlete_get import AthleteGetRoutes
@@ -26,8 +30,13 @@ from backend.http_api.second_threshold_post import (
     SecondThresholdPostRoutes,
 )
 from backend.performance import second_threshold_estimate as lt2
-from backend.performance.second_threshold_service import SecondThresholdService
+from backend.performance.second_threshold_service import (
+    GARMIN_STORE_STATE_KEY,
+    GarminThresholdStore,
+    SecondThresholdService,
+)
 from backend.performance.threshold_offers import open_offers, threshold_values
+from backend.sync.canonical_table_reader import CanonicalTableReader
 from tests.test_current_thresholds import ZoneSource, _obs
 from tests.test_first_threshold_estimate import add_run, open_database
 
@@ -1003,6 +1012,168 @@ class OfferServiceTests(unittest.TestCase):
         )
         service.dismiss_offer.assert_called_once_with({"key": "k"})
         handler.send_json.assert_called_once_with(200, {"threshold_offers": []})
+
+
+STORE_NOW = "2026-11-16T06:00:00+00:00"
+
+
+class FailingZones:
+    """The zone service, failing the second adoption after the first was written."""
+
+    def __init__(self, zones):
+        self.zones = zones
+        self.saved = 0
+
+    def configurations(self):
+        return self.zones.configurations()
+
+    def save_adopted(self, payload):
+        if self.saved:
+            raise RuntimeError("synthetic failure")
+        self.saved += 1
+        return self.zones.save_adopted(payload)
+
+
+class GarminThresholdStoreTests(unittest.TestCase):
+    """#4135: Garmin's LT2 values in effect become local values once, at upgrade."""
+
+    manager: Any
+    counter: int
+
+    def setUp(self) -> None:
+        open_database(self)
+        self.zones = ZoneConfigurationService(
+            self.manager,
+            CanonicalTableReader(),
+            lambda: STORE_NOW,
+            today=lambda: TODAY,
+            effective_zone=effective_zone_configuration,
+            on_change=lambda: None,
+        )
+        day = TODAY - timedelta(days=3)
+        self.observations = (
+            # 4 m/s is 250 s per km.
+            _obs(MetricKind.THRESHOLD_PACE, 4.0, ProviderId.GARMIN, Sport.RUN, day),
+            _obs(MetricKind.FTP, 280.0, ProviderId.GARMIN, Sport.RIDE, day),
+        )
+        watch = zone_configuration(
+            threshold=171.0,
+            maximum=192.0,
+            limits=(130.0, 145.0, 160.0, 172.0, 192.0),
+            provenance=provenance("zones-1", provider=ProviderId.GARMIN),
+        )
+        with self.manager.unit_of_work() as db:
+            canonical_domain_store.replace_zone_configurations(
+                db,
+                provider=ProviderId.GARMIN,
+                source_record_id="zones-1",
+                configurations=(watch,),
+                mapper_version=1,
+                now=STORE_NOW,
+            )
+
+    def run_store(self, zones=None, observations=None):
+        store = GarminThresholdStore(
+            key_values=KeyValueRepository(lambda: STORE_NOW),
+            zones=lambda: zones or self.zones,
+            reader=lambda: StubReader(
+                self.observations if observations is None else observations
+            ),
+            today=lambda: TODAY,
+            clock=lambda: STORE_NOW,
+        )
+        with self.manager.unit_of_work() as db:
+            report = store.run_batch(db)
+        with self.manager.reader() as db:
+            return report, store.state(db)
+
+    def local(self):
+        return {
+            (item.sport.value, item.metric.value): item
+            for item in self.zones.configurations()
+            if item.provenance.provider is None
+        }
+
+    def sources(self):
+        with self.manager.reader() as db:
+            return [
+                row["source"] for row in db.execute("SELECT source FROM change_history")
+            ]
+
+    def test_the_first_pass_stores_garmins_values_and_a_restart_does_nothing(
+        self,
+    ) -> None:
+        report, state = self.run_store()
+        self.assertEqual(
+            (report.items, state["status"], state["stored"]),
+            (3, "complete", ["run:heart_rate", "run:pace", "ride:power"]),
+        )
+        local = self.local()
+        heart_rate = local[("run", "heart_rate")]
+        # The watch zones stay as they were, now local with Garmin's threshold.
+        self.assertEqual(
+            (heart_rate.threshold, heart_rate.limits, heart_rate.threshold_origin),
+            (171.0, (130.0, 145.0, 160.0, 172.0, 192.0), "garmin"),
+        )
+        pace = local[("run", "pace")]
+        self.assertEqual((pace.threshold, pace.threshold_origin), (4.0, "garmin"))
+        # Without pace zones the standard zones in effect are kept.
+        self.assertEqual(
+            pace.percent_limits, (77.5, 87.7, 94.3, 100, 103.4, 111.5, 999)
+        )
+        self.assertEqual(local[("ride", "power")].threshold, 280.0)
+        self.assertEqual(self.sources(), ["system:#4135"] * 3)
+        # A second pass, or one after a restart, writes nothing.
+        report, _ = self.run_store()
+        self.assertEqual(report.items, 0)
+        self.assertEqual(len(self.sources()), 3)
+
+    def test_a_local_value_stays_and_a_missing_garmin_value_is_skipped(self) -> None:
+        self.zones.save(
+            {
+                "sport": "run",
+                "metric": "heart_rate",
+                "threshold": 165,
+                "percent_limits": [80, 89, 94, 100, 110],
+            }
+        )
+        _, state = self.run_store(observations=self.observations[:1])
+        self.assertEqual(state["stored"], ["run:pace"])
+        entered = self.local()[("run", "heart_rate")]
+        self.assertEqual((entered.threshold, entered.threshold_origin), (165.0, None))
+        self.assertNotIn(("ride", "power"), self.local())
+
+    def test_without_garmin_values_nothing_is_stored_and_a_later_value_is_not(
+        self,
+    ) -> None:
+        with self.manager.unit_of_work() as db:
+            canonical_domain_store.replace_zone_configurations(
+                db,
+                provider=ProviderId.GARMIN,
+                source_record_id="zones-1",
+                configurations=(),
+                mapper_version=1,
+                now=STORE_NOW,
+            )
+        _, state = self.run_store(observations=())
+        self.assertEqual((state["status"], state["stored"]), ("complete", []))
+        # "Once ever": a Garmin value that appears later is an offer only.
+        report, _ = self.run_store()
+        self.assertEqual((report.items, self.local()), (0, {}))
+
+    def test_a_failure_stores_nothing_and_the_next_pass_completes(self) -> None:
+        failing = FailingZones(self.zones)
+        with self.assertRaises(RuntimeError):
+            self.run_store(zones=failing)
+        # The first value was written in the pass, then rolled back with it.
+        self.assertEqual(failing.saved, 1)
+        self.assertEqual((self.local(), self.sources()), ({}, []))
+        with self.manager.reader() as db:
+            self.assertIsNone(
+                KeyValueRepository(lambda: STORE_NOW).get(db, GARMIN_STORE_STATE_KEY)
+            )
+        report, state = self.run_store()
+        self.assertEqual((report.items, state["status"]), (3, "complete"))
 
 
 if __name__ == "__main__":

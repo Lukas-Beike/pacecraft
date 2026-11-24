@@ -19,12 +19,19 @@ from collections.abc import Callable, Mapping, Sequence
 from datetime import date, timedelta
 from typing import Any
 
-from backend.activities.zone_settings import effective_zone_configuration
+from backend import change_history
+from backend.activities.zone_settings import (
+    HR_ZONE_LIMITS,
+    PACE_ZONE_LIMITS,
+    POWER_ZONE_LIMITS,
+    effective_zone_configuration,
+)
 from backend.canonical.domain_records import ZoneConfiguration
 from backend.canonical.first_threshold import stored_bpm
-from backend.canonical.vocabulary import Sport, ZoneConfigurationMetric
+from backend.canonical.vocabulary import ProviderId, Sport, ZoneConfigurationMetric
 from backend.db import activity_detail_store
 from backend.errors import AppError
+from backend.performance.canonical_current import read_export_thresholds
 from backend.performance.critical_power import critical_power_speed
 from backend.performance.pace_at_hr import LT1_DAYS, output_at_heart_rate
 from backend.performance.second_threshold_estimate import (
@@ -37,9 +44,11 @@ from backend.performance.threshold_evidence import EFFORT_WINDOW_DAYS
 from backend.performance.threshold_offers import (
     DISMISSED_KEY,
     GARMIN_SOURCE,
+    LT2_KEYS,
     MAX_DISMISSED,
     open_offers,
 )
+from backend.sync.canonical_backfill import BatchReport
 
 RUNS_ONLY = {"status": "unknown", "reason": "nur aus Läufen", "sessions": 0}
 # Above this share of the value in effect an adoption needs a second confirmation (F9).
@@ -64,6 +73,19 @@ NOTICE_VALUES: dict[str, tuple[str, ...]] = {
 }
 # The run step test's LT2 (#3833), adopted with the DFA-a1 origin.
 STEP_TEST_SOURCE = "step_test"
+# The standard zones in effect without a configuration, in percent of the
+# threshold, with the open top zone; an adoption without zones keeps them (#4135).
+_STANDARD_LIMITS: dict[ZoneConfigurationMetric, tuple[float, ...]] = {
+    ZoneConfigurationMetric.POWER: POWER_ZONE_LIMITS,
+    ZoneConfigurationMetric.HEART_RATE: HR_ZONE_LIMITS,
+    ZoneConfigurationMetric.PACE: PACE_ZONE_LIMITS,
+}
+OPEN_ZONE_PERCENT = 999.0
+# The one-time store of Garmin's LT2 values in effect (athlete decision
+# 2026-11-24, #4135): its state key and the change-history source it stamps.
+GARMIN_STORE_STAGE = "garmin_threshold_store"
+GARMIN_STORE_STATE_KEY = "garmin_threshold_store_state"
+GARMIN_STORE_SOURCE = "system:#4135"
 _SOURCES = {
     "run": ("dfa_alpha1", "critical_speed", GARMIN_SOURCE),
     "ride": ("critical_power", GARMIN_SOURCE),
@@ -282,6 +304,90 @@ class SecondThresholdService:
         return receipt
 
 
+class GarminThresholdStore:
+    """Store Garmin's LT2 values in effect once, as local values (#4135).
+
+    A follow-up stage of the canonical backfill, so the stored Garmin records are
+    readable when it runs. Its one pass stores, per sport and value, the Garmin
+    threshold every consumer applies today as a local configuration with the
+    origin ``garmin`` through the adoption's save path, stamped ``system:#4135``
+    in the change history. A local value in effect is left alone and a value
+    without a Garmin threshold is skipped. The pass runs in the worker's
+    transaction, so a failure stores nothing; the state key then says ``failed``
+    and the next pass tries again. Once ``complete`` it never runs again: a
+    Garmin value that appears later is an offer, never stored by itself.
+    """
+
+    stage = GARMIN_STORE_STAGE
+
+    def __init__(
+        self,
+        *,
+        key_values: Any,
+        zones: Callable[[], Any],
+        reader: Callable[[], Any],
+        today: Callable[[], date],
+        clock: Callable[[], str],
+    ) -> None:
+        self._key_values = key_values
+        self._zones = zones
+        self._reader = reader
+        self._today = today
+        self._clock = clock
+
+    def run_batch(self, db: Any) -> BatchReport:
+        """Store today's Garmin values once, in the caller's transaction."""
+        if self.state(db).get("status") == "complete":
+            return BatchReport(items=0, done=True)
+        zones = self._zones()
+        configurations = zones.configurations()
+        today = self._today()
+        winners = read_export_thresholds(
+            self._reader(), db, as_of=today, configurations=configurations
+        )
+        stored: list[str] = []
+        with change_history.collect_changes(GARMIN_STORE_SOURCE):
+            for (sport, value), (kind, canonical) in LT2_KEYS.items():
+                metric = _VALUES[value][1]
+                current = effective_zone_configuration(
+                    configurations, metric, canonical, day=today
+                )
+                winner = winners.get((kind, canonical))
+                if winner is None or not _garmin_in_effect(winner, current):
+                    continue
+                zones.save_adopted(
+                    _adopted(current, sport, metric, winner.value.value, GARMIN_SOURCE)
+                )
+                stored.append(f"{sport}:{value}")
+        self._save(db, {"status": "complete", "stored": stored})
+        return BatchReport(items=len(stored), done=True)
+
+    def mark_failed(self, db: Any) -> None:
+        self._save(db, {"status": "failed", "stored": []})
+
+    def state(self, db: Any) -> dict[str, Any]:
+        """The stored state: ``status`` and the ``stored`` sport:value names."""
+        text = self._key_values.get(db, GARMIN_STORE_STATE_KEY)
+        try:
+            state = json.loads(text) if text else {}
+        except ValueError:
+            return {}
+        return state if isinstance(state, dict) else {}
+
+    def _save(self, db: Any, state: Mapping[str, Any]) -> None:
+        self._key_values.set(
+            db,
+            GARMIN_STORE_STATE_KEY,
+            json.dumps({**state, "at": self._clock()}, sort_keys=True),
+        )
+
+
+def _garmin_in_effect(winner: Any, current: ZoneConfiguration | None) -> bool:
+    """Garmin's value applies today and no local configuration holds the value."""
+    local = current is not None and current.provenance.provider is None
+    return winner.provenance.provider is ProviderId.GARMIN and not local
+
+
 def _shown_number(
     payload: Mapping[str, Any], estimate: Mapping[str, Any], field: str
 ) -> Any:
@@ -356,23 +462,35 @@ def _check_deviation(
 
 
 def _adopted(
-    current: ZoneConfiguration,
+    current: ZoneConfiguration | None,
     sport: str,
     metric: ZoneConfigurationMetric,
     threshold: float,
     source: str,
 ) -> dict[str, Any]:
-    """The local configuration: the new threshold with the limits in effect (T1)."""
-    percent = current.percent_limits is not None
-    return {
+    """The local configuration: the new threshold with the limits in effect (T1).
+
+    Without a configuration the standard zones in effect are kept: their
+    percent of the threshold with the open top zone (#4135).
+    """
+    adopted: dict[str, Any] = {
         "sport": sport,
         "metric": metric.value,
         "environment": None,
         "threshold": round(threshold, 3),
+        "maximum": None,
+        "limits": None,
+        "percent_limits": [*_STANDARD_LIMITS[metric], OPEN_ZONE_PERCENT],
+        "threshold_origin": source,
+    }
+    if current is None:
+        return adopted
+    percent = current.percent_limits is not None
+    return {
+        **adopted,
         "maximum": current.maximum,
         "limits": None if percent else list(current.limits or ()),
         "percent_limits": list(current.percent_limits or ()) if percent else None,
-        "threshold_origin": source,
     }
 
 

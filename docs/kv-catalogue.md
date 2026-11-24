@@ -16,7 +16,7 @@ read. A new key needs no entry: it appears here when its write is added.
   `profile` is only set when absent.
 
 <!-- BEGIN GENERATED KEYS -->
-108 keys and 25 key patterns; `<value>` stands for a value the code computes.
+109 keys and 25 key patterns; `<value>` stands for a value the code computes.
 
 | Key | Written by | Deleted by | Export | Reset at start | Purge |
 | --- | --- | --- | --- | --- | --- |
@@ -77,6 +77,7 @@ read. A new key needs no entry: it appears here when its write is added.
 | `garmin_sleep_temperature_keys` | backend/sync/garmin_sleep_keys.py:SleepKeyRecorder.observe | - | yes | - | - |
 | `garmin_state` | backend/db/garmin_store.py:write_state | - | no | - | - |
 | `garmin_sync_status` | backend/sync/garmin_service.py:GarminSyncLifecycleState.set_sync_status | - | no | - | - |
+| `garmin_threshold_store_state` | backend/performance/second_threshold_service.py:GarminThresholdStore._save | - | yes | - | - |
 | `garmin_tokenstore_state` | backend/privacy.py:PrivacyDeleteService.delete<br>backend/sync/garmin_login.py:GarminTokenStore.clear | backend/sync/garmin_login.py:GarminTokenStore.store<br>backend/sync/garmin_login.py:GarminTokenStore.write_back | no | - | rewritten |
 | `gps_tracks_enabled` | backend/privacy.py:PrivacyDeleteService.delete<br>backend/privacy.py:PrivacyDeleteService.set_gps_tracks | - | yes | - | rewritten |
 | `idempotency:<value>` | backend/http_api/idempotency.py:IdempotencyStore.store | backend/http_api/idempotency.py:IdempotencyStore.store | yes | - | - |
