@@ -227,6 +227,11 @@ class ActivityFeedbackServiceTests(unittest.TestCase):
             )["activity_feedback"]
         )
         self.assertIsNone(self.service.save("one", {"feel": None})["activity_feedback"])
+        # The session details read the same view (GET /api/activities/{id},
+        # activity_feedback): a set feel is there, beside the note.
+        self.service.save("two", {"notes": "leicht", "feel": 2})
+        (detail,) = self.service.for_activity_ids(["two"])
+        self.assertEqual(("leicht", 2), (detail["notes"], detail["feel"]))
 
     def setUp(self) -> None:
         self.manager = temp_database(self, "feedback.db", schema=True)
