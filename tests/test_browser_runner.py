@@ -682,6 +682,17 @@ class BrowserRunnerTests(unittest.TestCase):
         self.assertIn("Browser run failed: " + value["error"], self.stderr)
         self.assertNotIn("session-bearing", self.stderr)
 
+    def test_the_failure_line_names_the_first_error_report(self):
+        # #4158: the full report is one open away; the 300-character line stays as it is.
+        child = {"project": "mobile", "file": "e2e/a.spec.js"}
+        failure = {"location": "e2e/a.spec.js:3:1", "error": "Error: x"}
+        report = Path("out") / "artifacts" / "a" / "error-context.md"
+        message = runner.failure_message(child, 1, [failure], report)
+        self.assertTrue(message.endswith(f"; report: {report}"))
+        extended = runner.failure_message(child, 1, [failure], "\\\\?\\C:\\r\\error-context.md")
+        self.assertTrue(extended.endswith("; report: C:\\r\\error-context.md"))
+        self.assertNotIn("report:", runner.failure_message(child, 1, [failure]))
+
     def test_first_error_line_stays_inside_the_error_block(self):
         self.assertEqual("", runner.first_error_line(["# Test info"]))
         for block in (

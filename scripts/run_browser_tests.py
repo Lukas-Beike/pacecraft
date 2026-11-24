@@ -151,7 +151,9 @@ def failed_tests(output):
     return failures
 
 
-def failure_message(child, code, failures):
+def failure_message(child, code, failures, report=None):
+    """The child's failure line; `report` names the first failing test's
+    error-context.md, whose full text the 300-character line may cut (#4158)."""
     message = (
         f"Playwright child failed (exit {code}): {child['project']} {child['file']}"
     )
@@ -164,6 +166,8 @@ def failure_message(child, code, failures):
     message += f": {first['location']}: {first['error']}"
     if len(failures) > 1:
         message += f" (+{len(failures) - 1} more failing tests in the manifest)"
+    if report:
+        message += "; report: " + str(report).removeprefix("\\\\?\\")
     return message
 
 
@@ -1296,7 +1300,10 @@ class Execution:
                     )
                 failures = failed_tests(output)
                 evidence.child(child, failures=failures)
-                message = failure_message(child, code, failures)
+                reports = error_reports(output)
+                message = failure_message(
+                    child, code, failures, reports[0] if reports else None
+                )
                 if not self.args.keep_going:
                     raise RunnerError(message)
                 self.kept_failures.append(message)
