@@ -81,7 +81,9 @@ test("@responsive the calendar edits and archives a unit", async ({ page, reques
   await page.evaluate(async () => {
     const made = await api("/api/library", { method: "POST", body: JSON.stringify({ name: "E2E Ausdauer", description: "- 10m 60%", sport: "Ride", duration_minutes: 10, target: "POWER" }) });
     const today = timezoneDateKey(state.data.profile.timezone, new Date());
-    await api(`/api/library/${made.local_id}/schedule`, { method: "POST", body: JSON.stringify({ date: addDateKey(planWeekStart(today), 7) }) });
+    // The fixture calendar blocks today + 2 and today + 5 with [NO_TRAINING] markers: a day of next week skips them.
+    const free = (offset) => { let day = addDateKey(planWeekStart(today), offset); while ([2, 5].some((n) => addDateKey(today, n) === day)) day = addDateKey(day, 1); return day; };
+    await api(`/api/library/${made.local_id}/schedule`, { method: "POST", body: JSON.stringify({ date: free(7) }) });
     await globalThis.load();
   });
   await page.getByRole("button", { name: "Nächste Woche" }).click();
@@ -100,7 +102,8 @@ test("@responsive the calendar edits and archives a unit", async ({ page, reques
 
   // Archivieren acts at once and the day's receipt takes it back.
   await edited.getByRole("button", { name: "Archivieren" }).click();
-  const day = page.locator(".planned-day").first();
+  // The unit sits on the first free day of next week; the receipt shows on its day.
+  const day = page.locator(".planned-day", { has: page.locator(".planned-day-content > .planned-move-status") });
   await expect(day.locator(".planned-day-content > .planned-move-status")).toContainText("Archiviert: E2E Ausdauer neu");
   await expect(page.locator(".planned-entry", { hasText: "E2E Ausdauer neu" })).toHaveCount(0);
   expect(posts.at(-1)).toEqual([expect.stringMatching(/\/archive$/), { confirmed: true, expected_payload_hash: expect.stringMatching(/^[0-9a-f]{64}$/) }]);
@@ -264,7 +267,9 @@ test("@responsive a plan's period is replaced in one change and Rückgängig tak
     const plan = (state.data.plans || []).find((item) => item.name === "E2E Ersatzplan");
     const made = await api("/api/library", { method: "POST", body: JSON.stringify({ name: "E2E Alt", description: "- 10m 60%", sport: "Ride", duration_minutes: 10, target: "POWER" }) });
     const today = timezoneDateKey(state.data.profile.timezone, new Date());
-    await api(`/api/library/${made.local_id}/schedule`, { method: "POST", body: JSON.stringify({ date: addDateKey(planWeekStart(today), 9), plan_id: plan.id }) });
+    // The fixture calendar blocks today + 2 and today + 5 with [NO_TRAINING] markers: a day of next week skips them.
+    const free = (offset) => { let day = addDateKey(planWeekStart(today), offset); while ([2, 5].some((n) => addDateKey(today, n) === day)) day = addDateKey(day, 1); return day; };
+    await api(`/api/library/${made.local_id}/schedule`, { method: "POST", body: JSON.stringify({ date: free(9), plan_id: plan.id }) });
     await globalThis.load();
   });
 
@@ -339,7 +344,9 @@ test("@responsive Aus Garmin entfernen asks first and removes only the Garmin co
   await page.evaluate(async () => {
     const made = await api("/api/library", { method: "POST", body: JSON.stringify({ name: "E2E Garmin", description: "- 10m 60%", sport: "Ride", duration_minutes: 10, target: "POWER" }) });
     const today = timezoneDateKey(state.data.profile.timezone, new Date());
-    await api(`/api/library/${made.local_id}/schedule`, { method: "POST", body: JSON.stringify({ date: addDateKey(planWeekStart(today), 10) }) });
+    // The fixture calendar blocks today + 2 and today + 5 with [NO_TRAINING] markers: a day of next week skips them.
+    const free = (offset) => { let day = addDateKey(planWeekStart(today), offset); while ([2, 5].some((n) => addDateKey(today, n) === day)) day = addDateKey(day, 1); return day; };
+    await api(`/api/library/${made.local_id}/schedule`, { method: "POST", body: JSON.stringify({ date: free(10) }) });
     await globalThis.load();
   });
   await page.getByRole("button", { name: "Nächste Woche" }).click();
