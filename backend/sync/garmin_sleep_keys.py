@@ -184,17 +184,31 @@ def summarize_sleep_temperature_keys(
     if nights:
         merge_observation(state, STORED, nights)
     collectors: dict[str, dict[str, int]] = {}
+    # Per collector the span of nights it scanned, so a run without matches shows.
+    scanned_days: dict[str, int] = {}
     days: list[str] = []
     for name, entry in sorted(state.items()):
         view = _collector_view(entry)
         if view is not None:
             collectors[name] = view[0]
             days += view[1]
+            if (span := _span_days(view[1])) is not None:
+                scanned_days[name] = span
     return {
         "collectors": collectors,
+        "scanned_days": scanned_days,
         "date_range": {"from": min(days), "to": max(days)} if days else None,
         "none_found": bool(days) and not any(collectors.values()),
     }
+
+
+def _span_days(days: list[str]) -> int | None:
+    """The nights from the first to the last scanned day, or None without dates."""
+    try:
+        first, last = date.fromisoformat(min(days)), date.fromisoformat(max(days))
+    except ValueError:
+        return None
+    return (last - first).days + 1
 
 
 def _safe(path: str) -> bool:

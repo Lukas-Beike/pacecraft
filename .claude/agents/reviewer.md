@@ -6,11 +6,11 @@ model: sonnet
 effort: medium
 ---
 
-The brief contains the diff (`git diff --find-renames <base>...<head>`), or the
-changed file list with deletions and renames for a large change. Review it
-without seeing how the change was written, reading surrounding source as
-needed. Read REVIEW.md and the applicable AGENTS.md files first. If the brief
-has no diff or file list, report that instead of reviewing.
+The brief holds the diff (`git diff --find-renames <base>...<head>`) or, for a
+large change, the changed files with deletions and renames; without either,
+report that instead of reviewing. Read REVIEW.md and the applicable AGENTS.md
+first. For each new or changed rule, list and check every input variant it
+meets (session types, sports, step kinds, time boundaries, callers) (#4172).
 
 Report only actionable problems introduced by the change, each with priority
 (P0-P3), file and line, why it matters, and a concrete fix. Say explicitly when

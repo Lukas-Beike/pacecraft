@@ -77,8 +77,27 @@ class SleepKeyDiagnosticsTests(unittest.TestCase):
     def test_nothing_scanned_is_not_reported_as_none_found(self) -> None:
         self.assertEqual(
             self.summary(),
-            {"collectors": {}, "date_range": None, "none_found": False},
+            {
+                "collectors": {},
+                "scanned_days": {},
+                "date_range": None,
+                "none_found": False,
+            },
         )
+
+    def test_a_collector_that_ran_without_matches_shows_its_scanned_nights(
+        self,
+    ) -> None:
+        # #4017: "none_found" alone cannot tell whether the live fetches ran.
+        for operation, day in (
+            ("morning_sleep", "2026-11-20"),
+            ("sleep_night", "2026-11-22"),
+        ):
+            self.recorder.observe(operation, {"dailySleepDTO": {"calendarDate": day}})
+        summary = self.summary()
+        self.assertEqual(summary["scanned_days"], {"get_sleep_data": 3})
+        self.assertEqual(summary["collectors"], {"get_sleep_data": {}})
+        self.assertTrue(summary["none_found"])
 
     def test_a_scan_without_matches_reports_none_found(self) -> None:
         self.recorder.observe("sleep_night", {"dailySleepDTO": {"calendarDate": "x"}})
@@ -109,6 +128,9 @@ class SleepKeyDiagnosticsTests(unittest.TestCase):
         )
         self.assertEqual(
             summary["date_range"], {"from": "2026-11-19", "to": "2026-11-21"}
+        )
+        self.assertEqual(
+            summary["scanned_days"], {"get_sleep_data": 2, "get_sleep_daily": 2}
         )
         self.assertFalse(summary["none_found"])
 

@@ -167,6 +167,14 @@ class GuardHookTests(unittest.TestCase):
         ):
             return guard.main()
 
+    def test_the_hook_loads_without_warnings(self):
+        # An unescaped `[` in a class printed a FutureWarning on every hook run (#4162).
+        loaded = subprocess.run(
+            [sys.executable, "-W", "error", "-c", "import runpy, sys; runpy.run_path(sys.argv[1])", _spec.origin],
+            input="{}", capture_output=True, text=True, check=False,
+        )  # fmt: skip
+        self.assertNotIn("Warning", loaded.stderr)
+
     def test_padded_brackets_are_read_in_linear_time(self):
         # #3507 review: each bracket scan is bounded, so 20 KB of `[`, `[.` or
         # `[:` reads at once (a quadratic scan took minutes); a padding that

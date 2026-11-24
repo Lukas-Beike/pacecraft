@@ -94,6 +94,10 @@ MIN_LISTED: Final = 2
 PROGRESS_PCT: Final = 1.0
 PROGRESS_HEART_RATE_BPM: Final = 2
 PROGRESS_DECOUPLING_PTS: Final = 2.0
+# At the same power (within SAME_OUTPUT_SHARE) a heart rate this many bpm lower
+# is better, as much higher worse; a smaller change is day-to-day noise
+# (athlete, 2026-11-24: +3 bpm in ERG is "gleich").
+SAME_POWER_HEART_RATE_BPM: Final = 4
 # The duration change is measured against this many of the newest peers.
 RECENT_PEERS: Final = 3
 _UNTYPED: Final = {
@@ -168,8 +172,12 @@ def comparable_sessions(
     *,
     covered_from: date | None = None,
     types: Mapping[str, Mapping[str, Any]] | None = None,
+    erg: bool = False,
 ) -> dict[str, Any]:
     """Compare one session's execution with its comparable earlier sessions.
+
+    ``erg`` marks a ride whose power the trainer held (``erg_like``): its
+    progress at the same power is the heart rate it cost (#4136).
 
     ``covered_from`` is the first day the records cover; an earlier peer window
     is cut there and named as truncated. ``types`` (``session_types``) keeps
@@ -215,6 +223,8 @@ def comparable_sessions(
     median, difference, median_peers, quartile = _medians(mine, peers, metrics)
     peers.sort(key=lambda row: str(row.get("date")), reverse=True)
     this, rows = _cohort_rows(own, peers, metrics)
+    if erg:
+        this["erg_like"] = True
     return {
         **base,
         "status": "ok",
@@ -373,10 +383,19 @@ def progress(
             "status": "not_covered",
             "reason": "Puls der vergleichbaren Einheiten fehlt, keine Entwicklung ablesbar.",
         }
+    # An ERG ride at the same power: the heart rate it cost decides (athlete,
+    # 2026-11-24, #4136); any other ride keeps power against heart rate.
+    same_power = (
+        this.get("erg_like") is True
+        and this.get("output_unit") == "W"
+        and abs(change) <= SAME_OUTPUT_SHARE * 100
+    )
     return {
         "status": "ok",
-        "marker": output_key,
-        "verdict": _verdict(better, heart),
+        "marker": "heart_rate_at_same_power" if same_power else output_key,
+        "verdict": _same_power_verdict(heart)
+        if same_power
+        else _verdict(better, heart),
         "peers": len(outputs),
         "output_unit": this.get("output_unit"),
         "output": own_output,
@@ -384,6 +403,14 @@ def progress(
         "change_pct": round(change, 1),
         "heart_rate_change_bpm": heart,
     }
+
+
+def _same_power_verdict(heart: float) -> str:
+    """besser when the same power cost at least ``SAME_POWER_HEART_RATE_BPM``
+    less heart rate, schlechter when as much more; else gleich."""
+    if heart <= -SAME_POWER_HEART_RATE_BPM:
+        return "besser"
+    return "schlechter" if heart >= SAME_POWER_HEART_RATE_BPM else "gleich"
 
 
 def _verdict(better: float, heart: float, limit: float = PROGRESS_PCT) -> str:
