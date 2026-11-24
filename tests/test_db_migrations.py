@@ -465,6 +465,37 @@ def product_sizes(db) -> list[tuple]:
     ]
 
 
+def assert_step_failure_leaves_unchanged(case, populate, version, prefixes) -> None:
+    """A step failing after each of ``prefixes``, or at the final validation,
+    leaves the populated ``version`` database unchanged; a retry then upgrades it."""
+    for prefix in (*prefixes, None):
+        with case.subTest(after=prefix or "final validation"):
+            db = sqlite3.connect(":memory:")
+            db.row_factory = sqlite3.Row
+            case.addCleanup(db.close)
+            populate(db)
+            before = list(db.iterdump())
+            if prefix is None:
+                with (
+                    mock.patch.object(
+                        migrations,
+                        "database_schema_is_current",
+                        side_effect=[False, False],
+                    ),
+                    case.assertRaisesRegex(RuntimeError, "validiert"),
+                ):
+                    migrate_schema(db)
+            else:
+                with case.assertRaisesRegex(RuntimeError, "injected"):
+                    migrate_schema(FailAfter(db, prefix))
+            db.rollback()
+            case.assertEqual(list(db.iterdump()), before)
+            case.assertEqual(db.execute("PRAGMA user_version").fetchone()[0], version)
+            migrate_schema(db)
+            db.commit()
+            case.assertTrue(database_schema_is_current(db))
+
+
 class FailAfter:
     """A connection whose statement starting with ``prefix`` fails once it ran."""
 
@@ -1335,34 +1366,15 @@ class DatabaseSchemaGateTests(unittest.TestCase):
 
     def test_product_size_step_failing_leaves_v32_unchanged(self):
         # After the first and the last new column, and at the final validation.
-        for prefix in (
-            "ALTER TABLE nutrition_products ADD COLUMN portion_amount",
-            "ALTER TABLE nutrition_products ADD COLUMN package_unit",
-            None,
-        ):
-            with self.subTest(after=prefix or "final validation"):
-                db = self.connect()
-                populated_v32_database(db)
-                before = list(db.iterdump())
-                if prefix is None:
-                    with (
-                        mock.patch.object(
-                            migrations,
-                            "database_schema_is_current",
-                            side_effect=[False, False],
-                        ),
-                        self.assertRaisesRegex(RuntimeError, "validiert"),
-                    ):
-                        migrate_schema(db)
-                else:
-                    with self.assertRaisesRegex(RuntimeError, "injected"):
-                        migrate_schema(FailAfter(db, prefix))
-                db.rollback()
-                self.assertEqual(list(db.iterdump()), before)
-                self.assertEqual(db.execute("PRAGMA user_version").fetchone()[0], 32)
-                migrate_schema(db)
-                db.commit()
-                self.assertTrue(database_schema_is_current(db))
+        assert_step_failure_leaves_unchanged(
+            self,
+            populated_v32_database,
+            32,
+            (
+                "ALTER TABLE nutrition_products ADD COLUMN portion_amount",
+                "ALTER TABLE nutrition_products ADD COLUMN package_unit",
+            ),
+        )
 
     def test_frozen_v33_shape_is_v32_after_its_product_size_step(self):
         db = self.connect()
@@ -1405,30 +1417,12 @@ class DatabaseSchemaGateTests(unittest.TestCase):
 
     def test_feedback_feel_step_failing_leaves_v33_unchanged(self):
         # After the new column, and at the final validation.
-        for prefix in ("ALTER TABLE activity_feedback ADD COLUMN feel", None):
-            with self.subTest(after=prefix or "final validation"):
-                db = self.connect()
-                populated_v33_database(db)
-                before = list(db.iterdump())
-                if prefix is None:
-                    with (
-                        mock.patch.object(
-                            migrations,
-                            "database_schema_is_current",
-                            side_effect=[False, False],
-                        ),
-                        self.assertRaisesRegex(RuntimeError, "validiert"),
-                    ):
-                        migrate_schema(db)
-                else:
-                    with self.assertRaisesRegex(RuntimeError, "injected"):
-                        migrate_schema(FailAfter(db, prefix))
-                db.rollback()
-                self.assertEqual(list(db.iterdump()), before)
-                self.assertEqual(db.execute("PRAGMA user_version").fetchone()[0], 33)
-                migrate_schema(db)
-                db.commit()
-                self.assertTrue(database_schema_is_current(db))
+        assert_step_failure_leaves_unchanged(
+            self,
+            populated_v33_database,
+            33,
+            ("ALTER TABLE activity_feedback ADD COLUMN feel",),
+        )
 
     def test_populated_v28_database_gains_an_empty_location_with_every_row(self):
         db = self.connect()
