@@ -135,7 +135,7 @@ function plannedCoachButton(label, prompt, className = "secondary-button planned
   const button = h("button", { type: "button", className, dataset: requestKind ? { requestKind } : undefined }, label);
   // Several hand-over buttons of one card share the label; the name starts with it and says what each is for.
   if (purpose) button.setAttribute("aria-label", `${label}: ${purpose}`);
-  button.disabled = Boolean(requestKind) && !coachConfigured(null, requestKind);
+  setKeyOff(button, Boolean(requestKind) && !coachConfigured(null, requestKind));
   button.addEventListener("click", () => { void globalThis.askCoach?.(prompt, { requestKind }); });
   return button;
 }

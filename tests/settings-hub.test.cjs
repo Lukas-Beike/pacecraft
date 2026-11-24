@@ -137,3 +137,17 @@ test("a quick action needs the planning model's key, the morning check-in the ch
   assert.equal(coachConfigured({ coach: false }, "session_analysis"), true);
   assert.equal(coachConfigured({ coach: false }), false);
 });
+
+test("a control of a task without a key is off with its reason, and loses it when the key is there", () => {
+  const { setKeyOff, KEY_OFF_TITLE } = extractFunctions("views.js", ["KEY_OFF_TITLE", "setKeyOff"]);
+  const button = { disabled: false, title: "", removeAttribute(name) { this[name] = ""; } };
+  setKeyOff(button, true);
+  assert.equal(button.disabled, true);
+  assert.equal(button.title, KEY_OFF_TITLE);
+  setKeyOff(button, false);
+  assert.equal(button.disabled, false);
+  assert.equal(button.title, "");
+  button.title = "own title";
+  setKeyOff(button, false);
+  assert.equal(button.title, "own title");
+});

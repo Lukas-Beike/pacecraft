@@ -520,6 +520,14 @@ function taskSelectId(task, name) {
   return task === "conversation" ? `#${name[0].toLowerCase()}${name.slice(1)}Select` : `#${task}${name}Select`;
 }
 
+// A control of a task whose provider has no key is off and says why (#4129 M-03).
+const KEY_OFF_TITLE = "Für das Modell dieser Aufgabe fehlt der Schlüssel (Mehr › Anbindungen).";
+function setKeyOff(button, off) {
+  button.disabled = off;
+  if (off) button.title = KEY_OFF_TITLE;
+  else if (button.title === KEY_OFF_TITLE) button.removeAttribute("title");
+}
+
 function renderModel(model) {
   for (const task of COACH_TASKS) {
     const taskModel = model && { ...model, selected: model.tasks?.[task]?.model ?? model.selected };
@@ -537,10 +545,10 @@ function renderModel(model) {
   // calendar's "Mit Coach besprechen" (#2744).
   const planningOff = model?.tasks?.planning?.ready === false;
   const planning = $("#quickAnalysisButton");
-  if (planning) planning.disabled = planningOff;
-  document.querySelectorAll("[data-request-kind]:not([data-request-kind=morning_checkin])").forEach((button) => { button.disabled = planningOff; });
+  if (planning) setKeyOff(planning, planningOff);
+  document.querySelectorAll("[data-request-kind]:not([data-request-kind=morning_checkin])").forEach((button) => setKeyOff(button, planningOff));
   const label = $("#nutritionLabelButton");
-  if (label) label.disabled = model?.tasks?.nutrition?.ready === false;
+  if (label) setKeyOff(label, model?.tasks?.nutrition?.ready === false);
   // Speed modes exist only at OpenAI.
   const tierRow = $("#serviceTierRow");
   const provider = (id) => (model?.options || []).find((option) => option.id === id)?.provider;

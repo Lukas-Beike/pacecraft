@@ -266,6 +266,7 @@ function renderedCards() {
     providerIds: () => ({ intervals: "intervals", garmin: "garmin", wahoo: "wahoo" }),
     messageActionButton: () => context.h("button", { type: "button" }, "Bearbeiten"),
     openCompetitionDialog: () => {},
+    setKeyOff: (button, off) => { button.disabled = off; },
     dateLabel: (value) => value,
     distanceLabel: (value) => String(value),
   });
