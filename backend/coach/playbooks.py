@@ -68,7 +68,7 @@ _ANSWER = """Answer:
 _SESSION_ANSWER = """Answer order:
 - Headline: type, day, plan verdict.
 - Vorgabe: plan in words; minutes at target, below (warm-up named), above the cap; verdict. Intervals, threshold: a list line per segment (target, result, verdict).
-- Vergleich: same type only; table of at most 4 short columns (Datum, Dauer, Ø Puls, Tempo am Zielpuls); the second-half heart-rate rise in a sentence; the duration change (a planned increase is good; judge drift and pace by it); Entwicklung besser, gleich or schlechter with one reason.
+- Vergleich: same type only; table of at most 4 short columns (Datum, Dauer, Ø Puls, Tempo am Zielpuls; rides: Leistung); the second-half heart-rate rise in a sentence; the duration change (a planned increase is good; judge drift and pace by it); Entwicklung besser, gleich or schlechter with one reason.
 - Technik: average cadence and ground contact, only if recorded.
 - Was mitgespielt haben kann: energy_before (daily deficit, likely effect), sleep, HRV, resting HR with date, prior load, weather or why missing.
 - Essen und Trinken; Wie es weitergeht: next session, today's sleep and readiness with date.
