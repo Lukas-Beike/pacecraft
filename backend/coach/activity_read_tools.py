@@ -367,6 +367,7 @@ class CoachActivityReadToolService:
         session_corrections: Any = None,
         report_counts: Any = None,
         competitions: Callable[[], Any] | None = None,
+        energy_before: Callable[[date], dict[str, Any]] | None = None,
     ) -> None:
         self._activity_read = activity_read
         self._garmin_payload = garmin_payload
@@ -378,6 +379,7 @@ class CoachActivityReadToolService:
         self._session_corrections = session_corrections
         self._report_counts = report_counts
         self._competitions = competitions
+        self._energy_before = energy_before
 
     def execute(self, name: str, arguments: dict[str, Any]) -> dict[str, Any] | None:
         if name == "read_training_records":
@@ -738,11 +740,26 @@ class CoachActivityReadToolService:
             if strength is not None:
                 result["strength_plan"] = strength
             result.update(self._step_test(detail, paired, calendar))
+            result.update(self._influences(detail, session, day))
             # Code judges every deterministic check; the Coach explains (#3084).
             result["session_report"] = self._session_report(
                 result, session, paired, nearby
             )
         return result
+
+    def _influences(
+        self, detail: Mapping[str, Any], session: Mapping[str, Any], day: date
+    ) -> dict[str, Any]:
+        """The energy balance of the days before, and a missing weather named
+        as a gap of the app's own look-up (#4136); runs and rides only."""
+        if session.get("sport") not in ("run", "ride"):
+            return {}
+        found: dict[str, Any] = {}
+        if self._energy_before is not None:
+            found["energy_before"] = self._energy_before(day)
+        if "weather" not in detail:
+            found["weather"] = _weather_gap(session)
+        return found
 
     def _step_test(
         self,
@@ -812,7 +829,7 @@ class CoachActivityReadToolService:
         # reads them once (#3084 Part 2).
         facts: dict[str, Any] = {
             key: result.pop(key)
-            for key in ("critical_speed", "running_dynamics_rating")
+            for key in ("critical_speed", "running_dynamics_rating", "energy_before")
             if key in result
         }
         report = session_report(
@@ -1095,6 +1112,17 @@ class CoachActivityReadToolService:
             return max(1, min(int(arguments.get(key, default)), maximum))
         except (TypeError, ValueError) as exc:
             raise AppError(400, error, reason="invalid_list_request") from exc
+
+
+def _weather_gap(session: Mapping[str, Any]) -> dict[str, Any]:
+    """Why a run or ride has no stored weather: indoors none is looked up,
+    outdoors the app's look-up left a gap."""
+    if session.get("environment") in INDOOR_ENVIRONMENTS:
+        return {"status": "not_applicable", "reason": "Drinnen: kein Wetter."}
+    return {
+        "status": "missing",
+        "reason": "Datenlücke: Die App ruft das Wetter für Läufe und Radfahrten draußen ab, zu dieser Einheit ist keins gespeichert.",
+    }
 
 
 def _unit_plan(unit: Mapping[str, Any]) -> dict[str, Any]:

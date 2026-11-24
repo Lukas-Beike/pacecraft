@@ -389,6 +389,7 @@ def build_coach_read_tools(
             ctx.athlete.session_corrections(),
             ctx.session_report_counts,
             ctx.planning.competition,
+            ctx.nutrition.energy_before,
         )
 
     def read_service() -> CoachReadToolService:

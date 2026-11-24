@@ -350,6 +350,8 @@ class CoachReadToolBuilderTests(unittest.TestCase):
                 ctx.athlete.session_corrections.return_value,
                 ctx.session_report_counts,
                 ctx.planning.competition,
+                # The days before a session's balance (#4136).
+                ctx.nutrition.energy_before,
             ),
         )
 

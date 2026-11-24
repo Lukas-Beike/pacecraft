@@ -1413,6 +1413,7 @@ def _session_facts(facts: _Facts) -> list[dict[str, Any]]:
     """Values the report states without a verdict (athlete, #3084 Part 2)."""
     found = [
         _type_progress(facts),
+        _energy_before(facts),
         _work_laps_of_critical_speed(facts),
         _steadiness_fact(facts),
         _reps_of_ftp(facts),
@@ -1421,6 +1422,20 @@ def _session_facts(facts: _Facts) -> list[dict[str, Any]]:
         _stops(facts),
     ]
     return [fact for fact in found if fact is not None]
+
+
+def _energy_before(facts: _Facts) -> dict[str, Any] | None:
+    """Intake, expenditure and balance of the days before the session (#4136)."""
+    energy = _mapping(facts.result.get("energy_before"))
+    if not energy:
+        return None
+    return {
+        "id": "energy_before",
+        "title": "Energiebilanz der Tage davor",
+        "value": dict(energy),
+        "unit": "kcal",
+        "basis": "diary",
+    }
 
 
 def _type_progress(facts: _Facts) -> dict[str, Any] | None:
@@ -2432,7 +2447,9 @@ def _heat(facts: _Facts, weather: Mapping[str, Any]) -> dict[str, Any]:
     title = "Hitze (Wetter der Einheit)"
     apparent = _number(weather.get("apparent_temperature_c"))
     if apparent is None:
-        return _unknown("heat", title, "Keine gefühlte Temperatur gespeichert.")
+        # A missing weather names its gap (#4136).
+        reason = weather.get("reason") or "Keine gefühlte Temperatur gespeichert."
+        return _unknown("heat", title, str(reason))
     explains = _notable_heart_checks(facts) if apparent >= HEAT_APPARENT_C else []
     return _judged(
         "heat",

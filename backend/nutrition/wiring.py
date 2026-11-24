@@ -44,6 +44,7 @@ from backend.nutrition.energy_view import (
     LONG_PERIODS,
     OwnHistory,
     own_history,
+    read_days_before,
     read_energy_view,
     read_fit_inputs,
     selected_day,
@@ -84,6 +85,8 @@ class NutritionServices:
     energy_basis: Callable[[Any], dict[str, Any]]
     # Resting and daily expenditure per source and their fit (#3099).
     energy_view: EnergyView
+    # The balance of the days before a session's day, for its analysis (#4136).
+    energy_before: Callable[[date], dict[str, Any]]
     # One run re-checking every product (#3299); stopped at shutdown.
     product_refresh: ProductRefreshRunner
 
@@ -299,6 +302,10 @@ def build_nutrition(ctx: AppContext) -> NutritionServices:
                 db, energy_sources(), end, day, periods, days, today
             )
 
+    def energy_before(day: date) -> dict[str, Any]:
+        with ctx.database().reader() as db:
+            return read_days_before(db, energy_sources(), day)
+
     return NutritionServices(
         # Runtime-only provider tokens for the log redactor.
         secret_values=food_database.yazio_secret_values,
@@ -313,6 +320,7 @@ def build_nutrition(ctx: AppContext) -> NutritionServices:
             db, energy_sources(), ctx.clock.now().date()
         ),
         energy_view=energy_view,
+        energy_before=energy_before,
         product_refresh=ProductRefreshRunner(
             # Every product, not the first 1000 the list shows.
             lambda: meal_library_service().product_catalog.list_all_products(

@@ -1540,6 +1540,75 @@ def read_own_day_totals(
     return own_day_totals(*history, days)
 
 
+# The days before a session whose balance its analysis names (#4136).
+DAYS_BEFORE_SESSION: Final = 3
+
+
+def read_days_before(db: Any, sources: EnergySources, day: date) -> dict[str, Any]:
+    """Intake, expenditure and balance of the ``DAYS_BEFORE_SESSION`` days before
+    ``day``, for a session's analysis (#4136).
+
+    The expenditure is the own day total (the diary's own day row), else the
+    whole day's Garmin total, named per day; a day without either, or without
+    intake, has no balance. The mean balance needs every day.
+    """
+    days = [day - timedelta(days=n) for n in range(DAYS_BEFORE_SESSION, 0, -1)]
+    inputs, windows, health = own_history(db, sources, days[-1])
+    return days_before(
+        days, inputs, own_day_totals(inputs, windows, health, days), health
+    )
+
+
+def days_before(
+    days: Sequence[date],
+    inputs: EnergyInputs,
+    own: Mapping[date, float | None],
+    health: Mapping[str, Mapping[str, Any]],
+) -> dict[str, Any]:
+    """The rows and mean balance ``read_days_before`` returns. Pure."""
+    rows = [
+        _day_before(d, inputs, own.get(d), health.get(d.isoformat(), {})) for d in days
+    ]
+    balances = [row["balance_kcal"] for row in rows if row["balance_kcal"] is not None]
+    return {
+        "days": rows,
+        "mean_balance_kcal": round(statistics.fmean(balances))
+        if len(balances) == len(rows)
+        else None,
+        "reason": None
+        if len(balances) == len(rows)
+        else "Für einen Tag fehlen Zufuhr oder Tagesverbrauch.",
+    }
+
+
+def _day_before(
+    day: date,
+    inputs: EnergyInputs,
+    own: float | None,
+    device: Mapping[str, Any],
+) -> dict[str, Any]:
+    entry = inputs.days.get(day)
+    intake = None if entry is None else entry.intake_kcal
+    calories = device.get("calories")
+    whole_day = (
+        float(calories)
+        if isinstance(calories, int | float)
+        and calories > 0
+        and complete_garmin_day(device)
+        else None
+    )
+    total, source = (own, "own") if own is not None else (whole_day, "device")
+    return {
+        "date": day.isoformat(),
+        "intake_kcal": _round(intake),
+        "expenditure_kcal": _round(total),
+        "expenditure_source": None if total is None else source,
+        "balance_kcal": None
+        if intake is None or total is None
+        else round(intake - total),
+    }
+
+
 type OwnHistory = tuple[
     EnergyInputs, tuple[EnergyWindow, ...], Mapping[str, Mapping[str, Any]]
 ]
