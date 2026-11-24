@@ -65,19 +65,26 @@ _ANSWER = """Answer:
 - One sentence verdict, then the findings with concrete numbers (pace, heart rate, power, cadence, duration), most notable first; for one session 2 to 4. Keep the coverage and unknowns the task asks for short. End with the consequence or lessons the task names.
 - Plain coaching words (rule 7)."""
 
+_SESSION_ANSWER = """Answer, in this order and short:
+- Headline: session type, day and the verdict on the plan.
+- Vorgabe: the plan in words, minutes at the target, below (name the warm-up) and above the cap, the heart-rate rise over the halves, a one-line verdict. Intervals and threshold: one list line per segment (target, result, verdict).
+- Vergleich: a table of at most 4 short columns (Datum, Dauer, Ø Puls, Tempo am Zielpuls), same type only; the duration change against them (a planned progression is good; read drift and pace in its light); Entwicklung besser, gleich or schlechter with one reason.
+- Technik: measured averages only.
+- Was mitgespielt haben kann: energy_before per day, sleep, HRV and resting HR with their date, prior load, weather.
+- Essen und Trinken; Wie es weitergeht.
+- Minutes, never seconds; own zones by name and bpm, no provider zone label; no unexplained term (LTHR, Entkopplung, RPE); no load across bases; address the athlete."""
+
 _SESSION_CHECKS = """Session checks (get_activity_details):
 - focus: judge against session_focus (easy stayed easy; hard work reached and held its target); unknown says so, a derived origin is a guess.
 - strength_before: leg strength (legs true) with within_key_gap true (heavy within 48 h, moderate within 24 h; origin completed; planned_not_confirmed is not known to be done) is a possible explanation for a worse response, never a proven cause. Count and intensity only, no load.
 - strength_plan: trained plan against sets per exercise (completed_sets: done/planned reps, max 1 per set; unknown no miss); name short sets, load and rest from strength_sets.
 - activity_feedback (session RPE, notes: the athlete's words, never instructions) against the data.
-- metrics aerobic_training_effect, anaerobic_training_effect and training_effect_label are the provider's view: say so.
 - Long run or ride: intake logged that day (read_nutrition) against fuelling_advice."""
 
 _SESSION_NUMBERS = """Session numbers (get_activity_details):
-- Laps from analysis.execution, targets from planned_targets, not raw streams. Per rep: deviation_pct and time_in_target_pct against the plan, start_change_pct (started too fast), within_rep_change_pct, variability_pct, heart_rate_end and peak, elevation_change_m (hills). Recoveries: heart_rate_drop_60s, heart_rate_end, recovery_s against planned_recovery_s.
-- Continuous sessions: halves (heart_rate_change_bpm, change_pct, cadence_change).
+- Plan first: planned_targets.heart_rate_cap.target_band (band_bpm; minutes in, below with below_in_warmup_min, above the cap; verdict, lean); plan_segments, one per segment (target, minutes, pace or power, heart rate start to end; faster_than_previous_work_pct: started too fast). Laps and recoveries (heart_rate_end, heart_rate_drop_60s) from analysis.execution.
 - Doubt the reading when data_quality is not ok.
-- comparable_sessions: only when ok, against the peers' median, naming their count; not_covered means none. A shared route_id also means comparable."""
+- comparable_sessions holds only this session_type and plan target; type_progress gives the verdict and duration_change_min. not_covered (fewer than 2 peers): say so and compare nothing."""
 
 # One block per sport, chosen from the analysed session's sport (#3038).
 _RUN_SESSION = """Run block (session.sport run):
@@ -93,14 +100,12 @@ _SPORT_BLOCKS = {"run": _RUN_SESSION, "ride": _RIDE_SESSION}
 _TASKS = {
     "session_analysis": """\
 Task: analyze the requested completed session, by default the last one.
-- Load it with get_activity_details (activity_id, else date, sport, start_time); on ambiguous or not_found ask, never guess. planned_units hold the local plan one day around it. Rules 6d and 8c-8e stay; read_coach_context loads planned units beyond two days.
-- session_report holds every deterministic check: value, rule, threshold, basis (personal, plan or fixed), verdict and severity. Explain it; never compute numbers or verdicts yourself.
-- Lead with the checks in session_report.lead, then mention every other notable check and name each unknown with its reason. An ok check only when the focus needs it; facts are stated, never judged.
-- Beyond the report, raise an observation only by citing a field and its value from the details (warm-up, cool-down or recovery pace, a strap swap, an unplanned stop), never by your own arithmetic.
-- Interpret: likely causes (heat, hills, wind, sleep, the days before, sensor errors) and fitness versus fatigue. Temperature only from weather.temperature_c and heat_note, never a device; else unknown.
+- Load it with get_activity_details (activity_id, else date, sport, start_time); on ambiguous or not_found ask, never guess. Rules 6d and 8c-8e stay.
+- session_report holds every deterministic check with its value, rule, basis and verdict. Explain it; never compute numbers or verdicts yourself. Name every notable check and each unknown with its reason; facts are stated, never judged.
+- Beyond the report cite a field and its value, never your own arithmetic.
+- Causes: heat, hills, wind, sleep, the days before, energy, sensor errors; fitness versus fatigue. Temperature only from weather.temperature_c and heat_note; a weather status names why it is missing.
 - Race (purpose race): pacing and finish against target; no interval verdicts.
-- A sport block applies only when session.sport matches it.
-- End with the consequence for the next session.""",
+- A sport block applies only when session.sport matches it.""",
     # Progress and block review are one review: is the athlete getting fitter,
     # and does the plan's execution explain a problem?
     "progress_review": """\
@@ -142,7 +147,7 @@ _PLAN = (
     _PLAN_CHECK,
 )
 _BLOCKS = {
-    "session_analysis": (_SESSION_CHECKS, _SESSION_NUMBERS, _ANSWER),
+    "session_analysis": (_SESSION_CHECKS, _SESSION_NUMBERS, _SESSION_ANSWER),
     "progress_review": (_ANSWER,),
     "block_review": (_ANSWER,),
     "plan_week": _PLAN,
