@@ -1409,6 +1409,7 @@ def _zone_time(
 def _session_facts(facts: _Facts) -> list[dict[str, Any]]:
     """Values the report states without a verdict (athlete, #3084 Part 2)."""
     found = [
+        _type_progress(facts),
         _work_laps_of_critical_speed(facts),
         _steadiness_fact(facts),
         _reps_of_ftp(facts),
@@ -1417,6 +1418,26 @@ def _session_facts(facts: _Facts) -> list[dict[str, Any]]:
         _stops(facts),
     ]
     return [fact for fact in found if fact is not None]
+
+
+def _type_progress(facts: _Facts) -> dict[str, Any] | None:
+    """The session type's progress and the duration change against its own
+    earlier sessions of that type (#4136); None without such a comparison."""
+    comparable = facts.comparable
+    kind = _mapping(comparable.get("session_type"))
+    if comparable.get("status") != "ok" or not kind:
+        return None
+    return {
+        "id": "type_progress",
+        "title": "Entwicklung dieses Einheitstyps",
+        "value": {
+            "session_type": kind.get("type"),
+            "peers": comparable.get("count"),
+            "duration_change_min": comparable.get("duration_change_min"),
+            "progress": comparable.get("progress"),
+        },
+        "basis": "personal",
+    }
 
 
 def _work_laps_of_critical_speed(facts: _Facts) -> dict[str, Any] | None:

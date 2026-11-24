@@ -63,6 +63,13 @@ every named number the code fixes. A test fails when it is out of date.
 | `REP_COUNT_SPREAD` | `2` | `backend/performance/comparable_sessions.py` |  |
 | `HEART_RATE_BAND` | `8` | `backend/performance/comparable_sessions.py` | Continuous sessions compare only at a similar effort, so an easy run is never a tempo run's peer; within the band a faster pace still shows as fitter. |
 | `PERSONAL_LIMIT_METRICS` | `frozenset({'decoupling_pct', 'gap_cv_pct'})` | `backend/performance/comparable_sessions.py` | Metrics the session report judges against the peers' upper quartile (#3084). |
+| `LONG_MAIN_S` | `3600` | `backend/performance/comparable_sessions.py` | Without a plan: a steady main part at most at the first threshold (LT1) is easy, from this long on a long session; above LT1 threshold work. |
+| `STEADY_TYPES` | `frozenset({'easy', 'long'})` | `backend/performance/comparable_sessions.py` | Types whose progress marker is the pace in the shared heart-rate band. |
+| `MIN_LISTED` | `2` | `backend/performance/comparable_sessions.py` | At least this many peers are listed; a progress verdict needs MIN_PEERS. |
+| `PROGRESS_PCT` | `1.0` | `backend/performance/comparable_sessions.py` | Progress (#4136): the type's marker changed by at least this share of the peers' median; a heart rate at most this much higher keeps "besser"; a decoupling change of at least this many points decides a level pace. |
+| `PROGRESS_HEART_RATE_BPM` | `2` | `backend/performance/comparable_sessions.py` |  |
+| `PROGRESS_DECOUPLING_PTS` | `2.0` | `backend/performance/comparable_sessions.py` |  |
+| `RECENT_PEERS` | `3` | `backend/performance/comparable_sessions.py` | The duration change is measured against this many of the newest peers. |
 | `SAME_OUTPUT_SHARE` | `0.05` | `backend/performance/comparable_sessions.py` | Interval peers within this share of the session's rep power (#3084, ERG). |
 | `EFFORT_METHOD` | `'equal-effort-trend-v1'` | `backend/performance/comparable_sessions.py` |  |
 | `VO2MAX_UNIT` | `'ml/kg/min'` | `backend/performance/comparisons.py` |  |

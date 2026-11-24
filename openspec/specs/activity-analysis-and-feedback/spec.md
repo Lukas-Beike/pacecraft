@@ -264,14 +264,22 @@ Evidence: `backend/performance/planned_targets.py:planned_step_adherence`, `back
 The system SHALL set a run's or ride's execution against comparable earlier sessions of the last 84 days, read from each session's execution in the curve window, and report this session, the peers' median and the difference with peer count and temperatures; nothing is scored.
 
 #### Scenario: Comparable peers
-- **WHEN** at least three earlier sessions with sound heart rate and speed share sport, indoor or outdoor, trail or road (runs) and structure, with a continuous main part within 35 % of this one's duration and 8 bpm of its average heart rate, or intervals within 2 reps and 35 % of the median rep duration
-- **THEN** `comparable_sessions` lists the median and difference of output, heart rate, drift and cadence (continuous) or rep output, closing heart rate, recovery drop, fade and cadence (intervals), and up to six peers with their activity weather temperatures (`weather_temp_c`, null without weather).
+- **WHEN** at least two earlier sessions with sound heart rate and speed share sport, indoor or outdoor, trail or road (runs) and structure, with a continuous main part within 35 % of this one's duration and 8 bpm of its average heart rate, or intervals within 2 reps and 35 % of the median rep duration
+- **THEN** `comparable_sessions` lists up to six peers with their duration and activity weather temperatures (`weather_temp_c`, null without weather), and from three peers on the median and difference of output, heart rate, drift and cadence (continuous) or rep output, closing heart rate, recovery drop, fade and cadence (intervals).
+
+#### Scenario: Only the same session type (#4136)
+- **WHEN** the session's type is known: its paired unit's focus (easy, long, threshold or interval; a race or test has none), else detected from its execution (intervals; a steady main part at most at the first threshold is easy, from 60 minutes long; above it threshold)
+- **THEN** only sessions of that type and, where both have one, the same planned heart-rate cap are peers, for `comparable_sessions` and the run's pace in its heart-rate band; `session_type` names the type and its origin, `duration_change_min` the minutes against the median of the three newest peers, and runs list their pace in the shared heart-rate band.
+
+#### Scenario: Progress of the session type (#4136)
+- **WHEN** at least three peers carry the type's marker
+- **THEN** `progress.verdict` is `besser`, `gleich` or `schlechter`: steady easy and long runs by the pace in the shared heart-rate band, 1 % against the peers' median, a level pace decided by a decoupling change of 2 points; other sessions by their main or rep output, 1 % against the median, "gleich" when it came with a heart rate more than 2 bpm higher (better) or lower (worse); the session report states it as the `type_progress` fact.
 
 #### Scenario: Too few peers
-- **WHEN** fewer than three sessions compare, or the session lies outside the curve window
+- **WHEN** fewer than two sessions compare, or the session lies outside the curve window
 - **THEN** the result is `not_covered` with the reason and the count, never a trend; a peer window reaching before the curve window is cut there and named `window_truncated`.
 
-Evidence: `backend/performance/comparable_sessions.py:comparable_sessions`, `backend/performance/session_execution.py:comparison_metrics`, `backend/performance/mean_max_curve.py:SessionCurveReader.curves`, `backend/db/activity_detail_store.py:lap_set_keys`, `backend/coach/activity_read_tools.py:CoachActivityReadToolService._session_checks`; `tests/test_comparable_sessions.py`, `tests/test_coach_session_checks.py:ComparableSessionsCheckTests`, `tests/test_mean_max_curve.py:SessionExecutionCurveTests`.
+Evidence: `backend/performance/comparable_sessions.py:comparable_sessions`, `backend/performance/comparable_sessions.py:session_types`, `backend/performance/comparable_sessions.py:progress`, `backend/performance/pace_at_hr.py:band_paces`, `backend/performance/session_report.py:_type_progress`, `backend/performance/session_execution.py:comparison_metrics`, `backend/performance/mean_max_curve.py:SessionCurveReader.curves`, `backend/db/activity_detail_store.py:lap_set_keys`, `backend/coach/activity_read_tools.py:CoachActivityReadToolService._session_checks`; `tests/test_comparable_sessions.py`, `tests/test_coach_session_checks.py:ComparableSessionsCheckTests`, `tests/test_mean_max_curve.py:SessionExecutionCurveTests`.
 
 ### Requirement: Recognised routes of outdoor sessions
 The system SHALL group repeated rides and runs with a stored GPS track that are not known to be indoor or virtual (an unknown environment, such as Garmin's generic running and cycling types, counts) into routes and give the activity view and the Coach only a route label, visit number, visit count, opaque id and the route's visits with their own session values, never a coordinate or cell. The athlete SHALL be able to rename a route.

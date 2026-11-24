@@ -228,6 +228,32 @@ class EasySessionTests(unittest.TestCase):
             {fact["id"]: fact["value"] for fact in few["facts"]}["run_steadiness"],
         )
 
+    def test_the_type_progress_is_a_fact_of_the_same_type_comparison(self) -> None:
+        # #4136: the verdict and the duration change come with the report; a
+        # comparison of unknown session type states none.
+        progress = {"status": "ok", "verdict": "besser", "marker": "pace_at_heart_rate"}
+        compared = {
+            "status": "ok",
+            "count": 4,
+            "session_type": {"type": "long", "origin": "plan"},
+            "duration_change_min": 6,
+            "progress": progress,
+        }
+        report = session_report(result(focus="long", comparable_sessions=compared))
+        self.assertEqual(
+            {
+                "session_type": "long",
+                "peers": 4,
+                "duration_change_min": 6,
+                "progress": progress,
+            },
+            {fact["id"]: fact["value"] for fact in report["facts"]}["type_progress"],
+        )
+        untyped = session_report(
+            result(focus="long", comparable_sessions={**compared, "session_type": None})
+        )
+        self.assertNotIn("type_progress", [fact["id"] for fact in untyped["facts"]])
+
     def test_heart_rate_spikes_make_heart_rate_checks_unknown(self) -> None:
         report = session_report(
             result(

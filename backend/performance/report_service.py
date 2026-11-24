@@ -1058,6 +1058,8 @@ def _curve_record(
         "terrain": summary.get("terrain"),
         "activity_id": stored_activity_key(summary),
         "observed_at": summary.get("started_at"),
+        # The session-type comparison names each session's duration (#4136).
+        "duration_s": summary_duration_s(summary),
         # Best values are credited to the providers of the streams they read.
         "source": None if profile is None else profile.get("source"),
         "power_profile": {} if curve is None else curve.power,
