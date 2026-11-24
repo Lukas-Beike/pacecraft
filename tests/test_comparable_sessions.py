@@ -357,6 +357,33 @@ class SessionTypeCohortTests(unittest.TestCase):
                 self.assertEqual(verdict, result["progress"]["verdict"])
                 self.assertEqual("output", result["progress"]["marker"])
 
+    def test_a_threshold_run_is_judged_on_its_output_not_its_band_pace(
+        self,
+    ) -> None:
+        # A threshold run with a steady band pace 2 % faster, but 5 bpm higher:
+        # its main output and heart rate decide, so "gleich".
+        def threshold(day: str, pace: int, heart: int) -> dict[str, Any]:
+            row = _row(day, _easy(pace, heart, seconds=1800))
+            return {**row, "pace_at_hr_profile": _paced(pace)}
+
+        records = [
+            threshold("2026-09-06", 274, 157),
+            *(
+                threshold(day, 280, 152)
+                for day in ("2026-08-30", "2026-08-23", "2026-08-16")
+            ),
+        ]
+        types = session_types(
+            records,
+            {row["activity_id"]: {"focus": "threshold"} for row in records},
+            None,
+        )
+        result = comparable_sessions(records, "act_2026-09-06", types=types)
+        self.assertEqual(
+            ("output", "gleich"),
+            (result["progress"]["marker"], result["progress"]["verdict"]),
+        )
+
     def test_an_unknown_type_or_heart_rate_gives_no_progress(self) -> None:
         # #4136: peers of mixed type give no verdict and no duration change,
         # and an output change without the heart rate it cost gives none.

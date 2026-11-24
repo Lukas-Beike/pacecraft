@@ -84,6 +84,8 @@ _FOCUS_TYPES: Final = {
 # Without a plan: a steady main part at most at the first threshold (LT1) is
 # easy, from this long on a long session; above LT1 threshold work.
 LONG_MAIN_S: Final = 3600
+# Types whose progress marker is the pace in the shared heart-rate band.
+STEADY_TYPES: Final = frozenset({"easy", "long"})
 # At least this many peers are listed; a progress verdict needs MIN_PEERS.
 MIN_LISTED: Final = 2
 # Progress (#4136): the type's marker changed by at least this share of the
@@ -224,7 +226,7 @@ def comparable_sessions(
         "upper_quartile_of_peers": quartile,
         "at_same_output": _at_same_output(mine, peers),
         "difference": difference,
-        **_trend(this, rows, typed=types is None or own_type is not None),
+        **_trend(this, rows, own_type, typed=types is None or own_type is not None),
         "peers": rows[:MAX_LISTED],
     }
 
@@ -239,7 +241,11 @@ def _window(day: date, covered_from: date | None) -> tuple[date, dict[str, Any]]
 
 
 def _trend(
-    this: Mapping[str, Any], rows: Sequence[Mapping[str, Any]], *, typed: bool
+    this: Mapping[str, Any],
+    rows: Sequence[Mapping[str, Any]],
+    own_type: Mapping[str, Any] | None,
+    *,
+    typed: bool,
 ) -> dict[str, Any]:
     """The duration change and progress; a session of unknown type has mixed
     peers, so none against them (#4136)."""
@@ -247,7 +253,9 @@ def _trend(
         return {"duration_change_min": None, "progress": dict(_UNTYPED)}
     return {
         "duration_change_min": _duration_change(this, rows),
-        "progress": progress(this, rows),
+        "progress": progress(
+            this, rows, None if own_type is None else own_type["type"]
+        ),
     }
 
 
@@ -311,7 +319,9 @@ def _duration_change(
 
 
 def progress(
-    this: Mapping[str, Any], rows: Sequence[Mapping[str, Any]]
+    this: Mapping[str, Any],
+    rows: Sequence[Mapping[str, Any]],
+    session_type: str | None = None,
 ) -> dict[str, Any]:
     """besser, gleich or schlechter on the session type's marker (#4136).
 
@@ -323,7 +333,10 @@ def progress(
     """
     paces = _values(rows, "pace_at_band_s_per_km")
     own_pace = this.get("pace_at_band_s_per_km")
-    if isinstance(own_pace, (int, float)) and len(paces) >= MIN_PEERS:
+    # Only a steady easy or long run is judged on its pace at heart rate; a
+    # threshold or interval run's band may never touch its work.
+    steady = this.get("structure") == "continuous" and session_type in STEADY_TYPES
+    if steady and isinstance(own_pace, (int, float)) and len(paces) >= MIN_PEERS:
         median = statistics.median(paces)
         change = (own_pace - median) / median * 100
         coupling = _change(this, rows, "decoupling_pct")
