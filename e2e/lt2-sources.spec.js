@@ -116,7 +116,7 @@ test("a changed value raises one notice, and closing it stores the seen values",
   await page.evaluate(() => refreshLt2Notice());
   const strip = page.locator("#statusStrip");
   await expect(strip).toContainText("LT2 Laufen geändert");
-  await expect(strip).toContainText("CS 4:15 → unbekannt");
+  await expect(strip).toContainText("Kritische Geschwindigkeit (CS) 4:15 → unbekannt");
   const before = seen.length;
   await strip.getByRole("button", { name: "Für diese Sitzung ausblenden" }).click();
   await expect.poll(() => seen.length).toBeGreaterThan(before);

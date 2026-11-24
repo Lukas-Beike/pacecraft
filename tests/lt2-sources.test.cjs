@@ -39,7 +39,7 @@ test("a run shows Garmin, the DFA-α1 values and CS with its reason", () => {
   assert.deepEqual(rows.map((row) => [row.name, row.values, row.basis, row.inEffect]), [
     ["Garmin", "4:12 /km · 171 bpm", "vom 03.11.2026", true],
     ["DFA-α1", "169 bpm · 4:16 /km", "aus 6 Läufen der letzten 60 Tage", false],
-    ["CS", "unbekannt", "Keine unabhängigen 3, 7, 12-Minuten-Belastungen in 42 Tagen.", false],
+    ["Kritische Geschwindigkeit (CS)", "unbekannt", "Keine unabhängigen 3, 7, 12-Minuten-Belastungen in 42 Tagen.", false],
   ]);
   // F8: pulse and pace are adoptable one by one; an unknown estimate offers nothing.
   assert.deepEqual(rows[1].adopt.map((item) => [item.value, item.shown]), [["heart_rate", 169], ["pace", 256]]);
@@ -53,7 +53,7 @@ test("an adopted estimate is the one in effect and Garmin's value comes from its
   assert.deepEqual(rows.map((row) => [row.name, row.values, row.inEffect]), [
     ["Garmin", "265 W · 158 bpm", false],
     ["DFA-α1", "unbekannt", false],
-    ["CP", "271 W", true],
+    ["Kritische Leistung (CP)", "271 W", true],
   ]);
   // B2 (#3919): CS/CP name that they usually lie above the sustainable threshold.
   assert.equal(rows[2].basis, "Bestwerte 3, 7, 12 und 20 min aus 42 Tagen · meist einige Prozent über der Dauerschwelle");
@@ -84,7 +84,7 @@ test("the notice needs 2 bpm, 3 s/km or 5 W, or a switch to or from unbekannt", 
   const moved = { provider_hr: 173, provider_pace: 249, dfa_hr: 169, dfa_pace: 256, cs_pace: 249 };
   const changes = lt2NoticeChanges(seen, moved);
   assert.deepEqual(plain(changes).map((change) => change.key), ["provider_hr", "provider_pace", "cs_pace"]);
-  assert.equal(lt2NoticeDetail(changes, "Garmin"), "Garmin Herzfrequenz 171 → 173 bpm, Garmin Pace 4:12 → 4:09 /km, CS unbekannt → 4:09 /km");
+  assert.equal(lt2NoticeDetail(changes, "Garmin"), "Garmin Herzfrequenz 171 → 173 bpm, Garmin Pace 4:12 → 4:09 /km, Kritische Geschwindigkeit (CS) unbekannt → 4:09 /km");
   assert.deepEqual(plain(lt2NoticeChanges({ cp_power: 271 }, { cp_power: 266 })).length, 1);
   assert.deepEqual(plain(lt2NoticeChanges({ cp_power: 271 }, { cp_power: 267 })), []);
 });
@@ -124,5 +124,5 @@ test("a failed baseline save is not retried by itself, and one save per sport ru
 test("the rows keep their order whatever the server's key order", () => {
   const { lt2SourceRows } = lt2();
   const swapped = { critical_speed: ESTIMATES.run.critical_speed, dfa_alpha1: ESTIMATES.run.dfa_alpha1 };
-  assert.deepEqual(plain(lt2SourceRows("run", METRICS, swapped, () => null)).map((row) => row.name), ["Garmin", "DFA-α1", "CS"]);
+  assert.deepEqual(plain(lt2SourceRows("run", METRICS, swapped, () => null)).map((row) => row.name), ["Garmin", "DFA-α1", "Kritische Geschwindigkeit (CS)"]);
 });
