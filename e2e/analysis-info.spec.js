@@ -289,6 +289,9 @@ test("@responsive Garmin acute load switches four weeks and three months with re
   await expect(root.locator("circle[data-series='0']")).toHaveCount(12);
   await expect(root.locator("rect.analysis-series-bar")).toHaveCount(0);
   await expect(root.locator(".analysis-axis-unit")).toHaveText("Belastungspunkte · Wochenstand");
+  // The dashed average line carries its name on the line, also where the heading names it (#4025).
+  await expect(root.locator(".analysis-average-line")).toHaveCount(1);
+  await expect(root.locator(".analysis-average-value")).toHaveText(/^Ø \d/);
   expect(await root.locator(".analysis-date-tick").allTextContents()).toEqual(expect.arrayContaining([expect.stringMatching(/^\d{2}\.\d{2}$/)]));
   await expect(root).not.toContainText("KW ");
   await expect(root.locator("path[data-series='0']")).toHaveAttribute("d", /M.*L/);

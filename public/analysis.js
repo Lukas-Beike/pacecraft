@@ -353,23 +353,32 @@ function appendAnalysisAxes(svg, unit, { min, max, step, chartRight, y }, captio
 function appendAnalysisReferenceLines(svg, item, index, unit, scales, obstacles = []) {
   const { chartRight, y } = scales;
   const lineBox = (value) => ({ left: 60, right: chartRight, top: y(value) - 1.5, bottom: y(value) + 1.5 });
-  if (item.range) svg.append(svgNode("rect", { x: 60, y: Math.min(y(item.range.lower), y(item.range.upper)), width: chartRight - 60, height: Math.max(1, Math.abs(y(item.range.lower) - y(item.range.upper))), class: "analysis-baseline-band" }));
+  const labelAttributes = { "text-anchor": "end", class: "analysis-point-value analysis-average-value", stroke: "var(--surface)", "stroke-width": 4, "paint-order": "stroke", "stroke-linejoin": "round" };
+  const readings = item.average ? item.points.filter(analysisValidPoint).map((point) => Number(point.value)) : [];
+  const average = readings.length ? readings.reduce((sum, value) => sum + value, 0) / readings.length : null;
+  if (item.range) {
+    const top = Math.min(y(item.range.lower), y(item.range.upper));
+    const bottom = Math.max(y(item.range.lower), y(item.range.upper));
+    svg.append(svgNode("rect", { x: 60, y: top, width: chartRight - 60, height: Math.max(1, bottom - top), class: "analysis-baseline-band" }));
+    // The band is named at its right edge, above it, or below when the average's label sits there (#4025).
+    const above = average == null || Math.abs(top - 4 - (y(average) - 8)) >= 14;
+    const labelY = above ? top - 4 : bottom + 12;
+    svg.append(svgNode("text", { x: chartRight, y: labelY, ...labelAttributes }, "Mittlere Hälfte"));
+    obstacles.push({ left: chartRight - 15 * 7.5, right: chartRight, top: labelY - 15, bottom: labelY });
+  }
   if (item.target != null) {
     svg.append(svgNode("line", { x1: 60, x2: chartRight, y1: y(item.target), y2: y(item.target), class: "analysis-target-line" }));
     obstacles.push(lineBox(item.target));
   }
-  if (item.average) {
-    const readings = item.points.filter(analysisValidPoint).map((point) => Number(point.value));
-    if (readings.length) {
-      const average = readings.reduce((sum, value) => sum + value, 0) / readings.length;
-      const line = svgNode("line", { x1: 60, x2: chartRight, y1: y(average), y2: y(average), class: "analysis-average-line" });
-      line.append(svgNode("title", {}, `${item.label}: Durchschnitt ${analysisValue(average, item.unit || unit)}`));
-      svg.append(line);
-      obstacles.push(lineBox(average));
-      const text = `\u00d8 ${analysisValue(average, item.unit || unit)}`;
-      if (!item.averageInHeading) obstacles.push({ left: chartRight - text.length * 7.5, right: chartRight, top: y(average) - 20, bottom: y(average) - 5 });
-      if (!item.averageInHeading) svg.append(svgNode("text", { x: chartRight, y: y(average) - 8, "text-anchor": "end", class: "analysis-point-value analysis-average-value", stroke: "var(--surface)", "stroke-width": 4, "paint-order": "stroke", "stroke-linejoin": "round" }, `\u00d8 ${analysisValue(average, item.unit || unit)}`));
-    }
+  if (average != null) {
+    const line = svgNode("line", { x1: 60, x2: chartRight, y1: y(average), y2: y(average), class: "analysis-average-line" });
+    line.append(svgNode("title", {}, `${item.label}: Durchschnitt ${analysisValue(average, item.unit || unit)}`));
+    svg.append(line);
+    obstacles.push(lineBox(average));
+    // The line carries its name, also where the heading names the average (#4025).
+    const text = `\u00d8 ${analysisValue(average, item.unit || unit)}`;
+    obstacles.push({ left: chartRight - text.length * 7.5, right: chartRight, top: y(average) - 20, bottom: y(average) - 5 });
+    svg.append(svgNode("text", { x: chartRight, y: y(average) - 8, ...labelAttributes }, text));
   }
 }
 
