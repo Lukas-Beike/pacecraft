@@ -1007,12 +1007,15 @@ class DeficitCardTests(unittest.TestCase):
     """'Dein Defizit, letzte 28 Tage' in Verlauf (#3548)."""
 
     def view(
-        self, store: StoredEnergy | None, goal: dict[str, str] | None = None
+        self,
+        store: StoredEnergy | None,
+        goal: dict[str, str] | None = None,
+        body_fat: dict[date, float] | None = None,
     ) -> Any:
         latest = replace(window(END, 3800.0), store=store)
-        return energy_view(inputs(), [*windows()[:-1], latest], garmin(), goal=goal)[
-            "deficit"
-        ]
+        return energy_view(
+            inputs(body_fat), [*windows()[:-1], latest], garmin(), goal=goal
+        )["deficit"]
 
     def test_without_logged_meals_the_card_keeps_the_store_and_drops_the_expenditure(
         self,
@@ -1170,26 +1173,46 @@ class DeficitCardTests(unittest.TestCase):
             },
             card,
         )
-        # A first reading before the period leaves no comparison; a last one
-        # before it too is named alone (28 days end 14.11., so the period starts 18.10.).
-        for start, end, expected in (
-            (date(2026, 10, 7), date(2026, 11, 13), (None, None, False)),
-            (date(2026, 9, 3), date(2026, 10, 10), (None, None, True)),
-        ):
-            with self.subTest(start=start, end=end):
+        # A phase reaching back before the period (28 days end 14.11., so it
+        # starts 18.10.) reads the period's own readings again: two compare, one
+        # stands alone, none names the last reading alone.
+        cases = (
+            (
+                (date(2026, 10, 7), date(2026, 11, 13)),
+                {
+                    date(2026, 10, 7): 16.0,
+                    date(2026, 10, 20): 15.5,
+                    date(2026, 11, 13): 14.1,
+                },
+                (15.5, "2026-10-20", 14.1, "2026-11-13", False),
+            ),
+            (
+                (date(2026, 10, 7), date(2026, 11, 13)),
+                {date(2026, 10, 7): 16.0, date(2026, 11, 13): 14.1},
+                (None, None, 14.1, "2026-11-13", False),
+            ),
+            (
+                (date(2026, 9, 3), date(2026, 10, 10)),
+                {date(2026, 9, 3): 17.0, date(2026, 10, 10): 14.1},
+                (None, None, 14.1, "2026-10-10", True),
+            ),
+        )
+        for (start, end), series, expected in cases:
+            with self.subTest(start=start, end=end, readings=len(series)):
                 reaching = self.view(
-                    MEASURED._replace(fat_date_start=start, fat_date_end=end)
+                    MEASURED._replace(fat_date_start=start, fat_date_end=end),
+                    body_fat=series,
                 )
                 self.assertEqual(
                     expected,
                     (
                         reaching["fat_pct_start"],
                         reaching["fat_date_start"],
+                        reaching["fat_pct_end"],
+                        reaching["fat_date_end"],
                         reaching["fat_last_only"],
                     ),
                 )
-                self.assertEqual(14.1, reaching["fat_pct_end"])
-                self.assertEqual(end.isoformat(), reaching["fat_date_end"])
         # The prior alone has one percentage at most; a surplus is a
         # negative deficit.
         prior = self.view(

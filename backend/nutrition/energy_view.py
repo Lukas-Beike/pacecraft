@@ -49,6 +49,7 @@ from backend.nutrition.energy_balance import (
     edge_change,
     energy_density,
     energy_windows,
+    fat_series,
     history_start,
     is_complete,
     is_stable,
@@ -763,7 +764,11 @@ def energy_view(
         # Where Garmin's day summary of the shown day stands (#3530).
         "wellness": stand,
         "deficit": _deficit(
-            latest, predictions[DEVICE][-1][2], goal, _short_edges(inputs, latest)
+            latest,
+            predictions[DEVICE][-1][2],
+            goal,
+            _short_edges(inputs, latest),
+            inputs,
         ),
         # Without enough logged days, the intake from weight and activity (#3604).
         "estimated_intake": _estimated_intake(
@@ -805,14 +810,20 @@ def _goal_status(
     return {"goal": kind, "goal_kcal": kcal, "status": status, "distance": distance}
 
 
-def _measured_terms(store: StoredEnergy, period_start: date) -> dict[str, Any]:
+def _measured_terms(
+    store: StoredEnergy,
+    period: tuple[date, date],
+    series: Sequence[Mapping[date, float]],
+) -> dict[str, Any]:
     """The deficit card's measured values, each null when missing: the body fat
     readings of the shown period and their days, and the window's last weigh-in.
 
     The fat share rests on the phase's readings, which may reach back beyond the
-    period; the card compares only readings of the period itself (#4037). A
-    first reading before the period leaves no comparison, and a last reading
-    before it too is named by ``fat_last_only`` as "Letzte Messung dd.mm.".
+    period; the card compares only readings of the period itself (#4037). When
+    the phase starts before the period, its method's own readings inside the
+    period are read again: two or more compare, one stands as "nur eine
+    Messung", none names the last reading alone (``fat_last_only``, "Letzte
+    Messung dd.mm.").
     """
 
     def one(value: float | None) -> float | None:
@@ -821,13 +832,32 @@ def _measured_terms(store: StoredEnergy, period_start: date) -> dict[str, Any]:
     def day(value: date | None) -> str | None:
         return None if value is None else value.isoformat()
 
-    before = store.fat_date_start is not None and store.fat_date_start < period_start
-    outside = store.fat_date_end is not None and store.fat_date_end < period_start
+    first, last = (
+        (store.fat_pct_start, store.fat_date_start),
+        (
+            store.fat_pct_end,
+            store.fat_date_end,
+        ),
+    )
+    period_start, period_end = period
+    if store.fat_date_start is not None and store.fat_date_start < period_start:
+        day_last = store.fat_date_end
+        method = next(
+            (s for s in series if day_last is not None and s.get(day_last) == last[0]),
+            {},
+        )
+        inside = sorted(d for d in method if period_start <= d <= period_end)
+        first = (None, None)
+        if inside:
+            last = (method[inside[-1]], inside[-1])
+        if len(inside) >= 2:
+            first = (method[inside[0]], inside[0])
+    outside = last[1] is not None and last[1] < period_start
     return {
-        "fat_pct_start": None if before else one(store.fat_pct_start),
-        "fat_pct_end": one(store.fat_pct_end),
-        "fat_date_start": None if before else day(store.fat_date_start),
-        "fat_date_end": day(store.fat_date_end),
+        "fat_pct_start": one(first[0]),
+        "fat_pct_end": one(last[0]),
+        "fat_date_start": day(first[1]),
+        "fat_date_end": day(last[1]),
         "fat_last_only": outside,
         "weight_last_kg": one(store.weight_last_kg),
         "weight_date_start": day(store.weight_date_start),
@@ -865,7 +895,8 @@ def _deficit(
     latest: EnergyWindow,
     device_total: float | None,
     goal: Mapping[str, str] | None,
-    shown: WeightChange | None = None,
+    shown: WeightChange | None,
+    inputs: EnergyInputs,
 ) -> dict[str, Any] | None:
     """'Dein Defizit, letzte 28 Tage' (#3548): the energy per day from (deficit)
     or into (surplus) the body stores, with the terms of its boxes. The weigh-ins
@@ -905,7 +936,11 @@ def _deficit(
         # kcal per kg of weight change at the blended share, for the goal's
         # weekly weight (#3618).
         "kcal_per_kg": _round(energy_density(store.fat_share)),
-        **_measured_terms(store, latest.end - timedelta(days=latest.days - 1)),
+        **_measured_terms(
+            store,
+            (latest.end - timedelta(days=latest.days - 1), latest.end),
+            fat_series(inputs),
+        ),
         "fat_change_kg": round(store.fat_change_kg, 1),
         # The fat share of the weight change (#3555).
         "fat_share_pct": round(100 * store.fat_change_kg / change)
@@ -1361,6 +1396,7 @@ def _fit_scale(
             _device_prediction(health, deficit_window)[2],
             goal,
             _short_edges(inputs, deficit_window),
+            inputs,
         ),
     }
 
