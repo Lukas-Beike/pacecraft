@@ -625,6 +625,10 @@ def planned_step_adherence(
     ]
     inside = sum(value[0] for value in seconds if value is not None)
     total = sum(value[1] for value in seconds if value is not None)
+    for index, item in enumerate(items):
+        window = windows.get(index)
+        if window is not None:
+            item.update(_segment_facts(timeline, window, execution))
     result: dict[str, Any] = {**base, "status": "ok", "steps": items}
     if total > 0:
         score = round(inside / total * 100)
@@ -642,6 +646,41 @@ def planned_step_adherence(
         span,
     )
     return result
+
+
+# The heart rate a segment starts and ends with: its first and last 30 s.
+SEGMENT_EDGE_S: Final = 30.0
+
+
+def _segment_facts(
+    timeline: _Timeline, window: tuple[float, float], execution: Mapping[str, Any]
+) -> dict[str, Any]:
+    """A step's minutes, its pace or power and its heart rate: mean, at its
+    start and end and its peak (#4136), whatever its target metric."""
+    start, end = window
+    facts: dict[str, Any] = {"minutes": round((end - start) / 60, 1)}
+    output = "watts" if execution.get("output") == "power" else "speed"
+    moving = [
+        (value, span)
+        for value, span in timeline.spans(output, start, end)
+        if output != "speed" or value >= MIN_MOVING_SPEED_MPS
+    ]
+    seconds = sum(span for _, span in moving)
+    if seconds > 0:
+        mean = sum(value * span for value, span in moving) / seconds
+        facts["output"] = _shown_value(output, mean, execution)
+    hearts = timeline.spans("heartrate", start, end)
+    if hearts:
+        facts["heart_rate_avg"] = round(timeline.mean("heartrate", start, end) or 0)
+        for key, first, last in (
+            ("heart_rate_start", start, min(start + SEGMENT_EDGE_S, end)),
+            ("heart_rate_end", max(end - SEGMENT_EDGE_S, start), end),
+        ):
+            value = timeline.mean("heartrate", first, last)
+            if value is not None:
+                facts[key] = round(value)
+        facts["heart_rate_max"] = round(max(value for value, _ in hearts))
+    return facts
 
 
 def adherence_band(share_pct: float) -> str:

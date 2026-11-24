@@ -218,6 +218,7 @@ every named number the code fixes. A test fails when it is out of date.
 | `FAIR_SHARE_PCT` | `50` | `backend/performance/planned_targets.py` |  |
 | `MIN_MOVING_SPEED_MPS` | `0.3` | `backend/performance/planned_targets.py` | Speeds below this are stops, as in the calendar's pace chart. |
 | `RECOVERY_LEVEL_SHARE` | `0.8` | `backend/performance/planned_targets.py` | A step between work steps below this share of the easiest work step's level is a recovery; a harder one is a step of its own. |
+| `SEGMENT_EDGE_S` | `30.0` | `backend/performance/planned_targets.py` | The heart rate a segment starts and ends with: its first and last 30 s. |
 | `GARMIN_SOURCE` | `'Garmin Connect'` | `backend/performance/planning_recovery.py` |  |
 | `UTC_OFFSET_SUFFIX` | `'+00:00'` | `backend/performance/planning_recovery.py` |  |
 | `POWER_DURATIONS` | `(5, 15, 30, 60, 120, 180, 300, 420, 600, 720, 1200, 1800, 3600)` | `backend/performance/power_profile.py` | 180/420/720 s are the 3/7/12-min efforts of the CP/CS field protocols; cycling CP also fits the 1200 s effort (M4 card 4). |
@@ -382,6 +383,7 @@ every named number the code fixes. A test fails when it is out of date.
 | `LEAD_COUNT` | `4` | `backend/performance/session_report.py` | The notable checks the answer leads with. |
 | `EASY_FOCUS` | `frozenset({'recovery', 'easy', 'endurance', 'long'})` | `backend/performance/session_report.py` |  |
 | `INTERVAL_FOCUS` | `frozenset({'tempo', 'threshold', 'vo2max', 'anaerobic', 'sweet_spot', 'test'})` | `backend/performance/session_report.py` |  |
+| `FASTER_SEGMENT_PCT` | `1.0` | `backend/performance/session_report.py` | A work segment this much faster than the one before is named (#4136). |
 | `METRIC_ID` | `'session_rpe_load'` | `backend/performance/session_rpe_load.py` |  |
 | `METHOD_ID` | `'session-rpe-load'` | `backend/performance/session_rpe_load.py` |  |
 | `METHOD_VERSION` | `2` | `backend/performance/session_rpe_load.py` | v2: long interruptions are marked deviating_duration (#1770). |
