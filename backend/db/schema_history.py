@@ -40,6 +40,9 @@ SHAPE_SCHEMA_V31: Final = "schema-v31"
 # Schema version 32, since release 2.1.28: v31 after its diary step.
 # Its digest lets a v32 database take the later steps.
 SHAPE_SCHEMA_V32: Final = "schema-v32"
+# Schema version 33, since release 2.1.51: v32 after its product size step.
+# Its digest lets a v33 database take the later steps.
+SHAPE_SCHEMA_V33: Final = "schema-v33"
 # The live schema of this build, derived from code rather than frozen.
 SHAPE_CURRENT: Final = "current"
 
@@ -51,6 +54,7 @@ RELEASED_SHAPE_DIGESTS: Final[Mapping[str, str]] = {
     SHAPE_SCHEMA_V30: "e680b95e585bb238ddbf783aef80a6be890fe63295d07eeea1e17df6b86379ad",
     SHAPE_SCHEMA_V31: "8de2c800f630dd9819070e46ae4ccde22342cdb64a24b35c151bd7efe9007c11",
     SHAPE_SCHEMA_V32: "5c96e07d4ba532222130a559c2ee1f0b53011cfc437d0f703ab00ede7ae35e69",
+    SHAPE_SCHEMA_V33: "ae6a8f2f9500b7cbc41404660a093588f98d94b4abb1170721e760cdd8eadde9",
 }
 
 # Releases before 2.0.5 wrote lower versions; they are rejected unchanged.
@@ -68,6 +72,7 @@ ACCEPTED_SHAPES_BY_VERSION: Final[Mapping[int, frozenset[str]]] = {
     30: frozenset({SHAPE_SCHEMA_V30}),
     31: frozenset({SHAPE_SCHEMA_V31}),
     32: frozenset({SHAPE_SCHEMA_V32}),
+    33: frozenset({SHAPE_SCHEMA_V33}),
     CURRENT_SCHEMA_VERSION: frozenset({SHAPE_CURRENT}),
 }
 

@@ -149,6 +149,15 @@ class ActivityPurposePostRouteTests(unittest.TestCase):
         service.save_coach.assert_called_once_with("ride-1", {"purpose": "commute"})
         service.save.assert_not_called()
 
+    def test_a_feel_needs_a_live_session_and_removing_it_none(self) -> None:
+        # #4199: a feel is content like the session RPE.
+        service = self.post({"feel": 3})
+        service.save_coach.assert_called_once_with("ride-1", {"feel": 3})
+        service.save.assert_not_called()
+        cleared = self.post({"feel": None})
+        cleared.save.assert_called_once_with("ride-1", {"feel": None})
+        cleared.save_coach.assert_not_called()
+
     def test_removing_a_purpose_needs_no_live_session(self) -> None:
         for payload in ({"purpose": None}, {"purpose": ""}):
             with self.subTest(payload=payload):

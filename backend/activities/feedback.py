@@ -52,8 +52,18 @@ _STORED_FIELDS: Final = (
     "session_id",
     "session_rpe_rated_at",
     "purpose",
+    "feel",
 )
-FEEDBACK_CONTENT_FIELDS: Final = ("notes", "session_rpe", "deviation_reason", "purpose")
+FEEDBACK_CONTENT_FIELDS: Final = (
+    "notes",
+    "session_rpe",
+    "deviation_reason",
+    "purpose",
+    "feel",
+)
+# The athlete's feel after a session (#4199), Garmin's scale: 1 very strong,
+# 2 strong, 3 normal, 4 weak, 5 very weak.
+FEEL_RANGE: Final = range(1, 6)
 PURPOSES: Final = frozenset(purpose.value for purpose in ActivityPurpose)
 _PUBLIC_FIELDS: Final = (
     "activity_id",
@@ -66,6 +76,7 @@ _PUBLIC_FIELDS: Final = (
     "updated_at",
     "session_rpe_rated_at",
     "purpose",
+    "feel",
 )
 
 ACTIVITY_FEEDBACK_TEXT_LIMITS = {
@@ -107,7 +118,18 @@ def normalize_activity_feedback(activity_id: Any, value: Any) -> dict[str, Any]:
         ).strip()[:500]
     if "purpose" in value:
         normalized["purpose"] = _normalize_purpose(value["purpose"])
+    if "feel" in value:
+        normalized["feel"] = _normalize_feel(value["feel"])
     return normalized
+
+
+def _normalize_feel(feel: Any) -> int | None:
+    if feel is None:
+        return None
+    # bool is an int subclass; True is no feel.
+    if type(feel) is int and feel in FEEL_RANGE:
+        return feel
+    raise AppError(400, "Das Gefühl muss zwischen 1 und 5 liegen.")
 
 
 def _normalize_purpose(purpose: Any) -> str | None:
@@ -224,11 +246,11 @@ def _audit_value(group: builtins.list[dict[str, Any]] | None) -> dict[str, Any] 
 
 
 def _audit_row(row: dict[str, Any]) -> dict[str, Any]:
-    """One stored row; an unknown rating time or no marking is left out, as rows
-    recorded before schema versions 18 and 23 have no such fields and keep their
-    audit hash."""
+    """One stored row; an unknown rating time, no marking or no feel is left
+    out, as rows recorded before schema versions 18, 23 and 34 have no such
+    fields and keep their audit hash."""
     recorded = {field: row.get(field) for field in _STORED_FIELDS}
-    for optional in ("session_rpe_rated_at", "purpose"):
+    for optional in ("session_rpe_rated_at", "purpose", "feel"):
         if recorded[optional] is None:
             del recorded[optional]
     return recorded
@@ -270,6 +292,7 @@ def _keep_omitted_fields(
         "session_rpe",
         "deviation_reason",
         "purpose",
+        "feel",
     ):
         if field not in value and field in existing:
             feedback[field] = existing[field]
@@ -291,6 +314,7 @@ def _is_cleared(feedback: dict[str, Any]) -> bool:
         and feedback.get("session_rpe") is None
         and not feedback.get("deviation_reason")
         and feedback.get("purpose") is None
+        and feedback.get("feel") is None
     )
 
 
@@ -312,9 +336,11 @@ def _effective_view(
 ) -> dict[str, Any]:
     chosen, *hidden = _ordered(group, key)
     view = {field: chosen.get(field) for field in _PUBLIC_FIELDS}
-    if view["purpose"] is None:
-        # An unmarked session keeps the view of rows written before schema v23.
-        del view["purpose"]
+    for optional in ("purpose", "feel"):
+        if view[optional] is None:
+            # An unmarked or unfelt session keeps the view of rows written
+            # before schema versions 23 and 34.
+            del view[optional]
     conflicts = [
         {"activity_id": row["activity_id"], "updated_at": row["updated_at"]}
         for row in hidden
@@ -603,6 +629,7 @@ class ActivityFeedbackService:
             and normalized.get("session_rpe") is None
             and not normalized.get("deviation_reason")
             and "purpose" not in normalized
+            and normalized.get("feel") is None
         ):
             raise AppError(400, "Die Rückmeldung darf nicht leer sein.")
         with self._database_manager.reader() as db:
@@ -617,7 +644,7 @@ class ActivityFeedbackService:
     def context(self) -> dict[str, Any]:
         return {
             "recent": self.list(),
-            "scope": "Only athlete-entered notes, session RPE, deviation reasons and the session purpose marking about completed activities; a marking wins over the provider event type and the race hint; this feedback is separate from daily check-ins and provider values.",
+            "scope": "Only athlete-entered notes, session RPE, feel (1 very strong to 5 very weak), deviation reasons and the session purpose marking about completed activities; a marking wins over the provider event type and the race hint; this feedback is separate from daily check-ins and provider values.",
         }
 
     def attach_to_activities(self, activities: Any) -> builtins.list[dict[str, Any]]:

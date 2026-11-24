@@ -41,6 +41,7 @@ from backend.db.schema_history import (
     SHAPE_SCHEMA_V30,
     SHAPE_SCHEMA_V31,
     SHAPE_SCHEMA_V32,
+    SHAPE_SCHEMA_V33,
     released_shape,
     signature_digest,
 )
@@ -423,6 +424,35 @@ def populated_v32_database(db) -> None:
         (STAMP, STAMP),
     )
     db.commit()
+
+
+# Schema v33, since release 2.1.51, has no fixture of its own either: v32
+# after its product size step, with two session notes, one rated and marked.
+def populated_v33_database(db) -> None:
+    populated_v32_database(db)
+    migrations._product_sizes(db)
+    db.execute("PRAGMA user_version = 33")
+    db.executemany(
+        "INSERT INTO activity_feedback(activity_id, activity_name, activity_date, "
+        "notes, session_rpe, deviation_reason, created_at, updated_at, provider, "
+        "purpose) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        [
+            ("act_1", "Lauf", "2026-10-16", "Schwere Beine", 6, "", STAMP, STAMP,
+             "garmin", "training"),
+            ("act_2", "Rad", "2026-10-17", "", None, "", STAMP, STAMP, None, None),
+        ],
+    )  # fmt: skip
+    db.commit()
+
+
+def feedback_feel(db) -> list[tuple]:
+    return [
+        tuple(row)
+        for row in db.execute(
+            "SELECT activity_id, session_rpe, notes, purpose, feel "
+            "FROM activity_feedback ORDER BY activity_id"
+        )
+    ]
 
 
 def product_sizes(db) -> list[tuple]:
@@ -876,6 +906,7 @@ class DatabaseSchemaGateTests(unittest.TestCase):
             populated_v30_database,
             populated_v31_database,
             populated_v32_database,
+            populated_v33_database,
         ):
             with (
                 self.subTest(populate=populate.__name__),
@@ -1333,6 +1364,72 @@ class DatabaseSchemaGateTests(unittest.TestCase):
                 db.commit()
                 self.assertTrue(database_schema_is_current(db))
 
+    def test_frozen_v33_shape_is_v32_after_its_product_size_step(self):
+        db = self.connect()
+        populated_v33_database(db)
+        self.assertEqual(
+            released_shape(database_schema_signature(db)), SHAPE_SCHEMA_V33
+        )
+
+    def test_populated_v33_feedback_keeps_every_row_and_gains_an_empty_feel(self):
+        # #4199: the athlete's feel per session, 1 (very strong) to 5 (very
+        # weak); every stored note keeps its values and has no feel yet.
+        db = self.connect()
+        populated_v33_database(db)
+        tables = self.user_tables(db)
+        columns = self.table_columns(db, tables)
+        before = self.table_rows(db, tables, columns)
+        migrate_schema(db)
+        db.commit()
+        self.assertTrue(database_schema_is_current(db))
+        self.assertEqual(
+            db.execute("PRAGMA user_version").fetchone()[0], CURRENT_SCHEMA_VERSION
+        )
+        self.assertEqual(self.user_tables(db), tables)
+        self.assertEqual(self.table_rows(db, tables, columns), before)
+        self.assertEqual(
+            feedback_feel(db),
+            [
+                ("act_1", 6.0, "Schwere Beine", "training", None),
+                ("act_2", None, "", None, None),
+            ],
+        )
+        self.assertEqual(db.execute("PRAGMA integrity_check").fetchone()[0], "ok")
+        update = "UPDATE activity_feedback SET feel = ? WHERE activity_id = 'act_1'"
+        for feel in (1, 3, 5, None):
+            db.execute(update, (feel,))
+        # INTEGER affinity stores the text "3" as 3; other text and fractions stay out.
+        for feel in (0, 6, -1, 2.5, "gut", "3.5"):
+            with self.subTest(feel=feel), self.assertRaises(sqlite3.IntegrityError):
+                db.execute(update, (feel,))
+
+    def test_feedback_feel_step_failing_leaves_v33_unchanged(self):
+        # After the new column, and at the final validation.
+        for prefix in ("ALTER TABLE activity_feedback ADD COLUMN feel", None):
+            with self.subTest(after=prefix or "final validation"):
+                db = self.connect()
+                populated_v33_database(db)
+                before = list(db.iterdump())
+                if prefix is None:
+                    with (
+                        mock.patch.object(
+                            migrations,
+                            "database_schema_is_current",
+                            side_effect=[False, False],
+                        ),
+                        self.assertRaisesRegex(RuntimeError, "validiert"),
+                    ):
+                        migrate_schema(db)
+                else:
+                    with self.assertRaisesRegex(RuntimeError, "injected"):
+                        migrate_schema(FailAfter(db, prefix))
+                db.rollback()
+                self.assertEqual(list(db.iterdump()), before)
+                self.assertEqual(db.execute("PRAGMA user_version").fetchone()[0], 33)
+                migrate_schema(db)
+                db.commit()
+                self.assertTrue(database_schema_is_current(db))
+
     def test_populated_v28_database_gains_an_empty_location_with_every_row(self):
         db = self.connect()
         populated_v28_database(db)
@@ -1416,6 +1513,7 @@ class DatabaseSchemaGateTests(unittest.TestCase):
             populated_v30_database,
             populated_v31_database,
             populated_v32_database,
+            populated_v33_database,
         ):
             with self.subTest(populate=populate.__name__):
                 self.assert_encrypted_upgrade(populate)

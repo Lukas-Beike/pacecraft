@@ -476,7 +476,8 @@ every named number the code fixes. A test fails when it is out of date.
 | `MIN_ALIGNMENT_OVERLAP` | `0.8` | `backend/activities/detail_merge.py` |  |
 | `ALIGNMENT_TOLERANCE_INTERVALS` | `2.0` | `backend/activities/detail_merge.py` |  |
 | `ENTITY_TYPE` | `'activity_feedback'` | `backend/activities/feedback.py` |  |
-| `FEEDBACK_CONTENT_FIELDS` | `('notes', 'session_rpe', 'deviation_reason', 'purpose')` | `backend/activities/feedback.py` |  |
+| `FEEDBACK_CONTENT_FIELDS` | `('notes', 'session_rpe', 'deviation_reason', 'purpose', 'feel')` | `backend/activities/feedback.py` |  |
+| `FEEL_RANGE` | `range(1, 6)` | `backend/activities/feedback.py` | The athlete's feel after a session (#4199), Garmin's scale: 1 very strong, 2 strong, 3 normal, 4 weak, 5 very weak. |
 | `ACTIVITY_FEEDBACK_TEXT_LIMITS` | `{'activity_name': 200, 'activity_date': 40, 'notes': 4000}` | `backend/activities/feedback.py` |  |
 | `HR_CAP_PERCENT` | `{'recovery': 80.0, 'easy': 84.0, 'long': 84.0}` | `backend/activities/hr_cap.py` | Default upper limit in percent of the threshold HR by the unit's session_focus. The athlete decides these values (easy and long 84 %, #3915: below the LT1 stand-in of 85 %); change them here only. |
 | `MEASURED_MARGIN_PCT` | `3.0` | `backend/activities/hr_cap.py` | With a measured first threshold: the easy and long cap is that threshold's percent of the threshold HR minus this margin (percentage points), and the recovery cap is the lower of its default and the easy cap minus the gap. |

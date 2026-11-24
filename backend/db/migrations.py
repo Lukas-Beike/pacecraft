@@ -5,7 +5,7 @@ and frozen as a test fixture. Older databases and backups are rejected unchanged
 them with release 2.0.5 first. The baseline keeps its frozen fixture in
 tests/fixtures and its digest in backend.db.schema_history; each later schema
 adds one upgrade step here, so the baseline reaches the current schema.
-Released later schemas (v27 to v32) keep only their digests and enter the
+Released later schemas (v27 to v33) keep only their digests and enter the
 chain there.
 """
 
@@ -34,6 +34,7 @@ from backend.db.schema_history import (
     SHAPE_SCHEMA_V30,
     SHAPE_SCHEMA_V31,
     SHAPE_SCHEMA_V32,
+    SHAPE_SCHEMA_V33,
     released_shape,
 )
 from backend.errors import SchemaRefusedError
@@ -496,6 +497,17 @@ def _product_sizes(db: Any) -> None:
     execute_ddl(db, _V33_PRODUCT_SIZES_DDL)
 
 
+# Frozen copy of the v34 feel column (#4199); the live DDL may change later.
+_V34_FEEDBACK_FEEL_DDL: Final = """
+    ALTER TABLE activity_feedback ADD COLUMN feel INTEGER CHECK (feel IS NULL OR (typeof(feel) = 'integer' AND feel BETWEEN 1 AND 5))"""
+
+
+def _feedback_feel(db: Any) -> None:
+    """Schema v34: session feedback gains the athlete's own feel, empty for
+    every stored note (#4199)."""
+    execute_ddl(db, _V34_FEEDBACK_FEEL_DDL)
+
+
 # Released shape -> (next shape, step).
 UPGRADE_STEPS: Final[Mapping[str, tuple[str, Callable[[Any], None]]]] = {
     SHAPE_SCHEMA_V26: (SHAPE_SCHEMA_V27, _canonical_products),
@@ -504,5 +516,6 @@ UPGRADE_STEPS: Final[Mapping[str, tuple[str, Callable[[Any], None]]]] = {
     SHAPE_SCHEMA_V29: (SHAPE_SCHEMA_V30, _session_curves),
     SHAPE_SCHEMA_V30: (SHAPE_SCHEMA_V31, _device_workout),
     SHAPE_SCHEMA_V31: (SHAPE_SCHEMA_V32, _session_fuelling),
-    SHAPE_SCHEMA_V32: (SHAPE_CURRENT, _product_sizes),
+    SHAPE_SCHEMA_V32: (SHAPE_SCHEMA_V33, _product_sizes),
+    SHAPE_SCHEMA_V33: (SHAPE_CURRENT, _feedback_feel),
 }

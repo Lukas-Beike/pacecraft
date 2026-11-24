@@ -92,7 +92,9 @@ TimeoutErrorFactory = Callable[[], Exception]
 # meal types pre_session and during_session (schema v32).
 # Version 23 adds portion_amount, portion_unit, package_amount and package_unit
 # to nutrition_products.jsonl (schema v33).
-PRIVACY_EXPORT_FORMAT_VERSION = 23
+# Version 24 adds activity_feedback.feel, the athlete's feel after a session
+# (schema v34).
+PRIVACY_EXPORT_FORMAT_VERSION = 24
 
 
 class PrivacyArchiveExportService:

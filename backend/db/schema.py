@@ -19,7 +19,7 @@ from backend.canonical.vocabulary import (
     ProviderRecordState,
 )
 
-CURRENT_SCHEMA_VERSION = 33
+CURRENT_SCHEMA_VERSION = 34
 
 # Provider-neutral canonical tables (schema version 6). Only closed lifecycle
 # enums are CHECKed here; they are generated from backend.canonical.vocabulary so
@@ -697,6 +697,11 @@ PRODUCT_SIZES_DDL = """
     ALTER TABLE nutrition_products ADD COLUMN package_amount REAL CHECK (package_amount IS NULL OR (typeof(package_amount) IN ('integer', 'real') AND package_amount > 0));
     ALTER TABLE nutrition_products ADD COLUMN package_unit TEXT CHECK ((package_unit IS NULL) = (package_amount IS NULL) AND (package_unit IS NULL OR package_unit IN ('g', 'ml')))"""
 
+# Schema version 34: the athlete's own feel after a session (#4199), Garmin's
+# five-step scale from 1 (very strong) to 5 (very weak), or NULL (not stated).
+FEEDBACK_FEEL_DDL = """
+    ALTER TABLE activity_feedback ADD COLUMN feel INTEGER CHECK (feel IS NULL OR (typeof(feel) = 'integer' AND feel BETWEEN 1 AND 5))"""
+
 
 def execute_ddl(db: Any, ddl: str) -> None:
     """Run DDL statement by statement inside the caller's transaction.
@@ -1030,6 +1035,7 @@ def _create_schema_statements(db: Any) -> None:
     execute_ddl(db, DEVICE_WORKOUT_DDL)
     execute_ddl(db, NUTRITION_LOGS_DDL)
     execute_ddl(db, PRODUCT_SIZES_DDL)
+    execute_ddl(db, FEEDBACK_FEEL_DDL)
     db.execute(f"PRAGMA user_version = {CURRENT_SCHEMA_VERSION}")
 
 
