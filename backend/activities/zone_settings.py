@@ -495,7 +495,12 @@ def _percent_limits(
     ):
         # Same operation order as the zone lookup, so a value on a limit stays on it.
         # Garmin's floors are whole bpm; a value rounds to the zone it displays.
-        half = 0.5 if configuration.provenance.provider is ProviderId.GARMIN else 0.0
+        # Garmin's limits adopted as local values keep that (#4135).
+        garmin = (
+            configuration.provenance.provider is ProviderId.GARMIN
+            or configuration.threshold_origin == ProviderId.GARMIN.value
+        )
+        half = 0.5 if garmin else 0.0
         limits = tuple(
             (limit + half) / threshold * 100 for limit in configuration.limits[:-1]
         )

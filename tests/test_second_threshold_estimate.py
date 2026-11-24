@@ -15,7 +15,10 @@ from canonical_domain_support import provenance, zone_configuration
 from performance_day_support import StubReader
 from support import dispatch_route
 
-from backend.activities.zone_settings import effective_zone_configuration
+from backend.activities.zone_settings import (
+    ZoneSettings,
+    effective_zone_configuration,
+)
 from backend.athlete.zones import ZoneConfigurationService, local_configuration
 from backend.canonical.activity_detail import ActivityDfaAlpha1, DfaWindow
 from backend.canonical.vocabulary import DfaQuality, MetricKind, ProviderId, Sport
@@ -1128,6 +1131,21 @@ class GarminThresholdStoreTests(unittest.TestCase):
         report, _ = self.run_store()
         self.assertEqual(report.items, 0)
         self.assertEqual(len(self.sources()), 3)
+
+    def test_a_heart_rate_keeps_its_zone_after_the_store(self) -> None:
+        # 130.3 bpm against the watch's upper limit 130: Garmin's whole-bpm
+        # floors put it in zone 1, and the stored limits must too.
+        def zone_of(bpm):
+            settings = ZoneSettings.from_configurations(
+                self.zones.configurations(), Sport.RUN, day=TODAY
+            )
+            return settings.absolute_zone("bpm", bpm)
+
+        self.assertEqual(zone_of(130.3), 1)
+        self.run_store()
+        self.assertEqual(self.local()[("run", "heart_rate")].limits[0], 130.0)
+        self.assertEqual(zone_of(130.3), 1)
+        self.assertEqual(zone_of(130.6), 2)
 
     def test_the_max_hr_keeps_coming_from_garmins_observation(self) -> None:
         # Garmin's max HR (195) differs from the watch set's maximum (192).
