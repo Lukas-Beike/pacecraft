@@ -24,6 +24,8 @@ well (#2947). Right after a push it first waits up to 30 s for GitHub to report
 the head this checkout pushed (#3174), so a force-push is not checked as the old head.
 While the repository variable MERGE_FREEZE is set it arms nothing and disarms an
 armed PR, unless the variable's text names that PR as #<number> (#3203).
+It refuses and disarms a user-visible PR (the `user-visible` label, or a feat/fix
+changing `public/` or `backend/coach/`) without a `Changelog:` line (#4175).
 It arms only a head whose Gitar check completed successfully on that very head
 (#3308): right after a push the check is pending or missing, and one for an
 older head does not count. Without --wait it refuses then; --wait polls until the
@@ -31,7 +33,7 @@ check completes, and refuses a failed one.
 A PR GitHub reports BEHIND develop is rebased right after arming, and once more
 with --wait after its first finished CI round (#3872): rebase only, pinned to the
 head, through the update-branch API; a refused rebase is reported and arming stands.
-Exit 0: merged (or armed, without --wait); 1: refused (a merge freeze, base is not develop, an
+Exit 0: merged (or armed, without --wait); 1: refused (a merge freeze, base is not develop, no Changelog line, an
 unresolved review thread, develop changed this PR's files, or GitHub kept
 reporting another head than the pushed one, or Gitar has not reviewed the head
 or failed it), closed unmerged,
@@ -53,7 +55,7 @@ from typing import Any
 from gh_cli import TRANSIENT_GH, CliError, gh, gh_json, git, positive_int
 from pr_state import base_overlap, check_outcome, unresolved_threads
 
-FIELDS = "state,baseRefName,headRefName,headRefOid,autoMergeRequest,mergeCommit,statusCheckRollup,comments,reviews,mergeStateStatus,body,commits"
+FIELDS = "state,baseRefName,headRefName,headRefOid,autoMergeRequest,mergeCommit,statusCheckRollup,comments,reviews,mergeStateStatus,body,commits,title,labels,files"
 POLLS_PER_MINUTE = 3
 # Just after a push GitHub can still report the old head (#3174); it catches up in seconds.
 HEAD_POLLS, HEAD_POLL_SECONDS = 10, 3
@@ -305,6 +307,23 @@ def squash_body(pr: dict[str, Any]) -> list[str]:
     return ["--body", "\n".join([f"Changelog: {found[1].strip()}", *authors])]
 
 
+USER_VISIBLE_TYPE = re.compile(r"^(?:feat|fix)(?:\([^)]*\))?!?: ")
+USER_VISIBLE_PATHS = ("public/", "backend/coach/")
+
+
+def missing_changelog(pr: dict[str, Any]) -> bool:
+    """A user-visible PR without a `Changelog:` line: the release notes would lose
+    it, as 2.2.25's did (#4175)."""
+    if squash_body(pr):
+        return False
+    labels = {label.get("name") for label in pr.get("labels") or []}
+    paths = [item.get("path") or "" for item in pr.get("files") or []]
+    return "user-visible" in labels or bool(
+        USER_VISIBLE_TYPE.match(pr.get("title") or "")
+        and any(path.startswith(USER_VISIBLE_PATHS) for path in paths)
+    )
+
+
 def _arm_once(number: int, pr: dict[str, Any]) -> str:
     if pr.get("autoMergeRequest"):
         return "auto-merge already armed"
@@ -490,6 +509,9 @@ def arming_gates(
         return gated
     if (reason := frozen(number)) is not None:
         refuse(number, seen, f"merge freeze (untrusted text): {reason}")
+        return 1
+    if missing_changelog(seen):
+        refuse(number, seen, "a user-visible PR needs a German `Changelog:` line")
         return 1
     if open_threads(number, seen) or (current and behind_develop(number, seen)):
         return 1
