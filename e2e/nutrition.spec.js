@@ -120,6 +120,9 @@ test("@responsive nutrition product library supports review, local save, favorit
   });
   await card.getByRole("button", { name: "Verwenden" }).click();
   await page.locator("#nutritionProductUseAmount").fill("25");
+  // Each action names where the product goes (#4037).
+  await expect(page.locator("#nutritionProductUseDialog").getByRole("button")).toHaveText(["Abbrechen", "In Coach-Nachricht einfügen", "Ins Tagebuch eintragen"]);
+  await expect(page.locator("#nutritionProductUseDialog").getByLabel("Eintragen in")).toBeVisible();
   await page.locator("#nutritionProductUseCoach").click();
   await expect.poll(() => page.locator("#messageInput").evaluate((input) => input.value)).toMatch(/^Bestehender Entwurf\nDazu 25 g \(Produkt-ID: /);
   await page.goto("/#nutrition/products");
