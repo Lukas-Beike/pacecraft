@@ -418,7 +418,7 @@ RUNS_ARGUMENTS = re.compile(
 )
 # `git grep`'s pager option, bundled (`-nO…`), abbreviated (`--op`) or globbed
 # (`-[O]…`) (#4155 reviews).
-PAGER_OPTION = re.compile(r"(?<![\w-])(?:-[a-np-z\d]+o|--op|-{1,2}[a-z\d]*[[*?])")
+PAGER_OPTION = re.compile(r"(?<![\w-])(?:-[a-np-z\d]+o|--op|-{1,2}[a-z\d]*[\[*?])")
 # Text whose words the shells may split differently than this reading:
 # escapes, comments, history and alias marks, ANSI-C, substitutions,
 # typographic quotes PowerShell closes on, and heredocs, whose body a lone
