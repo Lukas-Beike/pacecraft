@@ -303,6 +303,9 @@ test("@responsive Garmin acute load switches four weeks and three months with re
   await page.locator("#analysisLoadPeriod").getByRole("button", { name: "4 Wochen", exact: true }).click();
   await expect(root.locator("circle[data-series='0']")).toHaveCount(28);
   await expect(root.locator(".analysis-axis-unit")).toHaveText("Belastungspunkte · Tageswert");
+  // The first and the last tick are the first and the last day of the period (#4025).
+  const ticks = await root.locator(".analysis-date-tick").allTextContents();
+  expect([ticks.at(0), ticks.at(-1)]).toEqual(["03.09", "30.09"]);
   for (const svg of await loadRoot.locator("svg").all()) {
     const collisions = await chartLabelCollisions(svg);
     expect(collisions.labels).toBeGreaterThan(0);
