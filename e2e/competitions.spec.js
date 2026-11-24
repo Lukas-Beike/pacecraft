@@ -72,7 +72,7 @@ test("@responsive competition summaries, saved details and archive stay compact 
   await expect(alpha.locator("img")).toHaveCount(0);
   const plan = alpha.locator(".race-plan");
   await expect(plan).toContainText("gleiche Anstrengung");
-  await expect(plan.locator("tbody tr").nth(1)).toHaveText(/km 10–12,5\s*\+4 %\s*6:48\/km\s*17:00/);
+  await expect(plan.locator("tbody tr").nth(1)).toHaveText(/km 10–12,5\s*\+4 %\s*6:48 \/km\s*17:00/);
   await expect(plan).toContainText("490–840 g/Tag");
   await expect(plan).toContainText("04:30–07:30");
   await expect(plan).toContainText("30–60 g/h");

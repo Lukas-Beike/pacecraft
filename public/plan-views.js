@@ -3628,7 +3628,7 @@ function racePlanPacing(pacing) {
     const span = `km ${RACE_PLAN_KM.format(section.from_km)}–${RACE_PLAN_KM.format(section.to_km)}`;
     const cells = ride
       ? [span, grade, section.power_w == null ? racePlanSigned(section.power_pct, "±") : `${section.power_w} W`]
-      : [span, grade, `${AppFormat.clock(section.pace_s_per_km)}/km`, AppFormat.clock(section.time_s)];
+      : [span, grade, `${AppFormat.clock(section.pace_s_per_km)} /km`, AppFormat.clock(section.time_s)];
     // The column name rides on each cell: a narrow row shows it above the value.
     return cells.map((value, index) => h("td", { dataset: { label: columns[index] } }, value));
   });

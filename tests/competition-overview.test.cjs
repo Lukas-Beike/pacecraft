@@ -61,8 +61,8 @@ test("race plan pacing shows sections with pace or power and its rule", () => {
     { from_km: 15, to_km: 21.1, grade_pct: 0, pace_s_per_km: 294, time_s: 1796 },
   ] }).map(textOf).join("|");
   assert.match(run, /gleiche Anstrengung/);
-  assert.match(run, /km 8–11\+4 %6:04\/km18:12/);
-  assert.match(run, /km 15–21,10 %4:54\/km29:56/);
+  assert.match(run, /km 8–11\+4 %6:04 \/km18:12/);
+  assert.match(run, /km 15–21,10 %4:54 \/km29:56/);
   const ride = rendered.racePlanPacing({ status: "ready", method: "power_variation", profile_rejected: true, sections: [
     { from_km: 0, to_km: 40, grade_pct: -2, power_pct: -5, power_w: null },
   ] }).map(textOf).join("|");
