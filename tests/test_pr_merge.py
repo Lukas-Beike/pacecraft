@@ -222,6 +222,40 @@ class PrMergeTests(unittest.TestCase):
         )
         self.assertEqual((code, writes), (0, [["pr", "merge", "7", "--auto", *PIN]]))
 
+    def test_a_user_visible_pr_without_a_changelog_line_is_refused(self):
+        # #4175: 2.2.25's PRs carried no line, so the app's release notes were empty.
+        app = [{"path": "public/views.js"}]
+        refused = {
+            "label": {"labels": [{"name": "user-visible"}]},
+            "fix in public/": {"title": "fix(more): x", "files": app},
+            "feat in the Coach": {
+                "title": "feat(coach)!: x",
+                "files": [{"path": "backend/coach/tools.py"}],
+            },
+            # gh lists 100 files at most; beyond them a feat/fix counts (Gitar).
+            "fix past 100 files": {
+                "title": "fix(sync): x",
+                "files": [{"path": "backend/a.py"}] * 100,
+                "changedFiles": 101,
+            },
+        }
+        for name, extra in refused.items():
+            code, out, writes, _ = run(self, 7, views=[view(**extra)])
+            self.assertEqual((code, writes), (1, []), name)
+            self.assertIn("needs a German `Changelog:` line", out)
+        armed = view(autoMergeRequest={"mergeMethod": "SQUASH"}, **refused["label"])
+        code, _, writes, _ = run(self, 7, views=[armed])
+        self.assertEqual((code, writes), (1, [["pr", "merge", "7", "--disable-auto"]]))
+        # Tooling in public/, a fix elsewhere, or a PR with the line still arms.
+        allowed = [
+            {"title": "test(e2e): x", "files": app},
+            {"title": "fix(hooks): x", "files": [{"path": "scripts/hooks/a.py"}]},
+            {**refused["label"], "body": "Changelog: Neu."},
+        ]
+        for extra in allowed:
+            code, _, writes, _ = run(self, 7, views=[view(**extra)])
+            self.assertEqual(code, 0, extra)
+
     def test_arms_only_after_gitar_completed_on_the_current_head(self):
         # #3308: right after a push Gitar's check for the new head is pending or
         # missing, and a run for the head before the push does not count.

@@ -37,8 +37,8 @@ Copy this checklist into your response and tick it as you go:
   ([development](../../../docs/development.md#secret-checks-before-git-pushes));
   without it the pre-push hook refuses every push.
 - Commit only this task's changes, staged by name, with Conventional Commit
-  subjects; stop if others' changes block the rebase. A user-visible PR's
-  description has a German `Changelog: <line>` line (`pr_merge.py` squash body).
+  subjects; stop if others' changes block the rebase. `pr_merge.py` arms a user-visible
+  PR only with a German `Changelog: <line>` in its description (squash body, #4175).
 - Rebase with [branch-sync](../pacecraft-branch-sync/SKILL.md) (no `--push`
   yet). Resolve conflicts by understanding both sides; ask the user for product
   decisions you cannot infer. Reword the invalid subjects it lists.
