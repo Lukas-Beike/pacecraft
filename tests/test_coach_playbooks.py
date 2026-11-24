@@ -64,8 +64,9 @@ BLOCK_WORD_BUDGETS = {
     # Test planning from planning_brief.last_tests and the step test (plan kinds only).
     "_TESTS": 160,
     "_ANSWER": 55,
-    # The athlete-approved session analysis shape and form rules (#4136).
-    "_SESSION_ANSWER": 160,
+    # The athlete-approved session analysis shape, its order and form rules
+    # (#4136); it replaces _ANSWER for a single session.
+    "_SESSION_ANSWER": 170,
     # 545: the deficit rule 6i.3 names the EA floor, loss rate and protein range (#3917).
     "_NUTRITION": 545,
 }
@@ -371,6 +372,10 @@ class PlaybookInjectionTests(unittest.TestCase):
             "besser, gleich or schlechter",
             "energy_before",
             "Minutes, never seconds",
+            "ground contact, only if recorded",
+            "training-effect or threshold-pace label",
+            "du-form",
+            "heart_rate_change_bpm",
         ):
             with self.subTest(marker=marker):
                 self.assertIn(marker, text)
