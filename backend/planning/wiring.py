@@ -138,6 +138,7 @@ def build_planning_data(ctx: AppContext) -> PlanningDataServices:
             ctx.planning_workflows.calendar_conflict_service(),
             partial(_publish_changed, "coach"),
             lambda db, payloads: ctx.run_lthr.resync(db, payloads),
+            lambda db, plan_ids: training_plan().update_bounds(db, plan_ids),
         )
 
     def workout_library() -> WorkoutLibraryService:
@@ -156,6 +157,7 @@ def build_planning_data(ctx: AppContext) -> PlanningDataServices:
             local_date,
             runtime_clock.utc_now,
             ctx.planning_workflows.calendar_conflict_service(),
+            lambda db, plan_ids: training_plan().update_bounds(db, plan_ids),
         )
 
     return PlanningDataServices(

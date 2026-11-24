@@ -130,14 +130,31 @@ class HistoryUndoService:
         """Undo changes newest first inside the caller's transaction.
 
         Each change must still be the record's latest state, so one record
-        edited since aborts the caller's whole transaction.
+        edited since aborts the caller's whole transaction. The plans of the
+        units it restores follow their days once at the end, so a plan created
+        in the same write is not changed before its own entry is undone (#4144).
         """
-        return [
-            self._apply_one(db, change.get("id"), str(change.get("after_hash") or ""))
+        deferred_plans: set[str] = set()
+        undone = [
+            self._apply_one(
+                db,
+                change.get("id"),
+                str(change.get("after_hash") or ""),
+                deferred_plans,
+            )
             for change in reversed(changes)
         ]
+        if deferred_plans:
+            self._training_plan_service.update_bounds(db, deferred_plans)
+        return undone
 
-    def _apply_one(self, db: Any, change_id: Any, expected_hash: str) -> dict[str, Any]:
+    def _apply_one(
+        self,
+        db: Any,
+        change_id: Any,
+        expected_hash: str,
+        deferred_plans: set[str] | None = None,
+    ) -> dict[str, Any]:
         _, history = self._load_history(db, change_id)
         entity_type = history["entity_type"]
         entity_id = history["entity_id"]
@@ -152,7 +169,13 @@ class HistoryUndoService:
         )
         target, _ = self._history_service.target(history)
         after = self._restore(
-            db, entity_type, entity_id, current, target, history["action"]
+            db,
+            entity_type,
+            entity_id,
+            current,
+            target,
+            history["action"],
+            deferred_plans,
         )
         if entity_type in {"planned_unit", "training_plan"}:
             self._planning_revision_service.bump(db)
@@ -220,6 +243,7 @@ class HistoryUndoService:
         current: dict[str, Any] | None,
         target: dict[str, Any] | None,
         action: str,
+        deferred_plans: set[str] | None = None,
     ) -> Any:
         if entity_type == "profile":
             return self._profile_service.restore_in_transaction(db, current, target)
@@ -233,7 +257,7 @@ class HistoryUndoService:
             )
         if entity_type == "planned_unit":
             return self._planned_unit_service.restore_in_transaction(
-                db, entity_id, current, target, action
+                db, entity_id, current, target, action, deferred_plans=deferred_plans
             )
         if entity_type == "training_plan":
             return self._training_plan_service.restore_in_transaction(

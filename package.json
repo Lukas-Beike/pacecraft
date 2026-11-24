@@ -12,7 +12,7 @@
     "@playwright/test": "1.65.1",
     "eslint": "10.15.0",
     "eslint-plugin-sonarjs": "4.2.2",
-    "modern-web-guidance": "1.0.1"
+    "modern-web-guidance": "1.0.2"
   },
   "overrides": {
     "minimatch": "11.0.1"

@@ -17,6 +17,7 @@ from backend.coach.activity_read_tools import CoachActivityReadToolService
 from backend.performance.activity_read_service import ActivityAnalysisReadService
 from backend.performance.planned_targets import (
     adherence_band,
+    planned_heart_rate_floor,
     planned_step_adherence,
     planned_target_execution,
 )
@@ -159,6 +160,29 @@ class StepTargetRangeTests(unittest.TestCase):
         )
         self.assertIsNone(target.metric)
         self.assertIsNotNone(target.unknown)
+
+
+class PlannedHeartRateFloorTests(unittest.TestCase):
+    """#4136: the target band's floor from the plan's main heart-rate step."""
+
+    def floor(self, description: str) -> float | None:
+        return planned_heart_rate_floor(
+            structured_steps(description), THRESHOLDS, "run"
+        )
+
+    def test_a_range_a_single_target_and_a_warm_up_step(self) -> None:
+        self.assertEqual(130.0, self.floor("- 70m 130-140bpm"))
+        # A single 140 bpm target: from 135 bpm, not its widened 136.5.
+        self.assertAlmostEqual(135.0, self.floor("- 70m 140bpm") or 0.0)
+        # The longer main step decides, never the warm-up's zone from 0 bpm.
+        self.assertEqual(
+            130.0, self.floor("Warmup\n- 10m Z1 HR\n\nMain\n- 70m 130-140bpm")
+        )
+        # A 15 km main step outweighs a 10-minute warm-up with its own floor.
+        self.assertEqual(
+            130.0, self.floor("Warmup\n- 10m 110-120bpm\n\nMain\n- 15km 130-140bpm")
+        )
+        self.assertIsNone(self.floor("- 70m 60%"))
 
 
 class OpenTopZoneTests(unittest.TestCase):
@@ -430,6 +454,44 @@ class PlannedStepAdherenceTests(unittest.TestCase):
         self.assertEqual(
             [(zone["planned_s"], zone["actual_s"]) for zone in zones["zones"][:4]],
             [(750, 1260), (600, 0), (0, 180), (900, 720)],
+        )
+
+    def test_every_segment_names_its_pace_and_heart_rate(self) -> None:
+        # #4136: the first rep runs 3.8 m/s (263 s/km) for 3 minutes while the
+        # heart rate climbs evenly from 150 to 168 bpm: 151 over its first 30 s,
+        # 167 over its last, 159 on average.
+        session = _run()
+        streams = _display_streams(session)
+        streams["channels"]["heart_rate_bpm"] = {
+            "values": list(session["streams"]["heartrate"])
+        }
+        first = planned_step_adherence(
+            session_execution(session),
+            structured_steps(PLAN),
+            THRESHOLDS,
+            "run",
+            streams=streams,
+        )["steps"][1]
+        self.assertEqual(
+            {
+                "minutes": 3.0,
+                "output": 263,
+                "heart_rate_avg": 159,
+                "heart_rate_start": 151,
+                "heart_rate_end": 167,
+                "heart_rate_max": 168,
+            },
+            {
+                key: first[key]
+                for key in (
+                    "minutes",
+                    "output",
+                    "heart_rate_avg",
+                    "heart_rate_start",
+                    "heart_rate_end",
+                    "heart_rate_max",
+                )
+            },
         )
 
     def test_bands_follow_the_athletes_cut_points(self) -> None:

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import re
 from collections.abc import Callable, Mapping, Sequence
-from datetime import date, datetime, time, timedelta
+from datetime import UTC, date, datetime, time, timedelta
 from typing import Any, Final
 
 from backend.activities.hr_cap import stored_cap
@@ -16,6 +16,7 @@ from backend.athlete.profile import ProfileService
 from backend.canonical.activity_summary import (
     legacy_activity_keys,
     stored_activity_key,
+    summary_duration_s,
     summary_is_electric,
 )
 from backend.coach.context import (
@@ -31,7 +32,12 @@ from backend.performance.activity_read_service import (
     ActivityAnalysisReadService,
     calendar_pairs,
 )
-from backend.performance.comparable_sessions import comparable_sessions
+from backend.performance.comparable_sessions import COMPARE_DAYS as COHORT_DAYS
+from backend.performance.comparable_sessions import (
+    comparable_sessions,
+    same_type_keys,
+    session_types,
+)
 from backend.performance.critical_power import (
     METHOD_ID as CRITICAL_SPEED_METHOD,
 )
@@ -43,6 +49,7 @@ from backend.performance.pace_at_hr import COMPARE_DAYS, session_comparison
 from backend.performance.planned_targets import (
     heart_rate_above,
     heart_rate_cap_execution,
+    planned_heart_rate_floor,
     planned_step_adherence,
     planned_target_execution,
     unit_steps,
@@ -56,6 +63,7 @@ from backend.planning import leg_strength
 from backend.planning.race_plan import race_plan
 from backend.planning.sport import planned_sport_environment
 from backend.sync.garmin import GarminPayloadService
+from backend.weather.activity_weather import activity_window, weather_pending
 
 # Per-field source labels, zone-time arrays and executed strength sets stay in
 # get_activity_details; the list keeps each session's scalar values and its
@@ -361,6 +369,8 @@ class CoachActivityReadToolService:
         session_corrections: Any = None,
         report_counts: Any = None,
         competitions: Callable[[], Any] | None = None,
+        energy_before: Callable[[date], dict[str, Any]] | None = None,
+        now: Callable[[], datetime] | None = None,
     ) -> None:
         self._activity_read = activity_read
         self._garmin_payload = garmin_payload
@@ -372,6 +382,9 @@ class CoachActivityReadToolService:
         self._session_corrections = session_corrections
         self._report_counts = report_counts
         self._competitions = competitions
+        self._energy_before = energy_before
+        # The live clock, for whether a session's weather is due yet (#4136).
+        self._now = now or (lambda: datetime.now(UTC))
 
     def execute(self, name: str, arguments: dict[str, Any]) -> dict[str, Any] | None:
         if name == "read_training_records":
@@ -732,11 +745,26 @@ class CoachActivityReadToolService:
             if strength is not None:
                 result["strength_plan"] = strength
             result.update(self._step_test(detail, paired, calendar))
+            result.update(self._influences(detail, session, day))
             # Code judges every deterministic check; the Coach explains (#3084).
             result["session_report"] = self._session_report(
                 result, session, paired, nearby
             )
         return result
+
+    def _influences(
+        self, detail: Mapping[str, Any], session: Mapping[str, Any], day: date
+    ) -> dict[str, Any]:
+        """The energy balance of the days before, and a missing weather named
+        as a gap of the app's own look-up (#4136); runs and rides only."""
+        if session.get("sport") not in ("run", "ride"):
+            return {}
+        found: dict[str, Any] = {}
+        if self._energy_before is not None:
+            found["energy_before"] = self._energy_before(day)
+        if not detail.get("weather"):
+            found["weather"] = _weather_gap(session, self._now())
+        return found
 
     def _step_test(
         self,
@@ -806,17 +834,19 @@ class CoachActivityReadToolService:
         # reads them once (#3084 Part 2).
         facts: dict[str, Any] = {
             key: result.pop(key)
-            for key in ("critical_speed", "running_dynamics_rating")
+            for key in ("critical_speed", "running_dynamics_rating", "energy_before")
             if key in result
         }
+        adherence = self._step_adherence(result, session, unit) if planned else None
+        # Each planned segment against its window, for the report (#4136).
+        if isinstance(adherence, Mapping) and adherence.get("status") == "ok":
+            facts["plan_segments"] = adherence.get("steps")
         report = session_report(
             {**result, CONDITION_INPUTS: inputs, **facts},
             planned,
             own.get("training_load"),
             self._race(session),
-            _plan_zones(
-                self._step_adherence(result, session, unit) if planned else None
-            ),
+            _plan_zones(adherence),
         )
         if self._report_counts is not None:
             self._report_counts.report(report)
@@ -835,6 +865,19 @@ class CoachActivityReadToolService:
         of the LTHR, else of the max-HR share, as the stored band times count it,
         #3915); None without a reference or stream.
         """
+        bpm = self._easy_bpm(session, unit, day)
+        found = None if bpm is None else heart_rate_above(bpm, result.get("streams"))
+        if bpm is None or found is None:
+            return None
+        return {"bpm": bpm, "above_s": found[0], "total_s": found[1]}
+
+    def _easy_bpm(
+        self,
+        session: Mapping[str, Any],
+        unit: Mapping[str, Any] | None,
+        day: date | None,
+    ) -> int | None:
+        """The LT1 heart rate of the session's day, None without a reference."""
         sport = session.get("sport")
         if self._unit_thresholds is None or day is None or sport not in ("run", "ride"):
             return None
@@ -844,11 +887,28 @@ class CoachActivityReadToolService:
         if not lthr:
             return None
         # The athlete's own first threshold, else the stand-in (#3915).
-        bpm = round(lthr * (settings.lt1_share or LT1_HR_SHARE))
-        found = heart_rate_above(bpm, result.get("streams"))
-        if found is None:
-            return None
-        return {"bpm": bpm, "above_s": found[0], "total_s": found[1]}
+        return round(lthr * (settings.lt1_share or LT1_HR_SHARE))
+
+    def _session_types(
+        self,
+        session: Mapping[str, Any],
+        day: date,
+        records: list[dict[str, Any]],
+    ) -> dict[str, dict[str, Any]]:
+        """Each compared session's type: its paired unit's focus and heart-rate
+        cap, else detected from its execution (#4136)."""
+        plans: dict[str, dict[str, Any]] = {}
+        if self._planned_units is not None:
+            first = day - timedelta(days=COHORT_DAYS)
+            units = self._planned_units.list(250, future_only=True, since=first)
+            summaries = self._activity_read.summaries_between(
+                first, day + timedelta(days=1)
+            )
+            by_id = {str(unit.get("id")): unit for unit in units}
+            for unit_id, keys in calendar_pairs(units, summaries or []).items():
+                if keys and unit_id in by_id:
+                    plans[keys[0]] = _unit_plan(by_id[unit_id])
+        return session_types(records, plans, self._easy_bpm(session, None, day))
 
     def _step_adherence(
         self, result: Mapping[str, Any], session: Mapping[str, Any], unit: Any
@@ -894,8 +954,21 @@ class CoachActivityReadToolService:
         # A session before the curve window has no curve; nothing is read for it.
         inside = own is not None and day >= covered_from
         records = self._curve_records() if inside else None
+        # Only a compared session reads the types (#4136).
+        compared = (
+            own is not None
+            and not summary_is_electric(own)
+            and not summary_is_not_training(own)
+        )
+        types = (
+            self._session_types(session, day, records)
+            if compared and records is not None
+            else None
+        )
         if session.get("sport") == "run":
-            checks["pace_at_heart_rate"] = self._pace_at_heart_rate(own, records, day)
+            checks["pace_at_heart_rate"] = self._pace_at_heart_rate(
+                own, records, day, types
+            )
             checks["critical_speed"] = _critical_speed(records, day, covered_from)
             checks["running_dynamics_rating"] = self._dynamics_rating(own)
         if own is None or (inside and records is None):
@@ -915,7 +988,10 @@ class CoachActivityReadToolService:
             }
         else:
             checks["comparable_sessions"] = comparable_sessions(
-                records, stored_activity_key(own), covered_from=covered_from
+                records,
+                stored_activity_key(own),
+                covered_from=covered_from,
+                types=types,
             )
         return checks
 
@@ -953,7 +1029,8 @@ class CoachActivityReadToolService:
         """The run's heart rate against the matched unit's stored cap, if it has one.
 
         The cap is stored in percent; the threshold HR in effect on the unit's
-        date resolves it to bpm.
+        date resolves it to bpm. The target band runs from the plan's own
+        heart-rate floor up to it.
         """
         if session.get("sport") != "run" or self._unit_thresholds is None:
             return None
@@ -961,8 +1038,17 @@ class CoachActivityReadToolService:
         cap = None if unit is None else stored_cap(unit)
         if unit is None or cap is None:
             return None
-        lthr = self._unit_thresholds.thresholds(unit).lthr
-        return heart_rate_cap_execution(cap, lthr, detail.get("streams"))
+        thresholds = self._unit_thresholds.thresholds(unit)
+        steps = unit_steps(unit)
+        # The plan's own heart-rate range sets the target band's floor (#4136).
+        floor = (
+            planned_heart_rate_floor(steps, thresholds, "run")
+            if isinstance(steps, list)
+            else None
+        )
+        return heart_rate_cap_execution(
+            cap, thresholds.lthr, detail.get("streams"), floor
+        )
 
     def _planned_targets(
         self,
@@ -1006,6 +1092,7 @@ class CoachActivityReadToolService:
         own: Mapping[str, Any] | None,
         records: list[dict[str, Any]] | None,
         day: date,
+        types: Mapping[str, Mapping[str, Any]] | None = None,
     ) -> dict[str, Any]:
         if (
             own is not None
@@ -1019,7 +1106,10 @@ class CoachActivityReadToolService:
             return _unavailable()
         if summary_is_not_training(own):
             return _not_compared()
-        return session_comparison(records, stored_activity_key(own))
+        key = stored_activity_key(own)
+        # Only runs of this one's session type (#4136).
+        peers = None if types is None else same_type_keys(types, key)
+        return session_comparison(records, key, peers)
 
     @staticmethod
     def _bounded_integer(
@@ -1029,6 +1119,44 @@ class CoachActivityReadToolService:
             return max(1, min(int(arguments.get(key, default)), maximum))
         except (TypeError, ValueError) as exc:
             raise AppError(400, error, reason="invalid_list_request") from exc
+
+
+# Why the weather stage has not looked a session up yet (#4136): no gap.
+_WEATHER_PENDING: Final = {
+    "before_first_day": "Für Einheiten vor 2022 ruft die App kein Wetter ab.",
+    "not_settled": "Das Wetter wird erst 48 Stunden nach der Einheit abgerufen.",
+}
+
+
+def _weather_gap(session: Mapping[str, Any], now: datetime) -> dict[str, Any]:
+    """Why a run or ride has no stored weather: indoors none is looked up, a
+    session before 2022 or of the last 48 hours not yet; else the app's own
+    look-up left a gap."""
+    if session.get("environment") in INDOOR_ENVIRONMENTS:
+        return {"status": "not_applicable", "reason": "Drinnen: kein Wetter."}
+    try:
+        window = activity_window(
+            datetime.fromisoformat(str(session.get("started_at"))),
+            session.get("elapsed_duration_s") or summary_duration_s(session),
+        )
+    except ValueError:
+        window = None
+    pending = None if window is None else weather_pending(*window, now)
+    if pending is not None:
+        return {"status": "pending", "reason": _WEATHER_PENDING[pending]}
+    return {
+        "status": "missing",
+        "reason": "Datenlücke: Die App ruft das Wetter für Läufe und Radfahrten draußen ab, zu dieser Einheit ist keins gespeichert.",
+    }
+
+
+def _unit_plan(unit: Mapping[str, Any]) -> dict[str, Any]:
+    """A paired unit's focus and its heart-rate cap as the plan target (#4136)."""
+    cap = stored_cap(unit)
+    return {
+        "focus": unit.get("session_focus"),
+        "target": None if cap is None else cap.get("percent_lthr"),
+    }
 
 
 def _report_sections(arguments: dict[str, Any]) -> list[str]:

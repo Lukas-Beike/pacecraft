@@ -63,6 +63,13 @@ every named number the code fixes. A test fails when it is out of date.
 | `REP_COUNT_SPREAD` | `2` | `backend/performance/comparable_sessions.py` |  |
 | `HEART_RATE_BAND` | `8` | `backend/performance/comparable_sessions.py` | Continuous sessions compare only at a similar effort, so an easy run is never a tempo run's peer; within the band a faster pace still shows as fitter. |
 | `PERSONAL_LIMIT_METRICS` | `frozenset({'decoupling_pct', 'gap_cv_pct'})` | `backend/performance/comparable_sessions.py` | Metrics the session report judges against the peers' upper quartile (#3084). |
+| `LONG_MAIN_S` | `3600` | `backend/performance/comparable_sessions.py` | Without a plan: a steady main part at most at the first threshold (LT1) is easy, from this long on a long session; above LT1 threshold work. |
+| `STEADY_TYPES` | `frozenset({'easy', 'long'})` | `backend/performance/comparable_sessions.py` | Types whose progress marker is the pace in the shared heart-rate band. |
+| `MIN_LISTED` | `2` | `backend/performance/comparable_sessions.py` | At least this many peers are listed; a progress verdict needs MIN_PEERS. |
+| `PROGRESS_PCT` | `1.0` | `backend/performance/comparable_sessions.py` | Progress (#4136): the type's marker changed by at least this share of the peers' median; a heart rate at most this much higher keeps "besser"; a decoupling change of at least this many points decides a level pace. |
+| `PROGRESS_HEART_RATE_BPM` | `2` | `backend/performance/comparable_sessions.py` |  |
+| `PROGRESS_DECOUPLING_PTS` | `2.0` | `backend/performance/comparable_sessions.py` |  |
+| `RECENT_PEERS` | `3` | `backend/performance/comparable_sessions.py` | The duration change is measured against this many of the newest peers. |
 | `SAME_OUTPUT_SHARE` | `0.05` | `backend/performance/comparable_sessions.py` | Interval peers within this share of the session's rep power (#3084, ERG). |
 | `EFFORT_METHOD` | `'equal-effort-trend-v1'` | `backend/performance/comparable_sessions.py` |  |
 | `VO2MAX_UNIT` | `'ml/kg/min'` | `backend/performance/comparisons.py` |  |
@@ -196,6 +203,12 @@ every named number the code fixes. A test fails when it is out of date.
 | `HR_CAP_METHOD` | `'heart-rate-cap-execution-v1'` | `backend/performance/planned_targets.py` |  |
 | `CAP_ABOVE_SHARE_PCT` | `10` | `backend/performance/planned_targets.py` | More than this share of the time above the cap, or a mean above it, is above the cap. |
 | `CAP_EDGE_SHARE` | `0.05` | `backend/performance/planned_targets.py` | A mean this close below the cap (share of the cap) sits at the upper edge. |
+| `TARGET_BELOW_BPM` | `5` | `backend/performance/planned_targets.py` | The target band (#4136, athlete 2026-11-23): the plan's own heart-rate range, a single target from this much below it, else this much below the cap; up to the cap. |
+| `CAP_BAND_BPM` | `10` | `backend/performance/planned_targets.py` |  |
+| `WARMUP_S` | `600` | `backend/performance/planned_targets.py` | The first minutes below the band are the warm-up, not a too easy session. |
+| `TOO_EASY_SHARE_PCT` | `25` | `backend/performance/planned_targets.py` | More than this share of the time after the warm-up below the band is too easy. |
+| `LEAN_BPM` | `1` | `backend/performance/planned_targets.py` | The heart rate after the warm-up within this many bpm of the band's middle is even. |
+| `STEP_SECONDS_PER_M` | `0.36` | `backend/performance/planned_targets.py` | A distance step's length for choosing the main step, at an easy 6:00 min/km. |
 | `HARD_ZONE` | `3` | `backend/performance/planned_targets.py` | A planned step in this zone or above is hard work (#3084). |
 | `MIN_SKIPPED_BLOCK_S` | `600.0` | `backend/performance/planned_targets.py` | Unmatched hard planned time from this many seconds on is a skipped block; less is a warm-up build or a fast finish (athlete, #3084, 2026-11-16). |
 | `MIN_BLOCK_STEP_S` | `30.0` | `backend/performance/planned_targets.py` | Two or more unmatched hard steps of at least this long, separated only by recovery steps, are a skipped block whatever their total (athlete, #3084 A', 2026-11-16); shorter ones are strides. |
@@ -205,6 +218,7 @@ every named number the code fixes. A test fails when it is out of date.
 | `FAIR_SHARE_PCT` | `50` | `backend/performance/planned_targets.py` |  |
 | `MIN_MOVING_SPEED_MPS` | `0.3` | `backend/performance/planned_targets.py` | Speeds below this are stops, as in the calendar's pace chart. |
 | `RECOVERY_LEVEL_SHARE` | `0.8` | `backend/performance/planned_targets.py` | A step between work steps below this share of the easiest work step's level is a recovery; a harder one is a step of its own. |
+| `SEGMENT_EDGE_S` | `30.0` | `backend/performance/planned_targets.py` | The heart rate a segment starts and ends with: its first and last 30 s. |
 | `GARMIN_SOURCE` | `'Garmin Connect'` | `backend/performance/planning_recovery.py` |  |
 | `UTC_OFFSET_SUFFIX` | `'+00:00'` | `backend/performance/planning_recovery.py` |  |
 | `POWER_DURATIONS` | `(5, 15, 30, 60, 120, 180, 300, 420, 600, 720, 1200, 1800, 3600)` | `backend/performance/power_profile.py` | 180/420/720 s are the 3/7/12-min efforts of the CP/CS field protocols; cycling CP also fits the 1200 s effort (M4 card 4). |
@@ -369,6 +383,7 @@ every named number the code fixes. A test fails when it is out of date.
 | `LEAD_COUNT` | `4` | `backend/performance/session_report.py` | The notable checks the answer leads with. |
 | `EASY_FOCUS` | `frozenset({'recovery', 'easy', 'endurance', 'long'})` | `backend/performance/session_report.py` |  |
 | `INTERVAL_FOCUS` | `frozenset({'tempo', 'threshold', 'vo2max', 'anaerobic', 'sweet_spot', 'test'})` | `backend/performance/session_report.py` |  |
+| `FASTER_SEGMENT_PCT` | `1.0` | `backend/performance/session_report.py` | A work segment this much faster than the one before is named (#4136). |
 | `METRIC_ID` | `'session_rpe_load'` | `backend/performance/session_rpe_load.py` |  |
 | `METHOD_ID` | `'session-rpe-load'` | `backend/performance/session_rpe_load.py` |  |
 | `METHOD_VERSION` | `2` | `backend/performance/session_rpe_load.py` | v2: long interruptions are marked deviating_duration (#1770). |

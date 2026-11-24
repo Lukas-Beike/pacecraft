@@ -293,12 +293,54 @@ class ScorerTests(unittest.TestCase):
         self.assertEqual("long", report["focus"]["session_focus"])
         cap = report["planned_targets"]["heart_rate_cap"]
         self.assertEqual((140, "within_target"), (cap["cap_bpm"], cap["verdict"]))
+        # #4136: the plan's own 130-140 bpm range; the 10 warm-up minutes and 5
+        # more below it, one minute up to 143 bpm above the cap.
+        band = cap["target_band"]
+        self.assertEqual(
+            ([130, 140], 70, 15, 10, 1, 143, "held", "below"),
+            (
+                band["band_bpm"],
+                band["in_band_min"],
+                band["below_min"],
+                band["below_in_warmup_min"],
+                band["above_cap_min"],
+                band["peak_bpm"],
+                band["verdict"],
+                band["lean"],
+            ),
+        )
         self.assertEqual(
             {"hrv": 59.0, "resting_hr": 47.0, "sleep": 7.4},
             {row["metric"]: row["value"] for row in report["recovery_before"]},
         )
         self.assertEqual(14.0, report["weather"]["temperature_c"])
-        self.assertEqual("ok", report["comparable_sessions"]["status"])
+        # #4136: 1700 kcal logged against Garmin's 2400 on each of the three
+        # days before; yesterday's run without stored weather is not a gap,
+        # its weather is looked up 48 hours after the run.
+        facts = {
+            fact["id"]: fact["value"] for fact in report["session_report"]["facts"]
+        }
+        self.assertEqual(-700, facts["energy_before"]["mean_balance_kcal"])
+        bare = live.session_report_snapshot(CASES["a02-session-numbers-from-report"])
+        self.assertEqual("pending", bare["weather"]["status"])
+        # #4136: only the four earlier long runs, never the easy run of the
+        # same shape; 86 minutes against 80, faster in the same heart-rate band.
+        compared = report["comparable_sessions"]
+        self.assertEqual(
+            (
+                {"type": "long", "origin": "plan"},
+                ["2026-08-30", "2026-08-23", "2026-08-16", "2026-08-09"],
+                6,
+                "besser",
+            ),
+            (
+                compared["session_type"],
+                [row["date"] for row in compared["peers"]],
+                compared["duration_change_min"],
+                compared["progress"]["verdict"],
+            ),
+        )
+        self.assertEqual(4, report["pace_at_heart_rate"]["comparable"]["count"])
         with contextlib.redirect_stdout(io.StringIO()) as printed:
             self.assertEqual(2, live.print_reports(["c18-activity-feedback"]))
         self.assertIn("a03-long-run-analysis", printed.getvalue())

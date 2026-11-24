@@ -16,6 +16,7 @@ reliable plan-to-lap mapping. Pure: no I/O, inputs unchanged.
 
 from __future__ import annotations
 
+import itertools
 import statistics
 from bisect import bisect_left
 from collections.abc import Mapping, Sequence
@@ -663,6 +664,8 @@ def _heart_rate_cap(facts: _Facts, cap: Mapping[str, Any]) -> dict[str, Any]:
             str(cap.get("reason") or "Zeit über dem Deckel unbekannt."),
             basis="plan",
         )
+    # The minutes in, below and above the target band lead the analysis (#4136).
+    band = _mapping(cap.get("target_band"))
     return _judged(
         "heart_rate_cap",
         title,
@@ -672,13 +675,14 @@ def _heart_rate_cap(facts: _Facts, cap: Mapping[str, Any]) -> dict[str, Any]:
             "time_above_cap_pct": share,
             "cap_verdict": verdict,
             "max_bpm": facts.metric("max_hr"),
+            **({"target_band": dict(band)} if band else {}),
         },
         unit="%",
-        rule="Mittel über dem geplanten Herzfrequenz-Deckel oder mehr als 10 % der Zeit darüber",
+        rule="Mittel über dem geplanten Herzfrequenz-Deckel oder mehr als 10 % der Zeit darüber; nach dem Einlaufen mehr als 25 % der Zeit unter dem Zielband",
         threshold=CAP_ABOVE_SHARE_PCT,
         measure=share,
         basis="plan",
-        notable=verdict == "above_cap",
+        notable=verdict == "above_cap" or band.get("verdict") == "too_easy",
     )
 
 
@@ -1409,6 +1413,9 @@ def _zone_time(
 def _session_facts(facts: _Facts) -> list[dict[str, Any]]:
     """Values the report states without a verdict (athlete, #3084 Part 2)."""
     found = [
+        _plan_segments(facts),
+        _type_progress(facts),
+        _energy_before(facts),
         _work_laps_of_critical_speed(facts),
         _steadiness_fact(facts),
         _reps_of_ftp(facts),
@@ -1417,6 +1424,91 @@ def _session_facts(facts: _Facts) -> list[dict[str, Any]]:
         _stops(facts),
     ]
     return [fact for fact in found if fact is not None]
+
+
+def _energy_before(facts: _Facts) -> dict[str, Any] | None:
+    """Intake, expenditure and balance of the days before the session (#4136)."""
+    energy = _mapping(facts.result.get("energy_before"))
+    if not energy:
+        return None
+    return {
+        "id": "energy_before",
+        "title": "Energiebilanz der Tage davor",
+        "value": dict(energy),
+        "unit": "kcal",
+        "basis": "diary",
+    }
+
+
+# A work segment this much faster than the one before is named (#4136).
+FASTER_SEGMENT_PCT: Final = 1.0
+_SEGMENT_KEYS: Final = (
+    "role",
+    "planned_target",
+    "minutes",
+    "time_in_target_pct",
+    "band",
+    "output",
+    "heart_rate_avg",
+    "heart_rate_start",
+    "heart_rate_end",
+    "heart_rate_max",
+)
+
+
+def _plan_segments(facts: _Facts) -> dict[str, Any] | None:
+    """Every planned segment against its window: warm-up, each work step and
+    recovery, cool-down; a work step faster than the one before with the same
+    planned target names by how much (pace s/km lower, power higher), so a rep
+    started too fast shows and a planned progression does not."""
+    steps = facts.result.get("plan_segments")
+    if not isinstance(steps, list) or not steps:
+        return None
+    rows = [
+        {key: step[key] for key in _SEGMENT_KEYS if key in step}
+        for step in steps
+        if isinstance(step, Mapping)
+    ]
+    work = [
+        (row, output)
+        for row in rows
+        if row.get("role") == "work" and (output := _number(row.get("output")))
+    ]
+    pace = facts.execution.get("output") == "pace"
+    for (earlier, before), (row, output) in itertools.pairwise(work):
+        # A planned progression is no rep started too fast: only reps with the
+        # same planned target are compared.
+        if earlier.get("planned_target") != row.get("planned_target"):
+            continue
+        faster = (before - output if pace else output - before) / before * 100
+        if faster >= FASTER_SEGMENT_PCT:
+            row["faster_than_previous_work_pct"] = round(faster, 1)
+    return {
+        "id": "plan_segments",
+        "title": "Abschnitte gegen den Plan",
+        "value": {"output_unit": facts.execution.get("output_unit"), "segments": rows},
+        "basis": "plan",
+    }
+
+
+def _type_progress(facts: _Facts) -> dict[str, Any] | None:
+    """The session type's progress and the duration change against its own
+    earlier sessions of that type (#4136); None without such a comparison."""
+    comparable = facts.comparable
+    kind = _mapping(comparable.get("session_type"))
+    if comparable.get("status") != "ok" or not kind:
+        return None
+    return {
+        "id": "type_progress",
+        "title": "Entwicklung dieses Einheitstyps",
+        "value": {
+            "session_type": kind.get("type"),
+            "peers": comparable.get("count"),
+            "duration_change_min": comparable.get("duration_change_min"),
+            "progress": comparable.get("progress"),
+        },
+        "basis": "personal",
+    }
 
 
 def _work_laps_of_critical_speed(facts: _Facts) -> dict[str, Any] | None:
@@ -2278,7 +2370,9 @@ def _fact_checks(facts: _Facts) -> list[dict[str, Any]]:
             )
         )
     weather = _mapping(facts.result.get("weather"))
-    if weather and facts.sport in ("run", "ride"):
+    # Indoors there is no weather to explain anything (#4136).
+    outdoors = weather.get("status") != "not_applicable"
+    if weather and outdoors and facts.sport in ("run", "ride"):
         checks.append(_heat(facts, weather))
     inputs = _mapping(facts.result.get(session_conditions.INPUTS))
     if facts.sport in ("run", "ride"):
@@ -2408,7 +2502,9 @@ def _heat(facts: _Facts, weather: Mapping[str, Any]) -> dict[str, Any]:
     title = "Hitze (Wetter der Einheit)"
     apparent = _number(weather.get("apparent_temperature_c"))
     if apparent is None:
-        return _unknown("heat", title, "Keine gefühlte Temperatur gespeichert.")
+        # A missing weather names its gap (#4136).
+        reason = weather.get("reason") or "Keine gefühlte Temperatur gespeichert."
+        return _unknown("heat", title, str(reason))
     explains = _notable_heart_checks(facts) if apparent >= HEAT_APPARENT_C else []
     return _judged(
         "heat",

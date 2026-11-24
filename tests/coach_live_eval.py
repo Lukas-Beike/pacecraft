@@ -1173,9 +1173,12 @@ def _seed_long_runs(server: Any, unit: Any) -> None:
     weather and diary (#4136); each through the real stores."""
     from unittest.mock import patch
 
-    import snapshot_seed
-    from canonical_detail_support import add_garmin_copy, seed_intervals_activity
-    from support import complete_canonical_backfill, mark_tables_serving
+    from canonical_detail_support import store_garmin_streams
+    from support import (
+        complete_canonical_backfill,
+        mark_tables_serving,
+        store_garmin_activities,
+    )
 
     from backend.activities.hr_cap import effective_caps
     from backend.sync.garmin_snapshot_writer import GarminSnapshotWriter
@@ -1183,23 +1186,23 @@ def _seed_long_runs(server: Any, unit: Any) -> None:
     manager = server.database_manager()
     # Own run zones; 84 % of the 167 bpm threshold caps a long run at 140 bpm.
     server.ATHLETE_DATA.zones().save({**LONG_RUN_ZONES, "from_beginning": True})
-    listed = []
+    listed: list[dict[str, Any]] = []
+    streams: dict[str, dict[str, Any]] = {}
     for activity_id, day, focus, minutes, km, heart, rise in LONG_RUN_SESSIONS:
         name = {"long": "Langer Lauf", "easy": "Lockerer Lauf"}.get(focus, "Schwelle")
-        start = f"{day}T10:00:00"
-        fields = {"moving_time": minutes * 60, "distance": km * 1000}
-        listed.append({"id": activity_id, "type": "Run", "name": name, **fields})
-        seed_intervals_activity(
-            manager,
-            activity_id,
-            name=name,
-            type="Run",
-            start_date_local=start,
-            **fields,
+        listed.append(
+            {
+                "activityId": activity_id,
+                "activityName": name,
+                "activityType": {"typeKey": "running"},
+                "startTimeLocal": f"{day} 10:00:00",
+                "duration": minutes * 60.0,
+                "movingDuration": minutes * 60.0,
+                "distance": km * 1000,
+                "averageHR": heart,
+            }
         )
-        add_garmin_copy(
-            manager, activity_id, _long_run_streams(minutes, km, heart, rise)
-        )
+        streams[activity_id] = _long_run_streams(minutes, km, heart, rise)
         target = {"long": LONG_RUN_TARGET, "easy": "Z2 HR"}.get(focus, "Z4 HR")
         description = f"- {minutes}m {target}"
         # A unit is planned before its day, so the clock stands before them all.
@@ -1214,15 +1217,10 @@ def _seed_long_runs(server: Any, unit: Any) -> None:
                 duration_minutes=minutes,
                 hr_cap=effective_caps(None)["long"] if focus == "long" else None,
             )
-    snapshot_seed.save_view(
-        server.SYNC_PERSISTENCE.state_repository(),
-        {
-            "recent_activities": listed,
-            "recent_wellness": [],
-            "planned_workouts": [],
-            "raw_provider_data": {"activities": [dict(row) for row in listed]},
-        },
-    )
+    # Garmin sessions with their summaries and full streams, as a sync stores them.
+    store_garmin_activities(server, listed)
+    for activity_id, values in streams.items():
+        store_garmin_streams(manager, activity_id, values)
     nights = [f"2026-08-{day:02d}" for day in range(7, 32)] + [
         f"2026-09-{day:02d}" for day in range(1, 8)
     ]
@@ -1231,6 +1229,16 @@ def _seed_long_runs(server: Any, unit: Any) -> None:
             db,
             {
                 "synced_at": "2026-09-07T08:00:00",
+                # Whole-day totals of the three days before the long run: with
+                # about 1700 kcal logged, about 700 kcal short a day.
+                "daily_stats": [
+                    {
+                        "calendarDate": d,
+                        "totalKilocalories": 2400,
+                        "bmrKilocalories": 1700,
+                    }
+                    for d in ("2026-09-03", "2026-09-04", "2026-09-05")
+                ],
                 "sleep": [
                     {"calendarDate": d, "sleepTimeSeconds": 26_640} for d in nights
                 ],
@@ -1445,6 +1453,12 @@ def snapshot(server: Any) -> dict[str, Any]:
     return state
 
 
+def _no_weather_look_up(stage: Any, _database: Any) -> None:
+    """The weather stage's prefetch without a request: nothing is fetched, so
+    every stored weather row is kept."""
+    stage._fetched, stage._halted = {}, False
+
+
 @contextlib.contextmanager
 def case_server(
     base_url: str,
@@ -1474,6 +1488,7 @@ def case_server(
 
     from backend.errors import AppError
     from backend.providers.open_food_facts import OpenFoodFactsClient
+    from backend.sync.activity_weather import ActivityWeatherStage
 
     server = fixtures.server
     with (
@@ -1509,6 +1524,11 @@ def case_server(
                     ),
                 )
         server.SETTINGS.save_thinking_level(thinking)
+        # The activity weather stays as seeded: the backfill worker never looks
+        # it up, so it neither reaches Open-Meteo nor replaces a seeded value.
+        stack.enter_context(
+            patch.object(ActivityWeatherStage, "prefetch", _no_weather_look_up)
+        )
         # Food lookups stay offline: Open Food Facts is unreachable and BLS finds
         # nothing; the web search is replaced per case in run_case.
         offline = AppError(503, "offline", reason="food_database_unavailable")

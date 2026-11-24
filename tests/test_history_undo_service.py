@@ -82,9 +82,17 @@ class _RestoreService:
         self.entity_id = entity_id
         self.error = error
         self.calls = []
+        self.deferred = []
+        self.bounds = []
 
-    def restore_in_transaction(self, db, *args):
+    def update_bounds(self, db, plan_ids):
+        self.bounds.append(set(plan_ids))
+
+    def restore_in_transaction(self, db, *args, deferred_plans=None):
         self.calls.append(args)
+        self.deferred.append(deferred_plans)
+        if deferred_plans is not None:
+            deferred_plans.add("plan-1")
         db.execute(
             "INSERT INTO undo_effects(entity_type, entity_id) VALUES (?, ?)",
             (self.entity_type, self.entity_id),
@@ -566,6 +574,31 @@ class HistoryUndoServiceTests(unittest.TestCase):
 
         self.assertEqual(("undone", 1), (result["status"], result["count"]))
         self.assertEqual(len(self.services["profile"].calls), 1)
+
+    def test_a_batch_follows_the_plans_of_its_units_once_at_its_end(self):
+        # #4144: a plan created in the same write must not change before its own entry is undone.
+        current_projection, _ = self._insert_history("planned_unit")
+        after_hash = change_history.audit_hash(current_projection)
+        units, plans = self.services["planned_unit"], self.services["training_plan"]
+
+        with self.raw_manager.unit_of_work() as db:
+            self.service.apply_many(db, [{"id": _CHANGE_ID, "after_hash": after_hash}])
+
+        # The restore collects into one set instead of following, and the plan owner follows after it.
+        self.assertEqual([{"plan-1"}], units.deferred)
+        self.assertEqual([{"plan-1"}], plans.bounds)
+
+    def test_a_single_undo_lets_the_unit_restore_follow_at_once(self):
+        current_projection, _ = self._insert_history("planned_unit")
+        self.service.apply(
+            {
+                "change_id": _CHANGE_ID,
+                "expected_current_hash": change_history.audit_hash(current_projection),
+            }
+        )
+
+        self.assertEqual([None], self.services["planned_unit"].deferred)
+        self.assertEqual([], self.services["training_plan"].bounds)
 
     def test_legacy_row_accepts_batch_after_hash_and_rejects_wrong_expected_hash(self):
         legacy_after = self._insert_legacy_profile_row()

@@ -117,6 +117,28 @@ class EasySessionTests(unittest.TestCase):
         self.assertEqual("notable", found["heart_rate_cap"]["verdict"])
         self.assertEqual(["heart_rate_cap", "decoupling"], report["notable"])
         self.assertEqual(report["notable"], report["lead"])
+        # #4136: a run mostly below its target band after the warm-up is notable
+        # too, and the band's minutes come with the check.
+        band = {"band_bpm": [130, 140], "below_min": 40, "verdict": "too_easy"}
+        easy = checks(
+            session_report(
+                result(
+                    focus="long",
+                    execution={"data_quality": {"heart_rate": "ok", "speed": "ok"}},
+                    planned_targets={
+                        "heart_rate_cap": {
+                            "cap_bpm": 140,
+                            "time_above_cap_pct": 0,
+                            "verdict": "within_target",
+                            "target_band": band,
+                        }
+                    },
+                )
+            )
+        )["heart_rate_cap"]
+        self.assertEqual(
+            ("notable", band), (easy["verdict"], easy["value"]["target_band"])
+        )
 
     def test_unplanned_surges_count_as_time_above(self) -> None:
         # 600 s above the LT1 heart rate of 3600 s = 16.7 %; no plan excuses the laps.
@@ -227,6 +249,77 @@ class EasySessionTests(unittest.TestCase):
             {"gap_cv_pct": 8.0, "peers": 3},
             {fact["id"]: fact["value"] for fact in few["facts"]}["run_steadiness"],
         )
+
+    def test_the_type_progress_is_a_fact_of_the_same_type_comparison(self) -> None:
+        # #4136: the verdict and the duration change come with the report; a
+        # comparison of unknown session type states none.
+        progress = {"status": "ok", "verdict": "besser", "marker": "pace_at_heart_rate"}
+        compared = {
+            "status": "ok",
+            "count": 4,
+            "session_type": {"type": "long", "origin": "plan"},
+            "duration_change_min": 6,
+            "progress": progress,
+        }
+        report = session_report(result(focus="long", comparable_sessions=compared))
+        self.assertEqual(
+            {
+                "session_type": "long",
+                "peers": 4,
+                "duration_change_min": 6,
+                "progress": progress,
+            },
+            {fact["id"]: fact["value"] for fact in report["facts"]}["type_progress"],
+        )
+        untyped = session_report(
+            result(focus="long", comparable_sessions={**compared, "session_type": None})
+        )
+        self.assertNotIn("type_progress", [fact["id"] for fact in untyped["facts"]])
+
+    def test_the_energy_before_and_a_weather_gap_are_named(self) -> None:
+        # #4136: the days-before balance comes as a fact; a missing weather
+        # makes the heat check unknown with the gap's own reason.
+        energy = {"days": [], "mean_balance_kcal": -700, "reason": None}
+        gap = {"status": "missing", "reason": "Datenlücke: kein Wetter gespeichert."}
+        report = session_report(result(focus="long", energy_before=energy, weather=gap))
+        self.assertEqual(
+            energy,
+            {fact["id"]: fact["value"] for fact in report["facts"]}["energy_before"],
+        )
+        heat = checks(report)["heat"]
+        self.assertEqual(("unknown", gap["reason"]), (heat["verdict"], heat["reason"]))
+
+    def test_plan_segments_name_a_rep_run_faster_than_the_one_before(self) -> None:
+        # #4136: rep 2 at 274 s/km against rep 1's 280 is 2.1 % faster; the
+        # recovery between them is listed, never compared.
+        # A third rep planned faster is a progression and is not named.
+        target = "155-169BPM"
+        segments = [
+            {"role": "warmup", "minutes": 15.0, "output": 360, "heart_rate_avg": 128},
+            {"role": "work", "planned_target": target, "minutes": 15.0, "output": 280},
+            {"role": "recovery", "minutes": 5.0, "output": 461, "heart_rate_end": 123},
+            {"role": "work", "planned_target": target, "minutes": 15.0, "output": 274},
+            {
+                "role": "work",
+                "planned_target": "4:20/km",
+                "minutes": 5.0,
+                "output": 260,
+            },
+        ]
+        report = session_report(
+            result(
+                focus="threshold",
+                execution={"output": "pace", "output_unit": "s/km"},
+                plan_segments=segments,
+            )
+        )
+        found = {fact["id"]: fact["value"] for fact in report["facts"]}["plan_segments"]
+        self.assertEqual("s/km", found["output_unit"])
+        self.assertEqual(
+            [None, None, None, 2.1, None],
+            [row.get("faster_than_previous_work_pct") for row in found["segments"]],
+        )
+        self.assertEqual(123, found["segments"][2]["heart_rate_end"])
 
     def test_heart_rate_spikes_make_heart_rate_checks_unknown(self) -> None:
         report = session_report(

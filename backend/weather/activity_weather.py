@@ -76,6 +76,16 @@ def activity_window(
     return first, first + length
 
 
+def weather_pending(start: datetime, end: datetime, now: datetime) -> str | None:
+    """Why the stage has not looked a session's weather up yet, None when it
+    should have: before ``FIRST_DAY``, or not ``SETTLE`` after its end (#4136)."""
+    if (start - timedelta(minutes=30)).date() < FIRST_DAY:
+        return "before_first_day"
+    if end + SETTLE > now:
+        return "not_settled"
+    return None
+
+
 def utc_days(start: datetime, end: datetime) -> tuple[date, date]:
     """The UTC days to request: an hour's value reaches half an hour before the
     start, and the precipitation of the preceding hour up to an hour after the end."""

@@ -6,11 +6,17 @@ import json
 import unittest
 import uuid
 from datetime import date
+from unittest.mock import Mock
 
 from support import temp_database
 
 from backend.db import row_factory
-from backend.db.repositories import PlanAdjustmentRepository, PlanningStateRepository
+from backend.db.repositories import (
+    KeyValueRepository,
+    PlanAdjustmentRepository,
+    PlanningStateRepository,
+    TrainingPlanRepository,
+)
 from backend.db.schema import initialize_schema
 from backend.errors import AppError
 from backend.planning import adaptive, push_state
@@ -23,6 +29,7 @@ from backend.planning.adaptive_preview_service import (
 from backend.planning.calendar_service import CalendarConflictService
 from backend.planning.revision import PlanningRevisionService
 from backend.planning.session_focus import is_hard
+from backend.planning.training_plans import TrainingPlanService
 
 NOW = "2026-09-20T08:00:00+00:00"
 TODAY = date(2026, 9, 20)
@@ -48,7 +55,9 @@ class AdaptiveReplanApplyServiceTests(unittest.TestCase):
         self.revisions = PlanningRevisionService(PlanningStateRepository(), lambda: NOW)
         self.service = self.make_service()
 
-    def make_service(self, repository=None, calendar_conflict_service=None):
+    def make_service(
+        self, repository=None, calendar_conflict_service=None, follow_plans=None
+    ):
         return AdaptiveReplanApplyService(
             self.manager,
             repository or self.repository,
@@ -56,6 +65,7 @@ class AdaptiveReplanApplyServiceTests(unittest.TestCase):
             lambda: TODAY,
             lambda: NOW,
             calendar_conflict_service,
+            *([follow_plans] if follow_plans else []),
         )
 
     @staticmethod
@@ -235,6 +245,44 @@ class AdaptiveReplanApplyServiceTests(unittest.TestCase):
         self.assertEqual(
             self.service.apply(preview_id),
             {"status": "already_applied", "id": preview_id},
+        )
+
+    def test_archiving_the_last_unit_of_a_plan_moves_the_plan_period(self):
+        # #4144: a replan that archives a plan's unit leaves the plan's end on the archived day.
+        plans = TrainingPlanService(
+            self.manager,
+            TrainingPlanRepository(),
+            KeyValueRepository(lambda: NOW),
+            self.revisions,
+            Mock(),
+            lambda: NOW,
+        )
+        plan_id = plans.create(
+            {"name": "Aufbau", "start_date": "2026-09-21", "end_date": "2026-09-23"}
+        )["plan_id"]
+        kept = self.workout(str(uuid.uuid4()), "2026-09-21", plan_id=plan_id)
+        dropped = self.workout(str(uuid.uuid4()), "2026-09-23", plan_id=plan_id)
+        for unit in (kept, dropped):
+            self.add_workout(unit["id"], unit)
+        preview_id = self.add_preview(
+            {
+                "changes": [
+                    {
+                        "library_workout_id": dropped["id"],
+                        "source_fingerprint": adaptive.adaptive_workout_fingerprint(
+                            dropped
+                        ),
+                        "payload": {**dropped, "archived": True},
+                    }
+                ]
+            }
+        )
+
+        self.make_service(follow_plans=plans.update_bounds).apply(preview_id)
+
+        plan = next(item for item in plans.list() if item["id"] == plan_id)
+        self.assertEqual(
+            ("2026-09-21", "2026-09-21"), (plan["start_date"], plan["end_date"])
         )
 
     def test_approval_writes_no_future_checkins_and_cleared_illness_stays_clear(self):

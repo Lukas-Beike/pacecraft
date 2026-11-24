@@ -57,6 +57,20 @@ test("@responsive performance keeps Garmin measurements and one cycling best per
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBeTruthy();
 });
 
+// #4037: a critical-power line of only missing estimates holds no value and is not shown, whatever bests stand beside it.
+test("@responsive the experimental line is not shown when no estimate exists", async ({ page, request }) => {
+  expect((await request.get("/api/fixture/demo")).ok()).toBeTruthy();
+  await page.route("**/api/analysis/power-profiles", (route) => route.fulfill({ json: { all_time: { power: [
+    { sport: "Ride", duration_seconds: 5, watts: 650, status: "ok", date: "2026-10-01" },
+  ], cache_coverage: { records: 20, unknown_records: 0, power_records: 14, power_unknown_records: 0 } }, critical_power: { window_days: 28, scope: "Experimentelle Modellschätzung", fits: [
+    { sport: "ride", environment: "outdoor", status: "insufficient_data" },
+    { sport: "ride", environment: "indoor", status: "insufficient_data" },
+  ] } } }));
+  await page.goto("/#analysis/cycling");
+  await expect(page.locator('#cyclingPowerProfile [data-power-duration="5"]')).toContainText("650 W");
+  await expect(page.locator("#cyclingCriticalPower [data-critical-power]")).toHaveCount(0);
+});
+
 test("@responsive Laufen and Radfahren each show only their sport", async ({ page, request }) => {
   expect((await request.get("/api/fixture/demo")).ok()).toBeTruthy();
   await page.route("**/api/analysis/power-profiles", (route) => route.fulfill({ json: { all_time: {

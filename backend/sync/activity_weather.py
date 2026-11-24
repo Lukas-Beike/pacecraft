@@ -58,8 +58,6 @@ from backend.providers.activity_weather import rounded_coordinates
 from backend.sync.canonical_backfill import BatchReport
 from backend.sync.canonical_table_reader import CanonicalTableReader
 from backend.weather.activity_weather import (
-    FIRST_DAY,
-    SETTLE,
     WIND_BIN_S,
     ActivityWeather,
     Headwind,
@@ -67,6 +65,7 @@ from backend.weather.activity_weather import (
     headwind,
     reduce_hourly,
     utc_days,
+    weather_pending,
 )
 from backend.weather.activity_weather_store import (
     LOCATION_HOME,
@@ -277,8 +276,7 @@ def _wants(summary: Mapping[str, Any], now: datetime) -> bool:
         str(summary.get("sport")), str(summary.get("environment"))
     ):
         return False
-    start, end = _window(summary)
-    return (start - timedelta(minutes=30)).date() >= FIRST_DAY and end + SETTLE <= now
+    return weather_pending(*_window(summary), now) is None
 
 
 class ActivityWeatherStage:

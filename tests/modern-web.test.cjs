@@ -10,7 +10,7 @@ const { staleInstall } = require("./frontend-harness.cjs");
 const ROOT = path.join(__dirname, "..");
 const read = (relative) => fs.readFileSync(path.join(ROOT, relative), "utf8");
 // Updated by hand only (athlete, #2633): a new version changes this hash too.
-const INTEGRITY = "sha512-5ztUh5F1p2PewnSkA6EhsGUXqomaZY9qe6iWJCU4JbIQxHTky7s5lMJcPE4EbD1uhbQZIhl0HROH0+s6fIiGzg==";
+const INTEGRITY = "sha512-ksFBCdzMl5xxf7wuF7XQbudQ6El1e2VrO0WzcH/U29NYGNzu0EZjtojkfwzFBSnmenDyl7QIwPCgYvfEmZHr+w==";
 
 test("modern-web-guidance runs pinned, with telemetry off, and only read-only commands (#2633)", () => {
   const manifest = JSON.parse(read("package.json"));
