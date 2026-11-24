@@ -1272,7 +1272,7 @@ function plannedSessionHeader(entry, actual, title, appendStatus, slim = false) 
   // A done or missed unit's icon names the sport; its line keeps the time and the status.
   const line = h("span", { className: "planned-session-line", textContent: [slim ? null : sportLabel, actual ? calendarStartTime(actual.started_at_local) : plannedUnitStartTime(entry.starts_at_local)].filter(Boolean).join(" · ") });
   appendStatus(line);
-  const shownDistance = actual ? actual.distance_m : entry.distance;
+  const shownDistance = actual ? actual.distance_m : entry.distance || entry.workout_profile?.distance_m;
   const value = h("span", "planned-session-value",
     h("strong", { title: durationTitle(actual) }, plannedEntryDurationLabel(actual, entry) || "–"),
     shownDistance > 0 ? h("span", null, distanceLabel(shownDistance)) : null);

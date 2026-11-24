@@ -40,6 +40,9 @@ class WorkoutProfileTests(unittest.TestCase):
         )
         self.assertTrue(all("duration" not in row for row in profile["segments"]))
         self.assertEqual("zone", profile["unit"])
+        # The steps add up to the unit's distance; timed steps carry none (#4129 K-12).
+        self.assertEqual(8000, profile["distance_m"])
+        self.assertNotIn("distance_m", planned_profile({"description": "- 30m 200w"}))
         self.assertEqual([1, 2, 4], [row["zone"] for row in profile["segments"]])
 
     def test_run_steps_mixing_zone_and_heart_rate_percent_share_the_zone_axis(self):
