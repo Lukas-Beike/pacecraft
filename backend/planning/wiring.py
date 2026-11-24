@@ -157,6 +157,7 @@ def build_planning_data(ctx: AppContext) -> PlanningDataServices:
             local_date,
             runtime_clock.utc_now,
             ctx.planning_workflows.calendar_conflict_service(),
+            lambda db, plan_ids: training_plan().update_bounds(db, plan_ids),
         )
 
     return PlanningDataServices(
