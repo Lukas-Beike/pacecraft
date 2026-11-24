@@ -64,6 +64,9 @@ BLOCK_WORD_BUDGETS = {
     # Test planning from planning_brief.last_tests and the step test (plan kinds only).
     "_TESTS": 160,
     "_ANSWER": 55,
+    # The athlete-approved session analysis shape, its order and form rules
+    # (#4136); it replaces _ANSWER for a single session.
+    "_SESSION_ANSWER": 170,
     # 545: the deficit rule 6i.3 names the EA floor, loss rate and protein range (#3917).
     "_NUTRITION": 545,
 }
@@ -307,7 +310,9 @@ class PlaybookInjectionTests(unittest.TestCase):
                 self.assertIn(block, text)
                 self.assertNotIn(other, text)
                 # The answer format stays last.
-                self.assertLess(text.index(block), text.index(playbooks._ANSWER))
+                self.assertLess(
+                    text.index(block), text.index(playbooks._SESSION_ANSWER)
+                )
                 self.assertNotIn(block, core)
         for no_block in (None, "swim", "strength"):
             self.assertEqual(core, playbook_for("session_analysis", no_block))
@@ -338,9 +343,12 @@ class PlaybookInjectionTests(unittest.TestCase):
 
     def test_review_kinds_share_the_answer_format_and_plain_language(self) -> None:
         self.assertIn("explain a term like fitness or form", COACH_PROMPT)
-        for kind in ("session_analysis", "progress_review", "block_review"):
+        for kind in ("progress_review", "block_review"):
             with self.subTest(kind=kind):
                 self.assertIn(playbooks._ANSWER, playbook_for(kind))
+        # A single session has its own athlete-approved shape (#4136).
+        self.assertIn(playbooks._SESSION_ANSWER, playbook_for("session_analysis"))
+        self.assertNotIn(playbooks._ANSWER, playbook_for("session_analysis"))
         for kind in ("plan_week", "plan_block", "adjust_week"):
             self.assertNotIn(playbooks._ANSWER, playbook_for(kind))
 
@@ -348,18 +356,26 @@ class PlaybookInjectionTests(unittest.TestCase):
         self,
     ) -> None:
         # The per-type checks are code now (session_report, #3084); the task
-        # explains the report, leads with its lead, mentions every notable and
-        # names every unknown, and never computes numbers itself.
+        # explains the report, names every notable and every unknown, and never
+        # computes numbers itself. The answer leads with the plan (#4136).
         text = playbook_for("session_analysis")
         for marker in (
             "by default the last one",
             "session_report holds every deterministic check",
             "never compute numbers or verdicts yourself",
-            "session_report.lead",
-            "mention every other notable check",
-            "name each unknown with its reason",
-            "citing a field and its value",
+            "Name every notable check",
+            "each unknown with its reason",
+            "cite a field and its value",
             "sensor errors",
+            "Plan first",
+            "same type only",
+            "besser, gleich or schlechter",
+            "energy_before",
+            "Minutes, never seconds",
+            "ground contact, only if recorded",
+            "training-effect or threshold-pace label",
+            "du-form",
+            "heart_rate_change_bpm",
         ):
             with self.subTest(marker=marker):
                 self.assertIn(marker, text)
