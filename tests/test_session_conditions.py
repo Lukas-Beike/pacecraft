@@ -364,7 +364,12 @@ class FactChecksTests(unittest.TestCase):
                 "status": "ok",
                 "origin": "completed",
                 "sessions": [
-                    {"hours_before": 20.5, "legs": True, "intensity": "heavy"},
+                    {
+                        "hours_before": 20.5,
+                        "legs": True,
+                        "intensity": "heavy",
+                        "within_key_gap": True,
+                    },
                     {"hours_before": 40.0, "legs": False, "intensity": None},
                 ],
             }
@@ -380,6 +385,8 @@ class FactChecksTests(unittest.TestCase):
                 "legs": 1,
                 "intensities": ["heavy", None],
                 "closest_hours_before": 20.5,
+                # Heavy leg work 20.5 h before lies inside its 48 h gap (#4171).
+                "legs_within_key_gap": 1,
                 "confirmed": True,
             },
             check["value"],

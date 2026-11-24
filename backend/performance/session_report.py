@@ -2484,10 +2484,18 @@ def _strength_before(before: Mapping[str, Any]) -> dict[str, Any]:
             "legs": sum(1 for item in sessions if item.get("legs")),
             "intensities": [item.get("intensity") for item in sessions],
             "closest_hours_before": round(min(known), 1) if known else None,
+            # Leg work inside the plan check's gap (#3920): heavy 48 h,
+            # moderate or light 24 h; a possible cause the Coach names (#4171).
+            "legs_within_key_gap": sum(
+                1
+                for item in sessions
+                if item.get("legs") and item.get("within_key_gap") is True
+            ),
             "confirmed": before.get("origin") == "completed",
         },
         "Krafteinheiten in den 48 h vor dem Start: erledigt, sonst geplant und "
-        "nicht bestätigt; nur Fakten, keine Ursache",
+        "nicht bestätigt; Beinkraft im Schlüsselabstand ist eine mögliche, "
+        "nie eine belegte Ursache",
         "fixed",
     )
 
