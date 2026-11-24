@@ -456,6 +456,44 @@ class PlannedStepAdherenceTests(unittest.TestCase):
             [(750, 1260), (600, 0), (0, 180), (900, 720)],
         )
 
+    def test_every_segment_names_its_pace_and_heart_rate(self) -> None:
+        # #4136: the first rep runs 3.8 m/s (263 s/km) for 3 minutes while the
+        # heart rate climbs evenly from 150 to 168 bpm: 151 over its first 30 s,
+        # 167 over its last, 159 on average.
+        session = _run()
+        streams = _display_streams(session)
+        streams["channels"]["heart_rate_bpm"] = {
+            "values": list(session["streams"]["heartrate"])
+        }
+        first = planned_step_adherence(
+            session_execution(session),
+            structured_steps(PLAN),
+            THRESHOLDS,
+            "run",
+            streams=streams,
+        )["steps"][1]
+        self.assertEqual(
+            {
+                "minutes": 3.0,
+                "output": 263,
+                "heart_rate_avg": 159,
+                "heart_rate_start": 151,
+                "heart_rate_end": 167,
+                "heart_rate_max": 168,
+            },
+            {
+                key: first[key]
+                for key in (
+                    "minutes",
+                    "output",
+                    "heart_rate_avg",
+                    "heart_rate_start",
+                    "heart_rate_end",
+                    "heart_rate_max",
+                )
+            },
+        )
+
     def test_bands_follow_the_athletes_cut_points(self) -> None:
         self.assertEqual(
             [adherence_band(value) for value in (100, 80, 79, 50, 49, 0)],

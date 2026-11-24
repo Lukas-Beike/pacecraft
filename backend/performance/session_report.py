@@ -16,6 +16,7 @@ reliable plan-to-lap mapping. Pure: no I/O, inputs unchanged.
 
 from __future__ import annotations
 
+import itertools
 import statistics
 from bisect import bisect_left
 from collections.abc import Mapping, Sequence
@@ -1412,6 +1413,7 @@ def _zone_time(
 def _session_facts(facts: _Facts) -> list[dict[str, Any]]:
     """Values the report states without a verdict (athlete, #3084 Part 2)."""
     found = [
+        _plan_segments(facts),
         _type_progress(facts),
         _energy_before(facts),
         _work_laps_of_critical_speed(facts),
@@ -1435,6 +1437,57 @@ def _energy_before(facts: _Facts) -> dict[str, Any] | None:
         "value": dict(energy),
         "unit": "kcal",
         "basis": "diary",
+    }
+
+
+# A work segment this much faster than the one before is named (#4136).
+FASTER_SEGMENT_PCT: Final = 1.0
+_SEGMENT_KEYS: Final = (
+    "role",
+    "planned_target",
+    "minutes",
+    "time_in_target_pct",
+    "band",
+    "output",
+    "heart_rate_avg",
+    "heart_rate_start",
+    "heart_rate_end",
+    "heart_rate_max",
+)
+
+
+def _plan_segments(facts: _Facts) -> dict[str, Any] | None:
+    """Every planned segment against its window: warm-up, each work step and
+    recovery, cool-down; a work step faster than the one before with the same
+    planned target names by how much (pace s/km lower, power higher), so a rep
+    started too fast shows and a planned progression does not."""
+    steps = facts.result.get("plan_segments")
+    if not isinstance(steps, list) or not steps:
+        return None
+    rows = [
+        {key: step[key] for key in _SEGMENT_KEYS if key in step}
+        for step in steps
+        if isinstance(step, Mapping)
+    ]
+    work = [
+        (row, output)
+        for row in rows
+        if row.get("role") == "work" and (output := _number(row.get("output")))
+    ]
+    pace = facts.execution.get("output") == "pace"
+    for (earlier, before), (row, output) in itertools.pairwise(work):
+        # A planned progression is no rep started too fast: only reps with the
+        # same planned target are compared.
+        if earlier.get("planned_target") != row.get("planned_target"):
+            continue
+        faster = (before - output if pace else output - before) / before * 100
+        if faster >= FASTER_SEGMENT_PCT:
+            row["faster_than_previous_work_pct"] = round(faster, 1)
+    return {
+        "id": "plan_segments",
+        "title": "Abschnitte gegen den Plan",
+        "value": {"output_unit": facts.execution.get("output_unit"), "segments": rows},
+        "basis": "plan",
     }
 
 

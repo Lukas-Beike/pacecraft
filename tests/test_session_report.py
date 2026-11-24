@@ -289,6 +289,38 @@ class EasySessionTests(unittest.TestCase):
         heat = checks(report)["heat"]
         self.assertEqual(("unknown", gap["reason"]), (heat["verdict"], heat["reason"]))
 
+    def test_plan_segments_name_a_rep_run_faster_than_the_one_before(self) -> None:
+        # #4136: rep 2 at 274 s/km against rep 1's 280 is 2.1 % faster; the
+        # recovery between them is listed, never compared.
+        # A third rep planned faster is a progression and is not named.
+        target = "155-169BPM"
+        segments = [
+            {"role": "warmup", "minutes": 15.0, "output": 360, "heart_rate_avg": 128},
+            {"role": "work", "planned_target": target, "minutes": 15.0, "output": 280},
+            {"role": "recovery", "minutes": 5.0, "output": 461, "heart_rate_end": 123},
+            {"role": "work", "planned_target": target, "minutes": 15.0, "output": 274},
+            {
+                "role": "work",
+                "planned_target": "4:20/km",
+                "minutes": 5.0,
+                "output": 260,
+            },
+        ]
+        report = session_report(
+            result(
+                focus="threshold",
+                execution={"output": "pace", "output_unit": "s/km"},
+                plan_segments=segments,
+            )
+        )
+        found = {fact["id"]: fact["value"] for fact in report["facts"]}["plan_segments"]
+        self.assertEqual("s/km", found["output_unit"])
+        self.assertEqual(
+            [None, None, None, 2.1, None],
+            [row.get("faster_than_previous_work_pct") for row in found["segments"]],
+        )
+        self.assertEqual(123, found["segments"][2]["heart_rate_end"])
+
     def test_heart_rate_spikes_make_heart_rate_checks_unknown(self) -> None:
         report = session_report(
             result(

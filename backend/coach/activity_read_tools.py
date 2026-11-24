@@ -837,14 +837,16 @@ class CoachActivityReadToolService:
             for key in ("critical_speed", "running_dynamics_rating", "energy_before")
             if key in result
         }
+        adherence = self._step_adherence(result, session, unit) if planned else None
+        # Each planned segment against its window, for the report (#4136).
+        if isinstance(adherence, Mapping) and adherence.get("status") == "ok":
+            facts["plan_segments"] = adherence.get("steps")
         report = session_report(
             {**result, CONDITION_INPUTS: inputs, **facts},
             planned,
             own.get("training_load"),
             self._race(session),
-            _plan_zones(
-                self._step_adherence(result, session, unit) if planned else None
-            ),
+            _plan_zones(adherence),
         )
         if self._report_counts is not None:
             self._report_counts.report(report)

@@ -72,6 +72,10 @@ The system SHALL add to every `get_activity_details` result a `session_report` (
 - **WHEN** a run or ride is read
 - **THEN** the report's fact `energy_before` names, for each of the 3 days before, the diary intake, the expenditure (the own day total, else the device's whole-day total, with its source) and the balance, and their mean balance only when every day has one; a run or ride without stored weather carries `weather` with status `pending` (before 2022 or within 48 hours of its end, when the app has not looked it up yet), `missing` (outdoors after that: a gap of the app's own look-up) or `not_applicable` (indoors, with no `heat` check); otherwise the `heat` check is unknown with that reason. The days come from the history the energy view keeps.
 
+#### Scenario: Each planned segment against its window (#4136)
+- **WHEN** a run or ride has a paired planned unit whose steps were scored against their windows
+- **THEN** the report's fact `plan_segments` lists every step in order (warm-up, each work step and recovery, cool-down) with its planned target, minutes, time in target and band, its pace or power and its heart rate (mean, over its first and last 30 s, peak); a work step at least 1 % faster than the work step before with the same planned target names `faster_than_previous_work_pct`, so a rep started too fast shows and a planned progression does not.
+
 #### Scenario: Wind at body height
 - **WHEN** an outdoor run or ride has a stored headwind on its own track (#3084 Part 3b)
 - **THEN** the report carries the check `wind` ("Wind auf Körperhöhe (geschätzt)"): the signed mean wind component along the direction of travel at body height (the stored 10 m model value × 0.72, log wind profile with z0 0.03 m for open land), the head and tail shares (±45°, beyond ±135°) and the coverage. It is unknown below 50 % coverage or without a track, and always `ok` with weight 0, never in `notable` or `lead`. Its `explains` names a slower part only when that part's own check in the report finds it (the race split, or the main-part fade of a continuous tempo effort, each with its own rule; or the rep fade with its weakest rep), the part had at least 3 m/s headwind at body height and 2 m/s more than the part it is compared with. The stored 60 s bins reach no tool output; only these reduced values leave the report.
@@ -90,6 +94,7 @@ Evidence:
 - `backend/coach/activity_read_tools.py:CoachActivityReadToolService._influences`
 - `backend/nutrition/energy_view.py:days_before`
 - `backend/weather/activity_weather.py:weather_pending`
+- `backend/performance/planned_targets.py:planned_step_adherence`
 - `backend/performance/session_conditions.py:grade_adjusted_pace`
 - `backend/performance/session_conditions.py:body_headwind`
 - `backend/performance/activity_read_service.py:ActivityAnalysisReadService.session_headwind`
