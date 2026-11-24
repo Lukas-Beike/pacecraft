@@ -746,3 +746,36 @@ test("@responsive a planned run's card shows its shoe chip right after opening a
   await chip.click();
   await expect(row.getByRole("combobox", { name: "Schuh" })).toHaveValue("shoe-a");
 });
+
+// #4199: a failed save keeps what was typed, and closing with Escape saves a reason typed last.
+test("@responsive the feedback sheet keeps a typed note when a save fails and saves a reason on Escape", async ({ page }) => {
+  await page.goto("/#plan/overview");
+  await expect(page.locator("#appShell")).toBeVisible();
+  await page.evaluate(async () => {
+    const data = { session: { activity_id: "keep-1", name: "Synthetic kept ride", sport: "ride" }, streams: { time_s: [0, 1, 2], channels: {} }, detail_data: { providers: [] }, activity_feedback: null, equipment: [], session_rpe_load: null };
+    globalThis.feedbackBodies = [];
+    globalThis.failNext = true;
+    const fakeApi = async (url, options) => {
+      if (url.endsWith("/feedback")) {
+        const body = JSON.parse(options.body);
+        feedbackBodies.push(body);
+        if (failNext) { failNext = false; throw Object.assign(new Error("Server gerade nicht erreichbar."), { reason: "http_error" }); }
+        return { status: "ok", activity_feedback: body, change: { id: "c1", after_hash: "h" } };
+      }
+      return data;
+    };
+    await ActivityFeedback.open({ id: "keep-1" }, { api: fakeApi, showDialog: (dialog) => dialog.showModal() });
+  });
+  const dialog = page.getByRole("dialog", { name: "Wie war die Einheit?" });
+  const note = dialog.getByLabel("Notiz");
+  await note.fill("Beine schwer");
+  await note.press("Tab");
+  await expect(dialog.locator('[role="status"]').filter({ hasText: "Server gerade nicht erreichbar." })).toBeVisible();
+  await expect(note).toHaveValue("Beine schwer");
+  await dialog.getByText("Mehr angeben").click();
+  await dialog.getByLabel("Abweichung vom Plan").fill("Hitze");
+  await page.keyboard.press("Escape");
+  await expect(dialog).toHaveCount(0);
+  await expect.poll(() => page.evaluate(() => feedbackBodies.at(-1)?.deviation_reason)).toBe("Hitze");
+  expect(await page.evaluate(() => feedbackBodies.at(-1).notes)).toBe("Beine schwer");
+});

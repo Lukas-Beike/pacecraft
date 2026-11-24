@@ -134,7 +134,12 @@
       } catch (error) {
         // A queued entry gone meanwhile: the next save goes out as a new one (review on #3817).
         if (error?.reason === "outbox_entry_gone") replaces = null;
-        Object.assign(current, shown); paint();
+        // The typed text stays for the next try; the taps go back to the last saved values unless a newer change waits.
+        if (!dirty) {
+          Object.assign(current, { session_rpe: shown.session_rpe, purpose: shown.purpose });
+          effort.render(current.session_rpe, watch);
+          purpose.value = PURPOSES.some(([key]) => key === current.purpose) ? current.purpose : "";
+        }
         status.textContent = error.message;
       }
     };
@@ -146,9 +151,11 @@
     purpose.addEventListener("change", () => { current.purpose = purpose.value; void queueSave(); });
     const explicit = edit ? h("button", { type: "button", className: "push-button" }, "Speichern") : null;
     explicit?.addEventListener("click", () => void queueSave());
-    // A note typed when the sheet closes is saved with it.
+    // Text typed when the sheet closes is saved with it: Escape and Back remove the field without leaving it.
     content.flushFeedback = () => {
-      if (notes.value !== current.notes) { current.notes = notes.value; void queueSave(); }
+      const changed = notes.value !== current.notes || reason.value !== current.deviation_reason;
+      Object.assign(current, { notes: notes.value, deviation_reason: reason.value });
+      if (changed) void queueSave();
     };
     content.replaceChildren(
       h("p", "muted", [session.name, session.started_at ? formatTime(session.started_at) : null].filter(Boolean).join(" · ")),
