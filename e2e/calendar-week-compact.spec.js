@@ -447,3 +447,19 @@ test("@responsive an old link to the Analyse week opens the calendar", async ({ 
   await expect(page.locator("#workoutsPanel")).toHaveClass(/active/);
   await expect(page.locator("[data-analysis-segment='week']")).toHaveCount(0);
 });
+
+// #4129 K-12: a planned run counted in distance shows the sum of its steps in the header.
+test("@responsive a planned run counted in distance shows its total distance", async ({ page, request }) => {
+  await openCalendar(page, request);
+  await page.evaluate(() => {
+    const today = timezoneDateKey(state.data?.profile?.timezone, new Date());
+    const day = addDateKey(today, 1);
+    const profile = { source: "planned", axis: "distance", unit: "zone", distance_m: 8000, segments: [
+      { distance: 2000, value: 1, end_value: 1, zone: 1, label: "Z1" }, { distance: 5000, value: 2, end_value: 2, zone: 2, label: "Z2" }, { distance: 1000, value: 4, end_value: 4, zone: 4, label: "Z4" }] };
+    state.data.training_calendar = [{ id: "dist-run", local_id: "dist-run", date: day, name: "Streckenlauf", type: "Run", sport: "run", duration_minutes: 45, workout_profile: profile }];
+    renderPlanned(state.data.training_calendar);
+  });
+  const day = await page.evaluate(() => addDateKey(timezoneDateKey(state.data?.profile?.timezone, new Date()), 1));
+  await showCalendarDay(page, day);
+  await expect(page.locator(`.planned-day[data-date="${day}"] .planned-session-value`)).toContainText("8,0 km");
+});

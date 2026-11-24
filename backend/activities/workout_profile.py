@@ -51,6 +51,9 @@ def planned_profile(
         "unit": units.pop(),
         "segments": segments,
     }
+    if axis == "distance":
+        # Steps counted in distance add up to the unit's distance (#4129 K-12).
+        profile["distance_m"] = round(sum(float(step["distance"]) for step in steps))
     if estimated:
         profile["estimated"] = True
     return profile

@@ -2,7 +2,7 @@ const assert = require("node:assert/strict");
 const { test } = require("node:test");
 const { loadPublicScript } = require("./frontend-harness.cjs");
 
-const { calendarHours, calendarWeekDistance, calendarWeekLoad } = loadPublicScript(["format.js", "plan-views.js"]);
+const { calendarHours, calendarWeekDistance, calendarWeekLoad, plannedEntryDistance } = loadPublicScript(["format.js", "plan-views.js"]);
 const calendarWeekDistanceLabel = (activities) => {
   const result = calendarWeekDistance(activities);
   return result ? [result.value, result.note].filter(Boolean).join(" · ") : "–";
@@ -48,4 +48,11 @@ test("week durations always use hours and minutes", () => {
   assert.equal(calendarHours(1800), "0:30 h");
   assert.equal(calendarHours(29100), "8:05 h");
   assert.equal(calendarHours(0), "0:00 h");
+});
+
+test("a planned unit counts its own distance, else the sum of its distance steps", () => {
+  assert.equal(plannedEntryDistance({ distance: 10000, workout_profile: { distance_m: 8000 } }), 10000);
+  assert.equal(plannedEntryDistance({ workout_profile: { distance_m: 8000 } }), 8000);
+  assert.equal(plannedEntryDistance({ distance: -5 }), 0);
+  assert.equal(plannedEntryDistance({}), 0);
 });

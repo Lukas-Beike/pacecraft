@@ -400,6 +400,11 @@ function plannedWeatherFlags(weather) {
   return flags;
 }
 
+// A planned unit's distance: its own, else the sum of its distance steps (#4129 K-12); the row and the week total read the same.
+function plannedEntryDistance(entry) {
+  return Math.max(0, Number(entry.distance) || Number(entry.workout_profile?.distance_m) || 0);
+}
+
 // Every activity with a positive distance adds to the total; only distance sports without one count as missing.
 function calendarWeekDistance(activities) {
   const measured = activities.filter((entry) => Number(entry.distance_m) > 0);
@@ -935,7 +940,7 @@ function plannedWeekMetrics(planned, actual) {
   const totals = h("span", { className: "planned-week-metrics", dataset: { columns: String(columns.length) } });
   const plannedSeconds = planned.reduce((total, entry) => total + plannedDurationSeconds(entry), 0);
   const actualSeconds = actual.reduce((total, entry) => total + Math.max(0, Number(AppFormat.sessionSeconds(entry)) || 0), 0);
-  const plannedDistance = planned.reduce((total, entry) => total + Math.max(0, Number(entry.distance) || 0), 0);
+  const plannedDistance = planned.reduce((total, entry) => total + plannedEntryDistance(entry), 0);
   const rows = [
     ["Dauer", { planned: plannedSeconds > 0 ? { value: calendarHours(plannedSeconds) } : null, actual: { value: calendarHours(actualSeconds) } }],
     ["Distanz", { planned: plannedDistance > 0 ? { value: AppFormat.distance(plannedDistance) } : null, actual: calendarWeekDistance(actual) }],
@@ -1272,7 +1277,7 @@ function plannedSessionHeader(entry, actual, title, appendStatus, slim = false) 
   // A done or missed unit's icon names the sport; its line keeps the time and the status.
   const line = h("span", { className: "planned-session-line", textContent: [slim ? null : sportLabel, actual ? calendarStartTime(actual.started_at_local) : plannedUnitStartTime(entry.starts_at_local)].filter(Boolean).join(" · ") });
   appendStatus(line);
-  const shownDistance = actual ? actual.distance_m : entry.distance;
+  const shownDistance = actual ? actual.distance_m : plannedEntryDistance(entry);
   const value = h("span", "planned-session-value",
     h("strong", { title: durationTitle(actual) }, plannedEntryDurationLabel(actual, entry) || "–"),
     shownDistance > 0 ? h("span", null, distanceLabel(shownDistance)) : null);
