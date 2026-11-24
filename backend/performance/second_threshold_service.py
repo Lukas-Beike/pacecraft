@@ -48,7 +48,6 @@ from backend.performance.threshold_offers import (
     MAX_DISMISSED,
     open_offers,
 )
-from backend.sync.canonical_backfill import BatchReport
 
 RUNS_ONLY = {"status": "unknown", "reason": "nur aus Läufen", "sessions": 0}
 # Above this share of the value in effect an adoption needs a second confirmation (F9).
@@ -81,10 +80,8 @@ _STANDARD_LIMITS: dict[ZoneConfigurationMetric, tuple[float, ...]] = {
     ZoneConfigurationMetric.PACE: PACE_ZONE_LIMITS,
 }
 OPEN_ZONE_PERCENT = 999.0
-# The one-time store of Garmin's LT2 values in effect (athlete decision
-# 2026-11-24, #4135): its state key and the change-history source it stamps.
-GARMIN_STORE_STAGE = "garmin_threshold_store"
-GARMIN_STORE_STATE_KEY = "garmin_threshold_store_state"
+# The change-history source of the one-time store of Garmin's LT2 values in
+# effect (athlete decision 2026-11-24, #4135).
 GARMIN_STORE_SOURCE = "system:#4135"
 _SOURCES = {
     "run": ("dfa_alpha1", "critical_speed", GARMIN_SOURCE),
@@ -304,82 +301,35 @@ class SecondThresholdService:
         return receipt
 
 
-class GarminThresholdStore:
-    """Store Garmin's LT2 values in effect once, as local values (#4135).
+def store_garmin_in_effect(db: Any, zones: Any, reader: Any, today: date) -> list[str]:
+    """Store Garmin's LT2 values in effect today as local values (#4135).
 
-    A follow-up stage of the canonical backfill, so the stored Garmin records are
-    readable when it runs. Its one pass stores, per sport and value, the Garmin
-    threshold every consumer applies today as a local configuration with the
-    origin ``garmin`` through the adoption's save path, stamped ``system:#4135``
-    in the change history. A local value in effect is left alone and a value
-    without a Garmin threshold is skipped. The pass runs in the worker's
-    transaction, so a failure stores nothing; the state key then says ``failed``
-    and the next pass tries again. Once ``complete`` it never runs again: a
-    Garmin value that appears later is an offer, never stored by itself.
+    Per sport and value the Garmin threshold every consumer applies today is
+    saved as a local configuration with the origin ``garmin`` through the
+    adoption's save path, stamped ``system:#4135`` in the change history. A
+    local value in effect is left alone, a value without a Garmin threshold is
+    skipped. Runs in the caller's transaction; returns the stored
+    ``sport:value`` names.
     """
-
-    stage = GARMIN_STORE_STAGE
-
-    def __init__(
-        self,
-        *,
-        key_values: Any,
-        zones: Callable[[], Any],
-        reader: Callable[[], Any],
-        today: Callable[[], date],
-        clock: Callable[[], str],
-    ) -> None:
-        self._key_values = key_values
-        self._zones = zones
-        self._reader = reader
-        self._today = today
-        self._clock = clock
-
-    def run_batch(self, db: Any) -> BatchReport:
-        """Store today's Garmin values once, in the caller's transaction."""
-        if self.state(db).get("status") == "complete":
-            return BatchReport(items=0, done=True)
-        zones = self._zones()
-        configurations = zones.configurations()
-        today = self._today()
-        winners = read_export_thresholds(
-            self._reader(), db, as_of=today, configurations=configurations
-        )
-        stored: list[str] = []
-        with change_history.collect_changes(GARMIN_STORE_SOURCE):
-            for (sport, value), (kind, canonical) in LT2_KEYS.items():
-                metric = _VALUES[value][1]
-                current = effective_zone_configuration(
-                    configurations, metric, canonical, day=today
-                )
-                winner = winners.get((kind, canonical))
-                if winner is None or not _garmin_in_effect(winner, current):
-                    continue
-                zones.save_adopted(
-                    _adopted(current, sport, metric, winner.value.value, GARMIN_SOURCE)
-                )
-                stored.append(f"{sport}:{value}")
-        self._save(db, {"status": "complete", "stored": stored})
-        return BatchReport(items=len(stored), done=True)
-
-    def mark_failed(self, db: Any) -> None:
-        self._save(db, {"status": "failed", "stored": []})
-
-    def state(self, db: Any) -> dict[str, Any]:
-        """The stored state: ``status`` and the ``stored`` sport:value names."""
-        text = self._key_values.get(db, GARMIN_STORE_STATE_KEY)
-        try:
-            state = json.loads(text) if text else {}
-        except ValueError:
-            return {}
-        return state if isinstance(state, dict) else {}
-
-    def _save(self, db: Any, state: Mapping[str, Any]) -> None:
-        self._key_values.set(
-            db,
-            GARMIN_STORE_STATE_KEY,
-            json.dumps({**state, "at": self._clock()}, sort_keys=True),
-        )
+    configurations = zones.configurations()
+    winners = read_export_thresholds(
+        reader, db, as_of=today, configurations=configurations
+    )
+    stored: list[str] = []
+    with change_history.collect_changes(GARMIN_STORE_SOURCE):
+        for (sport, value), (kind, canonical) in LT2_KEYS.items():
+            metric = _VALUES[value][1]
+            current = effective_zone_configuration(
+                configurations, metric, canonical, day=today
+            )
+            winner = winners.get((kind, canonical))
+            if winner is None or not _garmin_in_effect(winner, current):
+                continue
+            zones.save_adopted(
+                _adopted(current, sport, metric, winner.value.value, GARMIN_SOURCE)
+            )
+            stored.append(f"{sport}:{value}")
+    return stored
 
 
 def _garmin_in_effect(winner: Any, current: ZoneConfiguration | None) -> bool:

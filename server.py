@@ -95,7 +95,6 @@ from backend.performance.morning_battery_service import (
     MorningBatteryStore,
     MorningBodyBatteryService,
 )
-from backend.performance.second_threshold_service import GarminThresholdStore
 from backend.performance.threshold_staleness import ThresholdStalenessService
 from backend.performance.wiring import (
     build_activity_reads,
@@ -185,6 +184,7 @@ from backend.sync.garmin_service import (
 )
 from backend.sync.garmin_sleep_keys import SleepKeyRecorder
 from backend.sync.garmin_snapshot_writer import GarminSnapshotWriter
+from backend.sync.garmin_threshold_store import GarminThresholdStore
 from backend.sync.garmin_wiring import GarminServices, build_garmin
 from backend.sync.gates import (
     GARMIN_RESYNC_GATE,

@@ -31,12 +31,12 @@ from backend.http_api.second_threshold_post import (
 )
 from backend.performance import second_threshold_estimate as lt2
 from backend.performance.second_threshold_service import (
-    GARMIN_STORE_STATE_KEY,
-    GarminThresholdStore,
     SecondThresholdService,
 )
 from backend.performance.threshold_offers import open_offers, threshold_values
 from backend.sync.canonical_table_reader import CanonicalTableReader
+from backend.sync.garmin_threshold_store import STATE_KEY as GARMIN_STORE_STATE_KEY
+from backend.sync.garmin_threshold_store import GarminThresholdStore
 from tests.test_current_thresholds import ZoneSource, _obs
 from tests.test_first_threshold_estimate import add_run, open_database
 

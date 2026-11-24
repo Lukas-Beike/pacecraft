@@ -283,9 +283,7 @@ every named number the code fixes. A test fails when it is out of date.
 | `NOTICE_VALUES` | `{'run': ('provider_hr', 'provider_pace', 'dfa_hr', 'dfa_pace', 'cs_pace'), 'ride': ('provider_pow... (sha256 b92af6f4)` | `backend/performance/second_threshold_service.py` |  |
 | `STEP_TEST_SOURCE` | `'step_test'` | `backend/performance/second_threshold_service.py` | The run step test's LT2 (#3833), adopted with the DFA-a1 origin. |
 | `OPEN_ZONE_PERCENT` | `999.0` | `backend/performance/second_threshold_service.py` |  |
-| `GARMIN_STORE_STAGE` | `'garmin_threshold_store'` | `backend/performance/second_threshold_service.py` | The one-time store of Garmin's LT2 values in effect (athlete decision 2026-11-24, #4135): its state key and the change-history source it stamps. |
-| `GARMIN_STORE_STATE_KEY` | `'garmin_threshold_store_state'` | `backend/performance/second_threshold_service.py` |  |
-| `GARMIN_STORE_SOURCE` | `'system:#4135'` | `backend/performance/second_threshold_service.py` |  |
+| `GARMIN_STORE_SOURCE` | `'system:#4135'` | `backend/performance/second_threshold_service.py` | The change-history source of the one-time store of Garmin's LT2 values in effect (athlete decision 2026-11-24, #4135). |
 | `TARGET_BASIS_FTP_KEY` | `'ftp'` | `backend/performance/session_analysis.py` |  |
 | `METHOD` | `'time-weighted-session-analysis-v3'` | `backend/performance/session_analysis.py` | v2: Pa:HR of outdoor runs uses grade-adjusted speed (card M8 v2, #1770). v3: the steady-output rule reads the CV of 60 s rolling means (#1832). |
 | `GRADE_ADJUSTED_SPEED` | `'grade_adjusted_speed'` | `backend/performance/session_analysis.py` |  |
