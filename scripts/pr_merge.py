@@ -55,7 +55,7 @@ from typing import Any
 from gh_cli import TRANSIENT_GH, CliError, gh, gh_json, git, positive_int
 from pr_state import base_overlap, check_outcome, unresolved_threads
 
-FIELDS = "state,baseRefName,headRefName,headRefOid,autoMergeRequest,mergeCommit,statusCheckRollup,comments,reviews,mergeStateStatus,body,commits,title,labels,files"
+FIELDS = "state,baseRefName,headRefName,headRefOid,autoMergeRequest,mergeCommit,statusCheckRollup,comments,reviews,mergeStateStatus,body,commits,title,labels,files,changedFiles"
 POLLS_PER_MINUTE = 3
 # Just after a push GitHub can still report the old head (#3174); it catches up in seconds.
 HEAD_POLLS, HEAD_POLL_SECONDS = 10, 3
@@ -318,9 +318,11 @@ def missing_changelog(pr: dict[str, Any]) -> bool:
         return False
     labels = {label.get("name") for label in pr.get("labels") or []}
     paths = [item.get("path") or "" for item in pr.get("files") or []]
+    # gh lists the first 100 files only; a longer feat/fix counts as user-visible.
+    unlisted = (pr.get("changedFiles") or 0) > len(paths)
     return "user-visible" in labels or bool(
         USER_VISIBLE_TYPE.match(pr.get("title") or "")
-        and any(path.startswith(USER_VISIBLE_PATHS) for path in paths)
+        and (unlisted or any(path.startswith(USER_VISIBLE_PATHS) for path in paths))
     )
 
 

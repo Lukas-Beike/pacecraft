@@ -232,6 +232,12 @@ class PrMergeTests(unittest.TestCase):
                 "title": "feat(coach)!: x",
                 "files": [{"path": "backend/coach/tools.py"}],
             },
+            # gh lists 100 files at most; beyond them a feat/fix counts (Gitar).
+            "fix past 100 files": {
+                "title": "fix(sync): x",
+                "files": [{"path": "backend/a.py"}] * 100,
+                "changedFiles": 101,
+            },
         }
         for name, extra in refused.items():
             code, out, writes, _ = run(self, 7, views=[view(**extra)])
