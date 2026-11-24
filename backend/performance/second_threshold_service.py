@@ -325,9 +325,12 @@ def store_garmin_in_effect(db: Any, zones: Any, reader: Any, today: date) -> lis
             winner = winners.get((kind, canonical))
             if winner is None or not _garmin_in_effect(winner, current):
                 continue
-            zones.save_adopted(
-                _adopted(current, sport, metric, winner.value.value, GARMIN_SOURCE)
+            adopted = _adopted(
+                current, sport, metric, winner.value.value, GARMIN_SOURCE
             )
+            # A local maximum would lead the max HR (``_leading_value``): the
+            # provider set's own maximum stays with the source policy as before.
+            zones.save_adopted({**adopted, "maximum": None})
             stored.append(f"{sport}:{value}")
     return stored
 

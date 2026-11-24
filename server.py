@@ -184,7 +184,6 @@ from backend.sync.garmin_service import (
 )
 from backend.sync.garmin_sleep_keys import SleepKeyRecorder
 from backend.sync.garmin_snapshot_writer import GarminSnapshotWriter
-from backend.sync.garmin_threshold_store import GarminThresholdStore
 from backend.sync.garmin_wiring import GarminServices, build_garmin
 from backend.sync.gates import (
     GARMIN_RESYNC_GATE,
@@ -893,15 +892,6 @@ SESSION_FOCUS_BACKFILL = SessionFocusBackfill(
     ),
 )
 
-# Garmin's LT2 values in effect become local values once (athlete, #4135).
-GARMIN_THRESHOLD_STORE = GarminThresholdStore(
-    key_values=KEY_VALUE_REPOSITORY,
-    zones=lambda: ATHLETE_DATA.zones(),
-    reader=CanonicalTableReader,
-    today=lambda: ATHLETE_CLOCK.now().date(),
-    clock=runtime_clock.utc_now,
-)
-
 PROFILE_WEEKLY_PLAN_REMOVAL = ProfileWeeklyPlanRemoval(
     key_values=KEY_VALUE_REPOSITORY, clock=runtime_clock.utc_now
 )
@@ -939,7 +929,6 @@ CANONICAL_BACKFILL = build_canonical_backfill(
         RATING_BACKFILL_REMOVAL,
         SESSION_REBUNDLE,
         SESSION_FOCUS_BACKFILL,
-        GARMIN_THRESHOLD_STORE,
     ),
     # Weather during outdoor sessions (#1868); only 2-decimal coordinates leave.
     activity_weather_fetch=lambda *position: (

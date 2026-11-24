@@ -30,6 +30,7 @@ from backend.http_api.second_threshold_post import (
     SecondThresholdPostRoutes,
 )
 from backend.performance import second_threshold_estimate as lt2
+from backend.performance.canonical_current import read_export_thresholds
 from backend.performance.second_threshold_service import (
     SecondThresholdService,
 )
@@ -1127,6 +1128,28 @@ class GarminThresholdStoreTests(unittest.TestCase):
         report, _ = self.run_store()
         self.assertEqual(report.items, 0)
         self.assertEqual(len(self.sources()), 3)
+
+    def test_the_max_hr_keeps_coming_from_garmins_observation(self) -> None:
+        # Garmin's max HR (195) differs from the watch set's maximum (192).
+        day = TODAY - timedelta(days=3)
+        observations = (
+            *self.observations,
+            _obs(MetricKind.MAX_HR, 195.0, ProviderId.GARMIN, Sport.RUN, day),
+        )
+
+        def max_hr():
+            winners = read_export_thresholds(
+                StubReader(observations),
+                None,
+                as_of=TODAY,
+                configurations=self.zones.configurations(),
+            )
+            return winners[(MetricKind.MAX_HR, Sport.RUN)].value.value
+
+        self.assertEqual(max_hr(), 195.0)
+        self.run_store(observations=observations)
+        self.assertIsNone(self.local()[("run", "heart_rate")].maximum)
+        self.assertEqual(max_hr(), 195.0)
 
     def test_a_local_value_stays_and_a_missing_garmin_value_is_skipped(self) -> None:
         self.zones.save(
