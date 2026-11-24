@@ -520,7 +520,7 @@ class WorktreePreparationTests(unittest.TestCase):
                     [command[2:] for command in calls[2:4]],
                     [["setup"], ["update", "--preparation"]],
                 )
-                # #3217: Ruff and mypy into the worktree, then tzdata.
+                # #3217: Ruff and mypy into the worktree, then the runtime lock.
                 for pip in calls[4:6]:
                     self.assertEqual(pip[1:3], ["-m", "pip"])
                     self.assertIn("--require-hashes", pip)
@@ -538,17 +538,23 @@ class WorktreePreparationTests(unittest.TestCase):
         lock = (root / "requirements-dev.txt").read_text(encoding="utf-8")
         selected = prepare.quality_requirements(lock)
         names = set(re.findall(r"(?m)^([A-Za-z0-9][\w.-]*)==", selected))
-        self.assertLessEqual({"ruff", "mypy", "librt", "pathspec", "tzdata"}, names)
+        self.assertLessEqual({"ruff", "mypy", "librt", "pathspec"}, names)
         self.assertNotIn("sqlcipher3-binary", names)
+        self.assertNotIn("tzdata", names)
         blocks = re.split(r"(?m)^(?=[A-Za-z0-9][\w.-]*==)", selected)[1:]
         self.assertTrue(all("--hash=sha256:" in block for block in blocks))
         with self.assertRaises(OSError):
             prepare.quality_requirements("requests==2.0.0\n")
-        # #3217: Ruff and mypy go into the worktree's own directory, tzdata to the
-        # interpreter that runs the tests; neither set holds the other's tools.
-        tools = prepare.quality_requirements(lock, ("ruff", "mypy"))
-        self.assertNotIn("tzdata==", tools)
-        self.assertNotIn("ruff==", prepare.quality_requirements(lock, ("tzdata",)))
+        # #4164: the tests' interpreter gets the whole runtime lock but SQLCipher,
+        # which has no Windows wheel.
+        runtime_lock = (root / "requirements.txt").read_text(encoding="utf-8")
+        runtime = prepare.runtime_requirements(runtime_lock)
+        pinned = set(re.findall(r"(?m)^([A-Za-z0-9][\w.-]*)==", runtime_lock))
+        self.assertEqual(
+            set(re.findall(r"(?m)^([A-Za-z0-9][\w.-]*)==", runtime)),
+            pinned - {"sqlcipher3-binary"},
+        )
+        self.assertLessEqual({"cryptography", "cffi", "pycparser", "tzdata"}, pinned)
         with (
             tempfile.TemporaryDirectory() as directory,
             patch.object(prepare.subprocess, "run") as run,
@@ -556,6 +562,7 @@ class WorktreePreparationTests(unittest.TestCase):
             run.return_value.returncode = 0
             work = Path(directory)
             (work / "requirements-dev.txt").write_text(lock, encoding="utf-8")
+            (work / "requirements.txt").write_text(runtime_lock, encoding="utf-8")
             self.assertEqual(prepare.install_quality_tools(work), 0)
         first, second = (call.args[0] for call in run.call_args_list)
         self.assertEqual(
@@ -565,7 +572,8 @@ class WorktreePreparationTests(unittest.TestCase):
         self.assertNotIn("--target", second)
         for command in (first, second):
             self.assertIn("--require-hashes", command)
-        # A failed Ruff/mypy install still installs tzdata and reports the failure (Gitar).
+        # A failed Ruff/mypy install still installs the runtime lock and reports the
+        # failure (Gitar).
         with (
             tempfile.TemporaryDirectory() as directory,
             patch.object(
@@ -576,6 +584,9 @@ class WorktreePreparationTests(unittest.TestCase):
         ):
             (Path(directory) / "requirements-dev.txt").write_text(
                 lock, encoding="utf-8"
+            )
+            (Path(directory) / "requirements.txt").write_text(
+                runtime_lock, encoding="utf-8"
             )
             self.assertEqual(prepare.install_quality_tools(Path(directory)), 1)
         self.assertEqual(run.call_count, 2)
