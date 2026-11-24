@@ -31,7 +31,7 @@ PIN = ["--squash", "--match-head-commit", "feedc0de"]
 def view(state="OPEN", checks=(GREEN,), **extra):
     merge = {"oid": "0123456789abcdef"} if state == "MERGED" else None
     return {
-        "state": state, "baseRefName": "develop", "headRefOid": "feedc0de",
+        "state": state, "baseRefName": "develop", "headRefOid": "feedc0de", "headRefName": "lane",
         "autoMergeRequest": None, "mergeCommit": merge,
         "statusCheckRollup": list(checks), "comments": [], "reviews": [],
         **extra,
@@ -105,7 +105,7 @@ def merge_answer(argv, auto_error):
 
 def run(
     case, *args, auto_error="", views=None, behind=0, moved=(), threads=0, more=False,
-    pushed=("", set()), freeze=None, gitar="success", calls=None,
+    pushed=("", set()), freeze=None, gitar="success", calls=None, branch="lane",
 ):  # fmt: skip
     """Run main against a stub that answers `pr view` from `views` in order; this
     checkout's origin/<branch> is `pushed`: its head and the heads it held before."""
@@ -143,6 +143,14 @@ def run(
         mock.patch.object(gh_cli.subprocess, "run", fake),
         mock.patch.object(pr_merge.time, "sleep") as sleep,
         mock.patch.object(pr_merge, "pushed_over", return_value=pushed),
+        # This checkout's branch (#4182); other git reads stay real.
+        mock.patch.object(
+            pr_merge,
+            "git",
+            side_effect=lambda *a: (
+                f"{branch}\n" if a[0] == "branch" else gh_cli.git(*a)
+            ),
+        ),
         redirect_stdout(out),
         redirect_stderr(err),
     ):
@@ -220,6 +228,15 @@ class PrMergeTests(unittest.TestCase):
                 )
             ],
         )
+        self.assertEqual((code, writes), (0, [["pr", "merge", "7", "--auto", *PIN]]))
+
+    def test_a_pr_of_another_branch_is_refused_without_any_branch(self):
+        # #4182: a mistyped number named another lane's PR; it must not be armed.
+        code, out, writes, _ = run(self, 7, branch="other-lane")
+        self.assertEqual((code, writes), (1, []))
+        self.assertIn("PR #7: None (lane)", out)
+        self.assertIn("refused: not this checkout's branch", out)
+        code, _, writes, _ = run(self, 7, "--any-branch", branch="other-lane")
         self.assertEqual((code, writes), (0, [["pr", "merge", "7", "--auto", *PIN]]))
 
     def test_a_user_visible_pr_without_a_changelog_line_is_refused(self):
@@ -389,7 +406,7 @@ class PrMergeTests(unittest.TestCase):
         # the develop check compared that one and asked for a rebase already done.
         arms = [["pr", "merge", "7", "--auto", *PIN]]
         pushed = ("feedc0de", {"0ld0ld"})  # this checkout pushed over 0ld0ld
-        old = view(headRefName="fix/x", headRefOid="0ld0ld")
+        old = view(headRefOid="0ld0ld")
         code, out, writes, sleeps = run(
             self, 7, views=[old, old, view()], pushed=pushed
         )

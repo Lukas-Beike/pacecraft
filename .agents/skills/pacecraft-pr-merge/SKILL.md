@@ -6,11 +6,11 @@ description: Base skill. Arm squash auto-merge on a develop PR pinned to its hea
 # Merge a PR
 
 ```powershell
-python scripts/pr_merge.py <pr> [--wait <minutes>] [--allow-behind]
+python scripts/pr_merge.py <pr> [--wait <minutes>] [--allow-behind] [--any-branch]
 ```
 
-- External write: run it only when the [pr](../pr/SKILL.md) workflow allows
-  auto-merge. Refuses a PR whose base is not `develop`.
+- External write: run it only when the [pr](../pr/SKILL.md) workflow allows auto-merge. Refuses a PR
+  whose base is not `develop`, or whose head is not this checkout's branch without `--any-branch` (#4182).
 - Arms `--auto --squash` pinned to the current head (skipped when already
   armed). When GitHub refuses because the PR is already in clean status, it
   merges that head directly (#2776). A 5xx, timeout or "Merge already in
