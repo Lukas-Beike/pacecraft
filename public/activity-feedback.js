@@ -81,7 +81,7 @@
     const feedback = payload.activity_feedback;
     const watch = watchStep(ActivityDetails.metricValues(payload).rpe);
     const current = { session_rpe: feedback?.session_rpe ?? null, notes: feedback?.notes || "", deviation_reason: feedback?.deviation_reason || "", purpose: feedback?.purpose || "" };
-    const effort = effortRow((step) => { current.session_rpe = current.session_rpe === step ? null : step; paint(); queueSave(); });
+    const effort = effortRow((step) => { current.session_rpe = current.session_rpe === step ? null : step; paint(); void queueSave(); });
     // The own feel of the session gets its row here once it is stored (#4199).
     const feelSlot = h("div", { className: "feedback-feel-slot", dataset: { slot: "feel" }, hidden: true });
     const notes = h("textarea", { name: "notes", rows: 3, maxLength: 4000 });
