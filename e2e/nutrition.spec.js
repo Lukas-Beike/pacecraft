@@ -25,6 +25,12 @@ test("@responsive nutrition diary keeps saved meals in Produkte and preserves co
   await expect(page.locator("#nutritionTotals")).toBeHidden();
   await expect(page.locator("#nutritionStatus")).toHaveText("Noch keine Mahlzeiten erfasst.");
   await expect(page.locator("#nutritionTellCoach")).toBeVisible();
+  // A future day names itself and offers no message to the Coach (#4037).
+  await page.locator("#nutritionNext").click();
+  await expect(page.locator("#nutritionStatus")).toHaveText("Dieser Tag liegt in der Zukunft.");
+  await expect(page.locator("#nutritionTellCoach")).toBeHidden();
+  await page.locator("#nutritionToday").click();
+  await expect(page.locator("#nutritionStatus")).toHaveText("Noch keine Mahlzeiten erfasst.");
   // Saved meals (#3952) live under Produkte, not in the diary: no own segment, and the list is hidden here.
   await expect(page.locator('[data-nutrition-segment="meals"], #nutritionMeals')).toHaveCount(0);
   await expect(page.locator("#nutritionTemplates")).toBeHidden();
