@@ -173,6 +173,7 @@ class CoachAthleteRecordToolService:
                             "session_rpe",
                             "deviation_reason",
                             "purpose",
+                            "feel",
                         )
                         if key in payload
                     },
@@ -191,7 +192,12 @@ class CoachAthleteRecordToolService:
                 "stored_locally": True,
                 **self._activity_feedback.save(
                     activity_id,
-                    {"notes": "", "session_rpe": None, "deviation_reason": ""},
+                    {
+                        "notes": "",
+                        "session_rpe": None,
+                        "feel": None,
+                        "deviation_reason": "",
+                    },
                 ),
             }
         if name == "save_competition":

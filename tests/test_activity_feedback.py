@@ -38,6 +38,21 @@ class ActivityFeedbackNormalizationTests(unittest.TestCase):
             with self.subTest(value=value), self.assertRaises(AppError):
                 normalize_activity_feedback("one", {"session_rpe": value})
 
+    def test_feel_is_garmins_five_steps_or_none(self) -> None:
+        # #4199: 1 very strong, 2 strong, 3 normal, 4 weak, 5 very weak.
+        for value in (1, 3, 5, None):
+            with self.subTest(value=value):
+                self.assertEqual(
+                    value, normalize_activity_feedback("one", {"feel": value})["feel"]
+                )
+        self.assertNotIn("feel", normalize_activity_feedback("one", {"notes": "x"}))
+        for refused in (0, 6, -1, 2.5, 3.0, True, "3", "gut"):
+            with self.subTest(value=refused), self.assertRaises(AppError) as caught:
+                normalize_activity_feedback("one", {"feel": refused})
+            self.assertEqual(
+                "Das Gefühl muss zwischen 1 und 5 liegen.", caught.exception.message
+            )
+
     def test_normalizes_id_and_known_text_fields_and_ignores_unknown_ones(self) -> None:
         empty = {"activity_name": "", "activity_date": "", "notes": ""}
         for activity_id, payload, expected in (
@@ -188,6 +203,36 @@ class ActivityFeedbackServiceTests(unittest.TestCase):
             ]
         )
 
+    def test_feel_is_kept_when_omitted_cleared_by_null_and_undone(self) -> None:
+        # #4199: an RPE-only save keeps the feel; a feel alone keeps the note;
+        # the feel shows only once set; an undo restores the row as it was.
+        first = self.service.save("one", {"notes": "schwer", "feel": 4})
+        self.assertEqual(4, first["activity_feedback"]["feel"])
+        rated = self.service.save("one", {"session_rpe": 7})["activity_feedback"]
+        self.assertEqual(
+            ("schwer", 7, 4), (rated["notes"], rated["session_rpe"], rated["feel"])
+        )
+        with self.manager.reader() as db:
+            before = self.service.current(db, "activity:one")[0]
+        cleared = self.service.save("one", {"feel": None})["activity_feedback"]
+        self.assertNotIn("feel", cleared)
+        with self.manager.unit_of_work() as db:
+            now = self.service.current(db, "activity:one")[0]
+            self.service.restore_in_transaction(db, "activity:one", now, before)
+        self.assertEqual(4, self.service.list()[0]["feel"])
+        # A feel is content: only clearing it with the rest removes the note.
+        self.assertIsNotNone(
+            self.service.save(
+                "one", {"notes": "", "session_rpe": None, "deviation_reason": ""}
+            )["activity_feedback"]
+        )
+        self.assertIsNone(self.service.save("one", {"feel": None})["activity_feedback"])
+        # The session details read the same view (GET /api/activities/{id},
+        # activity_feedback): a set feel is there, beside the note.
+        self.service.save("two", {"notes": "leicht", "feel": 2})
+        (detail,) = self.service.for_activity_ids(["two"])
+        self.assertEqual(("leicht", 2), (detail["notes"], detail["feel"]))
+
     def setUp(self) -> None:
         self.manager = temp_database(self, "feedback.db", schema=True)
         self.feedback_repository = ActivityFeedbackRepository(
@@ -299,6 +344,10 @@ class ActivityFeedbackServiceTests(unittest.TestCase):
             (empty.exception.status, empty.exception.message),
             (400, "Die Rückmeldung darf nicht leer sein."),
         )
+        # #4199: the Coach removes a feel with null; the note stays.
+        service.save_coach("i-1", {"feel": 2})
+        kept = service.save_coach("i-1", {"feel": None})["activity_feedback"]
+        self.assertEqual(("athlete note", False), (kept["notes"], "feel" in kept))
         for unknown_id in ("unknown", "act_unknown"):
             with self.assertRaises(AppError) as unknown:
                 service.save_coach(unknown_id, {"notes": "not allowed"})
@@ -316,7 +365,7 @@ class ActivityFeedbackServiceTests(unittest.TestCase):
         self.assertEqual(self.service.context()["recent"], self.service.list())
         self.assertEqual(
             self.service.context()["scope"],
-            "Only athlete-entered notes, session RPE, deviation reasons and the session purpose marking about completed activities; a marking wins over the provider event type and the race hint; this feedback is separate from daily check-ins and provider values.",
+            "Only athlete-entered notes, session RPE, feel (1 very strong to 5 very weak), deviation reasons and the session purpose marking about completed activities; a marking wins over the provider event type and the race hint; this feedback is separate from daily check-ins and provider values.",
         )
 
     def test_attach_projects_only_dict_activities_without_mutating_input(self) -> None:

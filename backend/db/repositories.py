@@ -1610,7 +1610,8 @@ class ActivityFeedbackRepository:
         db.execute(
             "INSERT INTO activity_feedback(activity_id, activity_name, activity_date, notes, "
             "session_rpe, deviation_reason, created_at, updated_at, provider, session_id, "
-            "session_rpe_rated_at, purpose) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "session_rpe_rated_at, purpose, feel) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (
                 str(row["activity_id"]),
                 str(row.get("activity_name") or ""),
@@ -1626,6 +1627,8 @@ class ActivityFeedbackRepository:
                 row.get("session_rpe_rated_at"),
                 # Recorded before schema version 23: no marking.
                 row.get("purpose"),
+                # Recorded before schema version 34: no feel.
+                row.get("feel"),
             ),
         )
 
@@ -1636,7 +1639,7 @@ class ActivityFeedbackRepository:
             for row in db.execute(
                 "SELECT activity_id, activity_name, activity_date, notes, session_rpe, "
                 "deviation_reason, created_at, updated_at, provider, session_id, "
-                "session_rpe_rated_at, purpose FROM activity_feedback"
+                "session_rpe_rated_at, purpose, feel FROM activity_feedback"
             ).fetchall()
         ]
 
@@ -1669,11 +1672,11 @@ class ActivityFeedbackRepository:
         now = self._now()
         rpe = feedback.get("session_rpe")
         db.execute(
-            "INSERT INTO activity_feedback(activity_id, activity_name, activity_date, notes, session_rpe, deviation_reason, created_at, updated_at, provider, session_id, session_rpe_rated_at, purpose) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
+            "INSERT INTO activity_feedback(activity_id, activity_name, activity_date, notes, session_rpe, deviation_reason, created_at, updated_at, provider, session_id, session_rpe_rated_at, purpose, feel) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
             "ON CONFLICT(activity_id) DO UPDATE SET activity_name=excluded.activity_name, "
             "activity_date=excluded.activity_date, notes=excluded.notes, session_rpe=excluded.session_rpe, deviation_reason=excluded.deviation_reason, updated_at=excluded.updated_at, "
-            "purpose=excluded.purpose, "
+            "purpose=excluded.purpose, feel=excluded.feel, "
             "provider=COALESCE(excluded.provider, activity_feedback.provider), "
             "session_id=COALESCE(excluded.session_id, activity_feedback.session_id), "
             "session_rpe_rated_at=CASE WHEN activity_feedback.session_rpe IS excluded.session_rpe "
@@ -1691,6 +1694,7 @@ class ActivityFeedbackRepository:
                 session_id,
                 None if rpe is None else now,
                 feedback.get("purpose"),
+                feedback.get("feel"),
             ),
         )
 

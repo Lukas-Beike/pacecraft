@@ -166,10 +166,11 @@ class DatabaseRestoreValidationTests(unittest.TestCase):
 
     def test_validate_accepts_a_populated_baseline_backup(self) -> None:
         # The baseline (v26), released schemas (v28, #2803; v31, the one before
-        # the diary rebuild of #3234; v32, the one before product sizes) and a
-        # current backup restore into the current schema with their rows, the
-        # diary entry included.
-        for version in (26, 28, 31, 32, CURRENT_SCHEMA_VERSION):
+        # the diary rebuild of #3234; v32, the one before product sizes; v33,
+        # production's before the session feel of #4199) and a current backup
+        # restore into the current schema with their rows, the diary entry and
+        # the session note included.
+        for version in (26, 28, 31, 32, 33, CURRENT_SCHEMA_VERSION):
             with self.subTest(version=version):
                 self.assert_backup_upgrades(version)
 
@@ -197,7 +198,7 @@ class DatabaseRestoreValidationTests(unittest.TestCase):
                     "'weight', 72.5, 'kg', 'athlete_entered', 'manual', NULL, "
                     "'2026-10-15', 'Lokal', 1, 'now', 'now')"
                 )
-                if version in (31, 32):
+                if version in (31, 32, 33):
                     for step in (
                         migrations._canonical_products,
                         migrations._calendar_decisions,
@@ -205,10 +206,18 @@ class DatabaseRestoreValidationTests(unittest.TestCase):
                         migrations._session_curves,
                         migrations._device_workout,
                         # v32, production's since 2.1.28, before the product sizes.
-                        *([migrations._session_fuelling] if version == 32 else []),
+                        *([migrations._session_fuelling] if version >= 32 else []),
+                        # v33, production's since 2.1.51, before the session feel.
+                        *([migrations._product_sizes] if version == 33 else []),
                     ):
                         step(connection)
                     connection.execute(f"PRAGMA user_version = {version}")
+                if version == 33:
+                    connection.execute(
+                        "INSERT INTO activity_feedback(activity_id, notes, session_rpe, "
+                        "created_at, updated_at) VALUES ('act_1', 'Schwere Beine', 6, "
+                        "'now', 'now')"
+                    )
                 if version == CURRENT_SCHEMA_VERSION:
                     migrate_schema(connection)
                 if version == 28:
@@ -257,6 +266,16 @@ class DatabaseRestoreValidationTests(unittest.TestCase):
                         )
                     ],
                     [("log", "snack", 100, 25.0, None, None)],
+                )
+                self.assertEqual(
+                    [
+                        tuple(row)
+                        for row in connection.execute(
+                            "SELECT activity_id, notes, session_rpe, feel "
+                            "FROM activity_feedback"
+                        )
+                    ],
+                    [("act_1", "Schwere Beine", 6.0, None)] if version == 33 else [],
                 )
                 served = canonical_store.current_observation_rows(
                     connection, "weight", current_observation_mapper_versions()

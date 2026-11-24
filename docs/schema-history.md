@@ -16,7 +16,7 @@ required when the athlete explicitly chooses to start over. Future schema
 changes add explicit, versioned and transactional migrations from the baseline
 with upgrade regression tests; the baseline moves only after the athlete
 confirms a newer production schema from the diagnostics report.
-The current schema is version 33. This table is the only place that lists
+The current schema is version 34. This table is the only place that lists
 which releases wrote each schema; other documents name a schema by the release
 that introduced it ("v29, since 2.1.17"), so a release with an unchanged schema
 needs no documentation edit (#3130).
@@ -36,9 +36,10 @@ needs no documentation edit (#3130).
 | 30 | 2.1.20 to 2.1.21 |
 | 31 | 2.1.22 to 2.1.27 |
 | 32 | 2.1.28 to 2.1.50 |
-| 33 | since 2.1.51 |
+| 33 | 2.1.51 to 2.2.27 |
+| 34 | since 2.2.28 |
 
-Versions 27 to 32 keep only their shape digests; each enters the chain at its own
+Versions 27 to 33 keep only their shape digests; each enters the chain at its own
 upgrade step. Version 10 adds canonical activity detail
 (streams, laps and zone times), version 11 the food-database mirror, version 12
 stores the Garmin collection as one keyed row per element instead of one large
@@ -99,7 +100,12 @@ Version 33 adds an own product's usual portion and its package size (#3452):
 `portion_amount`/`portion_unit` and `package_amount`/`package_unit`, each an
 amount above 0 in `g` or `ml` with its unit, or both NULL (not stated). The
 upgrade adds only empty columns and changes no row. The privacy export gains
-the four columns (export format 23). Release
+the four columns (export format 23).
+Version 34 adds the athlete's own feel after a session (#4199):
+`activity_feedback.feel`, Garmin's five-step scale from 1 (very strong) to 5
+(very weak), or NULL (not stated). The upgrade adds only an empty column and
+changes no row. The privacy export gains the column (export format 24).
+Release
 2.0.5 upgrades a version 21 to 25 database or backup to it in place within one
 transaction, and a failed upgrade leaves it unchanged. Change-history entries
 written before version 16 still name the former fields and can no longer be

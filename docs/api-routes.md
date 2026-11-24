@@ -248,8 +248,9 @@ JSON body, every field optional, an omitted field keeps its stored value:
 `notes` (string, trimmed, cut to 4000 characters), `session_rpe` (number 0
 to 10 or `null`), `deviation_reason` (string, cut to 500 characters),
 `purpose` (`training`, `race`, `commute`, `warmup`, `cooldown`, or `null`
-or `""` to clear), `activity_name` (cut to 200) and `activity_date` (cut
-to 40). Clearing every content field removes the feedback. A repeated
+or `""` to clear), `feel` (the athlete's feel on Garmin's scale, integer 1
+very strong to 5 very weak, or `null`), `activity_name` (cut to 200) and
+`activity_date` (cut to 40). Clearing every content field removes the feedback. A repeated
 `Idempotency-Key` header (UUID) answers the stored result and writes
 nothing; the same key on another path answers 409.
 
@@ -257,18 +258,20 @@ Response: 200 `{"status": "ok", "activity_feedback", "change",
 "session_rpe_load"}`. `activity_feedback` is the effective feedback
 (`activity_id`, `activity_name`, `activity_date`, `notes`, `session_rpe`,
 `deviation_reason`, `created_at`, `updated_at`, `session_rpe_rated_at`,
-`purpose`), `null` after clearing; `change` is the undo reference;
+`purpose`, `feel`; an unset `purpose` or `feel` is left out), `null` after
+clearing; `change` is the undo reference;
 `session_rpe_load` is left out when its read fails.
 
 Errors: 400 "Der Aktivitäts-RPE muss zwischen 0 und 10 liegen."; 400 "Die
-Art der Einheit ist unbekannt." for another `purpose`; 400 "Die Aktivität
+Art der Einheit ist unbekannt." for another `purpose`; 400 "Das Gefühl muss
+zwischen 1 und 5 liegen." for another `feel`; 400 "Die Aktivität
 konnte nicht eindeutig zugeordnet werden." for an id longer than 200
 characters; 409 "Die Aktivität lässt sich keiner Einheit eindeutig
 zuordnen; die Art der Einheit kann nicht markiert werden." for a `purpose`
 on an id that leads to no single session; 409 "Zu viele Rückmeldungen für
 diese Einheit, um sie mit Undo zu ändern." A body with non-empty
-`notes`, a non-null `session_rpe`, a non-empty `deviation_reason` or a
-`purpose` is a save only for a live session: 404 "Die Aktivität ist im
+`notes`, a non-null `session_rpe` or `feel`, a non-empty
+`deviation_reason` or a `purpose` is a save only for a live session: 404 "Die Aktivität ist im
 aktuellen lokalen Trainingssnapshot nicht vorhanden." otherwise.
 
 ### `POST /api/activities/{id}/session`
