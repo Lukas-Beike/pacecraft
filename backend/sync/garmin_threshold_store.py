@@ -7,9 +7,9 @@ LT2 owner). The pass runs in the worker's transaction, so a failure stores
 nothing; the state key then says ``failed`` and the next pass tries again.
 Once ``complete`` it never runs again, whatever it found: a Garmin value that
 appears later is an offer, never stored by itself. The state holds the stored
-``sport:value`` names only. It is registered with the worker only together
-with the offer cards, so Garmin's values stop applying by themselves once the
-athlete can see and adopt the offers.
+``sport:value`` names only. ``server.py`` registers it as the last follow-up
+of the backfill, together with the offer cards, so Garmin's values stop
+applying by themselves once the athlete can see and adopt the offers.
 """
 
 from __future__ import annotations

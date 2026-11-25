@@ -1,9 +1,9 @@
-// LT2 from Garmin beside the local estimates (#3273): rows, adoptable values, the change notice.
+// LT2 from Garmin beside the local estimates (#3273): rows, adoptable values; the offers of a new LT1 or LT2 (#4135).
 const assert = require("node:assert/strict");
 const { test } = require("node:test");
 const { extractFunctions } = require("./frontend-harness.cjs");
 
-const NAMES = ["zoneValueText", "thresholdMainText", "LT2_METRICS", "LT2_SOURCE_NAMES", "lt2ProviderValue", "lt2Duration", "lt2AdoptValues", "lt2RangeText", "lt2EstimateBasis", "lt2ProviderRow", "lt2EstimateRow", "lt2SourceRows", "lt2NoticeValues", "LT2_NOTICE_MIN", "LT2_NOTICE_UNITS", "LT2_NOTICE_LABELS", "lt2NoticeChanges", "lt2NoticeValueText", "lt2NoticeDetail"];
+const NAMES = ["zoneValueText", "thresholdMainText", "LT2_METRICS", "LT2_SOURCE_NAMES", "lt2ProviderValue", "lt2Duration", "lt2AdoptValues", "lt2RangeText", "lt2EstimateBasis", "lt2ProviderRow", "lt2EstimateRow", "lt2SourceRows"];
 const plain = (value) => JSON.parse(JSON.stringify(value));
 
 const METRICS = {
@@ -76,23 +76,48 @@ test("the DFA-α1 heart rate shows its cited limits of agreement, other values a
   assert.equal(lt2RangeText({ value: "heart_rate" }, { range: { heart_rate_bpm: [-5, 0] } }), " (−5/+0)");
 });
 
-test("the notice needs 2 bpm, 3 s/km or 5 W, or a switch to or from unbekannt", () => {
-  const { lt2NoticeChanges, lt2NoticeDetail } = lt2();
-  const seen = { provider_hr: 171, provider_pace: 252, dfa_hr: 169, dfa_pace: 256, cs_pace: null };
-  const wobble = { provider_hr: 172, provider_pace: 254, dfa_hr: 170, dfa_pace: 258, cs_pace: null };
-  assert.deepEqual(plain(lt2NoticeChanges(seen, wobble)), []);
-  const moved = { provider_hr: 173, provider_pace: 249, dfa_hr: 169, dfa_pace: 256, cs_pace: 249 };
-  const changes = lt2NoticeChanges(seen, moved);
-  assert.deepEqual(plain(changes).map((change) => change.key), ["provider_hr", "provider_pace", "cs_pace"]);
-  assert.equal(lt2NoticeDetail(changes, "Garmin"), "Garmin Herzfrequenz 171 → 173 bpm, Garmin Pace 4:12 → 4:09 /km, Kritische Geschwindigkeit (CS) unbekannt → 4:09 /km");
-  assert.deepEqual(plain(lt2NoticeChanges({ cp_power: 271 }, { cp_power: 266 })).length, 1);
-  assert.deepEqual(plain(lt2NoticeChanges({ cp_power: 271 }, { cp_power: 267 })), []);
+// #4135: the offers as PR 1's profile read returns them.
+const OFFER_LT2 = { key: "lt2:run:heart_rate:dfa_alpha1:172", threshold: "lt2", sport: "run", metric: "heart_rate", source: "dfa_alpha1", value: 172, unit: "bpm", current: 168, sessions: 4, window_days: 60, quality: "good", spread_pct: 2.1, newest: "2026-11-21", adopt: { sport: "run", source: "dfa_alpha1", value: "heart_rate", shown: 172 } };
+const OFFER_LT1 = { ...OFFER_LT2, key: "lt1:run:heart_rate:dfa_alpha1:151", threshold: "lt1", value: 151, current: 148, sessions: 6, spread_pct: 3.4, adopt: { percent_lthr: 88 } };
+const OFFER_CS = { ...OFFER_LT2, key: "lt2:run:pace:critical_speed:242", metric: "pace", source: "critical_speed", value: 242, unit: "s/km", current: 245, sessions: null, window_days: 42, spread_pct: null };
+const OFFER_GARMIN = { ...OFFER_LT2, key: "lt2:ride:power:garmin:270", sport: "ride", metric: "power", source: "garmin", value: 270, unit: "W", current: null, sessions: null, window_days: null, quality: null, spread_pct: null, newest: "2026-11-19" };
+
+function offers() {
+  return extractFunctions("settings.js", ["THRESHOLD_OFFER_SOURCES", "THRESHOLD_OFFER_DFA", "THRESHOLD_OFFER_UNITS", "thresholdOfferNumber", "thresholdOfferBasis", "thresholdOffersFor", "thresholdOfferView", "thresholdOfferWhen"], { state: { data: {} }, AppFormat: require("../public/format.js") });
+}
+
+test("an offer card names the value, the value in effect, source, basis and quality (#4135)", () => {
+  const { thresholdOfferView } = offers();
+  const lt2Offer = plain(thresholdOfferView(OFFER_LT2));
+  assert.deepEqual([lt2Offer.title, lt2Offer.when, lt2Offer.value, lt2Offer.before], ["Neue LT2", "nach dem Lauf am 21.11.", "172 bpm", "bisher 168"]);
+  assert.deepEqual(lt2Offer.facts, [["Quelle", "DFA-α1 0,5 · Brustgurt"], ["Basis", "4 harte Läufe in 60 Tagen"], ["Qualität", "gut · Spanne 2,1 %"]]);
+  assert.equal(lt2Offer.detail, "bisher 168 · DFA-α1 0,5 · 4 harte Läufe in 60 Tagen · gut");
+  assert.equal(lt2Offer.brief, "bisher 168 · DFA-α1 · 4 Läufe");
+  const lt1Offer = plain(thresholdOfferView(OFFER_LT1));
+  assert.deepEqual([lt1Offer.title, lt1Offer.value, lt1Offer.before], ["Neue LT1", "151 bpm", "bisher 148"]);
+  assert.deepEqual(lt1Offer.facts, [["Quelle", "DFA-α1 0,75 · Brustgurt"], ["Basis", "6 Läufe in 60 Tagen"], ["Qualität", "gut · Spanne 3,4 %"]]);
 });
 
-test("the notice compares the Garmin and estimate values of each sport", () => {
-  const { lt2NoticeValues } = lt2();
-  assert.deepEqual(plain(lt2NoticeValues("run", METRICS, ESTIMATES.run)), { provider_hr: 171, provider_pace: 252, dfa_hr: 169, dfa_pace: 256, cs_pace: null });
-  assert.deepEqual(plain(lt2NoticeValues("ride", METRICS, ESTIMATES.ride)), { provider_power: 265, provider_hr: 158, cp_power: 271 });
+test("CS shows the pace as m:ss, and Garmin has neither basis nor quality (#4135)", () => {
+  const { thresholdOfferView } = offers();
+  const cs = plain(thresholdOfferView(OFFER_CS));
+  assert.deepEqual([cs.value, cs.before], ["4:02 /km", "bisher 4:05"]);
+  assert.deepEqual(cs.facts, [["Quelle", "CS"], ["Basis", "Bestwerte in 42 Tagen"], ["Qualität", "gut"]]);
+  assert.equal(cs.brief, "bisher 4:05 · CS");
+  const garmin = plain(thresholdOfferView(OFFER_GARMIN));
+  assert.deepEqual([garmin.value, garmin.before, garmin.when], ["270 W", null, "vom 19.11."]);
+  assert.deepEqual(garmin.facts, [["Quelle", "Garmin"]]);
+  assert.equal(garmin.detail, "Garmin");
+});
+
+test("a sport's offers are its own; none or a failed read is no offer (#4135)", () => {
+  const { thresholdOffersFor, thresholdOfferWhen } = offers();
+  const all = [OFFER_LT2, OFFER_GARMIN];
+  assert.deepEqual(plain(thresholdOffersFor("run", all)).map((offer) => offer.key), [OFFER_LT2.key]);
+  assert.deepEqual(plain(thresholdOffersFor("ride", all)).map((offer) => offer.key), [OFFER_GARMIN.key]);
+  assert.deepEqual(plain(thresholdOffersFor("run", null)), []);
+  assert.equal(thresholdOfferWhen({ ...OFFER_LT2, sport: "ride", source: "critical_power" }), "nach der Fahrt am 21.11.");
+  assert.equal(thresholdOfferWhen({ ...OFFER_LT2, newest: null }), "");
 });
 
 test("Analyse lists each known local estimate as an estimate", () => {
@@ -102,23 +127,6 @@ test("Analyse lists each known local estimate as an estimate", () => {
   assert.deepEqual(values.cycling_lt2_cp_watts, { value: 271, unit: "W", estimated: true });
   assert.equal(values.run_lt2_cs_pace_seconds_per_km, undefined);
   assert.deepEqual(plain(withLt2Estimates({ a: 1 }, null)), { a: 1 });
-});
-
-test("a failed baseline save is not retried by itself, and one save per sport runs at a time", async () => {
-  // Gitar on #3303: a failing first save must not loop through refreshLt2Notice.
-  let calls = 0;
-  let refreshes = 0;
-  const toasts = [];
-  const { seeLt2Values } = extractFunctions("settings.js", ["lt2BaselineSaving", "seeLt2Values"], {
-    state: { data: {} },
-    api: async () => { calls += 1; throw new Error("Server nicht erreichbar"); },
-    toast: (message) => toasts.push(message),
-    refreshLt2Notice: () => { refreshes += 1; },
-  });
-  await Promise.all([seeLt2Values("run", { provider_hr: 171 }), seeLt2Values("run", { provider_hr: 171 })]);
-  assert.equal(calls, 1);
-  assert.equal(refreshes, 0);
-  assert.deepEqual(toasts, ["Server nicht erreichbar"]);
 });
 
 test("the rows keep their order whatever the server's key order", () => {

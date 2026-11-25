@@ -225,6 +225,39 @@ function renderCurrentPerformance(metrics, history, status = [], thresholds = nu
   makeAnalysisSectionCollapsible(root, "current-performance");
 }
 
+// "Neue Schwelle" above Aktuelle Werte (#4135): one row per offer of the sport; Verwerfen dismisses them all.
+function analysisThresholdOfferCard(sport, offers) {
+  const rows = offers.flatMap((offer) => {
+    const view = thresholdOfferView(offer);
+    return [h("div", { className: "threshold-offer-line", dataset: { thresholdOffer: offer.key } }, h("b", null, `${view.label} · ${view.value}`), h("span", "zone-muted", view.brief)), ...thresholdOfferButtons([offer], { dismiss: false })];
+  });
+  const details = h("a", { href: "#more/profile" }, "Details in Zonen & Schwellen");
+  details.addEventListener("click", (event) => openThresholdOfferDetails(event, sport));
+  const [, discard] = thresholdOfferButtons(offers);
+  return h("section", { className: "analysis-chart-card threshold-offer", "aria-label": "Neue Schwelle", dataset: { analysisSport: sport } },
+    h("h3", null, "Neue Schwelle"), h("div", "threshold-offer-list", ...rows), h("div", "threshold-offer-foot", details, discard));
+}
+
+function renderAnalysisThresholdOffers() {
+  const root = $("#analysisThresholdOffers");
+  if (!root) return;
+  root.replaceChildren(...["run", "ride"].map((sport) => [sport, thresholdOffersFor(sport)]).filter(([, offers]) => offers.length).map(([sport, offers]) => analysisThresholdOfferCard(sport, offers)));
+  globalThis.renderAnalysisSegmentsIfActive?.();
+}
+
+// The link opens Zonen & Schwellen on the offer's sport; a modified click keeps the browser's own behaviour.
+function openThresholdOfferDetails(event, sport) {
+  if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button > 0) return;
+  event.preventDefault();
+  void AppRouter.navigate("more/profile", { historyMode: "push" }).then((shown) => {
+    const section = shown && $("#zoneSettings");
+    if (!section) return;
+    showZoneSport(sport);
+    section.open = true;
+    section.scrollIntoView({ block: "start" });
+  });
+}
+
 // A cold start has no performance read yet; the two cards say so instead of claiming there is no data (A-13).
 function renderPerformanceLoading() {
   const current = $("#currentPerformance");
@@ -257,7 +290,7 @@ function renderPerformance(performance, { refreshCharts = true } = {}) {
   const values = performance?.metrics || {};
   renderCurrentPerformance(values, performance?.history, performanceDataStatus(performance), performance?.thresholds, state.data?.lt2_estimates);
   refreshThresholdBox();
-  refreshLt2Notice();
+  refreshThresholdOffers();
   const predictions = racePredictionRows(values);
   root.hidden = false;
   root.append(h("h4", null, "Laufprognosen"));
