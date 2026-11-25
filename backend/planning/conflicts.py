@@ -7,6 +7,7 @@ from typing import Any
 
 from backend.activities.matching import first_present as _first_present
 from backend.athlete.local_date import iso_date_prefix
+from backend.planning.local_start import known_start
 
 _UTC_OFFSET_SUFFIX = "+00:00"
 
@@ -167,7 +168,12 @@ def calendar_conflicts_for_items(
     for item in items:
         matches, match = calendar_items_conflict(candidate, item)
         if matches:
-            if source == "local_library" and match != "time_window":
+            # Two local units clash only on real times: midnight is the stored "no time" of a unit that a
+            # date move or an undo wrote, so it never makes a window (#4224).
+            if source == "local_library" and (
+                match != "time_window"
+                or not (known_start(candidate) and known_start(item))
+            ):
                 continue
             conflicts.append(_calendar_conflict_record(item, source, match))
     return conflicts

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import itertools
 import json
 import unittest
@@ -13,13 +14,17 @@ from unittest.mock import Mock
 
 from support import temp_database
 
+from backend import change_history
 from backend.db.repositories import (
     KeyValueRepository,
     PlanningStateRepository,
+    ProfileRepository,
     TrainingPlanRepository,
 )
 from backend.db.schema import initialize_schema
 from backend.errors import AppError
+from backend.history.service import ChangeHistoryService
+from backend.history.undo_service import HistoryUndoService
 from backend.planning import changes, plan_checks
 from backend.planning.calendar_service import CalendarConflictService
 from backend.planning.library import library_payload_hash
@@ -371,6 +376,72 @@ class PlannedUnitEditServiceTests(unittest.TestCase):
             if not unit.get("local_deleted")
         ]
         self.assertEqual([STEADY["name"]], live)
+
+    def test_undo_of_a_replacement_restores_the_unit_beside_one_with_a_midnight_start(
+        self,
+    ) -> None:
+        # #4224: a date move or an undo stores `<date>T00:00:00` for a unit without a time; midnight is
+        # no real start, so the restored unit must not clash with it on the same day.
+        plan_id = self.plan_service.create(
+            {"name": "Aufbau", "start_date": "2026-09-21", "end_date": "2026-10-04"}
+        )["plan_id"]
+        other = self.unit({**STEADY, "name": "Andere", "date": "2026-09-22"})
+        with self.manager.unit_of_work() as db:
+            payload = json.loads(
+                db.execute(
+                    "SELECT payload FROM planned_units WHERE local_id=?",
+                    (other["local_id"],),
+                ).fetchone()["payload"]
+            )
+            db.execute(
+                "UPDATE planned_units SET payload=? WHERE local_id=?",
+                (
+                    json.dumps(
+                        {
+                            **payload,
+                            "source": "library",
+                            "starts_at_local": "2026-09-22T00:00:00",
+                        }
+                    ),
+                    other["local_id"],
+                ),
+            )
+        first = self.unit({**STEADY, "date": "2026-09-22"}, plan_id=plan_id)
+        new = {
+            **STEADY,
+            "name": "Neu 45",
+            "description": "- 45m 60%",
+            "duration_minutes": 45,
+            "date": "2026-09-22",
+        }
+        with change_history.collect_changes() as collected:
+            self.service.replace_period(
+                plan_id, "2026-09-21", "2026-09-27", [first["local_id"]], [new]
+            )
+        undo = HistoryUndoService(
+            self.manager,
+            ChangeHistoryService(
+                self.manager, ProfileRepository(KeyValueRepository(lambda: NOW))
+            ),
+            Mock(),
+            self.library,
+            Mock(),
+            self.planned,
+            self.plan_service,
+            Mock(),
+            profile_mutation_coordinator=contextlib.nullcontext(),
+        )
+
+        result = undo.apply_batch({"changes": collected})
+
+        live = sorted(
+            unit["name"]
+            for _, unit, _raw in self.rows("planned_units")
+            if not unit.get("local_deleted")
+        )
+        self.assertEqual(
+            ("undone", ["Andere", STEADY["name"]]), (result["status"], live)
+        )
 
 
 if __name__ == "__main__":
