@@ -279,15 +279,18 @@ _OFFER_SPORTS: Final = {
 
 
 def threshold_offer_events(offers: Any, since_day: date) -> list[Notification]:
-    """One notification per sport for the open threshold offers (#4135).
+    """One notification per sport and origin for the open threshold offers (#4135).
 
     The offers are already without the dismissed ones. Only an offer whose newest
     data is younger than the subscription counts: one that was open before is no
     news. Each offer key is its own sent key, so a new value of a source notifies
-    again and an unchanged one never does. A Garmin-only group says so, as it was
-    not derived from the athlete's sessions. No value is named.
+    again and an unchanged one never does. The day comparison is strict, like
+    ``personal_best_event``: data of the subscription day itself is no news. The
+    offers are grouped per sport and origin (Garmin's own value or an estimate
+    from the athlete's sessions), so a body names the origin of every key it
+    announces. No value is named.
     """
-    found: dict[str, list[dict[str, Any]]] = {}
+    found: dict[tuple[str, bool], list[dict[str, Any]]] = {}
     for offer in offers if isinstance(offers, list) else []:
         if (
             isinstance(offer, dict)
@@ -295,14 +298,12 @@ def threshold_offer_events(offers: Any, since_day: date) -> list[Notification]:
             and isinstance(offer.get("key"), str)
             and str(offer.get("newest"))[:10] > since_day.isoformat()
         ):
-            found.setdefault(offer["sport"], []).append(offer)
+            garmin = offer.get("source") == GARMIN_ID
+            found.setdefault((offer["sport"], garmin), []).append(offer)
     events = []
-    for sport, (activity, sessions, url) in _OFFER_SPORTS.items():
-        group = found.get(sport)
-        if not group:
-            continue
-        garmin_only = all(offer.get("source") == GARMIN_ID for offer in group)
-        origin = "Von Garmin" if garmin_only else f"Aus deinen letzten {sessions}"
+    for (sport, garmin), group in sorted(found.items()):
+        activity, sessions, url = _OFFER_SPORTS[sport]
+        origin = "Von Garmin" if garmin else f"Aus deinen letzten {sessions}"
         event = _one(
             "new_threshold",
             (f"threshold_offer:{offer['key']}" for offer in group),

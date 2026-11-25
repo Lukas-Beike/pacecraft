@@ -734,8 +734,10 @@ class PushChecksTests(unittest.TestCase):
             offer("run", "dfa_alpha1", 171, "2026-11-22"),  # open before: not news
             offer("run", "garmin", 168),
         ]
-        self.state["offers"] = offers
+        self.state["offers"] = []
         self._at(11)
+        self.checks.check()  # the first read only seeds
+        self.state["offers"] = offers
         self._announced(
             "Neue Schwelle für Laufen",
             "Von Garmin gibt es einen neuen Wert. Tippen zum Ansehen.",
@@ -779,7 +781,7 @@ class PushChecksTests(unittest.TestCase):
 
     def test_a_switched_off_new_threshold_is_marked_sent_without_delivery(self):
         self.service.set_preferences({"types": {"new_threshold": False}})
-        self.state["offers"] = [
+        offers = [
             {
                 "key": "lt1:run:heart_rate:dfa_alpha1:140",
                 "sport": "run",
@@ -788,10 +790,71 @@ class PushChecksTests(unittest.TestCase):
             }
         ]
         self._at(11)
+        self.state["offers"] = []
+        self.checks.check()  # seeds
+        self.state["offers"] = offers
         self.checks.check()
         self.service.set_preferences({"types": {"new_threshold": True}})
         self.checks.check()
         self.assertEqual(self.sender.sent, [])
+
+    def _offer(self, source, value, newest="2026-11-23"):
+        return {
+            "key": f"lt2:run:pace:{source}:{value}",
+            "sport": "run",
+            "source": source,
+            "newest": newest,
+        }
+
+    def test_offers_open_before_the_first_read_are_seeded_not_announced(self):
+        # The device subscribed on 2026-11-22; these offers have newer data but were
+        # open when the feature began.
+        self.state["offers"] = [self._offer("dfa_alpha1", 300)]
+        self._at(11)
+        self.checks.check()
+        self.checks.check()
+        self.assertEqual(self.sender.sent, [])
+        self.state["offers"].append(self._offer("dfa_alpha1", 299))
+        self.checks.check()
+        self.assertEqual(len(self._titled("Neue Schwelle für Laufen")), 1)
+
+    def test_a_group_names_the_origin_of_the_keys_it_announces(self):
+        self.state["offers"] = []
+        self._at(11)
+        self.checks.check()
+        local = self._offer("dfa_alpha1", 300)
+        self.state["offers"] = [local]
+        self.checks.check()
+        self.state["offers"].append(self._offer("garmin", 290))
+        self.checks.check()
+        self.assertEqual(
+            self._bodies()[-2:],
+            [
+                "Aus deinen letzten Läufen gibt es einen neuen Wert. Tippen zum Ansehen.",
+                "Von Garmin gibt es einen neuen Wert. Tippen zum Ansehen.",
+            ],
+        )
+
+    def test_an_offer_source_that_fails_skips_only_itself_and_a_failed_send_retries(
+        self,
+    ):
+        self.state["offers"] = []
+        self._at(11)
+        self.checks.check()
+        self.state["offers"] = [self._offer("garmin", 290)]
+        self.sender.status = 503
+        self.checks.check()  # no device received it: kept for the next check
+        self.sender.status = 201
+        self.checks.check()
+        self.assertEqual(len(self._titled("Neue Schwelle für Laufen")), 2)
+        self.assertEqual(len(self.sender.sent), 2)
+        self.checks.check()
+        self.assertEqual(len(self.sender.sent), 2)
+        self.state["offers"] = None
+        self.hint["value"] = {"status": "hint"}
+        self.checks._threshold_offers = lambda: 1 / 0
+        self.checks.check()
+        self.assertEqual(len(self.sender.sent), 3)  # the infection hint still came
 
     def test_missing_feedback_is_announced_once_a_day_from_the_evening(self):
         self.state["unrated"] = ["act_1"]

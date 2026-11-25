@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import json
 import logging
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import Any, Final
@@ -31,6 +31,7 @@ _LOGGER = logging.getLogger("intervals_coach")
 PUSH_PREFERENCES_KEY = "push_preferences"
 PUSH_SENT_KEY = "push_sent"
 PUSH_COUNTS_KEY = "push_counts"
+PUSH_SEEDED_KEY = "push_seeded"
 
 # The athlete's notification types, each with its own switch, all on by default.
 TYPES: Final = (
@@ -283,6 +284,24 @@ class PushService:
                 },
             )
         return delivered > 0
+
+    def seed(self, marker: str, keys: Iterable[str]) -> bool:
+        """Record ``keys`` as sent once, without delivery; True when this call did.
+
+        ``marker`` is push bookkeeping in ``PUSH_SEEDED_KEY``: what was already
+        there when an event kind began is no news (#4135).
+        """
+        with self._database().unit_of_work() as db:
+            seeded = self._read(db, PUSH_SEEDED_KEY, [])
+            if marker in seeded:
+                return False
+            now = self._now()
+            sent = self._read(db, PUSH_SENT_KEY, {}) | dict.fromkeys(
+                keys, now.isoformat()
+            )
+            self._write(db, PUSH_SENT_KEY, _pruned(sent, now))
+            self._write(db, PUSH_SEEDED_KEY, [*seeded, marker])
+            return True
 
     def subscribed_since(self) -> datetime | None:
         """When the oldest current subscription was made; None without one."""
