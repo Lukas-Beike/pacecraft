@@ -47,7 +47,7 @@ The calendar week view SHALL show a card "Wochenrückblick" below the seven days
 
 #### Scenario: A past week
 - **WHEN** the athlete steps to a past week
-- **THEN** its card shows every tile with data in this order: Plan (completed of planned, missed units as a note), Einheiten (with the sessions outside the plan), Zeit and Belastung (each with the change against the week before), Schlaf Ø (with its change and source), Ruhepuls Ø and HRV Ø (with their position and source), Check-ins (entered of days, with the score means), "Besondere Einheiten" across the full width and Beschwerden (with structured complaints across the full width, one line per body area and side with its days and severity, a worsening from the first to the latest severity in red, then free-text pain days beyond them and illness days; otherwise the pain and illness day counts); the plan line under the week is not shown.
+- **THEN** its card shows every tile with data in this order: Plan (completed of planned, missed units as a note), Einheiten (with the sessions outside the plan), Zeit and Belastung (each with the change against the week before), Schlaf Ø (with its change and source), Ruheherzfrequenz Ø and HRV Ø (with their position and source), Check-ins (entered of days, with the score means), "Besondere Einheiten" across the full width and Beschwerden (with structured complaints across the full width, one line per body area and side with its days and severity, a worsening from the first to the latest severity in red, then free-text pain days beyond them and illness days; otherwise the pain and illness day counts); the plan line under the week is not shown.
 
 #### Scenario: A running week
 - **WHEN** the selected week is the current one

@@ -1,8 +1,8 @@
 # M14 — Early infection hint from night values
 
 - **Card:** M14
-- **Card version:** 4
-- **Method ID:** infection-hint-v1 (#3762)
+- **Card version:** 5
+- **Method ID:** infection-hint-v2 (#3762; v2 names the resting heart rate Ruheherzfrequenz, term list #3981)
 - **Status:** implemented (`backend/performance/infection_hint.py`), awaiting athlete review
 - **Classification:** descriptive statistic
 - **Literature checked:** 2026-11-22
@@ -18,7 +18,7 @@ an infection, illness, recovery or readiness state.
 
 ## Formula and units
 
-`infection-hint-v1` (`backend/performance/infection_hint.py`):
+`infection-hint-v2` (`backend/performance/infection_hint.py`):
 
 - Signals, Garmin only, from stored canonical observations: breathing rate
   during sleep (`respiration_rate`, breaths/min), resting heart rate
@@ -48,7 +48,7 @@ an infection, illness, recovery or readiness state.
   labelled as derived, plus the limits below, in the daily planning context the
   Coach reads and in the planning brief. The note on today's calendar day shows
   only the unusual values with their usual range, for example "Infekt-Hinweis:
-  Atemfrequenz 16,8/min (üblich 14,2–15) · Ruhepuls 58 bpm (üblich 49–52)"
+  Atemfrequenz 16,8/min (üblich 14,2–15) · Ruheherzfrequenz 58 bpm (üblich 49–52)"
   (athlete decision); the limits stay with this card and the Coach. The hint is
   computed on read.
 - Answers on the note (#3821, athlete decision): "Ich bin krank" records illness
@@ -180,7 +180,7 @@ athlete for this one athlete and is not validated for anyone.
 
 | Constant | Value | Module | Code comment |
 | --- | --- | --- | --- |
-| `METHOD` | `'infection-hint-v1'` | `backend/performance/infection_hint.py` |  |
+| `METHOD` | `'infection-hint-v2'` | `backend/performance/infection_hint.py` |  |
 | `RANGE_MARGIN` | `0.5` | `backend/performance/infection_hint.py` | Beyond the usual range by this share of its width (the interquartile range). |
 | `MIN_UNUSUAL` | `2` | `backend/performance/infection_hint.py` |  |
 | `LIMITS` | `'Abgeleiteter Hinweis, keine Diagnose. Hartes Training, Alkohol, Hitze, Höhe, Reisen und kurzer S... (sha256 7e8e7194)` | `backend/performance/infection_hint.py` |  |
