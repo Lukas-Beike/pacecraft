@@ -306,11 +306,19 @@ class BrowserRunnerTests(unittest.TestCase):
             # A plain timestamp, or a name in a comment, is no fixture offset: neither
             # pinned nor refused.
             stamped = (
-                "const at = new Date().toISOString(); Date.now(); // addDateKey(day, 1)\n"
+                "const at = new Date().toISOString(); Date.now();\n"
+                "  // addDateKey(day, 1)\n"
                 "/* planWeekStart(today) is a Monday */\n"
             )
             (root / "e2e/dated.spec.js").write_text(plain + stamped, encoding="utf-8")
             self.assertEqual(runner.weekday_specs("base", root), ["e2e/week.spec.js"])
+            # Gitar on #4248: a route glob's "/*" opens no comment that hides a call.
+            routed = 'page.route("**/api/*", handler);\naddDateKey(day, 1); // */\n'
+            (root / "e2e/dated.spec.js").write_text(plain + routed, encoding="utf-8")
+            with self.assertRaisesRegex(
+                ValueError, r"e2e/dated\.spec\.js computes a date"
+            ):
+                runner.weekday_specs("base", root)
             (root / "e2e/dated.spec.js").unlink()
             # #3610: without the base ref the weekday runs are skipped, and the
             # line says it does not affect the run, so it is not read as its cause.

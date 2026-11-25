@@ -54,8 +54,9 @@ TODAY_IMPORT = re.compile(r"""require\(\s*["']\./helpers/today(?:\.js)?["']\s*\)
 # A spec computing a fixture-offset date reads the weekday too, against the fixture's
 # offsets (#4210); plain timestamps (new Date, Date.now) rarely do and stay unpinned.
 DATE_SPEC = re.compile(r"\b(?:addDateKey|planWeekStart)\s*\(")
-# Comments are left out of that search: a call named in one runs nothing.
-JS_COMMENT = re.compile(r"/\*.*?\*/|(?<![:\"'])//[^\n]*", re.DOTALL)
+# Comments on their own lines are left out of that search: a call named in one runs nothing.
+# Only whole-line comments, so a glob such as "**/api/*" in a string never opens one.
+JS_COMMENT = re.compile(r"^[ \t]*(?://[^\n]*|/\*.*?\*/)", re.DOTALL | re.MULTILINE)
 
 
 class RunnerError(Exception):
