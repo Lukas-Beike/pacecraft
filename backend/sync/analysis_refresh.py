@@ -16,6 +16,11 @@ _SOURCE_NAMES = {
 }
 
 
+# The windows of the load and recovery reads, in days: 4 Wochen and 3 Monate; a longer period
+# refreshes the 3 Monate (the client sends one of these, #4212).
+REFRESH_DAYS = (28, 91)
+
+
 # Names of the Wahoo read per Analyse area; the other areas have no Wahoo data.
 _WAHOO_SOURCE_NAMES = {
     "sessions": "Wahoo-Aktivitätsübersicht",
@@ -43,7 +48,7 @@ class AnalysisRefreshService:
         self._wahoo_sync = wahoo_sync
 
     def refresh(self, area: str, *, days: int | None = None) -> dict[str, Any]:
-        _validate_request(area, days)
+        validate_refresh_request(area, days)
         outcomes = self._run_refreshes(area, days)
         refreshed, incomplete, pending, missing = [], [], [], []
         for name, outcome in outcomes.items():
@@ -112,10 +117,13 @@ class AnalysisRefreshService:
         return self._garmin_refresh().refresh_analysis(area, start, end)
 
 
-def _validate_request(area: str, days: int | None) -> None:
-    if area not in _SOURCE_NAMES:
+def validate_refresh_request(area: Any, days: Any) -> None:
+    """The one definition of a refresh request: the HTTP route and the service use it."""
+    if not isinstance(area, str) or area not in _SOURCE_NAMES:
         raise AppError(400, "Ungültiger Analysebereich.")
-    if days is not None and (area not in {"load", "recovery"} or days not in {28, 91}):
+    if days is not None and (
+        area not in {"load", "recovery"} or days not in REFRESH_DAYS
+    ):
         raise AppError(400, "Ungültiger Analysezeitraum.")
 
 

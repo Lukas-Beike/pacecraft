@@ -1173,3 +1173,20 @@ test("one period table serves every Analyse and Ernährung selector (#3839)", ()
   const focus = (days) => trainingFocusPeriodLabel({ start: "2026-01-01", end: new Date(Date.parse("2026-01-01") + (days - 1) * 86400000).toISOString().slice(0, 10) });
   assert.equal(JSON.stringify([28, 91, 182, 365, 30].map(focus)), JSON.stringify(["Letzte 4 Wochen", "Letzte 3 Monate", "Letzte 6 Monate", "Letzte 12 Monate", "Letzte 30 Tage"]));
 });
+
+// #4212: the refresh sends days 28 (4 Wochen) or 91 (3, 6 and 12 Monate) for Belastung and Erholung, the two windows
+// the server's refresh accepts (backend/sync/analysis_refresh.py), and no days for the other tabs.
+test("the Analyse refresh sends only a window the server accepts, at every period", () => {
+  const globals = { analysisHistoryPeriod: "28d", recoveryHistoryPeriod: "28d" };
+  const { analysisRefreshDays, ANALYSIS_PERIODS } = extractFunctions("analysis.js", ["analysisRefreshDays", "analysisPeriod", "analysisPeriodWeekly", "ANALYSIS_PERIODS"], globals);
+  assert.equal(ANALYSIS_PERIODS.length, 4);
+  for (const { key } of ANALYSIS_PERIODS) {
+    globals.analysisHistoryPeriod = key;
+    globals.recoveryHistoryPeriod = key;
+    const sent = ["performance", "sessions", "load", "recovery"].map((area) => [area, analysisRefreshDays(area)]);
+    assert.deepEqual(sent.filter(([area]) => area === "performance" || area === "sessions").map(([, days]) => days), [null, null], key);
+    // A longer period refreshes the 3 Monate window.
+    const expected = key === "28d" ? 28 : 91;
+    assert.deepEqual(sent.filter(([area]) => area === "load" || area === "recovery"), [["load", expected], ["recovery", expected]], key);
+  }
+});
