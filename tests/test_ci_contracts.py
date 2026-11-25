@@ -403,7 +403,8 @@ class WorkflowSourceTests(unittest.TestCase):
         weekdays = workflow.split("  e2e_weekdays:\n", 1)[1].split("  browser:\n", 1)[0]
         self.assertIn("needs: [source, image]\n", weekdays)
         self.assertIn("name: Browser checks (pinned weekdays)\n", weekdays)
-        self.assertIn('--today "$day" --clock-pinned', weekdays)
+        self.assertIn('--project desktop --today "$day" --clock-pinned', weekdays)
+        self.assertIn("timeout-minutes:", weekdays)
         self.assertNotIn("mapfile -t specs", weekdays)
         self.assertIn("for offset in 0 1 2 3 4 5 6; do", weekdays)
         self.assertIn('[[ "$day" == "$today" ]] && continue', weekdays)

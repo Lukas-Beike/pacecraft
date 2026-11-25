@@ -53,7 +53,7 @@ HOST_NETWORK_ERROR = "net::ERR_NO_BUFFER_SPACE"
 TODAY_IMPORT = re.compile(r"""require\(\s*["']\./helpers/today(?:\.js)?["']\s*\)""")
 # A spec computing a fixture-offset date reads the weekday too, against the fixture's
 # offsets (#4210); plain timestamps (new Date, Date.now) rarely do and stay unpinned.
-DATE_SPEC = re.compile(r"addDateKey|planWeekStart")
+DATE_SPEC = re.compile(r"\b(?:addDateKey|planWeekStart)\s*\(")
 
 
 class RunnerError(Exception):

@@ -303,8 +303,9 @@ class BrowserRunnerTests(unittest.TestCase):
             self.assertIn("e2e/week.spec.js", pinned)
             self.assertNotIn("e2e/plain.spec.js", pinned)
             self.assertNotIn("e2e/dated.spec.js", pinned)
-            # A plain timestamp is no fixture offset: neither pinned nor refused.
-            stamped = "const at = new Date().toISOString(); Date.now();\n"
+            # A plain timestamp, or a name in a comment, is no fixture offset: neither
+            # pinned nor refused.
+            stamped = "const at = new Date().toISOString(); Date.now(); // addDateKey\n"
             (root / "e2e/dated.spec.js").write_text(plain + stamped, encoding="utf-8")
             self.assertEqual(runner.weekday_specs("base", root), ["e2e/week.spec.js"])
             (root / "e2e/dated.spec.js").unlink()
