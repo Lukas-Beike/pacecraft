@@ -16,7 +16,7 @@ read. A new key needs no entry: it appears here when its write is added.
   `profile` is only set when absent.
 
 <!-- BEGIN GENERATED KEYS -->
-108 keys and 25 key patterns; `<value>` stands for a value the code computes.
+109 keys and 25 key patterns; `<value>` stands for a value the code computes.
 
 | Key | Written by | Deleted by | Export | Reset at start | Purge |
 | --- | --- | --- | --- | --- | --- |
@@ -115,7 +115,8 @@ read. A new key needs no entry: it appears here when its write is added.
 | `provider_credentials` | backend/provider_credentials.py:ProviderCredentialService.update | backend/provider_credentials.py:ProviderCredentialService.update | no | - | - |
 | `push_counts` | backend/push/service.py:PushService.settle | - | yes | - | - |
 | `push_preferences` | backend/push/service.py:PushService.set_preferences | - | yes | - | - |
-| `push_sent` | backend/push/service.py:PushService.claim<br>backend/push/service.py:PushService.settle | - | yes | - | - |
+| `push_seeded` | backend/push/service.py:PushService.seed | - | yes | - | - |
+| `push_sent` | backend/push/service.py:PushService.claim<br>backend/push/service.py:PushService.seed<br>backend/push/service.py:PushService.settle | - | yes | - | - |
 | `push_subscriptions` | backend/push/service.py:PushService.settle<br>backend/push/service.py:PushService.subscribe<br>backend/push/service.py:PushService.unsubscribe | - | no | - | - |
 | `push_vapid_private_key` | backend/push/service.py:PushService._private_key | - | no | - | - |
 | `rating_backfill_removal_state` | backend/sync/rating_backfill_removal.py:RatingBackfillRemoval._save | - | yes | - | - |

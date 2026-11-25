@@ -99,7 +99,8 @@ globalThis.AppRouter = (() => {
   // Removed views whose content lives elsewhere now: the single sessions are in the calendar (#2258),
   // the former Leistung segment is split by sport and its links open Laufen (#2265), the week review
   // sits under the calendar week (#3298), and Darstellung became App (#3914). The check-in reminder links "plan/checkin" (#3953): the calendar opens, checkin-form.js opens the form.
-  const ROUTE_ALIASES = Object.freeze({ "analysis/sessions": "plan/overview", "analysis/performance": "analysis/running", "analysis/week": "plan/overview", "more/appearance": "more/app", "analysis/records": "analysis/running", "plan/checkin": "plan/overview" });
+  // The new-threshold notification links "more/profile/<sport>" (#4135): Profil opens, shared.js shows that sport's zones.
+  const ROUTE_ALIASES = Object.freeze({ "analysis/sessions": "plan/overview", "analysis/performance": "analysis/running", "analysis/week": "plan/overview", "more/appearance": "more/app", "analysis/records": "analysis/running", "plan/checkin": "plan/overview", "more/profile/run": "more/profile", "more/profile/ride": "more/profile" });
 
   function routeFromHash(hash = globalThis.location.hash) {
     const rawRoute = String(hash || "").replace(/^#/, "").toLowerCase();

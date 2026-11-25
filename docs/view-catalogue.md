@@ -59,6 +59,8 @@ Former routes that open another view:
 - `#analysis/sessions` opens `#plan/overview`
 - `#analysis/week` opens `#plan/overview`
 - `#more/appearance` opens `#more/app`
+- `#more/profile/ride` opens `#more/profile`
+- `#more/profile/run` opens `#more/profile`
 - `#plan/checkin` opens `#plan/overview`
 <!-- END GENERATED VIEWS -->
 
