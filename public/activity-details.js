@@ -67,8 +67,11 @@
     content.replaceChildren();
     const panel = h("div", "activity-analysis-panel");
     content.append(panel);
-    // `read` is the calendar's shared read of the document, so a refresh here shows in the card (#2478).
-    void ActivityAnalysis.loadPanel(panel, summary, read || ((fresh) => (fresh ? api(`/api/activities/${encodeURIComponent(activityId)}`) : Promise.resolve(payload))));
+    // The panel shows the document the dialog just loaded (also after a split, merge or undo); a refresh or retry reads it
+    // fresh, through the calendar's shared read when there is one, so the card shows it too (#2478).
+    const fresh = read || (() => api(`/api/activities/${encodeURIComponent(activityId)}`));
+    const panelRead = (again) => (again ? fresh(true) : Promise.resolve(payload));
+    void ActivityAnalysis.loadPanel(panel, summary, panelRead);
     renderSeries(payload.session || {}, payload.streams, content);
     renderStrengthSets(payload.strength_sets, content);
     renderIntervalQuality(payload, content);

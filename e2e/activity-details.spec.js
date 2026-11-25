@@ -796,3 +796,16 @@ test("@responsive the feedback sheet keeps a typed note when a save fails and sa
   expect(await page.evaluate(() => feedbackBodies.at(-1).notes)).toBe("Beine schwer");
   expect(await page.evaluate(() => feedbackBodies.at(-1).feel)).toBe(4);
 });
+
+// #4221: the dialog's panel shows the document the dialog just loaded, not an older one of the calendar's shared read.
+test("@responsive the details dialog shows its own document, not the calendar's cached one", async ({ page }) => {
+  await page.goto("/#plan/overview");
+  await expect(page.locator("#appShell")).toBeVisible();
+  await page.evaluate(async () => {
+    const document = (hr) => ({ session: { activity_id: "act_cache", name: "Synthetic cache ride", sport: "ride" }, metrics: { avg_hr: { value: hr } }, streams: { time_s: [0, 1, 2], channels: {} }, detail_data: { providers: [] }, activity_feedback: null, equipment: [], session_rpe_load: null });
+    await ActivityDetails.open({ id: "act_cache" }, { api: async () => document(150), read: () => Promise.resolve(document(140)), showDialog: (dialog) => dialog.showModal() });
+  });
+  const dialog = page.getByRole("dialog", { name: "Synthetic cache ride" });
+  await expect(dialog.locator(".activity-analysis-stats div").filter({ hasText: "Ø Herzfrequenz" })).toContainText("150 bpm");
+  await page.evaluate(() => ActivityDetails.close(false));
+});
