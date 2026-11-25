@@ -14,7 +14,6 @@ too; Garmin's LT2 value is adopted the same way, as a local value.
 from __future__ import annotations
 
 import json
-import math
 from collections.abc import Callable, Mapping, Sequence
 from datetime import date, timedelta
 from typing import Any
@@ -62,13 +61,6 @@ _VALUES: dict[str, tuple[str, ZoneConfigurationMetric, str, str]] = {
     ),
     "pace": ("pace_seconds_per_km", ZoneConfigurationMetric.PACE, "Pace", "s/km"),
     "power": ("power_w", ZoneConfigurationMetric.POWER, "Leistung", "W"),
-}
-# The server-side baseline of the LT2 change notice (F10): per sport the values
-# the athlete last saw, null for "unbekannt".
-NOTICE_BASELINE_KEY = "lt2_notice_baselines"
-NOTICE_VALUES: dict[str, tuple[str, ...]] = {
-    "run": ("provider_hr", "provider_pace", "dfa_hr", "dfa_pace", "cs_pace"),
-    "ride": ("provider_power", "provider_hr", "cp_power"),
 }
 # The run step test's LT2 (#3833), adopted with the DFA-a1 origin.
 STEP_TEST_SOURCE = "step_test"
@@ -154,30 +146,6 @@ class SecondThresholdService:
                 "critical_power": critical_second_threshold(fits, "ride"),
             },
         }
-
-    def notice_baselines(self) -> dict[str, Any]:
-        """The values per sport the athlete last saw in the LT2 change notice (F10)."""
-        if self._key_values is None:
-            return {}
-        with self._manager.reader() as db:
-            return _baselines(self._key_values.get(db, NOTICE_BASELINE_KEY))
-
-    def save_notice_baseline(self, payload: Mapping[str, Any]) -> dict[str, Any]:
-        """Store the values of one sport the athlete has now seen; returns all sports."""
-        if self._key_values is None:
-            raise AppError(503, "Der Hinweisstand ist nicht verfügbar.")
-        sport = str(payload.get("sport") or "")
-        values = payload.get("values")
-        if sport not in NOTICE_VALUES or not isinstance(values, dict):
-            raise AppError(400, "Unbekannte Sportart oder Werte.")
-        seen = {key: _seen_value(values.get(key)) for key in NOTICE_VALUES[sport]}
-        with self._manager.unit_of_work() as db:
-            stored = _baselines(self._key_values.get(db, NOTICE_BASELINE_KEY))
-            stored[sport] = seen
-            self._key_values.set(
-                db, NOTICE_BASELINE_KEY, json.dumps(stored, sort_keys=True)
-            )
-        return stored
 
     def _values(self) -> Mapping[str, Any]:
         """The LT2 values in effect and Garmin's (``threshold_values``), or none."""
@@ -450,30 +418,4 @@ def _adopted(
         "garmin_limits": (
             garmin and not percent and metric is ZoneConfigurationMetric.HEART_RATE
         ),
-    }
-
-
-def _seen_value(value: object) -> float | None:
-    """One seen value: a positive finite number, or None for "unbekannt"."""
-    if value is None:
-        return None
-    if isinstance(value, bool) or not isinstance(value, int | float):
-        raise AppError(400, "Werte müssen Zahlen oder null sein.")
-    if not math.isfinite(value) or not 0 < value < 100_000:
-        raise AppError(400, "Werte müssen Zahlen oder null sein.")
-    return float(value)
-
-
-def _baselines(text: str | None) -> dict[str, Any]:
-    """The stored baselines; unreadable text or an unknown sport reads as none."""
-    try:
-        stored = json.loads(text) if text else {}
-    except ValueError:
-        return {}
-    if not isinstance(stored, dict):
-        return {}
-    return {
-        sport: values
-        for sport, values in stored.items()
-        if sport in NOTICE_VALUES and isinstance(values, dict)
     }

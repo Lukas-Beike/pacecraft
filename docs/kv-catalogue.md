@@ -16,7 +16,7 @@ read. A new key needs no entry: it appears here when its write is added.
   `profile` is only set when absent.
 
 <!-- BEGIN GENERATED KEYS -->
-109 keys and 25 key patterns; `<value>` stands for a value the code computes.
+108 keys and 25 key patterns; `<value>` stands for a value the code computes.
 
 | Key | Written by | Deleted by | Export | Reset at start | Purge |
 | --- | --- | --- | --- | --- | --- |
@@ -101,7 +101,6 @@ read. A new key needs no entry: it appears here when its write is added.
 | `last_wahoo_sync_at` | backend/sync/wahoo_sync.py:WahooSyncService._sync_locked | - | yes | - | - |
 | `last_wahoo_sync_error` | backend/sync/wahoo_sync.py:WahooSyncService._record_error<br>backend/sync/wahoo_sync.py:WahooSyncService._sync_locked | - | yes | - | - |
 | `local_load_state` | backend/sync/local_load.py:LocalLoadStage._save | - | yes | - | - |
-| `lt2_notice_baselines` | backend/performance/second_threshold_service.py:SecondThresholdService.save_notice_baseline | - | yes | - | - |
 | `metric_export_baseline:intervals:<value>` | backend/sync/metric_export.py:MetricExportService._record | - | yes | - | - |
 | `morning_body_battery_history` | backend/performance/morning_battery_service.py:MorningBatteryStore.persist | - | yes | - | - |
 | `morning_checkin_date` | backend/coach/morning_completion.py:MorningCoachJobCompletionService.complete | - | yes | - | - |

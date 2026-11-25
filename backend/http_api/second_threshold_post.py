@@ -9,7 +9,6 @@ from backend.http_api.route_table import Access, Route, RouteRequest
 from backend.performance.second_threshold_service import SecondThresholdService
 
 ADOPT_PATH = "/api/zones/lt2/adopt"
-NOTICE_BASELINE_PATH = "/api/zones/lt2/notice-baseline"
 DISMISS_OFFER_PATH = "/api/zones/threshold-offers/dismiss"
 
 
@@ -27,9 +26,6 @@ class SecondThresholdPostRoutes:
     def routes(self) -> list[Route]:
         return [
             Route("POST", ADOPT_PATH, Access.SESSION_CSRF, self._adopt),
-            Route(
-                "PUT", NOTICE_BASELINE_PATH, Access.SESSION_CSRF, self._notice_baseline
-            ),
             Route("POST", DISMISS_OFFER_PATH, Access.SESSION_CSRF, self._dismiss_offer),
         ]
 
@@ -63,22 +59,6 @@ class SecondThresholdPostRoutes:
         """
         result = self._service().adopt(handler.read_json(), self._step_test)
         handler.send_json(200, result)
-
-    def _notice_baseline(self, handler: Any, _request: RouteRequest) -> None:
-        """Store the LT2 values of one sport the athlete has now seen (F10, #3273).
-
-        Request: JSON body `{"sport": "run" | "ride", "values": object}`. `values`
-        holds per known key (run: `provider_hr`, `provider_pace`, `dfa_hr`,
-        `dfa_pace`, `cs_pace`; ride: `provider_power`, `provider_hr`, `cp_power`) a positive
-        number or null for "unbekannt"; other keys are ignored.
-
-        Response: 200 `{"lt2_notice_baselines": object}`, every sport's stored values.
-
-        Errors: 400 "Unbekannte Sportart oder Werte."; 400 "Werte müssen Zahlen
-        oder null sein.".
-        """
-        result = self._service().save_notice_baseline(handler.read_json())
-        handler.send_json(200, {"lt2_notice_baselines": result})
 
     def _dismiss_offer(self, handler: Any, _request: RouteRequest) -> None:
         """Dismiss one open LT1 or LT2 offer for its exact value (#4135).

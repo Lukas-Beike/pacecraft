@@ -130,7 +130,6 @@ Write routes that are no athlete action on data: `POST /api/login`,
 `POST /api/logout`, `POST /api/chat/stream`, `POST /api/chat/cancel`,
 `POST /api/coach/actions/confirm`, `POST /api/coach/actions/cancel`,
 `POST /api/coach/actions/execute`, `POST /api/diagnostics/delete`,
-`POST /api/logs/delete`, `PUT /api/zones/lt2/notice-baseline`,
-`POST /api/zones/threshold-offers/dismiss`.
+`POST /api/logs/delete`, `POST /api/zones/threshold-offers/dismiss`.
 
 G-14 in #3936 adds interim "Dem Coach sagen" hints on the screens with a Coach-only action.
