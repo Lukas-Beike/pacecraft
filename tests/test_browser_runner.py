@@ -305,7 +305,10 @@ class BrowserRunnerTests(unittest.TestCase):
             self.assertNotIn("e2e/dated.spec.js", pinned)
             # A plain timestamp, or a name in a comment, is no fixture offset: neither
             # pinned nor refused.
-            stamped = "const at = new Date().toISOString(); Date.now(); // addDateKey\n"
+            stamped = (
+                "const at = new Date().toISOString(); Date.now(); // addDateKey(day, 1)\n"
+                "/* planWeekStart(today) is a Monday */\n"
+            )
             (root / "e2e/dated.spec.js").write_text(plain + stamped, encoding="utf-8")
             self.assertEqual(runner.weekday_specs("base", root), ["e2e/week.spec.js"])
             (root / "e2e/dated.spec.js").unlink()
@@ -358,6 +361,22 @@ class BrowserRunnerTests(unittest.TestCase):
             [weekday] * 6,
         )
         self.assertIn("Weekday runs (#3324): real day exit 0; ", self.stderr)
+        # Gitar on #4248: --clock-pinned widens only the top-level run; each weekday
+        # run keeps the changed specs it was given.
+        with mock.patch.object(
+            runner,
+            "clock_pinned_specs",
+            return_value=["e2e/a.spec.js", "e2e/b.spec.js"],
+        ):
+            code, values = self.run_main(
+                FakeProcesses(), weekday=weekday, extra_args=("--clock-pinned",)
+            )
+        self.assertEqual(code, 0, self.stderr)
+        pinned = [value for value in values if value["selection"]["today"]]
+        self.assertEqual(
+            [[c["file"] for c in value["children"]] for value in pinned],
+            [weekday] * 6,
+        )
         # An explicit --today is one pinned run already.
         self.run_main(
             fake, list_only=True, weekday=weekday, extra_args=("--today", "2026-11-18")

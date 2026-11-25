@@ -54,6 +54,8 @@ TODAY_IMPORT = re.compile(r"""require\(\s*["']\./helpers/today(?:\.js)?["']\s*\)
 # A spec computing a fixture-offset date reads the weekday too, against the fixture's
 # offsets (#4210); plain timestamps (new Date, Date.now) rarely do and stay unpinned.
 DATE_SPEC = re.compile(r"\b(?:addDateKey|planWeekStart)\s*\(")
+# Comments are left out of that search: a call named in one runs nothing.
+JS_COMMENT = re.compile(r"/\*.*?\*/|(?<![:\"'])//[^\n]*", re.DOTALL)
 
 
 class RunnerError(Exception):
@@ -1632,7 +1634,7 @@ def weekday_specs(base, root=ROOT):
     if unpinned := [
         p
         for p, t in texts.items()
-        if DATE_SPEC.search(t) and not TODAY_IMPORT.search(t)
+        if DATE_SPEC.search(JS_COMMENT.sub("", t)) and not TODAY_IMPORT.search(t)
     ]:
         raise ValueError(
             f"{', '.join(sorted(unpinned))} computes a date: take test and todayIn from "
@@ -1723,7 +1725,8 @@ def main(argv=None, pinned=None):
         parser().error("--repeat-each needs a count of at least 1")
     if args.base and args.project != "changed":
         parser().error("--base applies only to --project changed")
-    if args.clock_pinned:
+    # Only the top-level run expands it; a weekday sub-run keeps the specs it was given.
+    if args.clock_pinned and pinned is None:
         pinned_specs = clock_pinned_specs()
         if not pinned_specs:
             print("No spec imports e2e/helpers/today.js", file=sys.stderr)
