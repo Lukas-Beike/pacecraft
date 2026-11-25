@@ -323,8 +323,8 @@ verfügbar.". `power-profiles`: none beyond the common ones.
 ### `POST /api/analysis/refresh`
 
 Request: JSON body `{"area": string, "days": integer}`. `area` is required:
-`load`, `performance`, `recovery` or `sessions`. `days` is optional, `14` or
-`84`, and only for `load` and `recovery` (default 84 for `load`, 14 for
+`load`, `performance`, `recovery` or `sessions`. `days` is optional, `28` or
+`91`, and only for `load` and `recovery` (default 91 for `load`, 28 for
 `recovery`); the other areas use fixed windows.
 
 Response: 200 with `area`, `status` (`ok`, `partial`, `already_running` or
