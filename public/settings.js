@@ -910,9 +910,10 @@ function zoneKindBox(sport, metric, environment = null) {
   }
   const rows = zoneRows(item, metric === "pace" ? zoneMetricValue(ZONE_SPORTS[sport].lt2[0]) : null);
   const recorded = metric === "heart_rate" && !environment ? recordedMaxHrNote() : null;
-  box.append(h("ul", "zone-list", ...rows.map((row) => h("li", { dataset: { zone: row.zone } }, h("i"), h("span", null, row.name), h("em", null, row.range)))),
+  // DOM append writes a null as the text "null" (#4230): the note goes in only when there is one.
+  box.append(...[h("ul", "zone-list", ...rows.map((row) => h("li", { dataset: { zone: row.zone } }, h("i"), h("span", null, row.name), h("em", null, row.range)))),
     recorded ? h("p", { className: "zone-note", dataset: { zoneNote: "max-hr" } }, recorded) : null,
-    h("p", "zone-source", zoneSourceText(item), zoneEditButton(item.source === "default" ? "Anpassen" : "Bearbeiten", attributes)));
+    h("p", "zone-source", zoneSourceText(item), zoneEditButton(item.source === "default" ? "Anpassen" : "Bearbeiten", attributes))].filter(Boolean));
   return box;
 }
 

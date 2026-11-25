@@ -239,6 +239,8 @@ const OPENERS = [
   /^button\[aria-label="(Nächste Woche|Vorherige Woche|Nächster Monat|Vorheriger Monat)"\]$/,
   // The library card's "Einplanen" only unfolds and folds the day strip; no day is pressed (#4081).
   /^#library \.library-card \.planned-activity-actions \.secondary-button\[aria-expanded="(false|true)"\]$/,
+  // "Alle Details" of an opened session only opens its details dialog; the walk closes it again (#4221).
+  /^\.planned-entry\[open\] \.planned-activity-details$/,
 ];
 const FORBIDDEN = /speicher|synchronis|send|lösch|exportier|rückgängig|einstellung|herunterlad|undo|save|delete|export/i;
 export const isOpener = (selector) => OPENERS.some((pattern) => pattern.test(selector));
@@ -246,8 +248,9 @@ export const refusedLabel = (label) => FORBIDDEN.test(label || "");
 const STEP_CAP_MS = 8000;
 const CANDIDATE_CAP_MS = 2000;
 const MAX_CANDIDATES = 14;
-const DETAILS_OPEN = ".planned-entry[open] .planned-activity-more > summary";
-const NO_DETAILS = [".planned-entry[open] .activity-analysis-panel", "Detaildaten noch nicht geladen"];
+const DETAILS_OPEN = ".planned-entry[open] .planned-activity-details";
+const DETAILS_DIALOG = "dialog.activity-detail-dialog[open]";
+const NO_DETAILS = [`${DETAILS_DIALOG} .activity-analysis-panel`, "Detaildaten noch nicht geladen"];
 const NO_SESSION = "no such session";
 // The longest one step may take over all its candidates.
 const STEP_TOTAL_MS = 30000;
@@ -328,18 +331,18 @@ export const STEPS = [
   // Completed units: on a Monday the current week has none yet, so each step looks back for a unit that
   // has its element (`seek`) and returns to the current week (`unseek`).
   { view: "plan", name: "Kalender: Einheit öffnen", covers: "#2189 calendar agenda and detail", each: DONE, ...EARLIER, ready: ".planned-entry[open] .planned-entry-details", kind: "text" },
-  detail("Kalender: Details", "#2258 session details", ".planned-entry[open] .activity-analysis-stats", "numbers"),
+  detail("Kalender: Details", "#2258 session details", `${DETAILS_DIALOG} .activity-analysis-stats`, "numbers"),
   // The watch's temperature sensor reads body-warmed values, so no session charts it (#3036).
-  detail("Kalender: Diagramm", "#2258 session charts", '.planned-entry[open] .activity-analysis-panel svg[role="img"]', "chart", { never: '.planned-entry[open] .activity-analysis-panel svg[aria-label^="Temperatur"]' }),
-  detail("Kalender: Zonenbalken", "#2258 time in zones", ".planned-entry[open] .activity-analysis-zones", "numbers", { optional: true }),
+  detail("Kalender: Diagramm", "#2258 session charts", `${DETAILS_DIALOG} .activity-analysis-panel svg[role="img"]`, "chart", { never: `${DETAILS_DIALOG} .activity-analysis-panel svg[aria-label^="Temperatur"]` }),
+  detail("Kalender: Zonenbalken", "#2258 time in zones", `${DETAILS_DIALOG} .activity-analysis-zones`, "numbers", { optional: true }),
   // The chip shows "…" until its read; once loaded its label names the choice ("Rad: …").
   { view: "plan", name: "Kalender: Schuh/Rad", covers: "#3011 equipment chip", each: DONE, ...EARLIER, ready: '.planned-entry[open] .planned-equipment-chip[aria-label*=": "]', kind: "text", optional: true },
   // The result block of a completed running step test: LT1 and LT2 with heart rate and pace (#3833).
   { view: "plan", name: "Kalender: Stufentest-Ergebnis", covers: "#3833 step test result", each: ".planned-entry.is-completed[data-sport='Laufen'] > summary", ...EARLIER, ready: ".planned-entry[open] .planned-step-test tbody td:nth-child(2)", kind: "numbers", optional: true },
   // A week with a run that shows running dynamics may lie further back.
   // A recognised route needs a repeated outdoor track, so the walk may find none (#3763).
-  detail("Kalender: Streckenhistorie", "#3763 route history", ".planned-entry[open] .activity-route .route-visits tbody tr", "text", { optional: true, each: ".planned-entry.is-completed[data-sport='Laufen'] > summary" }),
-  detail("Kalender: Laufdynamik", "#2910 running dynamics", ".planned-entry[open] .activity-dynamics-value", "numbers", { optional: true, each: ".planned-entry.is-completed[data-sport='Laufen'] > summary" }),
+  detail("Kalender: Streckenhistorie", "#3763 route history", `${DETAILS_DIALOG} .activity-route .route-visits tbody tr`, "text", { optional: true, each: ".planned-entry.is-completed[data-sport='Laufen'] > summary" }),
+  detail("Kalender: Laufdynamik", "#2910 running dynamics", `${DETAILS_DIALOG} .activity-dynamics-value`, "numbers", { optional: true, each: ".planned-entry.is-completed[data-sport='Laufen'] > summary" }),
   // The sport cards are tables: a measured value is a cell with a digit; a missing one is marked and has none.
   ...[["running", "Laufen", "#currentPerformance table[data-analysis-sport='run'] td", "numbers"], ["cycling", "Radfahren", "#currentPerformance table[data-analysis-sport='ride'] td", "numbers"], ["load", "Belastung", "#analysisLoadCharts svg", "chart"], ["recovery", "Erholung", "#personalRecovery svg", "chart"]]
     .map(([segment, label, ready, kind]) => ({ view: "analysis", name: `Analyse: ${label}`, covers: "Analyse tabs", pre: [tab("analysis", segment)], ready, kind })),
@@ -440,10 +443,18 @@ async function tryWeek(page, step, capMs, began) {
   return { count, empty };
 }
 
+// A details dialog left open by a candidate is closed with Escape and its history entry is gone before the next press.
+async function closeDetails(page) {
+  if (!(await page.locator("dialog.activity-detail-dialog[open]").count())) return;
+  await page.keyboard.press("Escape");
+  await page.waitForFunction(() => !document.querySelector("dialog.activity-detail-dialog[open]") && !history.state?.activityDetail, null, { timeout: 3000 }).catch(() => null);
+}
+
 // Opens candidate `index` with the other candidates closed, so the controls pressed and the element checked
 // are its own. "ready", "shown", "absent", "empty", or "passed over" (an optional step's candidate without the control).
 async function tryCandidate(page, step, index, capMs) {
   try {
+    await closeDetails(page);
     if (step.each) {
       await page.locator(step.each).evaluateAll((items) => items.forEach((item) => item.closest("details")?.removeAttribute("open")));
       await press(page, step.each, index);
@@ -492,6 +503,8 @@ export async function runStep(page, { pre = [], post = [], unseek, ...step }, ca
       count += week.count;
       empty += week.empty;
       if (!(await maySeek(page, step, week.count, paged, began))) break;
+      // A dialog a candidate left open would block the paging control.
+      await closeDetails(page);
       await press(page, step.seek);
       paged += 1;
     }
@@ -501,6 +514,8 @@ export async function runStep(page, { pre = [], post = [], unseek, ...step }, ca
   } catch (error) {
     return { status: "fail", ms: Date.now() - began, why: error.name === "TimeoutError" ? "control missing" : error.message.split("\n")[0] };
   } finally {
+    // A dialog the last candidate left open would block every control below.
+    await closeDetails(page).catch(() => null);
     // Undo the step's navigation (such as paging to next week), so later steps start where they expect.
     for (let back = 0; back < paged; back += 1) await press(page, unseek).catch(() => null);
     for (const selector of post) await press(page, selector).catch(() => null);

@@ -138,10 +138,12 @@ const DETAIL_PAYLOAD = {
   },
 };
 
-test("the activity details dialog keeps its rendered tree: series charts with value tables, laps and strength sets", async () => {
+test("the activity details dialog keeps its rendered tree: the inline view's panel, value tables and strength sets", async () => {
   const context = chartContext(390);
-  loadPublicScript("activity-details.js", context);
+  loadPublicScript(["activity-details.js", "activity-analysis.js"], context);
   await context.ActivityDetails.open({ id: "a1", name: "Testlauf" }, { api: async () => DETAIL_PAYLOAD, showDialog() {} });
+  // The inline view's panel loads after the document (#4221).
+  await new Promise((resolve) => setTimeout(resolve, 0));
   expectGolden("activity-details", context.document.body.children[0]);
 });
 

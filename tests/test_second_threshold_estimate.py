@@ -41,7 +41,10 @@ from backend.performance.second_threshold_service import (
 from backend.performance.threshold_offers import open_offers, threshold_values
 from backend.sync.canonical_table_reader import CanonicalTableReader
 from backend.sync.garmin_threshold_store import STATE_KEY as GARMIN_STORE_STATE_KEY
-from backend.sync.garmin_threshold_store import GarminThresholdStore
+from backend.sync.garmin_threshold_store import (
+    GarminThresholdStore,
+    summarize_garmin_threshold_store,
+)
 from tests.test_current_thresholds import ZoneSource, _obs
 from tests.test_first_threshold_estimate import add_run, open_database
 
@@ -754,52 +757,6 @@ class AdoptTests(unittest.TestCase):
             self.assertEqual(raised.exception.status, status)
 
 
-class NoticeBaselineTests(unittest.TestCase):
-    """F10: the values the athlete last saw are stored on the server, per sport."""
-
-    manager: object
-    counter: int
-
-    def setUp(self) -> None:
-        open_database(self)
-        self.service = SecondThresholdService(
-            self.manager,
-            Mock(),
-            Mock(),
-            lambda _days: [],
-            lambda: TODAY,
-            key_values=KeyValueRepository(lambda: "2026-11-16T18:00:00+00:00"),
-        )
-
-    def test_seen_values_are_kept_per_sport_with_unknown_as_null(self) -> None:
-        self.assertEqual(self.service.notice_baselines(), {})
-        self.service.save_notice_baseline(
-            {
-                "sport": "run",
-                "values": {"provider_hr": 171, "cs_pace": None, "other": 5},
-            }
-        )
-        stored = self.service.save_notice_baseline(
-            {"sport": "ride", "values": {"cp_power": 271}}
-        )
-        self.assertEqual(stored["run"]["provider_hr"], 171.0)
-        self.assertIsNone(stored["run"]["cs_pace"])
-        self.assertNotIn("other", stored["run"])
-        self.assertEqual(self.service.notice_baselines()["ride"]["cp_power"], 271.0)
-
-    def test_bad_sports_and_values_are_refused(self) -> None:
-        for payload in (
-            {"sport": "swim", "values": {}},
-            {"sport": "run", "values": []},
-            {"sport": "run", "values": {"provider_hr": "171"}},
-            {"sport": "run", "values": {"provider_hr": True}},
-            {"sport": "run", "values": {"provider_hr": -1}},
-        ):
-            with self.subTest(payload=payload), self.assertRaises(AppError) as raised:
-                self.service.save_notice_baseline(payload)
-            self.assertEqual(raised.exception.status, 400)
-
-
 GOOD_DFA = {
     "status": "ok",
     "heart_rate_bpm": 170,
@@ -1114,6 +1071,33 @@ class GarminThresholdStoreTests(unittest.TestCase):
             report = store.run_batch(db)
         with self.manager.reader() as db:
             return report, store.state(db)
+
+    def test_the_diagnostics_count_the_store_without_values(self) -> None:
+        # The orchestrator reads the store's result through the diagnostics only.
+        values = KeyValueRepository(lambda: STORE_NOW)
+        with self.manager.reader() as db:
+            before = summarize_garmin_threshold_store(values, db)
+        self.assertEqual(
+            before,
+            {
+                "status": "not_started",
+                "stored_count": 0,
+                "stored_sports": {},
+                "history_rows": 0,
+            },
+        )
+        self.run_store()
+        with self.manager.reader() as db:
+            after = summarize_garmin_threshold_store(values, db)
+        self.assertEqual(
+            after,
+            {
+                "status": "complete",
+                "stored_count": 3,
+                "stored_sports": {"run": 2, "ride": 1},
+                "history_rows": 3,
+            },
+        )
 
     def local(self):
         return {

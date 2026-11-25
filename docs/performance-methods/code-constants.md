@@ -279,8 +279,6 @@ every named number the code fixes. A test fails when it is out of date.
 | `CRITICAL_LABEL` | `'Modellschätzung aus Bestwerten (Critical Speed/Power, M4)'` | `backend/performance/second_threshold_estimate.py` |  |
 | `RUNS_ONLY` | `{'status': 'unknown', 'reason': 'nur aus Läufen', 'sessions': 0}` | `backend/performance/second_threshold_service.py` |  |
 | `CONFIRM_DEVIATION_SHARE` | `0.05` | `backend/performance/second_threshold_service.py` | Above this share of the value in effect an adoption needs a second confirmation (F9). |
-| `NOTICE_BASELINE_KEY` | `'lt2_notice_baselines'` | `backend/performance/second_threshold_service.py` | The server-side baseline of the LT2 change notice (F10): per sport the values the athlete last saw, null for "unbekannt". |
-| `NOTICE_VALUES` | `{'run': ('provider_hr', 'provider_pace', 'dfa_hr', 'dfa_pace', 'cs_pace'), 'ride': ('provider_pow... (sha256 b92af6f4)` | `backend/performance/second_threshold_service.py` |  |
 | `STEP_TEST_SOURCE` | `'step_test'` | `backend/performance/second_threshold_service.py` | The run step test's LT2 (#3833), adopted with the DFA-a1 origin. |
 | `OPEN_ZONE_PERCENT` | `999.0` | `backend/performance/second_threshold_service.py` |  |
 | `GARMIN_STORE_SOURCE` | `'system:#4135'` | `backend/performance/second_threshold_service.py` | The change-history source of the one-time store of Garmin's LT2 values in effect (athlete decision 2026-11-24, #4135). |

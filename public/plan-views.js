@@ -836,7 +836,6 @@ let openPlannedEntries = new Set();
 // Cards the next rebuild opens although they are not shown yet: a unit just saved with its receipt (#3950).
 const plannedForceOpen = new Set();
 // Calendar cards whose "Details" are open, so a re-render keeps them open (#2258).
-const openActivityDetails = new Set();
 // One read of a session's detail document per calendar data, shared by the zone bar and "Details" (#2478).
 const plannedSessionReads = new Map();
 
@@ -1534,21 +1533,12 @@ function plannedUnmappedExercise(entry, exercise, unit) {
   return row;
 }
 
-// "Details" opens the session's charts, zones, laps and all values in the card (#2258);
-// the Coach analyses it in one athlete-started turn; "Feedback" opens the rating and session dialog.
+// "Alle Details" opens the session's details dialog (#2258, #4221); the Coach analyses it in one
+// athlete-started turn; "Feedback" opens the feedback sheet.
 // The Coach message names the session by date, sport, time, duration and its local id; the stored
 // name never becomes Coach input.
-function plannedActivityActions(actual, dateKey, title, entryKey) {
-  const panel = h("div", "activity-analysis-panel");
-  const more = h("details", "planned-activity-more", h("summary", null, "Details"), panel);
-  // A re-render (sync, reload) keeps an opened "Details" open and loads it again.
-  more.addEventListener("toggle", () => {
-    if (entryKey && more.open) openActivityDetails.add(entryKey);
-    else if (entryKey) openActivityDetails.delete(entryKey);
-    if (more.open && !panel.childElementCount) void globalThis.ActivityAnalysis.loadPanel(panel, actual, id && ((fresh) => plannedSessionRead(id, fresh)));
-  });
+function plannedActivityActions(actual, dateKey, title) {
   const id = String(actual.activity_id || actual.id || "");
-  more.open = Boolean(entryKey && openActivityDetails.has(entryKey));
   const prompt = `Analysiere meine Einheit vom ${dateLabel(dateKey)} (${[
     activitySportLabel(calendarSportType(actual)),
     calendarStartTime(actual.started_at_local),
@@ -1559,10 +1549,10 @@ function plannedActivityActions(actual, dateKey, title, entryKey) {
   const coach = plannedCoachButton("Mit Coach besprechen", prompt, "push-button", "session_analysis");
   const feedback = h("button", { type: "button", className: "secondary-button planned-activity-feedback" }, "Feedback");
   feedback.addEventListener("click", () => globalThis.ActivityFeedback.open({ ...actual, name: title }, { api, showDialog: showAccessibleDialog }));
-  // The session's own data (route, laps, recordings) is its details dialog; the feedback has its own sheet (#4199).
+  // "Alle Details" is the one way to the session's details; the feedback has its own sheet (#4199, #4221).
   const details = h("button", { type: "button", className: "secondary-button planned-activity-details" }, "Alle Details");
-  details.addEventListener("click", () => globalThis.ActivityDetails.open({ ...actual, name: title }, { api, showDialog: showAccessibleDialog }));
-  return [more, h("div", "planned-activity-actions", coach, details, feedback)];
+  details.addEventListener("click", () => globalThis.ActivityDetails.open({ ...actual, name: title }, { api, showDialog: showAccessibleDialog, read: id && ((fresh) => plannedSessionRead(id, fresh)) }));
+  return [h("div", "planned-activity-actions", coach, details, feedback)];
 }
 
 // "Aus Garmin entfernen" (#4022): the Garmin workouts the app made for this unit go after a confirmation card; the unit
@@ -1891,7 +1881,6 @@ async function appendPlannedZoneTime(details, activityId, ride) {
   const box = h("div", "planned-zone-time");
   const facts = details.querySelector(".planned-actual-facts");
   if (facts) facts.after(box);
-  else details.querySelector(":scope > .planned-activity-more")?.before(box);
   if (!box.isConnected) details.append(box);
   let zones;
   try {
@@ -2013,20 +2002,11 @@ function loadPlannedFuelling(section, query) {
   });
 }
 
-// The opened card's own close control (narrow view; the wide pane keeps its unit shown) and the profile with its zone key,
-// which stands under the profile it explains, not only at the end of the week (#4129 K-11, K-13).
+// The profile of the opened card with its zone key, which stands under the profile it explains, not only at the end of
+// the week (#4129 K-13). The card closes with its header, as it opens (#4221).
 function appendOpenedPlannedFrame(details, head, entry, actual) {
   const detailProfile = details.querySelector(".planned-detail-profile") ? null : plannedDetailProfile(actual?.workout_profile || entry.workout_profile);
   head.after(...(detailProfile ? [detailProfile, plannedZoneLegend(detailProfile)].filter(Boolean) : []));
-  if (details.querySelector(":scope > .planned-card-close")) return;
-  const close = h("button", { type: "button", className: "secondary-button planned-card-close" }, "Einheit schließen");
-  // `details` is the card's body; the card is the <details> element that closes.
-  close.addEventListener("click", () => {
-    const card = details.closest("details");
-    if (card) card.open = false;
-    card?.querySelector(":scope > summary")?.focus();
-  });
-  details.prepend(close);
 }
 
 function appendOpenedPlannedParts(details, head, entry, actual) {
@@ -2229,9 +2209,10 @@ function renderPlannedEntry(entry, dateKey, todayKey, dayContext = {}, weekHasPl
   });
   const steps = actual ? null : appendPlannedUnitBody(details, entry, dateKey, todayKey);
   appendActualCalendarDetails(details, actual);
-  if (actual && (actual.id || actual.activity_id)) details.append(...plannedActivityActions(actual, dateKey, title, entryKey));
+  if (actual && (actual.id || actual.activity_id)) details.append(...plannedActivityActions(actual, dateKey, title));
   appendPlannedCalendarComparison(details, entry, actual);
-  const focusForm = plannedFocusForm(entry, dateKey);
+  // The plan's focus is set before the session; a done unit carries no second "Art der Einheit" beside the feedback (#4221).
+  const focusForm = actual ? null : plannedFocusForm(entry, dateKey);
   if (focusForm) details.append(focusForm);
   // With the step list, the description keeps only its free text; the stored text is unchanged (#2447).
   appendPlannedDescription(details, steps ? plannedDescriptionText(entry.description) : libraryDescriptionText(entry.description));

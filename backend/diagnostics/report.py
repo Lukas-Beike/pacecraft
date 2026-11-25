@@ -79,6 +79,7 @@ from backend.sync.garmin_projection_service import GarminProjectionService
 from backend.sync.garmin_sleep_keys import (
     summarize_sleep_temperature_keys,
 )
+from backend.sync.garmin_threshold_store import summarize_garmin_threshold_store
 from backend.sync.garmin_wellness_history import summarize_daily_calories
 from backend.sync.jobs import utc_timestamp
 from backend.sync.library import WorkoutLibrarySyncStateService
@@ -581,6 +582,11 @@ class DiagnosticReportService:
                 "session_focus_backfill": section(
                     "session_focus_backfill",
                     lambda: summarize_session_focus_backfill(key_values, db),
+                ),
+                # The one-time Garmin LT2 store, counts only (#4135).
+                "garmin_threshold_store": section(
+                    "garmin_threshold_store",
+                    lambda: summarize_garmin_threshold_store(key_values, db),
                 ),
                 "profile_weekly_plan_removal": section(
                     "profile_weekly_plan_removal",

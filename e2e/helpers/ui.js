@@ -102,13 +102,25 @@ async function renderCalendarSessions(page, sessions) {
   }, sessions);
 }
 
-// Opens a completed session's card and its "Details"; returns the details element.
+// Opens a card's details dialog ("Alle Details") and returns it. A dialog still open from an earlier call is closed
+// first, and its history entry is gone before the next one opens.
+async function openCardDetails(page, card) {
+  const opened = page.locator("dialog.activity-detail-dialog[open]");
+  if (await opened.count()) {
+    await page.keyboard.press("Escape");
+    await expect(opened).toHaveCount(0);
+    await page.waitForFunction(() => !history.state?.activityDetail);
+  }
+  await card.getByRole("button", { name: "Alle Details" }).click();
+  await expect(opened).toBeVisible();
+  return opened;
+}
+
+// Opens a completed session's card and its details dialog; returns the dialog.
 async function openSessionDetails(page, name) {
   const card = page.locator(".planned-entry.is-completed").filter({ hasText: name }).first();
   await card.evaluate((element) => { element.open = true; });
-  const more = card.locator(".planned-activity-more");
-  await more.locator(":scope > summary").click();
-  return more;
+  return openCardDetails(page, card);
 }
 
 // Opens or closes a calendar card through its summary, as a person would. Wide screens
@@ -122,6 +134,7 @@ module.exports = {
   setEntryOpen,
   renderCalendarSessions,
   openSessionDetails,
+  openCardDetails,
   showCalendarDay,
   showCalendarEntry,
   contrastRatio,

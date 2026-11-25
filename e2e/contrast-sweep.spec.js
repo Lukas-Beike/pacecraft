@@ -92,7 +92,7 @@ async function settle(page, route, opened = false) {
 async function openCollapsibles(page, route) {
   for (let pass = 0; pass < 5; pass += 1) {
     const opened = await page.evaluate(() => {
-      const closed = [...document.querySelectorAll(".panel.active details:not([open])")].filter((element) => !element.matches(".planned-entry, .planned-activity-more"));
+      const closed = [...document.querySelectorAll(".panel.active details:not([open])")].filter((element) => !element.matches(".planned-entry"));
       for (const element of closed) element.open = true;
       return closed.length;
     });
@@ -110,10 +110,21 @@ async function openSessionWithDetails(page, match) {
       if (parent.tagName === "DETAILS") parent.open = true;
     }
   });
+}
+
+// The session's details dialog, measured on its own: the page behind a modal dialog is hidden, so the dialog's text sits
+// on its own background (#4221).
+async function expectDetailsContrast(page, view, theme, match) {
   const panel = (await openSessionDetails(page, match)).locator(".activity-analysis-panel");
   await expect(panel).not.toBeEmpty();
   await expect(panel.locator(".loading-state")).toHaveCount(0);
   await expect(panel.locator(".error-state")).toHaveCount(0);
+  await page.locator("#appShell").evaluate((element) => element.style.setProperty("visibility", "hidden", "important"));
+  try { await expectContrast(page, `${view} Details`, theme, ["dialog.activity-detail-dialog[open]"]); } finally {
+    await page.locator("#appShell").evaluate((element) => element.style.removeProperty("visibility"));
+    await page.keyboard.press("Escape");
+    await page.waitForFunction(() => !history.state?.activityDetail);
+  }
 }
 
 async function showView(page, route, calendarView) {
@@ -296,6 +307,7 @@ test.describe("colour contrast sweep", () => {
           await showView(page, route, calendarView);
           await applyTheme(page, theme);
           await expectContrast(page, view, theme);
+          if (route === "plan/overview" && !calendarView) await expectDetailsContrast(page, view, theme, "Synthetic completed");
           if (theme === "light") await expectTextFormats(page, view);
           if (theme === "light") await expectStructure(page, view);
           if (theme === "light" && page.viewportSize().width <= 480) await expectTouchTargets(page, view);
