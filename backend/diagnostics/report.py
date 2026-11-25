@@ -192,6 +192,13 @@ class DiagnosticReportService:
                 "observations WHERE metric = 'body_fat' AND provider IS NULL "
                 "AND source_kind = 'athlete_entered' AND state = 'active'"
             ),
+            # Adopted local zones carrying a maximum: an adoption before #4161
+            # copied the watch's, which then froze the max HR. Counted, never read.
+            "adopted_zone_maximums": count(
+                "zone_configurations WHERE provider IS NULL AND state = 'active' "
+                "AND maximum IS NOT NULL "
+                "AND json_extract(details, '$.threshold_origin') IS NOT NULL"
+            ),
         }
         counts["stored_payload_bytes"] = self._stored_payload_bytes(db)
         return counts | self._storage()
