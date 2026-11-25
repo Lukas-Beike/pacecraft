@@ -8,6 +8,7 @@ has an exponent of about 0.75 over box sizes 4 to 16 (simulated with long series
 and the coefficient is 0.9 * (170 - HR) / 60, so the designed crossing is 153 bpm.
 """
 
+import math
 import random
 import unittest
 from unittest import mock
@@ -219,7 +220,7 @@ class CrossingTests(unittest.TestCase):
         first, second = steady(21, minutes=6), steady(22, minutes=6)
         result = dfa.first_threshold([first, second])
         assert result is not None
-        self.assertEqual(result.method, 3)
+        self.assertEqual(result.method, dfa.METHOD_VERSION)
         starts = [window.start_s for window in result.series]
         length = sum(first) / 1000
         self.assertEqual(starts[0], 0.0)
@@ -274,6 +275,62 @@ class CrossingTests(unittest.TestCase):
         self.assertTrue(
             all(abs(rate - 120) < 4 or abs(rate - 160) < 4 for rate in spread)
         )
+
+
+class ResampledDetrendTests(unittest.TestCase):
+    """Detrending on the 4 Hz series cuts at a fixed frequency (method 4, #3919)."""
+
+    @staticmethod
+    def drift_left(rate_bpm: float) -> float:
+        """The share of a 0.005 Hz drift left after detrending, at one heart rate."""
+        interval = 60_000 / rate_bpm
+        times, values, clock = [], [], 0.0
+        while clock < 1200:
+            clock += interval / 1000
+            times.append(clock)
+            values.append(interval + 40 * math.sin(2 * math.pi * 0.005 * clock))
+        residual = dfa.detrend_beats(times, values)
+        middle = residual[len(residual) // 4 : -len(residual) // 4]
+        return (sum(value * value for value in middle) / len(middle)) ** 0.5 / 40
+
+    def test_a_slow_drift_is_removed_alike_at_low_and_high_heart_rates(self) -> None:
+        # On the beat series the same drift spans three times as many beats at
+        # 180 bpm as at 60 bpm, so the old cut-off moved with heart rate.
+        low, high = self.drift_left(60.0), self.drift_left(180.0)
+        self.assertLess(max(low, high), 0.2)
+        self.assertLess(abs(low - high), 0.05)
+
+    @staticmethod
+    def analytic_gain(frequency_hz: float) -> float:
+        """The smoothness-priors residual gain at 4 Hz (Tarvainen et al. 2002).
+
+        Away from the ends the trend solves (I + l^2 D'D) x = z, whose transfer
+        function at w = 2 pi f / fs is 1 / (1 + l^2 (2 - 2 cos w)^2); the
+        residual keeps the rest.
+        """
+        penalty = 500.0**2 * (2 - 2 * math.cos(2 * math.pi * frequency_hz / 4.0)) ** 2
+        return penalty / (1 + penalty)
+
+    def test_the_residual_gain_matches_the_smoothness_priors_response(self) -> None:
+        for rate_bpm in (60.0, 150.0):
+            for frequency in (0.01, 0.035, 0.08):
+                with self.subTest(rate=rate_bpm, frequency=frequency):
+                    interval = 60_000 / rate_bpm
+                    times, values, clock = [], [], 0.0
+                    while clock < 1800:
+                        clock += interval / 1000
+                        times.append(clock)
+                        values.append(
+                            interval + 2 * math.sin(2 * math.pi * frequency * clock)
+                        )
+                    residual = dfa.detrend_beats(times, values)
+                    middle = residual[len(residual) // 4 : -len(residual) // 4]
+                    amplitude = math.sqrt(2) * math.sqrt(
+                        sum(value * value for value in middle) / len(middle)
+                    )
+                    self.assertAlmostEqual(
+                        self.analytic_gain(frequency), amplitude / 2, delta=0.03
+                    )
 
 
 if __name__ == "__main__":

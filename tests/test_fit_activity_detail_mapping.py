@@ -15,6 +15,7 @@ from enum import Enum
 from pathlib import Path
 from unittest import mock
 
+from backend.canonical import dfa_alpha1
 from backend.canonical.activity_detail import (
     MAX_WORKOUT_STEPS,
     ActivityLapSet,
@@ -1257,16 +1258,17 @@ def golden_snapshot():
 def _before_the_dfa_series(case, value):
     """The snapshot as the golden pinned it before the DFA-a1 window series (#3273).
 
-    The series is additive and its row says so by ``method`` 3 (the guard
-    exception of #3273); every other field, the 0.75 estimate included, must stay
-    exactly as pinned. Each DFA result found must carry a non-empty series.
+    The series is additive and its row says so by its ``method`` (3 since #3273,
+    4 since #3919, which re-pinned the 0.75 estimate after the resampled
+    detrending); every other field must stay exactly as pinned. Each DFA result
+    found must carry a non-empty series.
     """
     if isinstance(value, list):
         return [_before_the_dfa_series(case, item) for item in value]
     if not isinstance(value, dict):
         return value
     if value.get("type") == "ActivityDfaAlpha1":
-        case.assertEqual(value["method"], 3)
+        case.assertEqual(value["method"], dfa_alpha1.METHOD_VERSION)
         case.assertTrue(value["series"])
         value = {key: item for key, item in value.items() if key != "series"}
         return {**value, "method": 2}
