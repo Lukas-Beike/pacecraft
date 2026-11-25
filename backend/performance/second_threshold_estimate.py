@@ -220,6 +220,11 @@ def _critical_value(fit: Mapping[str, Any], sport: str) -> dict[str, Any]:
             int(effort["duration_seconds"]) for effort in fit.get("efforts", [])
         ],
         "window_days": CRITICAL_WINDOW_DAYS,
+        # The newest effort's day: the session the value rests on last (#4135).
+        "to": max(
+            (str(e["date"]) for e in fit.get("efforts", []) if e.get("date")),
+            default=None,
+        ),
         "quality": (DfaQuality.GOOD if good else DfaQuality.LOW).value,
         "source": CRITICAL_LABEL,
     }

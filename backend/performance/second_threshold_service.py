@@ -6,7 +6,9 @@ that heart rate from the athlete's own steady runs, card M9) and critical speed
 or power over 42 days (card M4). The profile and the Coach read them; only the
 athlete's explicit adoption (``adopt``) writes, one value at a time (F8), as a
 local zone configuration valid from today with its origin, through the zone
-save path with its receipt and undo. Nothing is adopted automatically.
+save path with its receipt and undo. Nothing is adopted automatically. The
+open offers of a new LT1 or LT2 (``offers``, #4135) and their dismissal live here
+too; Garmin's LT2 value is adopted the same way, as a local value.
 """
 
 from __future__ import annotations
@@ -17,12 +19,19 @@ from collections.abc import Callable, Mapping, Sequence
 from datetime import date, timedelta
 from typing import Any
 
-from backend.activities.zone_settings import effective_zone_configuration
+from backend import change_history
+from backend.activities.zone_settings import (
+    HR_ZONE_LIMITS,
+    PACE_ZONE_LIMITS,
+    POWER_ZONE_LIMITS,
+    effective_zone_configuration,
+)
 from backend.canonical.domain_records import ZoneConfiguration
 from backend.canonical.first_threshold import stored_bpm
-from backend.canonical.vocabulary import Sport, ZoneConfigurationMetric
+from backend.canonical.vocabulary import ProviderId, Sport, ZoneConfigurationMetric
 from backend.db import activity_detail_store
 from backend.errors import AppError
+from backend.performance.canonical_current import read_export_thresholds
 from backend.performance.critical_power import critical_power_speed
 from backend.performance.pace_at_hr import LT1_DAYS, output_at_heart_rate
 from backend.performance.second_threshold_estimate import (
@@ -32,6 +41,13 @@ from backend.performance.second_threshold_estimate import (
     dfa_second_threshold,
 )
 from backend.performance.threshold_evidence import EFFORT_WINDOW_DAYS
+from backend.performance.threshold_offers import (
+    DISMISSED_KEY,
+    GARMIN_SOURCE,
+    LT2_KEYS,
+    MAX_DISMISSED,
+    open_offers,
+)
 
 RUNS_ONLY = {"status": "unknown", "reason": "nur aus Läufen", "sessions": 0}
 # Above this share of the value in effect an adoption needs a second confirmation (F9).
@@ -56,9 +72,20 @@ NOTICE_VALUES: dict[str, tuple[str, ...]] = {
 }
 # The run step test's LT2 (#3833), adopted with the DFA-a1 origin.
 STEP_TEST_SOURCE = "step_test"
+# The standard zones in effect without a configuration, in percent of the
+# threshold, with the open top zone; an adoption without zones keeps them (#4135).
+_STANDARD_LIMITS: dict[ZoneConfigurationMetric, tuple[float, ...]] = {
+    ZoneConfigurationMetric.POWER: POWER_ZONE_LIMITS,
+    ZoneConfigurationMetric.HEART_RATE: HR_ZONE_LIMITS,
+    ZoneConfigurationMetric.PACE: PACE_ZONE_LIMITS,
+}
+OPEN_ZONE_PERCENT = 999.0
+# The change-history source of the one-time store of Garmin's LT2 values in
+# effect (athlete decision 2026-11-24, #4135).
+GARMIN_STORE_SOURCE = "system:#4135"
 _SOURCES = {
-    "run": ("dfa_alpha1", "critical_speed"),
-    "ride": ("critical_power",),
+    "run": ("dfa_alpha1", "critical_speed", GARMIN_SOURCE),
+    "ride": ("critical_power", GARMIN_SOURCE),
 }
 
 
@@ -74,7 +101,12 @@ class SecondThresholdService:
         today: Callable[[], date],
         zones: Callable[[], Any] | None = None,
         key_values: Any = None,
+        lt1_estimate: Callable[[], Mapping[str, Any] | None] | None = None,
+        threshold_values: Callable[[], Mapping[str, Any]] | None = None,
     ) -> None:
+        # The LT1 estimate as shown and ``threshold_offers.threshold_values`` (#4135).
+        self._lt1_estimate = lt1_estimate
+        self._threshold_values = threshold_values
         self._zones = zones
         self._key_values = key_values
         self._manager = manager
@@ -147,6 +179,56 @@ class SecondThresholdService:
             )
         return stored
 
+    def _values(self) -> Mapping[str, Any]:
+        """The LT2 values in effect and Garmin's (``threshold_values``), or none."""
+        return {} if self._threshold_values is None else self._threshold_values()
+
+    def offers(
+        self, lt2_estimates: Mapping[str, Any] | None = None
+    ) -> list[dict[str, Any]]:
+        """The open LT1 and LT2 offers (#4135); ``lt2_estimates`` when already read."""
+        dismissed: list[str] = []
+        if self._key_values is not None:
+            with self._manager.reader() as db:
+                dismissed = _dismissed(self._key_values.get(db, DISMISSED_KEY))
+        return open_offers(
+            self.estimates() if lt2_estimates is None else lt2_estimates,
+            None if self._lt1_estimate is None else self._lt1_estimate(),
+            self._first_threshold_bpm(),
+            self._values(),
+            dismissed,
+        )
+
+    def dismiss_offer(self, payload: Mapping[str, Any]) -> list[dict[str, Any]]:
+        """Dismiss one open offer for its exact value; returns the offers still open."""
+        if self._key_values is None:
+            raise AppError(503, "Die Angebote sind nicht verfügbar.")
+        key = payload.get("key")
+        if not isinstance(key, str) or key not in {
+            offer["key"] for offer in self.offers()
+        }:
+            raise AppError(
+                409,
+                "Dieses Angebot liegt nicht mehr vor. Bitte die Anzeige aktualisieren.",
+                reason="offer_unknown",
+            )
+        with self._manager.unit_of_work() as db:
+            stored = _dismissed(self._key_values.get(db, DISMISSED_KEY))
+            kept = [*stored, key][-MAX_DISMISSED:]
+            self._key_values.set(db, DISMISSED_KEY, json.dumps(kept))
+        return self.offers()
+
+    def _shown_value(
+        self, sport: str, source: str, value: str, field: str
+    ) -> Mapping[str, Any]:
+        """The estimate an adoption checks, or Garmin's LT2 value as offered (#4135)."""
+        if source != GARMIN_SOURCE:
+            return self.estimates()[sport][source]
+        known = ((self._values().get(GARMIN_SOURCE) or {}).get(sport) or {}).get(value)
+        return (
+            {"status": "ok", field: known["value"]} if known else {"status": "unknown"}
+        )
+
     def _first_threshold_bpm(self) -> float | None:
         """The stored LT1 heart rate of runs today, or None."""
         return stored_bpm(self._profile_service.get())
@@ -165,6 +247,8 @@ class SecondThresholdService:
         ``confirm_deviation``; a value the athlete entered needs ``replace_local``.
         ``step_test`` takes the good LT2 of the run step test ``activity_id``
         (#3833), read by ``step_test``; it is stored with the origin ``dfa_alpha1``.
+        ``garmin`` takes Garmin's LT2 value as its offer shows it (#4135) and stores
+        it as a local value with the origin ``garmin``.
         """
         if self._zones is None:
             raise AppError(503, "Die Zonen sind nicht verfügbar.")
@@ -180,17 +264,14 @@ class SecondThresholdService:
         estimate = (
             _step_test_value(payload, step_test)
             if tested
-            else self.estimates()[sport][source]
+            else self._shown_value(sport, source, value, field)
         )
         number = _shown_number(payload, estimate, field)
         zones = self._zones()
         current = effective_zone_configuration(
             zones.configurations(), metric, Sport(sport), day=self._today()
         )
-        if current is None:
-            raise AppError(
-                409, "Erst Zonen anlegen, dann übernehmen.", reason="lt2_no_zones"
-            )
+        # Without zones of that kind the standard zones in effect are kept (#4135).
         _check_replace(current, payload, label)
         threshold = (
             1000 / number if metric is ZoneConfigurationMetric.PACE else float(number)
@@ -217,6 +298,46 @@ class SecondThresholdService:
         return receipt
 
 
+def store_garmin_in_effect(db: Any, zones: Any, reader: Any, today: date) -> list[str]:
+    """Store Garmin's LT2 values in effect today as local values (#4135).
+
+    Per sport and value the Garmin threshold every consumer applies today is
+    saved as a local configuration with the origin ``garmin`` through the
+    adoption's save path, stamped ``system:#4135`` in the change history. A
+    local value in effect is left alone, a value without a Garmin threshold is
+    skipped. Runs in the caller's transaction; returns the stored
+    ``sport:value`` names.
+    """
+    configurations = zones.configurations()
+    winners = read_export_thresholds(
+        reader, db, as_of=today, configurations=configurations
+    )
+    stored: list[str] = []
+    with change_history.collect_changes(GARMIN_STORE_SOURCE):
+        for (sport, value), (kind, canonical) in LT2_KEYS.items():
+            metric = _VALUES[value][1]
+            current = effective_zone_configuration(
+                configurations, metric, canonical, day=today
+            )
+            winner = winners.get((kind, canonical))
+            if winner is None or not _garmin_in_effect(winner, current):
+                continue
+            adopted = _adopted(
+                current, sport, metric, winner.value.value, GARMIN_SOURCE
+            )
+            # A local maximum would lead the max HR (``_leading_value``): the
+            # provider set's own maximum stays with the source policy as before.
+            zones.save_adopted({**adopted, "maximum": None})
+            stored.append(f"{sport}:{value}")
+    return stored
+
+
+def _garmin_in_effect(winner: Any, current: ZoneConfiguration | None) -> bool:
+    """Garmin's value applies today and no local configuration holds the value."""
+    local = current is not None and current.provenance.provider is None
+    return winner.provenance.provider is ProviderId.GARMIN and not local
+
+
 def _shown_number(
     payload: Mapping[str, Any], estimate: Mapping[str, Any], field: str
 ) -> Any:
@@ -233,6 +354,19 @@ def _shown_number(
     return number
 
 
+def _dismissed(text: str | None) -> list[str]:
+    """The stored dismissed offer keys; unreadable text reads as none."""
+    try:
+        stored = json.loads(text) if text else []
+    except ValueError:
+        return []
+    return (
+        [key for key in stored if isinstance(key, str)]
+        if isinstance(stored, list)
+        else []
+    )
+
+
 def _step_test_value(
     payload: Mapping[str, Any],
     step_test: Callable[[str], Mapping[str, Any] | None] | None,
@@ -245,10 +379,14 @@ def _step_test_value(
 
 
 def _check_replace(
-    current: ZoneConfiguration, payload: Mapping[str, Any], label: str
+    current: ZoneConfiguration | None, payload: Mapping[str, Any], label: str
 ) -> None:
     """A value the athlete entered is replaced only when the request says so."""
-    entered = current.provenance.provider is None and current.threshold_origin is None
+    entered = (
+        current is not None
+        and current.provenance.provider is None
+        and current.threshold_origin is None
+    )
     if entered and payload.get("replace_local") is not True:
         raise AppError(
             409,
@@ -258,7 +396,7 @@ def _check_replace(
 
 
 def _check_deviation(
-    current: ZoneConfiguration,
+    current: ZoneConfiguration | None,
     threshold: float,
     payload: Mapping[str, Any],
     label: str,
@@ -266,7 +404,7 @@ def _check_deviation(
     unit: str,
 ) -> None:
     """More than 5 % from the value in effect needs the second confirmation (F9)."""
-    if current.threshold is None or current.threshold <= 0:
+    if current is None or current.threshold is None or current.threshold <= 0:
         return
     share = abs(threshold - current.threshold) / current.threshold
     if share > CONFIRM_DEVIATION_SHARE and payload.get("confirm_deviation") is not True:
@@ -278,23 +416,41 @@ def _check_deviation(
 
 
 def _adopted(
-    current: ZoneConfiguration,
+    current: ZoneConfiguration | None,
     sport: str,
     metric: ZoneConfigurationMetric,
     threshold: float,
     source: str,
 ) -> dict[str, Any]:
-    """The local configuration: the new threshold with the limits in effect (T1)."""
-    percent = current.percent_limits is not None
-    return {
+    """The local configuration: the new threshold with the limits in effect (T1).
+
+    Without a configuration the standard zones in effect are kept: their
+    percent of the threshold with the open top zone (#4135).
+    """
+    adopted: dict[str, Any] = {
         "sport": sport,
         "metric": metric.value,
         "environment": None,
         "threshold": round(threshold, 3),
+        "maximum": None,
+        "limits": None,
+        "percent_limits": [*_STANDARD_LIMITS[metric], OPEN_ZONE_PERCENT],
+        "threshold_origin": source,
+    }
+    if current is None:
+        return adopted
+    percent = current.percent_limits is not None
+    garmin = current.provenance.provider is ProviderId.GARMIN or current.garmin_limits
+    return {
+        **adopted,
         "maximum": current.maximum,
         "limits": None if percent else list(current.limits or ()),
         "percent_limits": list(current.percent_limits or ()) if percent else None,
-        "threshold_origin": source,
+        # Garmin's whole-bpm heart-rate limits keep their zone rounding, also
+        # when copied on from a configuration that has it.
+        "garmin_limits": (
+            garmin and not percent and metric is ZoneConfigurationMetric.HEART_RATE
+        ),
     }
 
 

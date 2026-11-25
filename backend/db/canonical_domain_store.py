@@ -37,6 +37,8 @@ EMPTY_DETAILS: Final = "{}"
 CONTEXT_KEY: Final = "context"
 ZONE_MODEL_KEY: Final = "model"
 ZONE_THRESHOLD_ORIGIN_KEY: Final = "threshold_origin"
+# Present (true) only on local limits copied from Garmin's floors (#4135).
+ZONE_GARMIN_LIMITS_KEY: Final = "garmin_limits"
 GEAR_LIST_PARTIAL_KEY: Final = "activity_list_partial"
 _ACTIVE: Final = ProjectionState.ACTIVE.value
 _RETIRED: Final = ProjectionState.RETIRED.value
@@ -807,6 +809,7 @@ def _zone_row(
             configuration.provenance,
             (ZONE_MODEL_KEY, configuration.model),
             (ZONE_THRESHOLD_ORIGIN_KEY, configuration.threshold_origin),
+            (ZONE_GARMIN_LIMITS_KEY, configuration.garmin_limits or None),
         ),
     }
 

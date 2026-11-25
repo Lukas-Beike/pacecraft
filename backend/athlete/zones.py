@@ -112,8 +112,14 @@ def public_configuration(configuration: ZoneConfiguration) -> dict[str, Any]:
 def _audit_value(configuration: ZoneConfiguration | None) -> dict[str, Any] | None:
     if configuration is None:
         return None
-    view = public_configuration(configuration)
-    return {field: view[field] for field in change_history.ZONE_CONFIGURATION_FIELDS}
+    # Only a marked configuration carries the Garmin limits mark (#4135), so
+    # every other audit value keeps its recorded hash.
+    view = {**public_configuration(configuration), "garmin_limits": True}
+    return {
+        field: view[field]
+        for field in change_history.ZONE_CONFIGURATION_FIELDS
+        if field != "garmin_limits" or configuration.garmin_limits
+    }
 
 
 def _enum(enum: Any, value: Any, field: str) -> Any:
@@ -238,6 +244,7 @@ def local_configuration(payload: Mapping[str, Any]) -> ZoneConfiguration:
             else ZonePercentBasis.THRESHOLD,
             provenance=_local_provenance(),
             threshold_origin=payload.get("threshold_origin") or None,
+            garmin_limits=payload.get("garmin_limits") is True,
         )
     except (TypeError, ValueError) as exc:
         raise AppError(400, _invalid(exc)) from exc
@@ -340,8 +347,9 @@ class ZoneConfigurationService:
         ``from_beginning`` is the explicit undated base value for the first
         configuration; any other save keeps earlier days on their old value.
         """
-        # Only an adoption names an origin; a value entered by hand has none.
-        dated = {**payload, "threshold_origin": None}
+        # Only an adoption names an origin or Garmin's limits (#4135); a value
+        # entered by hand has neither.
+        dated = {**payload, "threshold_origin": None, "garmin_limits": None}
         if payload.get("from_beginning") is True:
             dated["valid_from"] = None
         elif payload.get("valid_from") in (None, ""):

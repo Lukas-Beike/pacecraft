@@ -49,8 +49,11 @@ MAX_REPORTED_SLEEP_S: Final = 86_400.0
 MAX_ZONES: Final = 19
 # Percent limits keep a provider's open-top marker such as 999.
 ZONE_PERCENT_BOUNDS: Final = (1.0, 1_000.0)
-# Where an adopted local threshold comes from (#3273); None is entered by hand.
-THRESHOLD_ORIGINS: Final = frozenset({"dfa_alpha1", "critical_speed", "critical_power"})
+# Where an adopted local threshold comes from (#3273), Garmin's value confirmed
+# by the athlete included (#4135); None is entered by hand.
+THRESHOLD_ORIGINS: Final = frozenset(
+    {"dfa_alpha1", "critical_speed", "critical_power", "garmin"}
+)
 ZONE_VALUE_BOUNDS: Final = {
     ZoneConfigurationMetric.HEART_RATE: HEART_RATE_BOUNDS,
     ZoneConfigurationMetric.POWER: (1.0, MAX_ACTIVITY_POWER_W),
@@ -191,6 +194,9 @@ class ZoneConfiguration:
     reports as percentages of ``percent_basis``; absolute values are never
     invented for them. A local configuration has no provider. ``threshold_origin``
     names the local estimate the athlete adopted its threshold from (#3273).
+    ``garmin_limits`` marks a local configuration whose absolute limits an
+    adoption copied from Garmin's whole-bpm floors, so the zone lookup rounds
+    them as Garmin's own (#4135).
     """
 
     metric: ZoneConfigurationMetric
@@ -207,6 +213,7 @@ class ZoneConfiguration:
     provenance: Provenance
     model: str | None = None
     threshold_origin: str | None = None
+    garmin_limits: bool = False
 
     def __post_init__(self) -> None:
         require_instance(self.metric, ZoneConfigurationMetric, "metric")
@@ -247,11 +254,20 @@ class ZoneConfiguration:
         if provenance.provider is not None and provenance.source_record_id is None:
             raise ValueError("provider zone configurations need a source record id")
         optional_slug(self.model, "model")
-        if self.threshold_origin is not None and (
-            self.threshold_origin not in THRESHOLD_ORIGINS
-            or provenance.provider is not None
-        ):
-            raise ValueError("threshold_origin names a local adopted estimate")
+        _require_local_marks(self, provenance.provider is None)
+
+
+def _require_local_marks(configuration: ZoneConfiguration, local: bool) -> None:
+    """The adoption's marks belong to local configurations only (#3273, #4135)."""
+    origin = configuration.threshold_origin
+    if origin is not None and (origin not in THRESHOLD_ORIGINS or not local):
+        raise ValueError("threshold_origin names a local adopted estimate")
+    if configuration.garmin_limits and (
+        not local
+        or not configuration.limits
+        or configuration.metric is not ZoneConfigurationMetric.HEART_RATE
+    ):
+        raise ValueError("garmin_limits marks local absolute heart-rate limits")
 
 
 def _require_validity(valid_from: date | None, valid_until: date | None) -> None:
