@@ -29,6 +29,7 @@ from backend.errors import AppError
 from backend.http_api.athlete_get import AthleteGetRoutes
 from backend.http_api.route_table import Access
 from backend.http_api.second_threshold_post import (
+    ADOPT_PATH,
     DISMISS_OFFER_PATH,
     SecondThresholdPostRoutes,
 )
@@ -545,7 +546,6 @@ class AdoptTests(unittest.TestCase):
         hr = zone("heart_rate", 165, percent=[80, 89, 94, 100, 103, 110])
         cases = [
             ({"shown": 170}, (hr,), "lt2_changed"),
-            ({}, (), "lt2_no_zones"),
             (
                 {},
                 (
@@ -1132,20 +1132,125 @@ class GarminThresholdStoreTests(unittest.TestCase):
         self.assertEqual(report.items, 0)
         self.assertEqual(len(self.sources()), 3)
 
+    def settings(self):
+        return ZoneSettings.from_configurations(
+            self.zones.configurations(), Sport.RUN, day=TODAY
+        )
+
+    def zone_of(self, bpm):
+        return self.settings().absolute_zone("bpm", bpm)
+
+    def pace_zone_of(self, speed):
+        settings = self.settings()
+        return settings.pace_zone(speed / settings.threshold_pace * 100)
+
+    def adopt(self, garmin=None, estimates=None, **payload):
+        service = SecondThresholdService(
+            self.manager,
+            Mock(**{"get.return_value": {}}),
+            Mock(),
+            lambda _days: [],
+            lambda: TODAY,
+            zones=lambda: self.zones,
+            threshold_values=lambda: {"garmin": garmin or {}},
+        )
+        service.estimates = lambda: estimates or offer_estimates()  # type: ignore[method-assign]
+        handler = Mock()
+        handler.read_json.return_value = payload
+        routes = SecondThresholdPostRoutes(lambda: service)
+        self.assertTrue(dispatch_route(routes, handler, ADOPT_PATH, method="POST"))
+        return handler.send_json.call_args.args
+
     def test_a_heart_rate_keeps_its_zone_after_the_store(self) -> None:
         # 130.3 bpm against the watch's upper limit 130: Garmin's whole-bpm
         # floors put it in zone 1, and the stored limits must too.
-        def zone_of(bpm):
-            settings = ZoneSettings.from_configurations(
-                self.zones.configurations(), Sport.RUN, day=TODAY
-            )
-            return settings.absolute_zone("bpm", bpm)
-
-        self.assertEqual(zone_of(130.3), 1)
+        self.assertEqual(self.zone_of(130.3), 1)
         self.run_store()
-        self.assertEqual(self.local()[("run", "heart_rate")].limits[0], 130.0)
-        self.assertEqual(zone_of(130.3), 1)
-        self.assertEqual(zone_of(130.6), 2)
+        stored = self.local()[("run", "heart_rate")]
+        self.assertEqual((stored.limits[0], stored.garmin_limits), (130.0, True))
+        self.assertEqual(self.zone_of(130.3), 1)
+        self.assertEqual(self.zone_of(130.6), 2)
+        # A DFA-a1 adoption over the stored set copies the limits with the mark.
+        self.adopt(
+            estimates=offer_estimates(dfa=GOOD_DFA),
+            sport="run",
+            source="dfa_alpha1",
+            value="heart_rate",
+            shown=170,
+        )
+        adopted = self.local()[("run", "heart_rate")]
+        self.assertEqual(
+            (adopted.threshold_origin, adopted.garmin_limits), ("dfa_alpha1", True)
+        )
+        self.assertEqual(self.zone_of(130.3), 1)
+        # A hand edit clears the mark: the limits then read as typed.
+        self.zones.save(
+            {
+                "sport": "run",
+                "metric": "heart_rate",
+                "threshold": 170,
+                "limits": list(adopted.limits),
+            }
+        )
+        self.assertFalse(self.local()[("run", "heart_rate")].garmin_limits)
+        self.assertEqual(self.zone_of(130.3), 2)
+
+    def test_garmins_value_over_local_limits_keeps_their_zones(self) -> None:
+        garmin = {
+            "run": {
+                "heart_rate": {"value": 171, "date": "2026-11-12"},
+                "pace": {"value": 250, "date": "2026-11-12"},
+            }
+        }
+        self.zones.save(
+            {
+                "sport": "run",
+                "metric": "heart_rate",
+                "threshold": 165,
+                "limits": [130, 145, 160, 172, 192],
+            }
+        )
+        self.zones.save(
+            {
+                "sport": "run",
+                "metric": "pace",
+                "threshold": 3.8,
+                "limits": [3.0, 3.4, 3.7, 4.0, 4.3, 6.0],
+            }
+        )
+        before = (self.zone_of(130.3), self.pace_zone_of(3.2))
+        self.adopt(
+            garmin, sport="run", source="garmin", value="heart_rate", shown=171,
+            replace_local=True,
+        )  # fmt: skip
+        self.adopt(
+            garmin, sport="run", source="garmin", value="pace", shown=250,
+            replace_local=True, confirm_deviation=True,
+        )  # fmt: skip
+        local = self.local()
+        self.assertEqual(local[("run", "pace")].threshold, 4.0)
+        self.assertFalse(local[("run", "heart_rate")].garmin_limits)
+        self.assertEqual((self.zone_of(130.3), self.pace_zone_of(3.2)), before)
+
+    def test_an_estimate_without_zones_is_adopted_with_the_standard_zones(
+        self,
+    ) -> None:
+        # No pace zones exist: the CS pace is adopted with the standard zones.
+        cs = {"status": "ok", "pace_seconds_per_km": 250, "quality": "good"}
+        status, body = self.adopt(
+            estimates=offer_estimates(cs=cs),
+            sport="run",
+            source="critical_speed",
+            value="pace",
+            shown=250,
+        )
+        self.assertEqual(status, 200)
+        pace = self.local()[("run", "pace")]
+        self.assertEqual(
+            (pace.threshold, pace.percent_limits, pace.threshold_origin),
+            (4.0, (77.5, 87.7, 94.3, 100, 103.4, 111.5, 999), "critical_speed"),
+        )
+        self.assertEqual(body["configuration"]["threshold_origin"], "critical_speed")
 
     def test_the_max_hr_keeps_coming_from_garmins_observation(self) -> None:
         # Garmin's max HR (195) differs from the watch set's maximum (192).

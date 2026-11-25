@@ -271,10 +271,7 @@ class SecondThresholdService:
         current = effective_zone_configuration(
             zones.configurations(), metric, Sport(sport), day=self._today()
         )
-        if current is None:
-            raise AppError(
-                409, "Erst Zonen anlegen, dann übernehmen.", reason="lt2_no_zones"
-            )
+        # Without zones of that kind the standard zones in effect are kept (#4135).
         _check_replace(current, payload, label)
         threshold = (
             1000 / number if metric is ZoneConfigurationMetric.PACE else float(number)
@@ -382,10 +379,14 @@ def _step_test_value(
 
 
 def _check_replace(
-    current: ZoneConfiguration, payload: Mapping[str, Any], label: str
+    current: ZoneConfiguration | None, payload: Mapping[str, Any], label: str
 ) -> None:
     """A value the athlete entered is replaced only when the request says so."""
-    entered = current.provenance.provider is None and current.threshold_origin is None
+    entered = (
+        current is not None
+        and current.provenance.provider is None
+        and current.threshold_origin is None
+    )
     if entered and payload.get("replace_local") is not True:
         raise AppError(
             409,
@@ -395,7 +396,7 @@ def _check_replace(
 
 
 def _check_deviation(
-    current: ZoneConfiguration,
+    current: ZoneConfiguration | None,
     threshold: float,
     payload: Mapping[str, Any],
     label: str,
@@ -403,7 +404,7 @@ def _check_deviation(
     unit: str,
 ) -> None:
     """More than 5 % from the value in effect needs the second confirmation (F9)."""
-    if current.threshold is None or current.threshold <= 0:
+    if current is None or current.threshold is None or current.threshold <= 0:
         return
     share = abs(threshold - current.threshold) / current.threshold
     if share > CONFIRM_DEVIATION_SHARE and payload.get("confirm_deviation") is not True:
@@ -439,11 +440,17 @@ def _adopted(
     if current is None:
         return adopted
     percent = current.percent_limits is not None
+    garmin = current.provenance.provider is ProviderId.GARMIN or current.garmin_limits
     return {
         **adopted,
         "maximum": current.maximum,
         "limits": None if percent else list(current.limits or ()),
         "percent_limits": list(current.percent_limits or ()) if percent else None,
+        # Garmin's whole-bpm heart-rate limits keep their zone rounding, also
+        # when copied on from a configuration that has it.
+        "garmin_limits": (
+            garmin and not percent and metric is ZoneConfigurationMetric.HEART_RATE
+        ),
     }
 
 

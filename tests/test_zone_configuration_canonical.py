@@ -394,7 +394,7 @@ class LocalZoneEditTests(unittest.TestCase):
         legacy = {
             key: local[key]
             for key in change_history.ZONE_CONFIGURATION_FIELDS
-            if key != "threshold_origin"
+            if key not in {"threshold_origin", "garmin_limits"}
         }
         after_hash = change_history.audit_hash(legacy)
         with self.manager.unit_of_work() as db:

@@ -2802,11 +2802,13 @@ Request: JSON body `{"sport": "run" | "ride", "source": "dfa_alpha1" |
 
 Response: 200 `{"configuration": object, "change": object | null}`, the
 receipt of the local zone configuration saved from today with the zone
-limits in effect and its `threshold_origin`; `change` is the undo reference.
+limits in effect and its `threshold_origin`; without zones of that kind
+the standard zones in effect (percent of the threshold) are kept;
+`change` is the undo reference.
 
 Errors: 400 for an unknown sport, source or value; 409 with reason
 `lt2_unknown` (no estimate), `lt2_changed` (`shown` differs from the
-current estimate), `lt2_no_zones` (no zones of that kind), `lt2_replace_local`
+current estimate), `lt2_replace_local`
 (a value the athlete entered is in effect; send `replace_local: true`),
 `lt2_deviation` (more than 5 % from the value in effect; send
 `confirm_deviation: true`) or `lt2_zone_limits` (the absolute zone limits
