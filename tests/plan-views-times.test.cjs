@@ -62,13 +62,13 @@ test("a personal event covers its days, without the end day at midnight", () => 
 
 // The week review under the calendar week (#2805, #3298): sleep and training time as h:mm, also under an hour.
 test("the week review writes durations as hours and minutes", () => {
-  const { weekReviewHours } = extractFunctions("plan-views.js", ["weekReviewHours"]);
-  assert.deepEqual([1800, 26640, 25200, 89, -600].map(weekReviewHours), ["0:30", "7:24", "7:00", "0:01", "0:10"]);
+  const { weekReviewHours } = extractFunctions("plan-views.js", ["weekReviewHours"], { AppFormat: require("../public/format.js") });
+  assert.deepEqual([1800, 26640, 25200, 89, -600].map(weekReviewHours), ["30 min", "7 h 24 min", "7 h", "1 min", "10 min"]);
 });
 
 const WEEK_REVIEW_FUNCTIONS = ["WEEK_REVIEW_SHORT_DAY", "WEEK_REVIEW_REASONS", "WEEK_REVIEW_POSITIONS", "WEEK_REVIEW_SCORES", "weekReviewDay", "weekReviewHours", "weekReviewChange", "weekReviewPercent", "weekReviewTile", "weekReviewPlanTile", "weekReviewLoadTiles", "weekReviewRecoveryTiles", "weekReviewCheckinTiles", "weekReviewNotableTile", "weekReviewTiles"];
 const weekReviewTileTexts = (review, extra, running = false) => {
-  const { weekReviewTiles } = extractFunctions("plan-views.js", WEEK_REVIEW_FUNCTIONS, { document: fakeDocument(), AppFormat: { number: (value) => String(value) } });
+  const { weekReviewTiles } = extractFunctions("plan-views.js", WEEK_REVIEW_FUNCTIONS, { document: fakeDocument(), AppFormat: { number: (value) => String(value), duration: require("../public/format.js").duration } });
   return Array.from(weekReviewTiles(review, extra, running), (tile) => tile.children.map(textOf).join("|"));
 };
 
@@ -89,9 +89,9 @@ test("a past week shows every tile with its change and source, in the approved o
   assert.deepEqual(weekReviewTileTexts(review, 1), [
     "Plan|5 von 6|verpasst: Do Kraft",
     "Einheiten|6|davon 1 zusätzlich",
-    "Zeit|7:40 h|+12 % ggü. Vorwoche",
+    "Zeit|7 h 40 min|+12 % ggü. Vorwoche",
     "Belastung|412|+8 % ggü. Vorwoche",
-    "Schlaf Ø|7:05 h|−0:10 ggü. Vorwoche|Garmin",
+    "Schlaf Ø|7 h 5 min|−10 min ggü. Vorwoche|Garmin",
     "Ruheherzfrequenz Ø|46 bpm|unter Normalbereich · Wahoo",
     "HRV Ø|62 ms|im Normalbereich · Garmin",
     "Check-ins|6 von 7|Ø Motivation 7 · Stress 3",
@@ -107,11 +107,11 @@ test("a running week shows no change in time and load, and a week without data s
     load: { this_week: { duration_s: 2700, sessions: 1, training_load: 38 }, week_before: { duration_s: 27600, sessions: 6, training_load: 412 } },
     recovery: {}, notable: [], checkins: { entered: 0, days: 2, scores: {} },
   };
-  assert.deepEqual(weekReviewTileTexts(review, 0, true), ["Plan|1 von 5|4 noch offen", "Einheiten|1", "Zeit|0:45 h", "Belastung|38"]);
+  assert.deepEqual(weekReviewTileTexts(review, 0, true), ["Plan|1 von 5|4 noch offen", "Einheiten|1", "Zeit|45 min", "Belastung|38"]);
   // On its Sunday the review already reaches the week's end, but the week still runs (CI pinned day, #3298).
   const sunday = { ...review, effective_end: review.week_end };
-  assert.deepEqual(weekReviewTileTexts(sunday, 0, true), ["Plan|1 von 5|4 noch offen", "Einheiten|1", "Zeit|0:45 h", "Belastung|38"]);
-  assert.deepEqual(weekReviewTileTexts(sunday, 0, false).slice(2), ["Zeit|0:45 h|−90 % ggü. Vorwoche", "Belastung|38|−91 % ggü. Vorwoche"]);
+  assert.deepEqual(weekReviewTileTexts(sunday, 0, true), ["Plan|1 von 5|4 noch offen", "Einheiten|1", "Zeit|45 min", "Belastung|38"]);
+  assert.deepEqual(weekReviewTileTexts(sunday, 0, false).slice(2), ["Zeit|45 min|−90 % ggü. Vorwoche", "Belastung|38|−91 % ggü. Vorwoche"]);
   const empty = { ...review, plan: { planned: 0 }, load: { this_week: { sessions: 0 }, week_before: {} } };
   assert.deepEqual(weekReviewTileTexts(empty, 0, true), []);
 });

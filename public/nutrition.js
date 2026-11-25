@@ -215,7 +215,7 @@ const NUTRITION_SPORTS = { ride: "Rad", run: "Lauf", swim: "Schwimmen", strength
 function nutritionSessionLabel(session) {
   const time = String(session.started_at_local || "").slice(11, 16);
   const minutes = Math.round((Number(session.elapsed_duration_s) || 0) / 60);
-  const duration = minutes ? `${Math.floor(minutes / 60)}:${String(minutes % 60).padStart(2, "0")} h` : "";
+  const duration = minutes ? AppFormat.duration(minutes * 60) : "";
   return [NUTRITION_SPORTS[session.sport] || "Einheit", time, duration].filter(Boolean).join(" · ");
 }
 

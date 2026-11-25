@@ -32,7 +32,7 @@ test("without a resolved bpm only the percent is shown, and a unit without a usa
 test("a step range reads as a span, an open lowest or top zone, or a pace in min/km", () => {
   const { plannedStepRange, plannedDescriptionText, plannedStepExtent } = loadPublicScript(["format.js", "performance-view.js", "plan-views.js"]);
   // Exact step lengths: 30 s, 90 s, 55 min, 70 min, 400 m.
-  assert.deepEqual([30, 90, 3300, 4200].map((size) => plannedStepExtent(size, "duration")), ["30 s", "1:30 min", "55 min", "1:10 h"]);
+  assert.deepEqual([30, 90, 3300, 4200].map((size) => plannedStepExtent(size, "duration")), ["30 s", "1 min 30 s", "55 min", "1 h 10 min"]);
   assert.deepEqual([400, 1250, 5000].map((size) => plannedStepExtent(size, "distance")), ["400 m", "1,25 km", "5 km"]);
   for (const [range, text] of [
     [{ unit: "bpm", min: 110, max: 128 }, "110–128 bpm"],

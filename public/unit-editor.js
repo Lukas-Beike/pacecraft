@@ -258,7 +258,7 @@ function unitExerciseList(editor, redraw) {
 }
 
 function unitDurationLabel(minutes) {
-  return minutes >= 60 ? `${Math.floor(minutes / 60)}:${String(minutes % 60).padStart(2, "0")} h` : `${minutes} min`;
+  return AppFormat.duration(minutes * 60);
 }
 
 function renderUnitEditor(form, onSaved) {

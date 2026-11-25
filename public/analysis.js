@@ -11,7 +11,7 @@ function analysisValue(value, unit) {
   if (unit === "s") return formatDuration(Math.round(Number(value)));
   if (unit === "h") {
     const minutes = Math.round(Math.abs(Number(value)) * 60);
-    return `${Number(value) < 0 && minutes > 0 ? "−" : ""}${Math.floor(minutes / 60)}:${String(minutes % 60).padStart(2, "0")} h`;
+    return `${Number(value) < 0 && minutes > 0 ? "−" : ""}${AppFormat.duration(minutes * 60)}`;
   }
   if (unit === "Einheiten") return AppFormat.plural(value, "Einheit", "Einheiten");
   const suffix = unit ? ` ${unit}` : "";
@@ -431,8 +431,14 @@ function analysisLabelWidth(text) {
   return Math.ceil(analysisLabelContext.measureText(text).width) + 4;
 }
 
+function analysisHoursLabel(value) {
+  const minutes = Math.round(Math.abs(Number(value)) * 60);
+  return `${Number(value) < 0 && minutes > 0 ? "−" : ""}${Math.floor(minutes / 60)}:${String(minutes % 60).padStart(2, "0")}`;
+}
+
 function analysisPointValueLabel(item, point, { index, unit, scales }) {
-  const label = analysisValue(point.value, item.unit || unit).split(" ")[0];
+  // An hours value is labelled compactly as h:mm on the chart; its unit stands in the axis caption.
+  const label = (item.unit || unit) === "h" ? analysisHoursLabel(point.value) : analysisValue(point.value, item.unit || unit).split(" ")[0];
   const { x, y } = scales;
   let pointX = x(point.date);
   if (item.bars) {
