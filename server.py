@@ -1003,6 +1003,9 @@ APP.push_checks = PushChecks(
     threshold_warnings=lambda: APP.athlete.zones().threshold_warnings(),
     equipment=lambda: APP.athlete.equipment().read(),
     records=lambda: APP.performance.training_reports().profiles.records(),
+    threshold_offers=lambda: APP.athlete.second_threshold(
+        APP.performance.curve_records
+    ).offers(),
     weather_days=lambda: APP.weather.service().state(refresh=False).get("days"),
     server_state=lambda: APP.backup.server_state(),
     unrated_sessions=lambda day: APP.activity_reads.activity_read().unrated_sessions(

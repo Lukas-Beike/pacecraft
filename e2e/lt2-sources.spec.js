@@ -196,6 +196,16 @@ test("@responsive Analyse shows Neue Schwelle above Aktuelle Werte for its sport
   expect(dismissed).toEqual([OFFER_LT2.key, OFFER_LT1.key]);
 });
 
+test("@responsive the new-threshold notification link opens Zonen & Schwellen on its sport (#4135)", async ({ page }) => {
+  await page.route("**/api/zones", (route) => (route.request().method() === "GET" ? route.fulfill({ json: ZONES }) : route.fallback()));
+  await routeOffers(page, []);
+  await page.goto("/#more/profile/run");
+  await expect(page.locator("#appShell")).toBeVisible();
+  await expect(page.locator("#zoneSettings")).toHaveJSProperty("open", true);
+  await expect(page.locator('#zoneSportTabs [data-zone-sport="run"]')).toHaveAttribute("aria-pressed", "true");
+  await expect.poll(() => page.evaluate(() => location.hash)).toBe("#more/profile");
+});
+
 test("@responsive without offers there is no offer card (#4135)", async ({ page }) => {
   await openRunThresholds(page);
   await expect(page.locator('[data-zone-box="thresholds"]')).toBeVisible();

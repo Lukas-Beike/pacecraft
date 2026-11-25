@@ -43,6 +43,7 @@ TYPES: Final = (
     "checkin",
     "maintenance",
     "personal_best",
+    "new_threshold",
     "missing_feedback",
     "server_backup",
     "weather",

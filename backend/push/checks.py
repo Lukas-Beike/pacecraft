@@ -31,6 +31,7 @@ from backend.push.events import (
     personal_best_event,
     planned_units,
     server_event,
+    threshold_offer_events,
     weather_event,
 )
 from backend.push.service import Notification, PushService
@@ -61,6 +62,7 @@ class PushChecks:
         threshold_warnings: Callable[[], Any] = lambda: None,
         equipment: Callable[[], Any] = lambda: None,
         records: Callable[[], Any] = lambda: None,
+        threshold_offers: Callable[[], Any] = lambda: None,
         weather_days: Callable[[], Any] = lambda: None,
         server_state: Callable[[], Any] = lambda: None,
         unrated_sessions: Callable[[date], Any] = lambda day: (),
@@ -73,6 +75,7 @@ class PushChecks:
         self._threshold_warnings = threshold_warnings
         self._equipment = equipment
         self._records = records
+        self._threshold_offers = threshold_offers
         self._weather_days = weather_days
         self._server_state = server_state
         self._unrated_sessions = unrated_sessions
@@ -154,6 +157,9 @@ class PushChecks:
             found.append(
                 personal_best_event(self._source(self._records), subscribed_on, today)
             )
+        found += threshold_offer_events(
+            self._source(self._threshold_offers), subscribed_on
+        )
         if local.hour >= MISSING_FEEDBACK_HOUR:
             found.append(
                 missing_feedback_event(

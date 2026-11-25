@@ -271,6 +271,50 @@ def personal_best_event(
     )
 
 
+# Per sport: the title's activity, the plural of the body's, the tapped Zonen & Schwellen sport (#4135).
+_OFFER_SPORTS: Final = {
+    "run": ("Laufen", "Läufen", "#more/profile/run"),
+    "ride": ("Radfahren", "Fahrten", "#more/profile/ride"),
+}
+
+
+def threshold_offer_events(offers: Any, since_day: date) -> list[Notification]:
+    """One notification per sport for the open threshold offers (#4135).
+
+    The offers are already without the dismissed ones. Only an offer whose newest
+    data is younger than the subscription counts: one that was open before is no
+    news. Each offer key is its own sent key, so a new value of a source notifies
+    again and an unchanged one never does. A Garmin-only group says so, as it was
+    not derived from the athlete's sessions. No value is named.
+    """
+    found: dict[str, list[dict[str, Any]]] = {}
+    for offer in offers if isinstance(offers, list) else []:
+        if (
+            isinstance(offer, dict)
+            and offer.get("sport") in _OFFER_SPORTS
+            and isinstance(offer.get("key"), str)
+            and str(offer.get("newest"))[:10] > since_day.isoformat()
+        ):
+            found.setdefault(offer["sport"], []).append(offer)
+    events = []
+    for sport, (activity, sessions, url) in _OFFER_SPORTS.items():
+        group = found.get(sport)
+        if not group:
+            continue
+        garmin_only = all(offer.get("source") == GARMIN_ID for offer in group)
+        origin = "Von Garmin" if garmin_only else f"Aus deinen letzten {sessions}"
+        event = _one(
+            "new_threshold",
+            (f"threshold_offer:{offer['key']}" for offer in group),
+            f"Neue Schwelle für {activity}",
+            f"{origin} gibt es einen neuen Wert. Tippen zum Ansehen.",
+            url,
+        )
+        if event is not None:
+            events.append(event)
+    return events
+
+
 def missing_feedback_event(session_ids: Any, today: date) -> Notification | None:
     """A session of today still has no RPE: once a day."""
     if not session_ids:

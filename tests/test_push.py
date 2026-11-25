@@ -367,6 +367,7 @@ class PushChecksTests(unittest.TestCase):
             "days": None,
             "server": None,
             "unrated": [],
+            "offers": None,
         }
         self.checks = PushChecks(
             self.service,
@@ -376,6 +377,7 @@ class PushChecksTests(unittest.TestCase):
             threshold_warnings=lambda: self.warnings["value"],
             equipment=lambda: self.state["equipment"],
             records=lambda: self.state["records"],
+            threshold_offers=lambda: self.state["offers"],
             weather_days=lambda: self.state["days"],
             server_state=lambda: self.state["server"],
             unrated_sessions=lambda day: self.state["unrated"],
@@ -717,6 +719,79 @@ class PushChecksTests(unittest.TestCase):
         self._session("act_2", 60 * 24 * 8, started="2026-11-30T08:00:00+00:00")
         self.checks.check()
         self.assertEqual(len(self._titled("Neue Bestleistung")), 2)
+
+    def test_a_new_threshold_is_announced_once_per_sport_and_value(self):
+        def offer(sport, source, value, newest="2026-11-23"):
+            return {
+                "key": f"lt2:{sport}:power:{source}:{value}",
+                "sport": sport,
+                "source": source,
+                "value": value,
+                "newest": newest,
+            }
+
+        offers = [
+            offer("run", "dfa_alpha1", 171, "2026-11-22"),  # open before: not news
+            offer("run", "garmin", 168),
+        ]
+        self.state["offers"] = offers
+        self._at(11)
+        self._announced(
+            "Neue Schwelle für Laufen",
+            "Von Garmin gibt es einen neuen Wert. Tippen zum Ansehen.",
+            "#more/profile/run",
+        )
+        # Two run offers and a ride offer at once: one notification per sport.
+        offers += [
+            offer("run", "critical_speed", 301),
+            offer("run", "dfa_alpha1", 172),
+            offer("ride", "critical_power", 250),
+        ]
+        self.checks.check()
+        self.checks.check()
+        run, ride = (
+            self._titled("Neue Schwelle für Laufen")[1],
+            self._titled("Neue Schwelle für Radfahren")[0],
+        )
+        self.assertEqual(
+            run["body"],
+            "Aus deinen letzten Läufen gibt es einen neuen Wert. Tippen zum Ansehen.",
+        )
+        self.assertEqual(
+            (ride["body"], ride["url"]),
+            (
+                "Aus deinen letzten Fahrten gibt es einen neuen Wert. Tippen zum Ansehen.",
+                "#more/profile/ride",
+            ),
+        )
+        self.assertEqual(len(self.sender.sent), 3)
+        for message in (run, ride):
+            self.assertFalse(
+                any(char.isdigit() for char in message["title"] + message["body"])
+            )
+        # A dismissed offer is no longer offered; the same values never repeat.
+        offers.pop()
+        self.checks.check()
+        self.assertEqual(len(self.sender.sent), 3)
+        offers.append(offer("run", "garmin", 169))  # a new value is a new notification
+        self.checks.check()
+        self.assertEqual(len(self.sender.sent), 4)
+
+    def test_a_switched_off_new_threshold_is_marked_sent_without_delivery(self):
+        self.service.set_preferences({"types": {"new_threshold": False}})
+        self.state["offers"] = [
+            {
+                "key": "lt1:run:heart_rate:dfa_alpha1:140",
+                "sport": "run",
+                "source": "dfa_alpha1",
+                "newest": "2026-11-23",
+            }
+        ]
+        self._at(11)
+        self.checks.check()
+        self.service.set_preferences({"types": {"new_threshold": True}})
+        self.checks.check()
+        self.assertEqual(self.sender.sent, [])
 
     def test_missing_feedback_is_announced_once_a_day_from_the_evening(self):
         self.state["unrated"] = ["act_1"]
