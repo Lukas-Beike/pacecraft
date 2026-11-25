@@ -353,23 +353,32 @@ function appendAnalysisAxes(svg, unit, { min, max, step, chartRight, y }, captio
 function appendAnalysisReferenceLines(svg, item, index, unit, scales, obstacles = []) {
   const { chartRight, y } = scales;
   const lineBox = (value) => ({ left: 60, right: chartRight, top: y(value) - 1.5, bottom: y(value) + 1.5 });
-  if (item.range) svg.append(svgNode("rect", { x: 60, y: Math.min(y(item.range.lower), y(item.range.upper)), width: chartRight - 60, height: Math.max(1, Math.abs(y(item.range.lower) - y(item.range.upper))), class: "analysis-baseline-band" }));
+  const labelAttributes = { "text-anchor": "end", class: "analysis-point-value analysis-average-value", stroke: "var(--surface)", "stroke-width": 4, "paint-order": "stroke", "stroke-linejoin": "round" };
+  const readings = item.average ? item.points.filter(analysisValidPoint).map((point) => Number(point.value)) : [];
+  const average = readings.length ? readings.reduce((sum, value) => sum + value, 0) / readings.length : null;
+  if (item.range) {
+    const top = Math.min(y(item.range.lower), y(item.range.upper));
+    const bottom = Math.max(y(item.range.lower), y(item.range.upper));
+    svg.append(svgNode("rect", { x: 60, y: top, width: chartRight - 60, height: Math.max(1, bottom - top), class: "analysis-baseline-band" }));
+    // The band is named at its right edge, above it, or below when the average's label sits there (#4025).
+    const above = average == null || Math.abs(top - 4 - (y(average) - 8)) >= 14;
+    const labelY = above ? top - 4 : bottom + 12;
+    svg.append(svgNode("text", { x: chartRight, y: labelY, ...labelAttributes }, "Mittlere Hälfte"));
+    obstacles.push({ left: chartRight - 15 * 7.5, right: chartRight, top: labelY - 15, bottom: labelY });
+  }
   if (item.target != null) {
     svg.append(svgNode("line", { x1: 60, x2: chartRight, y1: y(item.target), y2: y(item.target), class: "analysis-target-line" }));
     obstacles.push(lineBox(item.target));
   }
-  if (item.average) {
-    const readings = item.points.filter(analysisValidPoint).map((point) => Number(point.value));
-    if (readings.length) {
-      const average = readings.reduce((sum, value) => sum + value, 0) / readings.length;
-      const line = svgNode("line", { x1: 60, x2: chartRight, y1: y(average), y2: y(average), class: "analysis-average-line" });
-      line.append(svgNode("title", {}, `${item.label}: Durchschnitt ${analysisValue(average, item.unit || unit)}`));
-      svg.append(line);
-      obstacles.push(lineBox(average));
-      const text = `\u00d8 ${analysisValue(average, item.unit || unit)}`;
-      if (!item.averageInHeading) obstacles.push({ left: chartRight - text.length * 7.5, right: chartRight, top: y(average) - 20, bottom: y(average) - 5 });
-      if (!item.averageInHeading) svg.append(svgNode("text", { x: chartRight, y: y(average) - 8, "text-anchor": "end", class: "analysis-point-value analysis-average-value", stroke: "var(--surface)", "stroke-width": 4, "paint-order": "stroke", "stroke-linejoin": "round" }, `\u00d8 ${analysisValue(average, item.unit || unit)}`));
-    }
+  if (average != null) {
+    const line = svgNode("line", { x1: 60, x2: chartRight, y1: y(average), y2: y(average), class: "analysis-average-line" });
+    line.append(svgNode("title", {}, `${item.label}: Durchschnitt ${analysisValue(average, item.unit || unit)}`));
+    svg.append(line);
+    obstacles.push(lineBox(average));
+    // The line carries its name, also where the heading names the average (#4025).
+    const text = `\u00d8 ${analysisValue(average, item.unit || unit)}`;
+    obstacles.push({ left: chartRight - text.length * 7.5, right: chartRight, top: y(average) - 20, bottom: y(average) - 5 });
+    svg.append(svgNode("text", { x: chartRight, y: y(average) - 8, ...labelAttributes }, text));
   }
 }
 
@@ -555,17 +564,24 @@ function analysisTickStep(tickCount, maxLabels) {
   return [1, 2, 3, 4, 7, 14, 28, 56, 91].find(fits) || Math.ceil((tickCount - 1) / (maxLabels - 1));
 }
 
-// Tick marks sit on every day (or every week start of a weekly chart); labels repeat at an even step counted back from the latest tick.
+// Tick marks sit on every day (or every week start of a weekly chart); the first and the last tick are always labelled,
+// the labels between repeat at an even step counted back from the latest tick and keep clear of the two ends (#4025).
+const TICK_LABEL_GAP = 40;
+
 function appendAnalysisDateTicks(svg, start, end, { chartWidth, x }, tickLabel = analysisDayTickLabel) {
   const weekly = tickLabel === analysisWeekTickLabel;
   const dates = analysisTickDates(start, end, weekly);
   const maxLabels = chartWidth < 600 ? 4 : 7;
   const step = analysisTickStep(dates.length, maxLabels);
+  const last = dates.length - 1;
+  const clearOfEnds = (index) => Math.abs(x(dates[index]) - x(dates[0])) >= TICK_LABEL_GAP && Math.abs(x(dates[index]) - x(dates[last])) >= TICK_LABEL_GAP;
   dates.forEach((date, index) => {
-    const labelled = (dates.length - 1 - index) % step === 0;
+    const labelled = index === 0 || index === last || ((last - index) % step === 0 && clearOfEnds(index));
     if (!labelled && dates.length > 31) return;
     svg.append(svgNode("line", { x1: x(date), x2: x(date), y1: 160, y2: labelled ? 168 : 164, class: "analysis-tick-mark" }));
-    if (labelled) svg.append(svgNode("text", { x: x(date), y: 188, "text-anchor": "middle", class: "analysis-date-tick" }, tickLabel(date)));
+    // A label at the right end stays inside the drawing instead of being clipped.
+    const clipped = x(date) + 18 > chartWidth;
+    if (labelled) svg.append(svgNode("text", { x: clipped ? chartWidth - 2 : x(date), y: 188, "text-anchor": clipped ? "end" : "middle", class: "analysis-date-tick" }, tickLabel(date)));
   });
   // At the top right, clear of the first tick label.
   if (weekly) svg.append(svgNode("text", { x: chartWidth - 8, y: 15, "text-anchor": "end", class: "analysis-week-caption" }, "Woche ab"));
@@ -601,7 +617,7 @@ function analysisPointTooltip(section, marker, title, lines) {
   section.append(tooltip);
 }
 
-function appendAnalysisPointInspectors(section, svg, series, unit, { x, chartRight }) {
+function appendAnalysisPointInspectors(section, svg, series, unit, { x, y, chartRight }) {
   const dates = [...new Set(series.flatMap((item) => item.points.map((point) => point.date)))].sort((a, b) => a.localeCompare(b));
   const hitWidth = Math.min(44, (chartRight - 60) / Math.max(1, dates.length - 1));
   const candidates = [];
@@ -622,7 +638,12 @@ function appendAnalysisPointInspectors(section, svg, series, unit, { x, chartRig
     marker.addEventListener("focus", () => {
       const root = section.closest(".analysis-history-charts");
       root?.querySelectorAll(".analysis-day-marker").forEach((node) => node.classList.toggle("is-selected", node.dataset.date === date));
+      // The keyboard focus ring sits on the day's points, not around the tall hit column (#4025).
+      svg.querySelectorAll(".analysis-focus-ring").forEach((ring) => ring.remove());
+      // Only series that are drawn get a ring (Gitar, #4204).
+      if (marker.matches(":focus-visible")) readings.filter(({ item }) => analysisPlottable(item)).forEach(({ point }) => svg.append(svgNode("circle", { cx: x(date), cy: y(point.value), r: 8, class: "analysis-focus-ring" })));
     });
+    marker.addEventListener("blur", () => svg.querySelectorAll(".analysis-focus-ring").forEach((ring) => ring.remove()));
     svg.append(marker);
   });
   if (!candidates.length) return;

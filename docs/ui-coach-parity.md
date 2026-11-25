@@ -63,7 +63,7 @@ added a row conflicted on it (#4092).
 | Library | Delete a library workout | Bibliothek › Archiviert "Endgültig löschen" `POST /api/library/{id}/delete` | `manage_training_templates` (`delete`) | confirmed request, undo | both | |
 | Activities | Read sessions and session details | Kalender `GET /api/activities`, `GET /api/activities/{id}` | `list_recent_activities`, `get_activity_details` | — | both | |
 | Activities | Read analyses, trends and records | Analyse `GET /api/analysis/trends`, `GET /api/analysis/training-records` | `read_training_records` | — | both | |
-| Activities | Save or edit activity feedback and purpose | Session details `POST /api/activities/{id}/feedback` | `save_activity_feedback` | receipt, undo | both | |
+| Activities | Save or edit activity feedback and purpose | Session details `POST /api/activities/{id}/feedback` | `save_activity_feedback` | receipt, undo | both | `feel` (#4199): route and Coach; its session-details control follows |
 | Activities | Clear activity feedback | Session details `POST /api/activities/{id}/feedback` | `delete_activity_feedback` | receipt, undo | both | |
 | Activities | Confirm, split or merge a session bundle | Session details `POST /api/activities/{id}/session` | `confirm_activity_session`, `split_activity_session`, `merge_activity_sessions` | receipt, undo | both | |
 | Activities | Delete a session bundle | Session details `POST /api/activities/{id}/session` (`delete`) | `delete_activity_session` | delete confirmation, undo | both | |

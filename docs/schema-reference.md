@@ -32,9 +32,9 @@ The keys of the `kv` table are listed in [kv-catalogue.md](kv-catalogue.md).
 ## Current schema
 
 <!-- BEGIN GENERATED SCHEMA -->
-Schema version: `33` (`PRAGMA user_version`).
+Schema version: `34` (`PRAGMA user_version`).
 
-Shape digest: `ae6a8f2f9500b7cbc41404660a093588f98d94b4abb1170721e760cdd8eadde9`.
+Shape digest: `2bbd36d829599a19a27cc8261b8f98656e8bbd10e95ed46f4a6df835e9c3c68a`.
 
 48 tables and 36 named indexes, in signature order.
 
@@ -317,7 +317,7 @@ CREATE TABLE activity_feedback (
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL,
     provider TEXT
-, session_id TEXT REFERENCES activity_sessions(activity_id), session_rpe_rated_at TEXT, purpose TEXT CHECK (purpose IS NULL OR purpose IN ('training', 'race', 'commute', 'warmup', 'cooldown')));
+, session_id TEXT REFERENCES activity_sessions(activity_id), session_rpe_rated_at TEXT, purpose TEXT CHECK (purpose IS NULL OR purpose IN ('training', 'race', 'commute', 'warmup', 'cooldown')), feel INTEGER CHECK (feel IS NULL OR (typeof(feel) = 'integer' AND feel BETWEEN 1 AND 5)));
 ```
 
 ### table `activity_laps`

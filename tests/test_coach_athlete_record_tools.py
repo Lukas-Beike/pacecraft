@@ -45,7 +45,8 @@ class CoachAthleteRecordToolServiceTests(unittest.TestCase):
             ("save_checkin", {"payload": {"notes": "Synthetic"}}, "local_checkin"),
             (
                 "save_activity_feedback",
-                {"payload": {"activity_id": "a1", "notes": "Synthetic"}},
+                # The athlete's feel (#4199) passes through like the session RPE.
+                {"payload": {"activity_id": "a1", "notes": "Synthetic", "feel": 2}},
                 "activity_feedback",
             ),
             ("delete_activity_feedback", {"activity_id": " a1 "}, "activity_feedback"),
@@ -93,9 +94,12 @@ class CoachAthleteRecordToolServiceTests(unittest.TestCase):
 
         self.assertEqual(self.service.execute("other", {}, {}), None)
         self.checkins.save_coach.assert_called_once_with({"notes": "Synthetic"})
-        self.feedback.save_coach.assert_called_once_with("a1", {"notes": "Synthetic"})
+        self.feedback.save_coach.assert_called_once_with(
+            "a1", {"notes": "Synthetic", "feel": 2}
+        )
         self.feedback.save.assert_called_once_with(
-            "a1", {"notes": "", "session_rpe": None, "deviation_reason": ""}
+            "a1",
+            {"notes": "", "session_rpe": None, "feel": None, "deviation_reason": ""},
         )
         self.competitions.save.assert_called_once_with({"name": "Synthetic"})
         self.competitions.delete.assert_called_once_with("a1")

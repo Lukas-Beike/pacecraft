@@ -389,7 +389,9 @@ h2 {
 .analysis-day-marker.is-selected rect { fill: var(--ink); fill-opacity: .08; }
 .analysis-chart-card svg :is(.analysis-axis-unit, .analysis-week-caption) { font-size: 11px; }
 .analysis-chart-legend { display: flex; flex-wrap: wrap; gap: 8px 16px; margin: 12px 0; padding: 0; list-style: none; color: var(--ink); font-size: .75rem; }
-.analysis-legend-info { display: inline; min-height: 0; width: auto; padding: 4px 0; border: 0; border-radius: 0; background: none; color: inherit; font: inherit; text-align: left; text-decoration: underline dotted; text-underline-offset: 3px; cursor: pointer; }
+.analysis-legend-info { display: inline; min-height: 0; width: auto; padding: 4px 0; border: 0; border-radius: 0; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+/* A tappable legend entry is plain text with a small info dot behind it, in every chart (#4025). */
+.analysis-legend-info:not(.analysis-info-icon)::after { content: "i"; display: inline-grid; place-items: center; flex: none; box-sizing: border-box; width: 1.2rem; height: 1.2rem; margin-left: 6px; border: 1.5px solid currentColor; border-radius: 50%; font-size: .72rem; font-weight: 700; line-height: 1; }
 .analysis-legend-info:focus-visible { outline: 2px solid var(--accent-bright); outline-offset: 3px; }
 .analysis-chart-legend .analysis-legend-info { display: inline-flex; align-items: center; justify-content: center; box-sizing: border-box; min-width: 44px; min-height: 44px; }
 .analysis-info-icon { position: relative; display: inline-grid; place-items: center; box-sizing: border-box; width: 44px; min-width: 44px; height: 44px; min-height: 44px; margin: -12px -8px -12px .2em; padding: 0; vertical-align: middle; text-decoration: none; font-size: .8rem; font-weight: 700; line-height: 1; }
@@ -1957,9 +1959,18 @@ button:focus-visible, a:focus-visible, summary:focus-visible {
 .activity-route-head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
 .activity-route-head h3 { margin: 0; }
 .route-visits tr[aria-current="true"] > * { color: var(--accent); font-weight: 700; }
-.activity-feedback-form { display: grid; gap: 10px; margin-top: 8px; }
-.activity-feedback-form label { display: grid; gap: 5px; color: var(--muted); font-size: .8rem; }
-.activity-feedback-form input, .activity-feedback-form textarea { width: 100%; }
+.activity-feedback { display: grid; gap: 12px; margin-top: 8px; }
+.feedback-field, .feedback-more label { display: grid; gap: 6px; color: var(--muted); font-size: .8rem; }
+.feedback-label { font-weight: 650; }
+.feedback-field textarea, .feedback-more input { width: 100%; }
+.feedback-effort { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 6px; }
+.feedback-step { min-height: 44px; border: 1px solid var(--control-border); border-radius: var(--radius-sm); background: var(--surface-input); color: var(--ink); font: inherit; font-weight: 650; font-variant-numeric: tabular-nums; }
+.feedback-step[aria-pressed="true"] { border-color: var(--primary-control-bg); background: var(--primary-control-bg); color: var(--primary-control-ink); }
+.feedback-step.is-watch { border-style: dashed; border-color: var(--primary-control-bg); }
+.feedback-more { display: grid; gap: 10px; }
+.feedback-more > summary { min-height: 44px; display: flex; align-items: center; cursor: pointer; color: var(--muted); font-size: .85rem; }
+.feedback-effort-note { margin: 0; }
+@media (min-width: 700px) { .feedback-effort { grid-template-columns: repeat(10, minmax(0, 1fr)); } }
 .outbox-list { display: grid; gap: 8px; margin: 8px 0; padding: 0; list-style: none; }
 .outbox-list li { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 .outbox-text { flex: 1 1 100%; overflow-wrap: anywhere; }
@@ -1981,7 +1992,8 @@ button:focus-visible, a:focus-visible, summary:focus-visible {
 .analysis-day-marker { cursor: pointer; }
 .analysis-plot-hit { cursor: crosshair; }
 .analysis-day-marker:hover rect, .analysis-day-marker:focus rect { fill: var(--ink); fill-opacity: .06; }
-.analysis-day-marker:focus { outline: 2px solid var(--accent); }
+.analysis-day-marker:focus { outline: none; }
+.analysis-focus-ring { fill: none; stroke: var(--accent); stroke-width: 2; pointer-events: none; }
 
 
 

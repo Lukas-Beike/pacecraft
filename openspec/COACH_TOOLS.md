@@ -732,6 +732,7 @@ effect `local_write`; gate domain `checkin`; receipt „Aktivitätsfeedback gesp
 - `payload.notes` (string)
 - `payload.session_rpe` (number/null; ≥0; ≤10)
 - `payload.deviation_reason` (string/null; ≤500 chars)
+- `payload.feel` (integer/null; ≥1; ≤5)
 - `payload.purpose` (string/null; one of `"training"`, `"race"`, `"commute"`, `"warmup"`, `"cooldown"`, `null`)
 - `_request`* (the envelope above)
 

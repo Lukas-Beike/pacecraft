@@ -638,11 +638,15 @@ function renderNutritionDay(day) {
   if (energyIntakeKey !== null && energyIntakeKey !== intake && JSON.parse(energyIntakeKey)[0] === day.date) resetEnergy();
   energyIntakeKey = intake;
   renderDiaryEnergy();
-  document.querySelector("#nutritionStatus").textContent = day.entry_count ? "" : "Noch keine Mahlzeiten erfasst.";
+  // A day that has not come yet is not eaten: it says so and offers no message to the Coach (#4037).
+  const future = day.date > todayIso();
+  let statusText = "";
+  if (!day.entry_count) statusText = future ? "Dieser Tag liegt in der Zukunft." : "Noch keine Mahlzeiten erfasst.";
+  document.querySelector("#nutritionStatus").textContent = statusText;
   // An empty day shows no row of "nicht erfasst" tiles; meals are entered through the Coach, so the empty
   // view says that and offers the message (athlete decisions, #3936 G-13, G-14).
   const tellCoach = document.querySelector("#nutritionTellCoach");
-  tellCoach.hidden = Boolean(day.entry_count);
+  tellCoach.hidden = Boolean(day.entry_count) || future;
   tellCoach.dataset.date = day.date;
   const totals = document.querySelector("#nutritionTotals");
   totals.replaceChildren();

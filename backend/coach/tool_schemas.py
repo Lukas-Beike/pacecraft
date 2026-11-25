@@ -957,7 +957,7 @@ def build_structured_tool_schemas(
         ),
         _canonical_coach_tool(
             "save_activity_feedback",
-            "Save explicitly stated feedback for one existing completed activity, including optional session RPE 0-10, deviation reason and the purpose the athlete names for the session (training, race, commute, warmup, cooldown). Resolve its exact ID first. Omitted fields preserve existing values; only clear a field on explicit request. Never infer session RPE from a daily check-in, provider RPE or another activity, and never infer a purpose from a title or a provider label. This cannot create completed activities.",
+            "Save explicitly stated feedback for one existing completed activity, including optional session RPE 0-10, feel 1-5, deviation reason and the purpose the athlete names for the session (training, race, commute, warmup, cooldown). Resolve its exact ID first. Omitted fields preserve existing values; only clear a field on explicit request. Never infer session RPE or feel from a daily check-in, provider values or another activity, and never infer a purpose from a title or a provider label. This cannot create completed activities.",
             {
                 "payload": {
                     "type": "object",
@@ -986,6 +986,12 @@ def build_structured_tool_schemas(
                             "type": ["string", "null"],
                             "maxLength": 500,
                         },
+                        "feel": {
+                            "type": ["integer", "null"],
+                            "minimum": 1,
+                            "maximum": 5,
+                            "description": "The athlete's own feel after the session on Garmin's scale: 1 very strong, 2 strong, 3 normal, 4 weak, 5 very weak. null removes it.",
+                        },
                         "purpose": {
                             "type": ["string", "null"],
                             "enum": [
@@ -1004,7 +1010,7 @@ def build_structured_tool_schemas(
         ),
         _canonical_coach_tool(
             "delete_activity_feedback",
-            "Delete the notes, session RPE and deviation reason of one completed activity. The athlete's purpose marking stays; remove it with save_activity_feedback and purpose null. activity_id accepts the local ID (act_...) or the provider activity ID.",
+            "Delete the notes, session RPE, feel and deviation reason of one completed activity. The athlete's purpose marking stays; remove it with save_activity_feedback and purpose null. activity_id accepts the local ID (act_...) or the provider activity ID.",
             {"activity_id": {"type": "string"}},
         ),
         _canonical_coach_tool(

@@ -25,6 +25,7 @@ const ASSETS = [
   "/nutrition-templates.js",
   "/analysis.js",
   "/activity-details.js",
+  "/activity-feedback.js",
   "/activity-analysis.js",
   "/performance-view.js",
   "/checkin-form.js",

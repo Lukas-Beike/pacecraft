@@ -597,7 +597,7 @@ function thresholdBox(sport) {
 // LT2 from Garmin beside the local estimates (#3273): DFA-α1 at 0.5 and CS/CP. Each local value
 // is adopted on its own (F8); nothing changes without the athlete's tap.
 const LT2_METRICS = { run: { main: "run_threshold_pace_seconds_per_km", hr: "run_threshold_hr_bpm" }, ride: { main: "cycling_ftp_watts", hr: "bike_threshold_hr_bpm" } };
-const LT2_SOURCE_NAMES = { dfa_alpha1: "DFA-α1", critical_speed: "CS", critical_power: "CP" };
+const LT2_SOURCE_NAMES = { dfa_alpha1: "DFA-α1", critical_speed: "Kritische Geschwindigkeit (CS)", critical_power: "Kritische Leistung (CP)" };
 
 // The provider's LT2 value and label: the winner when a provider gives it, else a provider
 // alternative beside a local value.
@@ -771,7 +771,7 @@ function lt2NoticeValues(sport, metrics = state.data?.performance?.metrics || {}
 // Minimum change per value before a notice (athlete decision F10): 2 bpm, 3 s/km, 5 W.
 const LT2_NOTICE_MIN = { provider_hr: 2, dfa_hr: 2, provider_pace: 3, dfa_pace: 3, cs_pace: 3, provider_power: 5, cp_power: 5 };
 const LT2_NOTICE_UNITS = { pace: " /km", hr: " bpm", power: " W" };
-const LT2_NOTICE_LABELS = { provider_hr: "Herzfrequenz", provider_pace: "Pace", provider_power: "FTP", dfa_hr: "DFA-α1 Herzfrequenz", dfa_pace: "DFA-α1 Pace", cs_pace: "CS", cp_power: "CP" };
+const LT2_NOTICE_LABELS = { provider_hr: "Herzfrequenz", provider_pace: "Pace", provider_power: "FTP", dfa_hr: "DFA-α1 Herzfrequenz", dfa_pace: "DFA-α1 Pace", cs_pace: "Kritische Geschwindigkeit (CS)", cp_power: "Kritische Leistung (CP)" };
 
 // Pure: the changes against the seen values; a switch between a value and "unbekannt" counts too.
 function lt2NoticeChanges(seen, current) {
