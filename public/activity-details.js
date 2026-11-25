@@ -3,7 +3,7 @@
   let dialog;
   let generation = 0;
 
-  function chart(times, values, label, unit) {
+  function chart(times, values, label, unit, tableOnly = false) {
     if (!Array.isArray(times) || !Array.isArray(values) || times.length !== values.length) return null;
     const points = times.map((time, index) => [time, values[index]])
       .filter(([time, value]) => typeof time === "number" && typeof value === "number" && Number.isFinite(time) && Number.isFinite(value));
@@ -45,6 +45,8 @@
       rows.push([h("th", { scope: "row" }, `${Math.floor(time / 60)}:${String(Math.floor(time % 60)).padStart(2, "0")}`), reading]);
     });
     tableWrap.append(table(["Zeit", label], rows, { caption: `${label} in ${unit}; fehlende Werte sind als Lücke markiert.` }));
+    // The dialog keeps the value tables; the charts are the inline view's (#4221).
+    if (tableOnly) return h("details", "activity-values", h("summary", null, `${label} (${unit}): alle ${points.length} Messwerte ansehen`), tableWrap);
     return h("section", "activity-series", h("h3", null, `${label} (${unit})`), svg,
       h("p", "muted", `${AppFormat.number(min, { digits: 1 })}–${AppFormat.number(max, { digits: 1 })} ${unit} · ${Math.round(start / 60)}–${Math.round(points.at(-1)[0] / 60)} min · ${times.length - points.length} fehlende Messpunkte`),
       h("details", "activity-values", h("summary", null, `Alle ${points.length} Messwerte ansehen`), tableWrap));
@@ -59,18 +61,18 @@
     return values;
   }
 
-  function render(payload, content, api, activityId, reload, notice) {
+  // The dialog shows what the inline "Details" showed (the panel of the activity analysis, in its style) and, below it, what only
+  // the dialog has: the value tables, strength sets, interval quality, heart rate drift, best power, equipment and the recordings.
+  function render(payload, content, api, activityId, reload, notice, summary, read) {
     content.replaceChildren();
-    const session = payload.session || {};
-    renderMetadata(session, metricValues(payload), content, payload.weather);
-    renderRoute(payload.route, api, content, session);
-    content.append(...providerNotes(payload));
-    renderSeries(session, payload.streams, content);
-    renderLaps(payload.laps, content);
+    const panel = h("div", "activity-analysis-panel");
+    content.append(panel);
+    // `read` is the calendar's shared read of the document, so a refresh here shows in the card (#2478).
+    void ActivityAnalysis.loadPanel(panel, summary, read || ((fresh) => (fresh ? api(`/api/activities/${encodeURIComponent(activityId)}`) : Promise.resolve(payload))));
+    renderSeries(payload.session || {}, payload.streams, content);
     renderStrengthSets(payload.strength_sets, content);
     renderIntervalQuality(payload, content);
     renderAerobic(payload, content);
-    renderRunningForm(payload, content);
     renderPower(payload, content);
     for (const item of payload.equipment || []) content.append(h("p", null, `Ausrüstung: ${item.name} · ${item.usage.distance_km} km${item.usage.maintenance_due ? " · persönliches Wartungsintervall erreicht" : ""}`));
     renderBundle(payload.session_bundle, api, content, reload, notice);
@@ -153,18 +155,6 @@
     return weather.source ? `${value} (${weather.source})` : value;
   }
 
-  function renderMetadata(session, metrics, content, weather) {
-    const duration = AppFormat.sessionSeconds(metrics, session.sport);
-    const values = [
-      session.sport ? activitySportLabel(session) : null,
-      session.started_at ? formatTime(session.started_at) : null,
-      duration != null ? `${Math.round(duration / 60)} min` : null,
-      AppFormat.distance(metrics.distance_m),
-      metrics.load != null ? `Belastung ${metrics.load}` : null,
-      weatherTemperature(weather),
-    ].filter(Boolean);
-    content.append(h("p", null, values.join(" · ")));
-  }
 
   const ROUTE_VISIT_PAGE = 6;
   const PACE_SPORTS = new Set(["run", "walk", "hike"]);
@@ -382,17 +372,8 @@
     return drift.flagged && typeof drift.label === "string" ? [drift.label, ...lines] : lines;
   }
 
-  function renderRunningForm(payload, content) {
-    const dynamics = runningDynamics(metricValues(payload));
-    const drift = formDriftLines(payload.analysis?.form_drift);
-    if (!dynamics.length && !drift.length) return;
-    content.append(h("h3", null, "Laufdynamik"));
-    if (dynamics.length) content.append(h("p", null, dynamics.map(([label, text]) => `${label} ${text}`).join(" · ")));
-    for (const line of drift) content.append(h("p", null, line));
-  }
-
   function renderSeries(session, streams, content) {
-    let charts = 0;
+    const tables = [];
     const cadence = cadenceDisplay(session);
     const labels = { power_w: ["Leistung", "W"], heart_rate_bpm: ["Herzfrequenz", "bpm"], speed_mps: ["Geschwindigkeit", "m/s"], altitude_m: ["Höhe", "m"], distance_m: ["Distanz", "m"], grade_pct: ["Steigung", "%"], cadence_rpm: [cadence.label, cadence.unit], respiration_rate_brpm: ["Atemfrequenz", "/min"], performance_condition: ["Leistungszustand", ""], stamina_137_pct: ["Ausdauer A", "%"], stamina_138_pct: ["Ausdauer B", "%"] };
     const channels = streams?.channels || {};
@@ -403,29 +384,13 @@
       // An unofficial provider value names itself as such, in the server's words (#3374).
       const source = channels[key].source;
       const title = source?.kind === "unofficial" && source.label ? `${label} · ${source.label}` : label;
-      const series = chart(streams.time_s, values, title, unit);
-      if (series) { content.append(series); charts += 1; }
+      const series = chart(streams.time_s, values, title, unit, true);
+      if (series) tables.push(series);
     }
-    if (!charts) content.append(h("p", null, "Keine darstellbaren Messreihen vorhanden. Fehlende Sensorwerte werden nicht als Null interpretiert."));
+    if (tables.length) content.append(h("h4", null, "Messwerte"), ...tables);
   }
 
 
-  function renderLaps(laps, content) {
-    if (laps?.laps?.length) {
-      content.append(h("h3", null, "Intervalle / Runden"));
-      const list = h("ol", "activity-laps");
-      laps.laps.forEach((lap, index) => {
-        const seconds = lap.moving_duration_s ?? lap.end_offset_s - lap.start_offset_s;
-        list.append(h("li", null, [
-          lap.name || `Intervall ${index + 1}`,
-          Number.isFinite(seconds) ? `${Math.round(seconds)} s` : null,
-          lap.avg_power != null ? `${Math.round(lap.avg_power)} W` : null,
-          lap.avg_hr != null ? `${Math.round(lap.avg_hr)} bpm` : null,
-        ].filter(Boolean).join(" · ")));
-      });
-      content.append(list);
-    }
-  }
 
 
   const STRENGTH_SOURCES = { garmin_exercise_sets: "Garmin-Sätze", fit_set_messages: "FIT-Datei" };
@@ -536,7 +501,7 @@
   }
 
   // `backLabel` names where closing returns to; Analyse › Rekorde passes its own (#3847).
-  async function open(activity, { api, showDialog, backLabel = "Zurück zum Kalender" }) {
+  async function open(activity, { api, showDialog, read = null, backLabel = "Zurück zum Kalender" }) {
     close(false);
     const activityId = String(activity.id ?? activity.activity_id ?? "");
     if (!activityId) return;
@@ -568,16 +533,21 @@
     async function load(notice) {
       const payload = await api(`/api/activities/${encodeURIComponent(activityId)}`);
       if (!isCurrent()) return;
-      render(payload, content, api, activityId, load, notice);
+      render(payload, content, api, activityId, load, notice, activity, read);
       title.textContent = payload.session?.name || activity.name || "Aktivitätsdetails";
       status.textContent = "";
-      actions.replaceChildren(refreshActions(payload, {
-        api, isCurrent, onStatus: (text) => { status.textContent = text; }, onLoaded: () => load(), onSetup: () => close(false),
-      }));
     }
     // A deleted activity keeps only its receipt: its provider actions go away.
     load.deleted = () => { actions.replaceChildren(); status.textContent = ""; };
-    try { await load(); } catch (error) { if (isCurrent()) status.textContent = error.message; }
+    // A failed read shows its error with a retry, as the inline view did (#4221).
+    const attempt = async () => {
+      try { await load(); } catch (error) {
+        if (!isCurrent()) return;
+        status.textContent = "";
+        content.replaceChildren(createErrorState(error.message, () => { status.textContent = "Lokale Daten werden geladen …"; void attempt(); }));
+      }
+    };
+    await attempt();
   }
 
   // Runs the explicit detail job of one provider; resolves false when the caller is no longer current.

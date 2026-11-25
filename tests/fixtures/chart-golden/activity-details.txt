@@ -4,137 +4,187 @@
   <h2 id="activityDetailTitle">
     "Testlauf"
   <div>
-    <p>
-      "14,2 °C (Open-Meteo Modell, Wohnort)"
-    <section class="activity-series">
-      <h3>
-        "Leistung (W)"
-      <svg:svg aria-label="Leistung, Zeitachse in Minuten; Messwerte und Lücken sind in der Tabelle aufgeführt" role="img" viewBox="0 0 680 220">
-        <svg:line class="activity-gridline" x1="64" x2="668" y1="16" y2="16">
-        <svg:text text-anchor="end" x="56" y="20">
-          "230"
-        <svg:line class="activity-gridline" x1="64" x2="668" y1="101" y2="101">
-        <svg:text text-anchor="end" x="56" y="105">
-          "215"
-        <svg:line class="activity-gridline" x1="64" x2="668" y1="186" y2="186">
-        <svg:text text-anchor="end" x="56" y="190">
-          "200"
-        <svg:text text-anchor="middle" x="64" y="212">
-          "0 min"
-        <svg:text text-anchor="middle" x="366" y="212">
-          "2 min"
-        <svg:text text-anchor="middle" x="668" y="212">
-          "4 min"
-        <svg:path d="M64.0,186.0 L215.0,129.3  M517.0,16.0 L668.0,44.3">
-      <p class="muted">
-        "200–230 W · 0–4 min · 1 fehlende Messpunkte"
-      <details class="activity-values">
-        <summary>
-          "Alle 4 Messwerte ansehen"
-        <div aria-label="Leistung in W: Messwerte" class="analysis-chart-table" role="region" tabIndex="0">
+    <div class="activity-analysis-panel">
+      <dl class="activity-analysis-stats">
+        <div>
+          <dt>
+            "Temperatur"
+          <dd>
+            "14,2 °C (Open-Meteo Modell, Wohnort)"
+      <div class="activity-analysis-charts">
+        <section class="activity-analysis-chart is-heart">
+          <div class="activity-analysis-chart-header">
+            <h4>
+              "Herzfrequenz"
+            <p class="activity-analysis-chart-stats">
+              <span>
+                "Ø 140 · Max 140 bpm"
+              <span class="activity-analysis-readout">
+          <svg:svg aria-label="Herzfrequenz: Ø 140 · Max 140 bpm, über 4:00" on:pointerdown="1" on:pointerleave="1" on:pointermove="1" role="img" viewBox="0 0 340 150">
+            <svg:line class="activity-analysis-grid" x1="40" x2="332" y1="116.19999999999983" y2="116.19999999999983">
+            <svg:text text-anchor="end" x="34" y="120.19999999999983">
+              "137"
+            <svg:line class="activity-analysis-grid" x1="40" x2="332" y1="69" y2="69">
+            <svg:text text-anchor="end" x="34" y="73">
+              "140"
+            <svg:line class="activity-analysis-grid" x1="40" x2="332" y1="21.800000000000168" y2="21.800000000000168">
+            <svg:text text-anchor="end" x="34" y="25.800000000000168">
+              "143"
+            <svg:text text-anchor="start" x="40" y="144">
+              "0:00"
+            <svg:text text-anchor="middle" x="186" y="144">
+              "2:00"
+            <svg:text text-anchor="end" x="332" y="144">
+              "4:00"
+            <svg:path class="activity-analysis-line" d="M40.0,69.0 L113.0,69.0 L186.0,69.0 L259.0,69.0 L332.0,69.0 ">
+            <svg:line class="activity-analysis-average" x1="40" x2="332" y1="69" y2="69">
+            <svg:line class="activity-analysis-cursor" visibility="hidden" y1="10" y2="128">
+            <svg:circle class="activity-analysis-dot" r="3.5" visibility="hidden">
+        <section class="activity-analysis-chart is-power">
+          <div class="activity-analysis-chart-header">
+            <h4>
+              "Leistung"
+            <p class="activity-analysis-chart-stats">
+              <span>
+                "Ø 216 · Max 230 W"
+              <span class="activity-analysis-readout">
+          <svg:svg aria-label="Leistung: Ø 216 · Max 230 W, über 4:00" on:pointerdown="1" on:pointerleave="1" on:pointermove="1" role="img" viewBox="0 0 340 150">
+            <svg:line class="activity-analysis-grid" x1="40" x2="332" y1="116.20000000000005" y2="116.20000000000005">
+            <svg:text text-anchor="end" x="34" y="120.20000000000005">
+              "201"
+            <svg:line class="activity-analysis-grid" x1="40" x2="332" y1="69" y2="69">
+            <svg:text text-anchor="end" x="34" y="73">
+              "215"
+            <svg:line class="activity-analysis-grid" x1="40" x2="332" y1="21.799999999999958" y2="21.799999999999958">
+            <svg:text text-anchor="end" x="34" y="25.799999999999958">
+              "229"
+            <svg:text text-anchor="start" x="40" y="144">
+              "0:00"
+            <svg:text text-anchor="middle" x="186" y="144">
+              "2:00"
+            <svg:text text-anchor="end" x="332" y="144">
+              "4:00"
+            <svg:path class="activity-analysis-area" d="M40.0,128 L40.0,119.9 L113.0,86.0 L113.0,128 Z M259.0,128 L259.0,18.1 L332.0,35.1 L332.0,128 Z ">
+            <svg:path class="activity-analysis-line" d="M40.0,119.9 L113.0,86.0 M259.0,18.1 L332.0,35.1 ">
+            <svg:line class="activity-analysis-average" x1="40" x2="332" y1="64.76149425287356" y2="64.76149425287356">
+            <svg:line class="activity-analysis-cursor" visibility="hidden" y1="10" y2="128">
+            <svg:circle class="activity-analysis-dot" r="3.5" visibility="hidden">
+      <section class="activity-analysis-laps">
+        <h4>
+          "Runden"
+        <div aria-label="Runden dieser Einheit" class="analysis-chart-table" role="region" tabIndex="0">
           <table>
-            <caption>
-              "Leistung in W; fehlende Werte sind als Lücke markiert."
             <thead>
               <tr>
                 <th scope="col">
-                  "Zeit"
-                <th scope="col">
-                  "Leistung"
-            <tbody>
-              <tr>
-                <th scope="row">
-                  "0:00"
-                <td>
-                  "200 W"
-              <tr>
-                <th scope="row">
-                  "1:00"
-                <td>
-                  "210 W"
-              <tr>
-                <th scope="row">
-                  "2:00"
-                <td>
-                  "Lücke"
-              <tr>
-                <th scope="row">
-                  "3:00"
-                <td>
-                  "230 W"
-              <tr>
-                <th scope="row">
-                  "4:00"
-                <td>
-                  "225 W"
-    <section class="activity-series">
-      <h3>
-        "Herzfrequenz (bpm)"
-      <svg:svg aria-label="Herzfrequenz, Zeitachse in Minuten; Messwerte und Lücken sind in der Tabelle aufgeführt" role="img" viewBox="0 0 680 220">
-        <svg:line class="activity-gridline" x1="64" x2="668" y1="16" y2="16">
-        <svg:text text-anchor="end" x="56" y="20">
-          "143,5"
-        <svg:line class="activity-gridline" x1="64" x2="668" y1="101" y2="101">
-        <svg:text text-anchor="end" x="56" y="105">
-          "140"
-        <svg:line class="activity-gridline" x1="64" x2="668" y1="186" y2="186">
-        <svg:text text-anchor="end" x="56" y="190">
-          "136,5"
-        <svg:text text-anchor="middle" x="64" y="212">
-          "0 min"
-        <svg:text text-anchor="middle" x="366" y="212">
-          "2 min"
-        <svg:text text-anchor="middle" x="668" y="212">
-          "4 min"
-        <svg:path d="M64.0,101.0 L215.0,101.0 L366.0,101.0 L517.0,101.0 L668.0,101.0">
-      <p class="muted">
-        "140–140 bpm · 0–4 min · 0 fehlende Messpunkte"
-      <details class="activity-values">
-        <summary>
-          "Alle 5 Messwerte ansehen"
-        <div aria-label="Herzfrequenz in bpm: Messwerte" class="analysis-chart-table" role="region" tabIndex="0">
-          <table>
-            <caption>
-              "Herzfrequenz in bpm; fehlende Werte sind als Lücke markiert."
-            <thead>
-              <tr>
+                  "#"
                 <th scope="col">
                   "Zeit"
                 <th scope="col">
-                  "Herzfrequenz"
+                  "Ø W"
+                <th scope="col">
+                  "Ø Herzfrequenz"
             <tbody>
               <tr>
                 <th scope="row">
-                  "0:00"
+                  "1"
                 <td>
-                  "140 bpm"
-              <tr>
-                <th scope="row">
-                  "1:00"
-                <td>
-                  "140 bpm"
-              <tr>
-                <th scope="row">
                   "2:00"
                 <td>
-                  "140 bpm"
+                  "205"
+                <td>
+                  "140"
               <tr>
                 <th scope="row">
-                  "3:00"
+                  "2"
                 <td>
-                  "140 bpm"
-              <tr>
-                <th scope="row">
-                  "4:00"
+                  "1:00"
                 <td>
-                  "140 bpm"
-    <h3>
-      "Intervalle / Runden"
-    <ol class="activity-laps">
-      <li>
-        "Runde 1 · 120 s · 205 W · 140 bpm"
-      <li>
-        "Intervall 2 · 60 s"
+                  "—"
+                <td>
+                  "—"
+      <div class="dialog-actions">
+      <p class="muted" role="status">
+    <h4>
+      "Messwerte"
+    <details class="activity-values">
+      <summary>
+        "Leistung (W): alle 4 Messwerte ansehen"
+      <div aria-label="Leistung in W: Messwerte" class="analysis-chart-table" role="region" tabIndex="0">
+        <table>
+          <caption>
+            "Leistung in W; fehlende Werte sind als Lücke markiert."
+          <thead>
+            <tr>
+              <th scope="col">
+                "Zeit"
+              <th scope="col">
+                "Leistung"
+          <tbody>
+            <tr>
+              <th scope="row">
+                "0:00"
+              <td>
+                "200 W"
+            <tr>
+              <th scope="row">
+                "1:00"
+              <td>
+                "210 W"
+            <tr>
+              <th scope="row">
+                "2:00"
+              <td>
+                "Lücke"
+            <tr>
+              <th scope="row">
+                "3:00"
+              <td>
+                "230 W"
+            <tr>
+              <th scope="row">
+                "4:00"
+              <td>
+                "225 W"
+    <details class="activity-values">
+      <summary>
+        "Herzfrequenz (bpm): alle 5 Messwerte ansehen"
+      <div aria-label="Herzfrequenz in bpm: Messwerte" class="analysis-chart-table" role="region" tabIndex="0">
+        <table>
+          <caption>
+            "Herzfrequenz in bpm; fehlende Werte sind als Lücke markiert."
+          <thead>
+            <tr>
+              <th scope="col">
+                "Zeit"
+              <th scope="col">
+                "Herzfrequenz"
+          <tbody>
+            <tr>
+              <th scope="row">
+                "0:00"
+              <td>
+                "140 bpm"
+            <tr>
+              <th scope="row">
+                "1:00"
+              <td>
+                "140 bpm"
+            <tr>
+              <th scope="row">
+                "2:00"
+              <td>
+                "140 bpm"
+            <tr>
+              <th scope="row">
+                "3:00"
+              <td>
+                "140 bpm"
+            <tr>
+              <th scope="row">
+                "4:00"
+              <td>
+                "140 bpm"
     <h3>
       "Kraftsätze"
     <p class="muted">
@@ -190,4 +240,3 @@
               "–"
   <p class="muted" role="status">
   <div>
-    <div class="dialog-actions">

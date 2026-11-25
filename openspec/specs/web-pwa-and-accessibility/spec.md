@@ -543,11 +543,11 @@ The client SHALL fill the selected tab or range with one accent style everywhere
 Evidence: `public/analysis.js::appendAnalysisDateTicks`, `public/activity-analysis.js::chartRange`, `public/activity-details.js::providerNotes`, `public/nutrition.js::nutritionCard`, `public/auth.js::setLoginError`, `e2e/ux-polish.spec.js`.
 
 ### Requirement: Calendar cards carry the single-session analysis
-The calendar card of a completed session SHALL carry its single-session analysis behind a "Details" toggle, with "Mit Coach besprechen" and "Feedback" beside it. The Analyse tab SHALL have no separate list of sessions, the calendar SHALL page back without limit so every stored session stays reachable, and the Coach SHALL NOT receive per-second running dynamics.
+The calendar card of a completed session SHALL carry its single-session analysis behind an "Alle Details" button (a dialog), with "Mit Coach besprechen" and "Feedback" beside it. The Analyse tab SHALL have no separate list of sessions, the calendar SHALL page back without limit so every stored session stays reachable, and the Coach SHALL NOT receive per-second running dynamics.
 
-#### Scenario: Details in the card
-- **WHEN** the athlete opens "Details" of a completed session
-- **THEN** its charts, zones, laps, values, form drift and provider notes appear in the card; a failed or timed-out read shows the retry card; an opened Details stays open and reloads when the calendar is rebuilt by a sync or reload.
+#### Scenario: Details dialog
+- **WHEN** the athlete opens "Alle Details" of a completed session
+- **THEN** its charts, zones, laps, values, form drift and provider notes appear in the dialog, followed by the value tables, strength sets and recordings; a failed or timed-out read shows the retry card; the card has no inline Details, no close button and no feedback field.
 
 #### Scenario: Time in zones
 - **WHEN** the athlete opens a completed session's card

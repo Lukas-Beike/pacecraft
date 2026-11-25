@@ -1,5 +1,5 @@
 const { test, expect } = require("@playwright/test");
-const { renderCalendarSessions, openSessionDetails } = require("./helpers/ui");
+const { renderCalendarSessions, openSessionDetails, openCardDetails } = require("./helpers/ui");
 
 // Routes miss requests that pass through the service worker's fetch listener; this spec
 // does not test the worker, so it is blocked and every route applies (#3842).
@@ -21,10 +21,9 @@ test("@responsive activity details preserve calendar without Coach shortcuts", a
   // The details show the session only; its feedback has its own sheet (#4199).
   await expect(dialog.getByText("Dein Feedback")).toHaveCount(0);
   await expect(dialog.getByRole("button", { name: "Feedback speichern" })).toHaveCount(0);
-  await expect(dialog.getByRole("img", { name: "Leistung, Zeitachse in Minuten" })).toBeVisible();
+  await expect(dialog.getByRole("img", { name: /^Leistung: Ø/ })).toBeVisible();
   // The sampled charts carry no helper line any more (#3933).
   await expect(dialog.getByText(/Diagramme vereinfacht/)).toHaveCount(0);
-  expect(await dialog.locator(".activity-series").first().locator("svg text").count()).toBeGreaterThan(3);
   await dialog.locator(".activity-values summary").first().click();
   await expect(dialog.locator(".activity-values table tbody tr").first()).toBeVisible();
   expect(await dialog.locator("img").count()).toBe(0);
@@ -119,11 +118,14 @@ test("@responsive activity details chart each document channel once", async ({ p
       detail_data: { providers: [] },
     };
     await ActivityDetails.open({ id: "act_channels" }, { api: async () => data, showDialog: (dialog) => dialog.showModal() });
-    const result = [...document.querySelectorAll(".activity-series h3")].map((node) => node.textContent);
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    const result = [...document.querySelectorAll(".activity-analysis-chart-header h4")].map((node) => node.textContent);
+    // The dialog keeps one value table per channel below the inline view's charts (#4221).
+    result.push(...[...document.querySelectorAll(".activity-values > summary")].map((node) => node.textContent));
     ActivityDetails.close(false);
     return result;
   });
-  expect(headings).toEqual(["Leistung (W)", "Geschwindigkeit (m/s)"]);
+  expect(headings).toEqual(["Geschwindigkeit", "Leistung", "Leistung (W): alle 3 Messwerte ansehen", "Geschwindigkeit (m/s): alle 3 Messwerte ansehen"]);
 });
 
 test("@responsive Garmin-only session shows per-provider notes and its own refresh", async ({ page }) => {
@@ -155,11 +157,14 @@ test("@responsive Garmin-only session shows per-provider notes and its own refre
       if (url === "/api/sync/jobs") return { id: "synthetic-job", status: "completed" };
       return data;
     };
+    // The inline view inside the dialog reads through the app's own client.
+    globalThis.realApi = api;
+    api = fakeApi;
     await ActivityDetails.open({ id: "act_garmin" }, { api: fakeApi, showDialog: (dialog) => dialog.showModal() });
   });
   const dialog = page.getByRole("dialog", { name: "Synthetic Garmin ride <img src=x>" });
   await expect(dialog).toBeVisible();
-  await expect(dialog.getByRole("img", { name: "Leistung, Zeitachse in Minuten" })).toBeVisible();
+  await expect(dialog.getByRole("img", { name: /^Leistung: Ø/ })).toBeVisible();
   await expect(dialog.getByText("Garmin Connect: Die Zusammenfassung hat sich seit dem Laden geändert.", { exact: false })).toBeVisible();
   await expect(dialog.locator(".activity-analysis-error").filter({ hasText: "Garmin Connect: Garmin Connect lieferte keine Runden." })).toBeVisible();
   await expect(dialog.locator(".activity-analysis-error").filter({ hasText: "Wahoo: Wahoo-Datei unvollständig." })).toBeVisible();
@@ -176,7 +181,7 @@ test("@responsive Garmin-only session shows per-provider notes and its own refre
   expect(job).toEqual({ provider: "garmin", type: "activity_details", payload: { activity_id: "act_garmin" } });
   expect(await dialog.locator("img").count()).toBe(0);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBeTruthy();
-  await page.evaluate(() => ActivityDetails.close(false));
+  await page.evaluate(() => { ActivityDetails.close(false); api = realApi; });
 });
 
 test("@responsive running cadence shows step frequency of both legs", async ({ page }) => {
@@ -187,13 +192,16 @@ test("@responsive running cadence shows step frequency of both legs", async ({ p
     for (const type of ["Run", "Ride"]) {
       const data = { session: { activity_id: `synthetic-${type}`, name: `Synthetic ${type}`, sport: type.toLowerCase() }, streams: { time_s: [0, 1, 2], channels: { cadence_rpm: { values: [86, 88, 90] } } }, detail_data: { providers: [] } };
       await ActivityDetails.open({ id: `synthetic-${type}` }, { api: async () => data, showDialog: (dialog) => dialog.showModal() });
-      result[type] = [...document.querySelectorAll(".activity-series")].map((node) => node.textContent);
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      result[type] = [...document.querySelectorAll(".activity-analysis-chart, .activity-values > summary")].map((node) => node.textContent);
       ActivityDetails.close(false);
     }
     return result;
   });
-  expect(headings.Run.find((text) => text.startsWith("Schrittfrequenz (spm)"))).toContain("180");
-  expect(headings.Ride.find((text) => text.startsWith("Trittfrequenz (rpm)"))).toContain("90");
+  expect(headings.Run.find((text) => text.startsWith("Schrittfrequenz (spm)"))).toContain("alle 3 Messwerte");
+  expect(headings.Run.find((text) => text.startsWith("Schrittfrequenz") && text.includes("Ø"))).toContain("180");
+  expect(headings.Ride.find((text) => text.startsWith("Trittfrequenz (rpm)"))).toContain("alle 3 Messwerte");
+  expect(headings.Ride.find((text) => text.startsWith("Trittfrequenz") && text.includes("Ø"))).toContain("90");
 });
 
 test("@responsive calendar details show running step frequency and cycling cadence", async ({ page }) => {
@@ -382,11 +390,12 @@ test("@responsive the session dialog charts the breathing rate", async ({ page }
   const headings = await page.evaluate(async () => {
     const data = { session: { activity_id: "synthetic-breath", name: "Synthetic breath", sport: "run" }, streams: { time_s: [0, 1, 2], channels: { respiration_rate_brpm: { values: [20, 22, 24] } } }, detail_data: { providers: [] } };
     await ActivityDetails.open({ id: "synthetic-breath" }, { api: async () => data, showDialog: (dialog) => dialog.showModal() });
-    const result = [...document.querySelectorAll(".activity-series h3")].map((node) => node.textContent);
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    const result = [...document.querySelectorAll(".activity-analysis-chart-header h4")].map((node) => node.textContent);
     ActivityDetails.close(false);
     return result;
   });
-  expect(headings).toEqual(["Atemfrequenz (/min)"]);
+  expect(headings).toEqual(["Atemfrequenz"]);
 });
 
 test("@responsive the calendar details open a Garmin-only indoor session; old Einheiten links land on the calendar", async ({ page }) => {
@@ -439,8 +448,7 @@ test("@responsive calendar details expand Garmin-style charts", async ({ page, r
   await page.evaluate(async () => { await AppRouter.navigate("plan/overview", { historyMode: "replace" }); });
   const card = page.locator(".planned-entry").filter({ hasText: "Synthetic ride <img src=x>" }).first();
   await card.evaluate((element) => { element.open = true; });
-  const item = card.locator(".planned-activity-more");
-  await item.locator(":scope > summary").click();
+  const item = await openCardDetails(page, card);
   await expect(item.locator(".activity-analysis-stats")).toContainText("25,0 km");
   await expect(item.locator(".activity-analysis-stats div").filter({ hasText: "Normalized Power" })).toContainText("205 W");
   const power = item.getByRole("img", { name: /^Leistung: Ø 200/ });
@@ -645,7 +653,7 @@ test("@responsive a completed session's card shows its equipment as a chip and a
   const chip = card.locator(".planned-equipment-chip");
   await expect(chip).toBeVisible();
   await expect(chip).toHaveText("\u{1F45F} Pegasus 40 · vorgeschlagen ▾");
-  await expect(card.locator(".planned-activity-more")).not.toHaveAttribute("open", "");
+  await expect(page.locator("dialog.activity-detail-dialog[open]")).toHaveCount(0);
   expect(posts).toEqual([]);
   await chip.click();
   const row = card.locator(".planned-equipment");

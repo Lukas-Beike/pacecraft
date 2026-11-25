@@ -79,6 +79,12 @@ expression. Other inline status lines are not listed.
 | `loadPanel` | `createLoadingState` | Details werden geladen … |  |
 | `loadPanel` | `createErrorState` | (computed) ` error.message ` |  |
 
+### `public/activity-details.js`
+
+| Function | Helper | Text | Detail |
+| --- | --- | --- | --- |
+| `attempt` | `createErrorState` | (computed) ` error.message ` |  |
+
 ### `public/analysis.js`
 
 | Function | Helper | Text | Detail |
