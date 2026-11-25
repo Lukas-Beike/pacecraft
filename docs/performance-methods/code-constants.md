@@ -138,7 +138,7 @@ every named number the code fixes. A test fails when it is out of date.
 | `GRADE_SPAN_M` | `200.0` | `backend/performance/grade_adjustment.py` | Distance over which a grade is taken from altitude, so GPS altitude noise over a few metres does not become a steep gradient; M8 and M11 (#3187). |
 | `MAX_GRADE` | `0.45` | `backend/performance/grade_adjustment.py` | Validity range of the Minetti polynomial, as a fraction. |
 | `MINETTI_RUNNING` | `(155.4, -30.4, -43.3, 46.3, 19.5, 3.6)` | `backend/performance/grade_adjustment.py` | Minetti et al. 2002 (J Appl Physiol 93:1039, Fig. 2): net metabolic cost of running per unit distance, J/kg/m, as a 5th-order polynomial of the gradient (rise/run, -0.45 to +0.45); coefficients from i^5 down to the constant. The one copy for grade-adjusted pace (M8) and running energy (M11). |
-| `METHOD` | `'infection-hint-v1'` | `backend/performance/infection_hint.py` |  |
+| `METHOD` | `'infection-hint-v2'` | `backend/performance/infection_hint.py` |  |
 | `RANGE_MARGIN` | `0.5` | `backend/performance/infection_hint.py` | Beyond the usual range by this share of its width (the interquartile range). |
 | `MIN_UNUSUAL` | `2` | `backend/performance/infection_hint.py` |  |
 | `LIMITS` | `'Abgeleiteter Hinweis, keine Diagnose. Hartes Training, Alkohol, Hitze, Höhe, Reisen und kurzer S... (sha256 7e8e7194)` | `backend/performance/infection_hint.py` |  |

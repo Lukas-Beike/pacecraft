@@ -18,7 +18,7 @@ test("@responsive the infection hint expands into symptom chips and saves the se
     const data = response && (await response.json().catch(() => null));
     if (!data) return;
     const signal = (label, value, unit, lower, upper) => ({ label, value, unit, lower, upper, source: "Garmin Connect", unusual: true });
-    const hint = { method: "infection-hint-v1", status: "hint", signals: [signal("Atemfrequenz", 17, "brpm", 14, 15), signal("Ruhepuls", 56, "bpm", 48, 51)], limits: "Keine Diagnose." };
+    const hint = { method: "infection-hint-v2", status: "hint", signals: [signal("Atemfrequenz", 17, "brpm", 14, 15), signal("Ruheherzfrequenz", 56, "bpm", 48, 51)], limits: "Keine Diagnose." };
     const days = (data.daily_planning_context || []).filter((day) => day.date !== today);
     data.daily_planning_context = [...days, { ...(data.daily_planning_context || []).find((day) => day.date === today), date: today, infection_hint: hint }];
     return route.fulfill({ json: data }).catch(() => undefined);

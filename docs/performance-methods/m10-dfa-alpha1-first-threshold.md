@@ -1,8 +1,8 @@
 # M10 — First threshold heart rate from chest-strap RR intervals (DFA-α1)
 
 - **Card:** M10
-- **Card version:** 6
-- **Method ID:** dfa-alpha1-first-threshold v3 (`backend/canonical/dfa_alpha1.py:METHOD_VERSION`), athlete-level value in `backend/performance/first_threshold_estimate.py` (#2131, C-008), running step test run-step-test-v3 in `backend/performance/step_test.py` (#3833, #3916, #3915)
+- **Card version:** 7
+- **Method ID:** dfa-alpha1-first-threshold v4 (`backend/canonical/dfa_alpha1.py:METHOD_VERSION`), athlete-level value in `backend/performance/first_threshold_estimate.py` (#2131, C-008), running step test run-step-test-v3 in `backend/performance/step_test.py` (#3833, #3916, #3915)
 - **Status:** implemented (`backend/providers/fit_rr_mapping.py` reads the RR intervals); per-session result stored with the stream set, athlete-level estimate shown in the profile and the Coach context, adopted only by the athlete
 - **Classification:** model estimate
 - **Literature checked:** 2026-11-21
@@ -44,8 +44,13 @@ Per recording (`dfa_alpha1.first_threshold`, unit bpm):
 2. **Artifacts:** a beat is dropped when it lies outside 300 to 2000 ms or
    differs by more than 20 % from the last accepted beat; after 5 beats in a
    row rejected only for that change, the new level is accepted.
-3. **Detrending:** the artifact-free series of a segment is detrended with
-   smoothness priors (R61), λ = 500, before windowing.
+3. **Detrending:** the artifact-free series of a segment is resampled at
+   4 Hz by linear interpolation, its trend fitted with smoothness priors (R61),
+   λ = 500, as Kubios does (cut-off about 0.035 Hz), and each beat keeps its
+   interval minus the trend at its own time, before windowing (method 4,
+   #3919). On the beat series itself the same λ cut at 0.019 to 0.025 Hz and
+   moved with heart rate, so the exponent was not the one the validated
+   0.75 threshold refers to.
 4. **Windows:** 120 s windows on the segment's own beat clock (running sum of
    the intervals, each limited to 0.3 to 2 s), starting every 30 s. A window is
    analysed when it holds at least 100 beats, at most 5 % of them artifacts, and
@@ -228,6 +233,16 @@ step test show no range: no limit of agreement is cited for them.
   evaluated" until the next bump of the Garmin and FIT detail mappers replays
   them. The LT1 estimate reads methods 2 and 3 alike; within a session the
   better quality wins, and among equals a record with the series.
+- Method 4 (#3919) comes with that bump. As the RR series and the FIT bytes
+  are not stored, a replay is a new provider download: Garmin activities of
+  the last 90 days, paced by the daily replay budget, and Wahoo workouts of the
+  last 365 days. Older sessions and Garmin sets from the stream backfill keep
+  method 3, so the history mixes methods 3 and 4. The readers take that mix:
+  the athlete-level value is a median of per-session estimates, the second
+  threshold reads per-session series, and the step test reads one session;
+  none pools windows of different sessions in one fit, and the series test
+  asks only for method 3 or later. On test recordings method 4 moved a
+  session's crossing by about half a beat per minute.
 - Athlete level: run sessions of the last 60 days up to today. Rides keep a
   stored result but do not enter the athlete-level estimate.
 - The protocol of R56 is a ramp to exhaustion; sessions here are whatever the
@@ -272,7 +287,10 @@ step test show no range: no limit of agreement is cited for them.
   "automatic method" (R56); windows above 5 % artifacts are rejected instead
   of corrected by interpolation.
 - Detrending is the smoothness-priors method of Kubios with its default
-  λ = 500 (R56, R61), implemented with a banded solver.
+  λ = 500 on the 4 Hz resampled series (R56, R61), implemented with a banded
+  solver. No comparison against Kubios on the same files has been run yet:
+  the difference of the 0.75 crossing between the two is an open validation
+  step (#3919).
 - The athlete-level value is a median of per-session estimates expressed as
   percent of the threshold HR; the literature reports single laboratory tests.
 - Field recordings instead of a laboratory ramp with a metabolic cart.
@@ -299,7 +317,7 @@ step test show no range: no limit of agreement is cited for them.
 | Window length | 120 s | source | R56 used 2-minute windows. `WINDOW_S`. |
 | Window stride | 30 s | product assumption | R56 recalculated every 5 s; 30 s keeps windows overlapping but cheaper. `STRIDE_S`. |
 | Box sizes | 4 to 16 beats | source | R56 set the DFA-α1 window width to 4 ≤ n ≤ 16; method from R60. `BOX_SIZES`. |
-| Detrending | smoothness priors, λ = 500 | source | R61 method; R56 kept the Kubios default λ = 500. `DETREND_LAMBDA`. |
+| Detrending | smoothness priors, λ = 500 on the 4 Hz resampled series | source | R61 method; R56 kept the Kubios default λ = 500 on the resampled series. `DETREND_LAMBDA`, `RESAMPLE_HZ`. |
 | Linear trend per box | order 1 | product assumption | Usual DFA-1; the order is not stated in the accessible text of R56. `alpha1`. |
 | Valid RR range | 300 to 2000 ms | product assumption | Physiological plausibility guard; not taken from a cited threshold. `MIN_RR_MS`, `MAX_RR_MS`. |
 | Beat-to-beat change | more than 20 % from the last accepted beat | product assumption | Common ectopic-beat guard; value not verified in R56/R58. `MAX_BEAT_CHANGE`. |
@@ -383,12 +401,13 @@ step test show no range: no limit of agreement is cited for them.
 | `HRV_MESSAGE` | `78` | `backend/providers/fit_rr_mapping.py` |  |
 | `MAX_RR_INTERVALS` | `150000` | `backend/providers/fit_rr_mapping.py` | A day of beats at 100 bpm; longer series belong to no single activity. |
 | `MAX_UNACCOUNTED_S` | `10.0` | `backend/providers/fit_rr_mapping.py` | The file clock may run this far ahead of the intervals before a dropout is assumed. |
-| `METHOD_VERSION` | `3` | `backend/canonical/dfa_alpha1.py` |  |
+| `METHOD_VERSION` | `4` | `backend/canonical/dfa_alpha1.py` |  |
 | `MIN_RR_MS` | `300.0` | `backend/canonical/dfa_alpha1.py` |  |
 | `MAX_RR_MS` | `2000.0` | `backend/canonical/dfa_alpha1.py` |  |
 | `MAX_BEAT_CHANGE` | `0.2` | `backend/canonical/dfa_alpha1.py` |  |
 | `REANCHOR_AFTER` | `5` | `backend/canonical/dfa_alpha1.py` | After this many beats in a row rejected only for their change, the new level is taken as real: a bad first beat must not reject the whole recording. |
-| `DETREND_LAMBDA` | `500.0` | `backend/canonical/dfa_alpha1.py` | Smoothness priors detrending strength (Kubios and the DFA-a1 studies use 500). |
+| `DETREND_LAMBDA` | `500.0` | `backend/canonical/dfa_alpha1.py` | Smoothness priors detrending strength (Kubios and the DFA-a1 studies use 500), applied to the RR series resampled at this rate (Hz), as Kubios does: on the beat series the cut-off moved with heart rate (method 4, #3919). |
+| `RESAMPLE_HZ` | `4.0` | `backend/canonical/dfa_alpha1.py` |  |
 | `WINDOW_S` | `120.0` | `backend/canonical/dfa_alpha1.py` |  |
 | `STRIDE_S` | `30.0` | `backend/canonical/dfa_alpha1.py` |  |
 | `BOX_SIZES` | `tuple(range(4, 17))` | `backend/canonical/dfa_alpha1.py` |  |

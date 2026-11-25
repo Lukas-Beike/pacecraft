@@ -340,7 +340,7 @@ def version_problems(card: str) -> list[str]:
 METHOD_NUMBER_PINS = {
     "backend/activities/stream_zones.py": (2, "aa1d0759b6b339be"),
     "backend/athlete/body_composition.py": (5, "8d13a81b8c901c9c"),
-    "backend/canonical/dfa_alpha1.py": (3, "15f9cecd3bd14787"),
+    "backend/canonical/dfa_alpha1.py": (4, "ffe4db3d7b4374d8"),
     "backend/nutrition/energy_balance.py": (26, "632233b3baab197b"),
     "backend/performance/activity_energy.py": (8, "29737ead83232fbf"),
     "backend/performance/canonical_session_analysis.py": (9, "bc0a8ff2471f7144"),
