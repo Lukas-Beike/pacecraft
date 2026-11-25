@@ -198,6 +198,7 @@ handler's docstring. Regenerate it with
 | POST | `/api/zones/lt2/adopt` | Session + CSRF | after access | Adopt one value of a local LT2 estimate as the threshold in effect. |
 | PUT | `/api/zones/lt2/notice-baseline` | Session + CSRF | before access | Store the LT2 values of one sport the athlete has now seen (F10, #3273). |
 | PUT | `/api/zones/remove` | Session + CSRF | before access | Remove one local zone configuration. |
+| POST | `/api/zones/threshold-offers/dismiss` | Session + CSRF | after access | Dismiss one open LT1 or LT2 offer for its exact value (#4135). |
 
 ## Route contracts
 
@@ -2315,6 +2316,17 @@ value (`heart_rate_bpm` and `pace_seconds_per_km`, or
 `unknown` with `reason`; null when computing them fails.
 `lt2_notice_baselines` holds per sport the LT2 values the athlete last saw
 in the change notice (`{}` when none or when reading fails).
+`threshold_offers` (#4135) lists the open offers of a new LT1 or LT2, each
+with `key`, `threshold` (`lt1`, `lt2`), `sport`, `metric` (`heart_rate`,
+`pace`, `power`), `source` (`dfa_alpha1`, `critical_speed`,
+`critical_power`, `garmin`), `value` and `unit` (bpm, s/km, W), `current`
+(the value in effect, null when none), `sessions`, `window_days`,
+`quality`, `spread_pct` and `newest` (the newest session's or Garmin
+value's day; each null when the source has none) and `adopt`, the exact
+request body: for `lt1` `{"percent_lthr"}` of `POST
+/api/profile/first-threshold/adopt`, for `lt2` `{"sport", "source",
+"value", "shown"}` of `POST /api/zones/lt2/adopt`; null when computing
+them fails.
 
 Errors: none beyond the common ones.
 
@@ -2778,21 +2790,25 @@ The route exists only where zone editing is configured.
 ### `POST /api/zones/lt2/adopt`
 
 Request: JSON body `{"sport": "run" | "ride", "source": "dfa_alpha1" |
-"critical_speed" | "critical_power" | "step_test", "value": "heart_rate" |
+"critical_speed" | "critical_power" | "step_test" | "garmin", "value": "heart_rate" |
 "pace" | "power", "shown": number, "confirm_deviation": boolean,
 "replace_local": boolean, "activity_id": string}`. `shown` is the number
 `GET /api/profile` showed in `lt2_estimates` (bpm, s/km or W); for
 `step_test` (runs, #3833) it is `step_test.lt2` of `GET
 /api/activities/{activity_id}`, adopted only when good, with the origin
-`dfa_alpha1`.
+`dfa_alpha1`. `garmin` (#4135) adopts Garmin's LT2 value as its entry in
+`threshold_offers` shows it (run `heart_rate` or `pace`, ride `power` or
+`heart_rate`), stored with the origin `garmin`.
 
 Response: 200 `{"configuration": object, "change": object | null}`, the
 receipt of the local zone configuration saved from today with the zone
-limits in effect and its `threshold_origin`; `change` is the undo reference.
+limits in effect and its `threshold_origin`; without zones of that kind
+the standard zones in effect (percent of the threshold) are kept;
+`change` is the undo reference.
 
 Errors: 400 for an unknown sport, source or value; 409 with reason
 `lt2_unknown` (no estimate), `lt2_changed` (`shown` differs from the
-current estimate), `lt2_no_zones` (no zones of that kind), `lt2_replace_local`
+current estimate), `lt2_replace_local`
 (a value the athlete entered is in effect; send `replace_local: true`),
 `lt2_deviation` (more than 5 % from the value in effect; send
 `confirm_deviation: true`) or `lt2_zone_limits` (the absolute zone limits
@@ -2822,6 +2838,16 @@ Errors: 400 "Das Entfernen lokaler Zonen muss bestätigt werden." unless
 `confirmed` is `true`; 404 "Lokale Zonen nicht gefunden.".
 
 The route exists only where zone editing is configured.
+
+### `POST /api/zones/threshold-offers/dismiss`
+
+Request: JSON body `{"key": string}`, the `key` of an entry of
+`threshold_offers` in `GET /api/profile`. The offer stays dismissed for
+that value; a different value of the same source is a new offer.
+
+Response: 200 `{"threshold_offers": array}`, the offers still open.
+
+Errors: 409 with reason `offer_unknown` when the key names no open offer.
 <!-- END GENERATED ROUTES -->
 
 The former `/api/logs/clear` and `/api/diagnostics/clear` aliases are not

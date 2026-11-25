@@ -151,6 +151,17 @@ class AthleteGetRoutes:
         return result
 
     @staticmethod
+    def _threshold_offers(
+        service: Callable[[], Any], estimates: dict[str, Any] | None
+    ) -> list[dict[str, Any]] | None:
+        try:
+            result: list[dict[str, Any]] = service().offers(estimates)
+        except Exception as exc:  # noqa: BLE001 - the offers are optional; never fail the profile
+            _LOGGER.warning("Threshold offers unavailable: %s", type(exc).__name__)
+            return None
+        return result
+
+    @staticmethod
     def _lt2_baselines(service: Callable[[], Any]) -> dict[str, Any]:
         try:
             result: dict[str, Any] = service().notice_baselines()
@@ -176,6 +187,17 @@ class AthleteGetRoutes:
         `unknown` with `reason`; null when computing them fails.
         `lt2_notice_baselines` holds per sport the LT2 values the athlete last saw
         in the change notice (`{}` when none or when reading fails).
+        `threshold_offers` (#4135) lists the open offers of a new LT1 or LT2, each
+        with `key`, `threshold` (`lt1`, `lt2`), `sport`, `metric` (`heart_rate`,
+        `pace`, `power`), `source` (`dfa_alpha1`, `critical_speed`,
+        `critical_power`, `garmin`), `value` and `unit` (bpm, s/km, W), `current`
+        (the value in effect, null when none), `sessions`, `window_days`,
+        `quality`, `spread_pct` and `newest` (the newest session's or Garmin
+        value's day; each null when the source has none) and `adopt`, the exact
+        request body: for `lt1` `{"percent_lthr"}` of `POST
+        /api/profile/first-threshold/adopt`, for `lt2` `{"sport", "source",
+        "value", "shown"}` of `POST /api/zones/lt2/adopt`; null when computing
+        them fails.
 
         Errors: none beyond the common ones.
         """
@@ -188,8 +210,10 @@ class AthleteGetRoutes:
                 self._first_threshold_service
             )
         if self._second_threshold_service is not None:
-            payload["lt2_estimates"] = self._lt2_estimates(
-                self._second_threshold_service
+            estimates = self._lt2_estimates(self._second_threshold_service)
+            payload["lt2_estimates"] = estimates
+            payload["threshold_offers"] = self._threshold_offers(
+                self._second_threshold_service, estimates
             )
             payload["lt2_notice_baselines"] = self._lt2_baselines(
                 self._second_threshold_service

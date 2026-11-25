@@ -8,19 +8,41 @@ reference cases (CS 4 m/s, CP 250 W).
 
 import unittest
 from datetime import date, timedelta
+from typing import Any
 from unittest.mock import Mock
 
+from canonical_domain_support import provenance, zone_configuration
+from performance_day_support import StubReader
 from support import dispatch_route
 
-from backend.athlete.zones import local_configuration
+from backend.activities.zone_settings import (
+    ZoneSettings,
+    effective_zone_configuration,
+)
+from backend.athlete.zones import ZoneConfigurationService, local_configuration
 from backend.canonical.activity_detail import ActivityDfaAlpha1, DfaWindow
-from backend.canonical.vocabulary import DfaQuality
+from backend.canonical.vocabulary import DfaQuality, MetricKind, ProviderId, Sport
 from backend.coach.context import CoachStructuredContextService
+from backend.db import canonical_domain_store
 from backend.db.repositories import KeyValueRepository
 from backend.errors import AppError
 from backend.http_api.athlete_get import AthleteGetRoutes
+from backend.http_api.route_table import Access
+from backend.http_api.second_threshold_post import (
+    ADOPT_PATH,
+    DISMISS_OFFER_PATH,
+    SecondThresholdPostRoutes,
+)
 from backend.performance import second_threshold_estimate as lt2
-from backend.performance.second_threshold_service import SecondThresholdService
+from backend.performance.canonical_current import read_export_thresholds
+from backend.performance.second_threshold_service import (
+    SecondThresholdService,
+)
+from backend.performance.threshold_offers import open_offers, threshold_values
+from backend.sync.canonical_table_reader import CanonicalTableReader
+from backend.sync.garmin_threshold_store import STATE_KEY as GARMIN_STORE_STATE_KEY
+from backend.sync.garmin_threshold_store import GarminThresholdStore
+from tests.test_current_thresholds import ZoneSource, _obs
 from tests.test_first_threshold_estimate import add_run, open_database
 
 TODAY = date(2026, 11, 16)
@@ -389,6 +411,35 @@ class VisibilityTests(unittest.TestCase):
 
         self.assertNotIn("lt2_estimates", current(failing))
 
+    def test_the_profile_carries_the_offers_and_survives_a_failure(self) -> None:
+        service = Mock()
+        service.estimates.return_value = ESTIMATES
+        service.offers.return_value = [{"key": "lt2:run:pace:garmin:250"}]
+        payload = self.read_profile(lambda: service)
+        self.assertEqual(
+            payload["threshold_offers"], [{"key": "lt2:run:pace:garmin:250"}]
+        )
+        service.offers.assert_called_with(ESTIMATES)
+        service.offers.side_effect = RuntimeError("synthetic failure")
+        self.assertIsNone(self.read_profile(lambda: service)["threshold_offers"])
+
+    def test_the_coach_lists_the_offers_without_the_dismissal_key(self) -> None:
+        performance = Mock()
+        performance.current_performance.return_value = {"ftp": 260}
+        offers = [{"key": "k", "threshold": "lt2", "value": 170}]
+        current = CoachStructuredContextService(
+            Mock(),
+            Mock(),
+            Mock(),
+            Mock(),
+            performance,
+            lt2_estimates=lambda: ESTIMATES,
+            threshold_offers=lambda read: offers if read == ESTIMATES else [],
+        )._current_performance(None)
+        self.assertEqual(
+            current["threshold_offers"], [{"threshold": "lt2", "value": 170}]
+        )
+
 
 RUN_ESTIMATES = {
     "run": {
@@ -483,7 +534,23 @@ class AdoptTests(unittest.TestCase):
         self.assertEqual(saved["threshold"], 169)
         self.assertEqual(saved["threshold_origin"], "dfa_alpha1")
         self.assertEqual(saved["percent_limits"], [80, 89, 94, 100, 103, 110])
-        self.assertEqual(saved["maximum"], 190)
+        # The provider's maximum stays with the source policy (#4161).
+        self.assertIsNone(saved["maximum"])
+
+    def test_an_adoption_over_local_zones_keeps_their_maximum(self) -> None:
+        local = zone(
+            "heart_rate",
+            165,
+            local=True,
+            origin="dfa_alpha1",
+            percent=[80, 89, 94, 100, 103, 110],
+            maximum=190,
+        )
+        zones = FakeZones(local)
+        self.adopt(
+            zones, sport="run", source="dfa_alpha1", value="heart_rate", shown=169
+        )
+        self.assertEqual(zones.saved[0]["maximum"], 190)
 
     def test_pace_is_stored_as_the_threshold_speed(self) -> None:
         zones = FakeZones(zone("pace", 3.8, percent=[78, 88, 94, 100, 106, 999]))
@@ -495,7 +562,6 @@ class AdoptTests(unittest.TestCase):
         hr = zone("heart_rate", 165, percent=[80, 89, 94, 100, 103, 110])
         cases = [
             ({"shown": 170}, (hr,), "lt2_changed"),
-            ({}, (), "lt2_no_zones"),
             (
                 {},
                 (
@@ -573,9 +639,17 @@ class AdoptTests(unittest.TestCase):
     def test_absolute_limits_that_no_longer_fit_are_refused_with_the_reason(
         self,
     ) -> None:
-        # A maximum of 168 bpm below the new 169 bpm threshold fails the HR rules.
+        # A local maximum of 168 bpm below the new 169 bpm threshold fails the HR
+        # rules (a provider's maximum is not copied, #4161).
         zones = FakeZones(
-            zone("heart_rate", 165, limits=[130, 145, 155, 165, 166, 168], maximum=168)
+            zone(
+                "heart_rate",
+                165,
+                local=True,
+                origin="dfa_alpha1",
+                limits=[130, 145, 155, 165, 166, 168],
+                maximum=168,
+            )
         )
         with self.assertRaises(AppError) as raised:
             self.adopt(
@@ -724,6 +798,573 @@ class NoticeBaselineTests(unittest.TestCase):
             with self.subTest(payload=payload), self.assertRaises(AppError) as raised:
                 self.service.save_notice_baseline(payload)
             self.assertEqual(raised.exception.status, 400)
+
+
+GOOD_DFA = {
+    "status": "ok",
+    "heart_rate_bpm": 170,
+    "pace_seconds_per_km": 256,
+    "sessions": 4,
+    "window_days": 60,
+    "spread_pct": 3.2,
+    "quality": "good",
+    "to": "2026-11-15",
+}
+GOOD_LT1 = {
+    "percent_lthr": 88.0,
+    "bpm": 150,
+    "sessions": 5,
+    "quality": "good",
+    "to": "2026-11-14",
+    "spread_pct": 2.0,
+}
+
+
+def offer_estimates(dfa=None, cs=None, cp=None):
+    unknown = {"status": "unknown", "reason": "x", "sessions": 0}
+    return {
+        "run": {"dfa_alpha1": dfa or unknown, "critical_speed": cs or unknown},
+        "ride": {"dfa_alpha1": unknown, "critical_power": cp or unknown},
+    }
+
+
+def offer_keys(offers):
+    return [offer["key"] for offer in offers]
+
+
+class OfferTests(unittest.TestCase):
+    """#4135: a known, good candidate at least the notice step from the value in effect."""
+
+    def test_new_values_are_offered_with_their_basis_and_adopt_body(self) -> None:
+        values = {
+            "in_effect": {"run": {"heart_rate": 165, "pace": 262}},
+            "garmin": {"ride": {"power": {"value": 280, "date": "2026-11-10"}}},
+        }
+        offers = open_offers(offer_estimates(dfa=GOOD_DFA), GOOD_LT1, 145.0, values, ())
+        self.assertEqual(
+            offer_keys(offers),
+            [
+                "lt1:run:heart_rate:dfa_alpha1:150",
+                "lt2:run:heart_rate:dfa_alpha1:170",
+                "lt2:run:pace:dfa_alpha1:256",
+                "lt2:ride:power:garmin:280",
+            ],
+        )
+        lt1, hr, _pace, garmin = offers
+        self.assertEqual(lt1["adopt"], {"percent_lthr": 88.0})
+        self.assertEqual((lt1["current"], lt1["window_days"]), (145.0, 60))
+        self.assertEqual(
+            hr["adopt"],
+            {
+                "sport": "run",
+                "source": "dfa_alpha1",
+                "value": "heart_rate",
+                "shown": 170,
+            },
+        )
+        self.assertEqual(
+            (hr["current"], hr["sessions"], hr["spread_pct"], hr["newest"]),
+            (165, 4, 3.2, "2026-11-15"),
+        )
+        # Garmin rates no quality and has no session basis; no value in effect is none.
+        self.assertEqual(
+            (garmin["quality"], garmin["sessions"], garmin["current"]),
+            (None, None, None),
+        )
+        self.assertEqual(garmin["newest"], "2026-11-10")
+
+    def test_changes_below_the_notice_step_are_no_offer(self) -> None:
+        cs = {"status": "ok", "pace_seconds_per_km": 250, "quality": "good"}
+        cp = {"status": "ok", "power_w": 284, "quality": "good"}
+        for in_effect, expected in (
+            # 2 bpm, 3 s/km and 5 W are the steps; one less is no change.
+            ({"run": {"heart_rate": 169, "pace": 252}, "ride": {"power": 280}}, []),
+            (
+                {"run": {"heart_rate": 168, "pace": 253}, "ride": {"power": 279}},
+                [
+                    "lt2:run:heart_rate:dfa_alpha1:170",
+                    "lt2:run:pace:critical_speed:250",
+                    "lt2:ride:power:critical_power:284",
+                ],
+            ),
+        ):
+            with self.subTest(in_effect=in_effect):
+                offers = open_offers(
+                    offer_estimates(
+                        dfa={**GOOD_DFA, "pace_seconds_per_km": None}, cs=cs, cp=cp
+                    ),
+                    None,
+                    None,
+                    {"in_effect": in_effect},
+                    (),
+                )
+                self.assertEqual(offer_keys(offers), expected)
+
+    def test_unknown_and_low_quality_candidates_are_no_offer(self) -> None:
+        offers = open_offers(
+            offer_estimates(
+                dfa={**GOOD_DFA, "quality": "low"},
+                cp={"status": "ok", "power_w": 300},
+            ),
+            {**GOOD_LT1, "quality": "low"},
+            None,
+            {"garmin": {"run": {"heart_rate": None}}},
+            (),
+        )
+        self.assertEqual(offers, [])
+        self.assertEqual(
+            open_offers(offer_estimates(), {**GOOD_LT1, "bpm": None}, None, {}, ()),
+            [],
+        )
+
+    def test_a_dismissed_value_stays_dismissed_and_a_new_value_is_offered(
+        self,
+    ) -> None:
+        dismissed = ("lt2:run:heart_rate:dfa_alpha1:170",)
+        same = open_offers(offer_estimates(dfa=GOOD_DFA), None, None, {}, dismissed)
+        self.assertNotIn(dismissed[0], offer_keys(same))
+        moved = open_offers(
+            offer_estimates(dfa={**GOOD_DFA, "heart_rate_bpm": 173}),
+            None,
+            None,
+            {},
+            dismissed,
+        )
+        self.assertIn("lt2:run:heart_rate:dfa_alpha1:173", offer_keys(moved))
+
+
+class ThresholdValueTests(unittest.TestCase):
+    """The values in effect and Garmin's own values the offers compare."""
+
+    def test_a_local_value_is_in_effect_and_garmin_keeps_its_own(self) -> None:
+        day = TODAY - timedelta(days=3)
+        observations = (
+            _obs(MetricKind.THRESHOLD_HR, 172.0, ProviderId.GARMIN, Sport.RUN, day),
+            # 4 m/s is 250 s per km.
+            _obs(MetricKind.THRESHOLD_PACE, 4.0, ProviderId.GARMIN, Sport.RUN, day),
+            _obs(MetricKind.FTP, 280.0, ProviderId.GARMIN, Sport.RIDE, day),
+        )
+        local = zone("heart_rate", 165, local=True, percent=[80, 89, 94, 100, 110])
+        values = threshold_values(ZoneSource(observations, ()), None, TODAY, [local])
+        self.assertEqual(
+            values["in_effect"],
+            {"run": {"heart_rate": 165, "pace": 250}, "ride": {"power": 280}},
+        )
+        self.assertEqual(
+            values["garmin"]["run"],
+            {
+                "heart_rate": {"value": 172, "date": day.isoformat()},
+                "pace": {"value": 250, "date": day.isoformat()},
+            },
+        )
+        self.assertEqual(values["garmin"]["ride"]["power"]["value"], 280)
+
+
+class OfferServiceTests(unittest.TestCase):
+    """Dismissal is stored per exact value; adoption of Garmin's value is local."""
+
+    manager: object
+    counter: int
+
+    def setUp(self) -> None:
+        open_database(self)
+        self.values: dict[str, Any] = {
+            "in_effect": {"run": {"heart_rate": 165}},
+            "garmin": {},
+        }
+        self.zones = FakeZones(
+            zone(
+                "heart_rate",
+                165,
+                local=True,
+                origin="dfa_alpha1",
+                percent=[80, 89, 94, 100, 110],
+            )
+        )
+        self.service = SecondThresholdService(
+            self.manager,
+            Mock(**{"get.return_value": {}}),
+            Mock(),
+            lambda _days: [],
+            lambda: TODAY,
+            zones=lambda: self.zones,
+            key_values=KeyValueRepository(lambda: "2026-11-16T18:00:00+00:00"),
+            threshold_values=lambda: self.values,
+        )
+        self.service.estimates = lambda: offer_estimates(dfa=GOOD_DFA)  # type: ignore[method-assign]
+
+    def test_a_dismissed_offer_is_gone_until_its_value_changes(self) -> None:
+        key = "lt2:run:heart_rate:dfa_alpha1:170"
+        self.assertIn(key, offer_keys(self.service.offers()))
+        left = self.service.dismiss_offer({"key": key})
+        self.assertNotIn(key, offer_keys(left))
+        self.assertNotIn(key, offer_keys(self.service.offers()))
+        with self.assertRaises(AppError) as raised:
+            self.service.dismiss_offer({"key": key})
+        self.assertEqual(raised.exception.reason, "offer_unknown")
+        self.service.estimates = lambda: offer_estimates(  # type: ignore[method-assign]
+            dfa={**GOOD_DFA, "heart_rate_bpm": 174}
+        )
+        self.assertIn(
+            "lt2:run:heart_rate:dfa_alpha1:174", offer_keys(self.service.offers())
+        )
+
+    def test_garmins_offered_value_is_adopted_as_a_local_value(self) -> None:
+        self.values["garmin"] = {
+            "run": {"heart_rate": {"value": 168, "date": "2026-11-12"}}
+        }
+        (offer,) = [
+            offer for offer in self.service.offers() if offer["source"] == "garmin"
+        ]
+        with self.assertRaises(AppError) as raised:
+            self.service.adopt({**offer["adopt"], "shown": 171})
+        self.assertEqual(raised.exception.reason, "lt2_changed")
+        self.service.adopt(offer["adopt"])
+        (saved,) = self.zones.saved
+        self.assertEqual(
+            (saved["threshold"], saved["threshold_origin"]), (168, "garmin")
+        )
+
+    def test_the_dismiss_route_needs_session_and_csrf_and_answers_the_offers(
+        self,
+    ) -> None:
+        service = Mock()
+        service.dismiss_offer.return_value = []
+        routes = SecondThresholdPostRoutes(lambda: service)
+        (route,) = [r for r in routes.routes() if r.path == DISMISS_OFFER_PATH]
+        self.assertEqual((route.method, route.access), ("POST", Access.SESSION_CSRF))
+        handler = Mock()
+        handler.read_json.return_value = {"key": "k"}
+        self.assertTrue(
+            dispatch_route(routes, handler, DISMISS_OFFER_PATH, method="POST")
+        )
+        service.dismiss_offer.assert_called_once_with({"key": "k"})
+        handler.send_json.assert_called_once_with(200, {"threshold_offers": []})
+
+
+STORE_NOW = "2026-11-16T06:00:00+00:00"
+
+
+class FailingZones:
+    """The zone service, failing the second adoption after the first was written."""
+
+    def __init__(self, zones):
+        self.zones = zones
+        self.saved = 0
+
+    def configurations(self):
+        return self.zones.configurations()
+
+    def save_adopted(self, payload):
+        if self.saved:
+            raise RuntimeError("synthetic failure")
+        self.saved += 1
+        return self.zones.save_adopted(payload)
+
+
+class GarminThresholdStoreTests(unittest.TestCase):
+    """#4135: Garmin's LT2 values in effect become local values once, at upgrade."""
+
+    manager: Any
+    counter: int
+
+    def setUp(self) -> None:
+        open_database(self)
+        self.zones = ZoneConfigurationService(
+            self.manager,
+            CanonicalTableReader(),
+            lambda: STORE_NOW,
+            today=lambda: TODAY,
+            effective_zone=effective_zone_configuration,
+            on_change=lambda: None,
+        )
+        day = TODAY - timedelta(days=3)
+        self.observations = (
+            # 4 m/s is 250 s per km.
+            _obs(MetricKind.THRESHOLD_PACE, 4.0, ProviderId.GARMIN, Sport.RUN, day),
+            _obs(MetricKind.FTP, 280.0, ProviderId.GARMIN, Sport.RIDE, day),
+        )
+        watch = zone_configuration(
+            threshold=171.0,
+            maximum=192.0,
+            limits=(130.0, 145.0, 160.0, 172.0, 192.0),
+            provenance=provenance("zones-1", provider=ProviderId.GARMIN),
+        )
+        with self.manager.unit_of_work() as db:
+            canonical_domain_store.replace_zone_configurations(
+                db,
+                provider=ProviderId.GARMIN,
+                source_record_id="zones-1",
+                configurations=(watch,),
+                mapper_version=1,
+                now=STORE_NOW,
+            )
+
+    def run_store(self, zones=None, observations=None):
+        store = GarminThresholdStore(
+            key_values=KeyValueRepository(lambda: STORE_NOW),
+            zones=lambda: zones or self.zones,
+            reader=lambda: StubReader(
+                self.observations if observations is None else observations
+            ),
+            today=lambda: TODAY,
+            clock=lambda: STORE_NOW,
+        )
+        with self.manager.unit_of_work() as db:
+            report = store.run_batch(db)
+        with self.manager.reader() as db:
+            return report, store.state(db)
+
+    def local(self):
+        return {
+            (item.sport.value, item.metric.value): item
+            for item in self.zones.configurations()
+            if item.provenance.provider is None
+        }
+
+    def sources(self):
+        with self.manager.reader() as db:
+            return [
+                row["source"] for row in db.execute("SELECT source FROM change_history")
+            ]
+
+    def test_the_first_pass_stores_garmins_values_and_a_restart_does_nothing(
+        self,
+    ) -> None:
+        report, state = self.run_store()
+        self.assertEqual(
+            (report.items, state["status"], state["stored"]),
+            (3, "complete", ["run:heart_rate", "run:pace", "ride:power"]),
+        )
+        local = self.local()
+        heart_rate = local[("run", "heart_rate")]
+        # The watch zones stay as they were, now local with Garmin's threshold.
+        self.assertEqual(
+            (heart_rate.threshold, heart_rate.limits, heart_rate.threshold_origin),
+            (171.0, (130.0, 145.0, 160.0, 172.0, 192.0), "garmin"),
+        )
+        pace = local[("run", "pace")]
+        self.assertEqual((pace.threshold, pace.threshold_origin), (4.0, "garmin"))
+        # Without pace zones the standard zones in effect are kept.
+        self.assertEqual(
+            pace.percent_limits, (77.5, 87.7, 94.3, 100, 103.4, 111.5, 999)
+        )
+        self.assertEqual(local[("ride", "power")].threshold, 280.0)
+        self.assertEqual(self.sources(), ["system:#4135"] * 3)
+        # A second pass, or one after a restart, writes nothing.
+        report, _ = self.run_store()
+        self.assertEqual(report.items, 0)
+        self.assertEqual(len(self.sources()), 3)
+
+    def settings(self):
+        return ZoneSettings.from_configurations(
+            self.zones.configurations(), Sport.RUN, day=TODAY
+        )
+
+    def zone_of(self, bpm):
+        return self.settings().absolute_zone("bpm", bpm)
+
+    def pace_zone_of(self, speed):
+        settings = self.settings()
+        return settings.pace_zone(speed / settings.threshold_pace * 100)
+
+    def adopt(self, garmin=None, estimates=None, step_test=None, **payload):
+        service = SecondThresholdService(
+            self.manager,
+            Mock(**{"get.return_value": {}}),
+            Mock(),
+            lambda _days: [],
+            lambda: TODAY,
+            zones=lambda: self.zones,
+            threshold_values=lambda: {"garmin": garmin or {}},
+        )
+        service.estimates = lambda: estimates or offer_estimates()  # type: ignore[method-assign]
+        handler = Mock()
+        handler.read_json.return_value = payload
+        routes = SecondThresholdPostRoutes(lambda: service, step_test)
+        self.assertTrue(dispatch_route(routes, handler, ADOPT_PATH, method="POST"))
+        return handler.send_json.call_args.args
+
+    def test_a_heart_rate_keeps_its_zone_after_the_store(self) -> None:
+        # 130.3 bpm against the watch's upper limit 130: Garmin's whole-bpm
+        # floors put it in zone 1, and the stored limits must too.
+        self.assertEqual(self.zone_of(130.3), 1)
+        self.run_store()
+        stored = self.local()[("run", "heart_rate")]
+        self.assertEqual((stored.limits[0], stored.garmin_limits), (130.0, True))
+        self.assertEqual(self.zone_of(130.3), 1)
+        self.assertEqual(self.zone_of(130.6), 2)
+        # A DFA-a1 adoption over the stored set copies the limits with the mark.
+        self.adopt(
+            estimates=offer_estimates(dfa=GOOD_DFA),
+            sport="run",
+            source="dfa_alpha1",
+            value="heart_rate",
+            shown=170,
+        )
+        adopted = self.local()[("run", "heart_rate")]
+        self.assertEqual(
+            (adopted.threshold_origin, adopted.garmin_limits), ("dfa_alpha1", True)
+        )
+        self.assertEqual(self.zone_of(130.3), 1)
+        # A hand edit clears the mark: the limits then read as typed.
+        self.zones.save(
+            {
+                "sport": "run",
+                "metric": "heart_rate",
+                "threshold": 170,
+                "limits": list(adopted.limits),
+            }
+        )
+        self.assertFalse(self.local()[("run", "heart_rate")].garmin_limits)
+        self.assertEqual(self.zone_of(130.3), 2)
+
+    def test_garmins_value_over_local_limits_keeps_their_zones(self) -> None:
+        garmin = {
+            "run": {
+                "heart_rate": {"value": 171, "date": "2026-11-12"},
+                "pace": {"value": 250, "date": "2026-11-12"},
+            }
+        }
+        self.zones.save(
+            {
+                "sport": "run",
+                "metric": "heart_rate",
+                "threshold": 165,
+                "limits": [130, 145, 160, 172, 192],
+            }
+        )
+        self.zones.save(
+            {
+                "sport": "run",
+                "metric": "pace",
+                "threshold": 3.8,
+                "limits": [3.0, 3.4, 3.7, 4.0, 4.3, 6.0],
+            }
+        )
+        before = (self.zone_of(130.3), self.pace_zone_of(3.2))
+        self.adopt(
+            garmin, sport="run", source="garmin", value="heart_rate", shown=171,
+            replace_local=True,
+        )  # fmt: skip
+        self.adopt(
+            garmin, sport="run", source="garmin", value="pace", shown=250,
+            replace_local=True, confirm_deviation=True,
+        )  # fmt: skip
+        local = self.local()
+        self.assertEqual(local[("run", "pace")].threshold, 4.0)
+        self.assertFalse(local[("run", "heart_rate")].garmin_limits)
+        self.assertEqual((self.zone_of(130.3), self.pace_zone_of(3.2)), before)
+
+    def test_an_estimate_without_zones_is_adopted_with_the_standard_zones(
+        self,
+    ) -> None:
+        # No pace zones exist: the CS pace is adopted with the standard zones.
+        cs = {"status": "ok", "pace_seconds_per_km": 250, "quality": "good"}
+        status, body = self.adopt(
+            estimates=offer_estimates(cs=cs),
+            sport="run",
+            source="critical_speed",
+            value="pace",
+            shown=250,
+        )
+        self.assertEqual(status, 200)
+        pace = self.local()[("run", "pace")]
+        self.assertEqual(
+            (pace.threshold, pace.percent_limits, pace.threshold_origin),
+            (4.0, (77.5, 87.7, 94.3, 100, 103.4, 111.5, 999), "critical_speed"),
+        )
+        self.assertEqual(body["configuration"]["threshold_origin"], "critical_speed")
+
+    def max_hr_observations(self):
+        # Garmin's max HR (195) differs from the watch set's maximum (192).
+        day = TODAY - timedelta(days=3)
+        return (
+            *self.observations,
+            _obs(MetricKind.MAX_HR, 195.0, ProviderId.GARMIN, Sport.RUN, day),
+        )
+
+    def max_hr(self):
+        winners = read_export_thresholds(
+            StubReader(self.max_hr_observations()),
+            None,
+            as_of=TODAY,
+            configurations=self.zones.configurations(),
+        )
+        return winners[(MetricKind.MAX_HR, Sport.RUN)].value.value
+
+    def test_the_max_hr_keeps_coming_from_garmins_observation(self) -> None:
+        self.assertEqual(self.max_hr(), 195.0)
+        self.run_store(observations=self.max_hr_observations())
+        self.assertIsNone(self.local()[("run", "heart_rate")].maximum)
+        self.assertEqual(self.max_hr(), 195.0)
+
+    def test_an_lt2_adoption_leaves_the_max_hr_with_garmin(self) -> None:
+        # #4161: neither a DFA-a1 nor a step-test adoption copies the watch maximum.
+        step_test = {"lt2": {"status": "ok", "quality": "good", "heart_rate_bpm": 172}}
+        for payload in (
+            {"source": "dfa_alpha1", "shown": 170},
+            {"source": "step_test", "activity_id": "a1", "shown": 172},
+        ):
+            with self.subTest(source=payload["source"]):
+                self.assertEqual(self.max_hr(), 195.0)
+                status, _ = self.adopt(
+                    estimates=offer_estimates(dfa=GOOD_DFA),
+                    step_test=lambda _id: step_test,
+                    sport="run",
+                    value="heart_rate",
+                    **payload,
+                )
+                self.assertEqual(status, 200)
+                self.assertIsNone(self.local()[("run", "heart_rate")].maximum)
+                self.assertEqual(self.max_hr(), 195.0)
+
+    def test_a_local_value_stays_and_a_missing_garmin_value_is_skipped(self) -> None:
+        self.zones.save(
+            {
+                "sport": "run",
+                "metric": "heart_rate",
+                "threshold": 165,
+                "percent_limits": [80, 89, 94, 100, 110],
+            }
+        )
+        _, state = self.run_store(observations=self.observations[:1])
+        self.assertEqual(state["stored"], ["run:pace"])
+        entered = self.local()[("run", "heart_rate")]
+        self.assertEqual((entered.threshold, entered.threshold_origin), (165.0, None))
+        self.assertNotIn(("ride", "power"), self.local())
+
+    def test_without_garmin_values_nothing_is_stored_and_a_later_value_is_not(
+        self,
+    ) -> None:
+        with self.manager.unit_of_work() as db:
+            canonical_domain_store.replace_zone_configurations(
+                db,
+                provider=ProviderId.GARMIN,
+                source_record_id="zones-1",
+                configurations=(),
+                mapper_version=1,
+                now=STORE_NOW,
+            )
+        _, state = self.run_store(observations=())
+        self.assertEqual((state["status"], state["stored"]), ("complete", []))
+        # "Once ever": a Garmin value that appears later is an offer only.
+        report, _ = self.run_store()
+        self.assertEqual((report.items, self.local()), (0, {}))
+
+    def test_a_failure_stores_nothing_and_the_next_pass_completes(self) -> None:
+        failing = FailingZones(self.zones)
+        with self.assertRaises(RuntimeError):
+            self.run_store(zones=failing)
+        # The first value was written in the pass, then rolled back with it.
+        self.assertEqual(failing.saved, 1)
+        self.assertEqual((self.local(), self.sources()), ({}, []))
+        with self.manager.reader() as db:
+            self.assertIsNone(
+                KeyValueRepository(lambda: STORE_NOW).get(db, GARMIN_STORE_STATE_KEY)
+            )
+        report, state = self.run_store()
+        self.assertEqual((report.items, state["status"]), (3, "complete"))
 
 
 if __name__ == "__main__":

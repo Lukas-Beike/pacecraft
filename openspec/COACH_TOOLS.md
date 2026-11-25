@@ -956,7 +956,7 @@ effect `local_write`; gate domain `profile`; receipt „Zonen gespeichert“; pr
 - `maximum` (number; >0)
 - `valid_from` (string; date)
 - `from_beginning` (boolean)
-- `source` (string; one of `"dfa_alpha1"`, `"critical_speed"`, `"critical_power"`, `"step_test"`)
+- `source` (string; one of `"dfa_alpha1"`, `"critical_speed"`, `"critical_power"`, `"step_test"`, `"garmin"`)
 - `value` (string; one of `"heart_rate"`, `"pace"`, `"power"`)
 - `shown` (number)
 - `activity_id` (string; ≥1 chars)

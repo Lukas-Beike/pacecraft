@@ -924,6 +924,32 @@ a.message-retry { display: grid; place-items: center; text-decoration: none; }
 .lt2-source-values[data-unknown] { color: var(--muted); }
 .lt2-source-basis { color: var(--muted); font-size: .78rem; }
 .lt2-source > .secondary-button { grid-column: 2; grid-row: 1 / span 3; align-self: center; min-height: 44px; }
+/* New LT1/LT2 offers (#4135): a card each above the thresholds, one card of rows from 1100 px, "Neue Schwelle" in Analyse. */
+.threshold-offers { display: grid; gap: 10px; }
+.threshold-offer { display: grid; gap: 12px; padding: 16px; border: 2px solid var(--accent); }
+.threshold-offer h3 { margin: 0; color: var(--ink); font-size: 1.05rem; }
+.threshold-offer .push-button, .threshold-offer .secondary-button { justify-content: center; min-height: 44px; }
+.threshold-offer-head { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: baseline; gap: 4px 8px; }
+.threshold-offer-value { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; margin: 0; }
+.threshold-offer-value b { font-size: 2rem; font-variant-numeric: tabular-nums; }
+.threshold-offer-value .zone-muted { font-size: .95rem; }
+.threshold-offer-facts { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 6px 12px; margin: 0; font-size: .88rem; }
+.threshold-offer-facts dt { color: var(--muted); }
+.threshold-offer-facts dd { margin: 0; }
+.threshold-offer-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.threshold-offer-actions button { min-height: 48px; }
+.threshold-offer.is-rows { gap: 0; }
+.threshold-offer.is-rows h3 { margin-bottom: 8px; }
+.threshold-offer-row { display: grid; grid-template-columns: 48px max-content minmax(0, 1fr) max-content max-content; gap: 12px; align-items: center; min-height: 64px; padding: 6px 0; border-top: 1px solid var(--line); }
+.threshold-offer-row-value { font-size: 1.25rem; font-variant-numeric: tabular-nums; }
+.threshold-offer-row .zone-muted { font-size: .82rem; }
+.threshold-offer-row button { padding: 0 16px; }
+.threshold-offer-list { display: grid; grid-template-columns: minmax(0, 1fr) max-content; gap: 10px 12px; align-items: center; }
+.threshold-offer-line { display: grid; gap: 2px; min-width: 0; }
+.threshold-offer-line .zone-muted { font-size: .82rem; }
+.threshold-offer-foot { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 8px; }
+.threshold-offer-foot a { display: inline-flex; align-items: center; min-height: 44px; color: var(--link); font-weight: 600; }
+#analysisThresholdOffers { display: contents; }
 .lt2-adopt-values { display: flex; flex-wrap: wrap; gap: 8px; }
 .threshold-info { position: relative; display: inline-grid; width: 1.25rem; height: 1.25rem; min-height: 0; margin-left: 6px; padding: 0; place-items: center; border: 0; border-radius: 50%; color: var(--warning-ink); background: var(--yellow); font-size: .72rem; font-weight: 700; line-height: 1; vertical-align: middle; }
 .threshold-info::before { content: ""; position: absolute; inset: -.8rem; }

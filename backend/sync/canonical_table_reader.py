@@ -490,6 +490,17 @@ def _zone_configuration(row: Mapping[str, Any]) -> ZoneConfiguration:
         provenance=_domain_provenance(row),
         model=details.get(canonical_domain_store.ZONE_MODEL_KEY),
         threshold_origin=_threshold_origin(row, details),
+        garmin_limits=_garmin_limits(row, details),
+    )
+
+
+def _garmin_limits(row: Mapping[str, Any], details: Mapping[str, Any]) -> bool:
+    """Local heart-rate limits copied from Garmin's floors (#4135); else False."""
+    return (
+        row["provider"] is None
+        and row["metric"] == ZoneConfigurationMetric.HEART_RATE.value
+        and bool(row["limits"])
+        and details.get(canonical_domain_store.ZONE_GARMIN_LIMITS_KEY) is True
     )
 
 

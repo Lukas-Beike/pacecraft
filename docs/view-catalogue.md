@@ -191,7 +191,7 @@ texts.
 | `public/provider-connections.js` `configureAutomaticMetricExport` | (computed) ` enabled ? "Automatischen Abgleich aktivieren?" : "Automatischen Abgleich deaktivieren?" ` | (computed) ` message ` | (computed) ` enabled ? "Aktivieren" : "Deaktivieren" ` |
 | `public/provider-connections.js` `clearProviderCredential` | (computed) `` `${label} entfernen?` `` | Danach gilt wieder der Wert aus der Server-Einstellung, falls dort einer gesetzt ist. | Entfernen |
 | `public/provider-connections.js` `disconnectGarmin` | Garmin trennen? | Die in der App gespeicherten Garmin-Tokens werden gelöscht. Bereits geladene Daten bleiben erhalten. | Trennen |
-| `public/settings.js` `adoptFirstThreshold` | Gemessenen Wert ersetzen? | Der gemessene Wert wird durch den Wert aus DFA-α1 ersetzt. | Ersetzen |
+| `public/settings.js` `adoptFirstThresholdPercent` | Gemessenen Wert ersetzen? | Der gemessene Wert wird durch den Wert aus DFA-α1 ersetzt. | Ersetzen |
 | `public/settings.js` `restoreDatabaseBackup` | Datenbank-Backup wiederherstellen? | Das aktuelle Datenbank-Backup wird vorher gesichert und durch die ausgewählte Datei ersetzt. | Wiederherstellen |
 | `public/settings.js` `deleteGpsTracks` | GPS-Spuren löschen? | (computed) `` `Alle gespeicherten GPS-Spuren (${gpsTracksState.stored_tracks}) werden unwiderruflich lokal gelöscht. Streckenerkennung und Wetter am Ort nutzen sie nicht mehr. Die übrigen Aufzeichnungen bleiben.` `` | Löschen |
 | `public/settings.js` `deletePrivacyData` | Lokale Daten endgültig löschen? | (computed) ` scope ` | Endgültig löschen |

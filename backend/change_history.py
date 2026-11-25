@@ -355,6 +355,8 @@ ZONE_CONFIGURATION_FIELDS = (
     "percent_limits",
     # The adopted local LT2 estimate the threshold came from (#3273).
     "threshold_origin",
+    # Limits an adoption copied from Garmin's floors, only when true (#4135).
+    "garmin_limits",
 )
 
 # The exported fields, keyed like the export consent (metric_export_consent).
@@ -502,7 +504,8 @@ _FIELDS_ADDED_TO_AUDIT: dict[str, tuple[tuple[str, ...], ...]] = {
         ("portion_amount", "portion_unit", "package_amount", "package_unit"),
     ),
     # #3273: the adopted LT2 origin of a local zone threshold.
-    "zone_configuration": (("threshold_origin",),),
+    # #4135: the Garmin limits mark of an adopted configuration.
+    "zone_configuration": (("threshold_origin",), ("garmin_limits",)),
 }
 
 
