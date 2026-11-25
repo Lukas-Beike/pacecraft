@@ -46,7 +46,11 @@ async function adoptFirstThresholdPercent(percent, button) {
     invalidateContextPreview();
     toast(result.adopted === false ? "Wert aus DFA-α1 ist bereits übernommen" : "Erste Schwelle übernommen");
     await load();
-  } catch (error) { toast(error.message, true); }
+  } catch (error) {
+    toast(error.message, true);
+    // A changed estimate answers 409: read it again so the block and the offer show the new value (#4135).
+    if (error.status === 409) await globalThis.load?.(undefined, ["profile"]);
+  }
   finally { button.disabled = false; }
 }
 
@@ -743,8 +747,8 @@ async function adoptLt2Value(sport, row, item, flags) {
     const flag = await confirmLt2Step(error, flags);
     if (flag) return adoptLt2Value(sport, row, item, { ...flags, [flag]: true });
     if (flag === null) toast(error.message, true);
-    // The value changed since it was shown: the new value and its offer show instead (#4135).
-    if (error.reason === "lt2_changed") await reloadZonesAndThresholds();
+    // The value changed or is gone since it was shown: the current state shows instead (#4135).
+    if (error.reason === "lt2_changed" || error.reason === "lt2_unknown") await reloadZonesAndThresholds();
     return false;
   }
 }
