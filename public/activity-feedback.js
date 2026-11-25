@@ -8,6 +8,8 @@
   // The athlete's own marking wins over Garmin's event type and a competition hint; "" removes it.
   const PURPOSES = [["training", "Training"], ["race", "Wettkampf"], ["commute", "Pendeln"], ["warmup", "Einfahren"], ["cooldown", "Ausfahren"]];
   const RPE_STEPS = Array.from({ length: 10 }, (_, index) => index + 1);
+  // Garmin's feel scale, as stored: 1 very strong .. 5 very weak.
+  const FEEL_STEPS = [[1, "sehr stark"], [2, "stark"], [3, "normal"], [4, "schwach"], [5, "sehr schwach"]];
   const SESSION_LOAD_REASONS = { no_rating: "kein RPE", conflicting_provider_ratings: "widersprüchliche Provider-RPE", no_elapsed_duration: "keine Gesamtdauer", invalid_duration: "ungültige Dauer" };
 
   function purposeSelect(marked, detected) {
@@ -36,29 +38,49 @@
     return value != null && Number.isFinite(step) && step >= 1 && step <= 10 ? step : null;
   }
 
-  // One row of taps for the effort. The own value is pressed, the watch's value is dashed until the athlete rates;
-  // tapping the pressed step again takes the rating back.
-  function effortRow(onPick) {
-    const row = h("div", { className: "feedback-effort", role: "group", "aria-label": "Anstrengung (RPE)" });
-    const buttons = RPE_STEPS.map((step) => {
-      const button = h("button", { type: "button", className: "feedback-step", dataset: { step: String(step) }, "aria-pressed": "false" }, String(step));
+  // A row of taps. The own value is pressed, the watch's value is dashed until the athlete rates; tapping the
+  // pressed step again takes the rating back.
+  function tapRow(className, label, steps, onPick) {
+    const row = h("div", { className, role: "group", "aria-label": label });
+    const buttons = steps.map(([step, text]) => {
+      const button = h("button", { type: "button", className: "feedback-step", dataset: { step: String(step) }, "aria-pressed": "false" }, text);
       button.addEventListener("click", () => onPick(step));
       return button;
     });
     row.append(...buttons);
-    const note = h("p", "muted feedback-effort-note", "");
-    const render = (own, watch) => {
+    const paint = (own, watch) => {
       for (const button of buttons) {
         const step = Number(button.dataset.step);
         button.setAttribute("aria-pressed", String(own === step));
         button.classList.toggle("is-watch", own == null && watch === step);
         button.title = own == null && watch === step ? "Wert der Uhr, tippen übernimmt ihn" : "";
       }
+    };
+    return { row, paint };
+  }
+
+  function effortRow(onPick) {
+    const { row, paint } = tapRow("feedback-effort", "Anstrengung (RPE)", RPE_STEPS.map((step) => [step, String(step)]), onPick);
+    const note = h("p", "muted feedback-effort-note", "");
+    const render = (own, watch) => {
+      paint(own, watch);
       const offGrid = own != null && !RPE_STEPS.includes(own) ? `Gespeichert: ${Number(own).toLocaleString("de-DE")}` : "";
       note.textContent = [offGrid, watch != null && own == null ? `Uhr: ${watch}` : ""].filter(Boolean).join(" · ");
       note.hidden = !note.textContent;
     };
     return { row, note, render };
+  }
+
+  // The athlete's own feel; the watch's feel is dashed until the athlete rates.
+  function feelRow(onPick) {
+    const { row, paint } = tapRow("feedback-feel", "Gefühl", FEEL_STEPS, onPick);
+    return { row, render: paint };
+  }
+
+  // The watch's feel, as the step it falls on; none outside 1 to 5.
+  function watchFeel(value) {
+    const step = Math.round(Number(value));
+    return value != null && Number.isFinite(step) && step >= 1 && step <= 5 ? step : null;
   }
 
   // Undo restores the feedback rows as they were before this save or removal.
@@ -80,10 +102,10 @@
     const session = payload.session || {};
     const feedback = payload.activity_feedback;
     const watch = watchStep(ActivityDetails.metricValues(payload).rpe);
-    const current = { session_rpe: feedback?.session_rpe ?? null, notes: feedback?.notes || "", deviation_reason: feedback?.deviation_reason || "", purpose: feedback?.purpose || "" };
+    const watchFeelStep = watchFeel(ActivityDetails.metricValues(payload).feel);
+    const current = { session_rpe: feedback?.session_rpe ?? null, feel: feedback?.feel ?? null, notes: feedback?.notes || "", deviation_reason: feedback?.deviation_reason || "", purpose: feedback?.purpose || "" };
     const effort = effortRow((step) => { current.session_rpe = current.session_rpe === step ? null : step; paint(); void queueSave(); });
-    // The own feel of the session gets its row here once it is stored (#4199).
-    const feelSlot = h("div", { className: "feedback-feel-slot", dataset: { slot: "feel" }, hidden: true });
+    const feel = feelRow((step) => { current.feel = current.feel === step ? null : step; paint(); void queueSave(); });
     const notes = h("textarea", { name: "notes", rows: 3, maxLength: 4000 });
     const purpose = purposeSelect(current.purpose, session.purpose);
     const reason = h("input", { name: "deviation_reason", maxLength: 500 });
@@ -95,11 +117,12 @@
       h("label", null, "Art der Einheit", purpose), h("label", null, "Abweichung vom Plan", reason));
     const paint = () => {
       effort.render(current.session_rpe, watch);
+      feel.render(current.feel, watchFeelStep);
       notes.value = current.notes; reason.value = current.deviation_reason;
       purpose.value = PURPOSES.some(([key]) => key === current.purpose) ? current.purpose : "";
     };
     let replaces = edit;
-    if (edit) Object.assign(current, { session_rpe: edit.payload.session_rpe ?? null, notes: edit.payload.notes || "", deviation_reason: edit.payload.deviation_reason || "", purpose: edit.payload.purpose || "" });
+    if (edit) Object.assign(current, { session_rpe: edit.payload.session_rpe ?? null, feel: edit.payload.feel ?? null, notes: edit.payload.notes || "", deviation_reason: edit.payload.deviation_reason || "", purpose: edit.payload.purpose || "" });
     paint();
     // Only the newest request may write the load, so a slow save response cannot overwrite a later undo.
     let loadGeneration = 0;
@@ -118,7 +141,7 @@
     const save = async () => {
       dirty = false;
       status.textContent = "Speichere …";
-      const value = { activity_name: session.name || "", activity_date: session.started_at_local || "", notes: current.notes, deviation_reason: current.deviation_reason, session_rpe: current.session_rpe, purpose: current.purpose || null };
+      const value = { activity_name: session.name || "", activity_date: session.started_at_local || "", notes: current.notes, deviation_reason: current.deviation_reason, session_rpe: current.session_rpe, feel: current.feel, purpose: current.purpose || null };
       try {
         const token = ++loadGeneration;
         const path = `/api/activities/${encodeURIComponent(activityId)}/feedback`;
@@ -136,8 +159,9 @@
         if (error?.reason === "outbox_entry_gone") replaces = null;
         // The typed text stays for the next try; the taps go back to the last saved values unless a newer change waits.
         if (!dirty) {
-          Object.assign(current, { session_rpe: shown.session_rpe, purpose: shown.purpose });
+          Object.assign(current, { session_rpe: shown.session_rpe, feel: shown.feel, purpose: shown.purpose });
           effort.render(current.session_rpe, watch);
+          feel.render(current.feel, watchFeelStep);
           purpose.value = PURPOSES.some(([key]) => key === current.purpose) ? current.purpose : "";
         }
         status.textContent = error.message;
@@ -159,7 +183,8 @@
     };
     content.replaceChildren(
       h("p", "muted", [session.name, session.started_at ? formatTime(session.started_at) : null].filter(Boolean).join(" · ")),
-      h("div", "feedback-field", h("span", "feedback-label", "Anstrengung (RPE)"), effort.row, effort.note), feelSlot,
+      h("div", "feedback-field", h("span", "feedback-label", "Anstrengung (RPE)"), effort.row, effort.note),
+      h("div", "feedback-field", h("span", "feedback-label", "Gefühl"), feel.row),
       h("label", "feedback-field", h("span", "feedback-label", "Notiz"), notes),
       more, load, explicit, status);
   }
@@ -212,5 +237,5 @@
 
   globalThis.addEventListener("popstate", () => { if (dialog) close(false); });
 
-  globalThis.ActivityFeedback = { open, close, sessionLoadText, watchStep };
+  globalThis.ActivityFeedback = { open, close, sessionLoadText, watchStep, watchFeel };
 })();

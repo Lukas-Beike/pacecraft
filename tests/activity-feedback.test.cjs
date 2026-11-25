@@ -11,6 +11,12 @@ test("the watch's effort marks the step it falls on, none outside 1 to 10", () =
   for (const value of [0, 0.4, 10.6, null, undefined, "x", Number.NaN]) assert.equal(ActivityFeedback.watchStep(value), null, String(value));
 });
 
+test("the watch's feel marks the step it falls on, none outside 1 to 5", () => {
+  assert.equal(ActivityFeedback.watchFeel(3), 3);
+  assert.equal(ActivityFeedback.watchFeel(4.4), 4);
+  for (const value of [0, 5.6, null, undefined, "x"]) assert.equal(ActivityFeedback.watchFeel(value), null, String(value));
+});
+
 test("the load line names the value, its source and the minutes, or why it is open", () => {
   const text = ActivityFeedback.sessionLoadText({ value: 372, rpe: 6, rpe_source_label: "Garmin", duration_min: 62 });
   assert.match(text, /^RPE-Belastung: 372 RPE-Punkte · RPE 6 \(Garmin\) × 62 min$/);
