@@ -294,7 +294,9 @@ class BrowserRunnerTests(unittest.TestCase):
                 ["e2e/dated.spec.js", "e2e/week.spec.js"],
             )
             (root / "e2e/dated.spec.js").write_text(plain + dated, encoding="utf-8")
-            with self.assertRaisesRegex(ValueError, r"e2e/dated\.spec\.js computes a date"):
+            with self.assertRaisesRegex(
+                ValueError, r"e2e/dated\.spec\.js computes a date"
+            ):
                 runner.weekday_specs("base", root)
             (root / "e2e/dated.spec.js").unlink()
             # #3610: without the base ref the weekday runs are skipped, and the
@@ -322,7 +324,9 @@ class BrowserRunnerTests(unittest.TestCase):
             [day.weekday() for day in days],
             [n for n in range(7) if n != today.weekday()],
         )
-        self.assertEqual({day.isocalendar()[:2] for day in days}, {today.isocalendar()[:2]})
+        self.assertEqual(
+            {day.isocalendar()[:2] for day in days}, {today.isocalendar()[:2]}
+        )
         self.assertEqual(
             [(run["project"], run["specs"]) for run in listed],
             [("desktop", weekday)] * 6,

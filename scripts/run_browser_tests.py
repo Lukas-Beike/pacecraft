@@ -1613,7 +1613,11 @@ def weekday_specs(base, root=ROOT):
         for path in paths
         if re.fullmatch(r"e2e/[^/]+\.spec\.js", path) and (root / path).is_file()
     }
-    if unpinned := [p for p, t in texts.items() if DATE_SPEC.search(t) and not TODAY_IMPORT.search(t)]:
+    if unpinned := [
+        p
+        for p, t in texts.items()
+        if DATE_SPEC.search(t) and not TODAY_IMPORT.search(t)
+    ]:
         raise ValueError(
             f"{', '.join(sorted(unpinned))} computes a date: take test and todayIn from "
             "./helpers/today so its weekday runs pin it (#4210)"
