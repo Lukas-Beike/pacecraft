@@ -398,18 +398,22 @@ class WorkflowSourceTests(unittest.TestCase):
         )
         self.assertIn("format(' {0}/{1}', matrix.shard, matrix.shards)", e2e)
         # #3200, #4210: every clock-pinned spec (found by its helper import) reruns on the
-        # week's other six days in its own job beside the shards, outside the aggregated
-        # evidence; "Browser checks" fails when that job does.
+        # week's other six days beside the shards, outside the aggregated evidence;
+        # "Browser checks" fails when one does. #4249: one job per day, so none sets the
+        # critical path; today's day skips, as the shards run the real day.
         weekdays = workflow.split("  e2e_weekdays:\n", 1)[1].split("  browser:\n", 1)[0]
         self.assertIn("needs: [source, image]\n", weekdays)
-        self.assertIn("name: Browser checks (pinned weekdays)\n", weekdays)
-        self.assertIn('--project desktop --today "$day" --clock-pinned', weekdays)
+        self.assertIn("name: Browser checks (pinned ${{ matrix.weekday }})\n", weekdays)
+        offsets = re.findall(r"- \{offset: (\d), weekday: \w{3}\}", weekdays)
+        self.assertEqual(offsets, [str(n) for n in range(7)])
+        self.assertIn("fail-fast: false\n", weekdays)
+        self.assertIn('--project desktop --today "$DAY" --clock-pinned', weekdays)
         self.assertIn("timeout-minutes:", weekdays)
         self.assertNotIn("mapfile -t specs", weekdays)
-        self.assertIn("for offset in 0 1 2 3 4 5 6; do", weekdays)
-        self.assertIn('[[ "$day" == "$today" ]] && continue', weekdays)
-        self.assertIn('--today "$day"', weekdays)
+        self.assertIn('echo "skip=true" >> "$GITHUB_OUTPUT"', weekdays)
+        self.assertIn("if: steps.day.outputs.skip != 'true'", weekdays)
         self.assertIn("--results-dir test-results/pinned-day-runs", weekdays)
+        self.assertIn("browser-test-artifacts-pinned-${{ matrix.weekday }}", weekdays)
         self.assertNotIn("pinned-day-runs", e2e.split("  e2e_weekdays:\n", 1)[0])
         self.assertIn("needs: [source, e2e, e2e_weekdays]\n", aggregate)
         self.assertIn('if [[ "$WEEKDAYS_RESULT" != "success" ]]; then', aggregate)
