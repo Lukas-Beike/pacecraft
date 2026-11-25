@@ -180,7 +180,7 @@ class PlanGuardWriteTests(unittest.TestCase):
         self.assertEqual([complaint], self.guard.brief()["complaints"])
         # The infection hint (M14) is only in the brief when it shows.
         self.assertNotIn("infection_hint", self.guard.brief())
-        hint = {"method": "infection-hint-v1", "status": "hint"}
+        hint = {"method": "infection-hint-v2", "status": "hint"}
         self.guard.with_infection_hint(lambda: hint)
         self.assertEqual(hint, self.guard.brief()["infection_hint"])
         # A brief at its budget stays within it with the hint (Gitar, #3812), and

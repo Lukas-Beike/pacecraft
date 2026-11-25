@@ -1,4 +1,4 @@
-"""Early infection hint from last night's values (M14, ``infection-hint-v1``, #3762).
+"""Early infection hint from last night's values (M14, ``infection-hint-v2``, #3762).
 
 Three Garmin night values, each compared with the athlete's own earlier nights
 through the M2 comparison (``personal-quartiles-v1``: 42 days, at least 14
@@ -34,7 +34,7 @@ from backend.performance.canonical_recovery import (
 from backend.performance.personal_recovery import series_baseline
 from backend.runtime.ports import ObservationReader
 
-METHOD: Final = "infection-hint-v1"
+METHOD: Final = "infection-hint-v2"
 _USABLE: Final = {"ok", "provisional"}
 # Beyond the usual range by this share of its width (the interquartile range).
 RANGE_MARGIN: Final = 0.5
@@ -42,7 +42,7 @@ RANGE_MARGIN: Final = 0.5
 # minimum is a share of its median.
 SIGNALS: Final = (
     (MetricKind.RESPIRATION_RATE, "respiration", "sleep", "Atemfrequenz", 1, 1.0),
-    (MetricKind.RESTING_HR, "resting_hr", "resting", "Ruhepuls", 1, 3.0),
+    (MetricKind.RESTING_HR, "resting_hr", "resting", "Ruheherzfrequenz", 1, 3.0),
     (MetricKind.HRV_RMSSD, "hrv", "RMSSD", "HRV", -1, 0.10),
 )
 MIN_UNUSUAL: Final = 2

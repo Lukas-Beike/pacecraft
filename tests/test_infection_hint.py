@@ -1,4 +1,4 @@
-"""The early infection hint (M14, ``infection-hint-v1``, #3762) on synthetic nights.
+"""The early infection hint (M14, ``infection-hint-v2``, #3762) on synthetic nights.
 
 Each baseline alternates two values over 20 earlier nights, so by the inclusive
 quartile method the lower quartile is the smaller value, the upper quartile the
@@ -73,7 +73,7 @@ class InfectionHintTests(unittest.TestCase):
             TODAY,
         )
         self.assertEqual("hint", hint["status"])
-        self.assertEqual("infection-hint-v1", hint["method"])
+        self.assertEqual("infection-hint-v2", hint["method"])
         self.assertTrue(hint["derived"])
         self.assertEqual(
             {"respiration": True, "resting_hr": True, "hrv": False}, _unusual(hint)
