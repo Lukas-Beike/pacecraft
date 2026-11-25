@@ -51,6 +51,8 @@ MAX_JOBS = 2
 HOST_NETWORK_ERROR = "net::ERR_NO_BUFFER_SPACE"
 # A spec importing this helper pins its browser clock to --today (#3200).
 TODAY_IMPORT = re.compile(r"""require\(\s*["']\./helpers/today(?:\.js)?["']\s*\)""")
+# A spec computing a date reads the weekday too, against the fixture's offsets (#4210).
+DATE_SPEC = re.compile(r"addDateKey|planWeekStart|new Date\(|Date\.now\(")
 
 
 class RunnerError(Exception):
@@ -1603,21 +1605,27 @@ def note_unpinned_specs(today, children, root=ROOT):
 
 def weekday_specs(base, root=ROOT):
     """The changed specs whose expectation reads the weekday: those importing
-    e2e/helpers/today.js (#3200)."""
+    e2e/helpers/today.js (#3200) or computing a date (#4210). A date spec without
+    the helper raises: a pinned run would mix the pinned and the real day."""
     paths = _load("changed_tests", "tests/changed_tests.py").changed_paths(base, root)
-    return sorted(
-        path
+    texts = {
+        path: (root / path).read_text(encoding="utf-8")
         for path in paths
-        if re.fullmatch(r"e2e/[^/]+\.spec\.js", path)
-        and (root / path).is_file()
-        and TODAY_IMPORT.search((root / path).read_text(encoding="utf-8"))
-    )
+        if re.fullmatch(r"e2e/[^/]+\.spec\.js", path) and (root / path).is_file()
+    }
+    if unpinned := [p for p, t in texts.items() if DATE_SPEC.search(t) and not TODAY_IMPORT.search(t)]:
+        raise ValueError(
+            f"{', '.join(sorted(unpinned))} computes a date: take test and todayIn from "
+            "./helpers/today so its weekday runs pin it (#4210)"
+        )
+    return sorted(p for p, t in texts.items() if TODAY_IMPORT.search(t))
 
 
 def weekday_runs(args):
     """CI's pinned-day step for the selection's changed weekday specs (#3324):
-    desktop runs on this week's Monday and Sunday (UTC), after the real day.
-    None for an explicit --today, which is one pinned run already."""
+    desktop runs on each other day of this week (UTC), after the real day: the
+    fixture's offsets make every weekday a case (#4210). None for an explicit
+    --today, which is one pinned run already."""
     if args.today:
         return []
     base = args.base or "origin/develop"
@@ -1637,10 +1645,11 @@ def weekday_runs(args):
         specs = [spec for spec in specs if Path(spec).name in chosen]
     today = datetime.now(UTC).date()
     monday = today - timedelta(days=today.weekday())
+    days = [monday + timedelta(days=n) for n in range(7)]
     return [
         {"today": day.isoformat(), "project": "desktop", "specs": specs}
-        for day in (monday, monday + timedelta(days=6))
-        if specs
+        for day in days
+        if specs and day != today
     ]
 
 
@@ -1706,7 +1715,11 @@ def main(argv=None, pinned=None):
             return 0
         args.project = project
         args.chosen_by = {"requested": "changed", "base": base, "reason": reason}
-    args.weekday_runs = weekday_runs(args)
+    try:
+        args.weekday_runs = weekday_runs(args)
+    except ValueError as error:
+        print(f"Browser run refused: {error}", file=sys.stderr)
+        return 1
     run_id = uuid.uuid4().hex
     args.results_dir = args.results_dir.resolve()
     directory = args.results_dir / run_id

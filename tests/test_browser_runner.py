@@ -15,7 +15,7 @@ import time
 import unittest
 from collections import Counter
 from contextlib import redirect_stderr
-from datetime import date
+from datetime import UTC, date, datetime
 from pathlib import Path
 from unittest import mock
 
@@ -285,6 +285,18 @@ class BrowserRunnerTests(unittest.TestCase):
             plain = 'const { test } = require("@playwright/test");\n'
             (root / "e2e/plain.spec.js").write_text(plain, encoding="utf-8")
             self.assertEqual(runner.weekday_specs("base", root), ["e2e/week.spec.js"])
+            # #4210: a changed spec computing a date runs pinned with the helper, and
+            # without it is refused, naming the spec and the fix.
+            dated = "addDateKey(planWeekStart(today), 7);\n"
+            (root / "e2e/dated.spec.js").write_text(week + dated, encoding="utf-8")
+            self.assertEqual(
+                runner.weekday_specs("base", root),
+                ["e2e/dated.spec.js", "e2e/week.spec.js"],
+            )
+            (root / "e2e/dated.spec.js").write_text(plain + dated, encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, r"e2e/dated\.spec\.js computes a date"):
+                runner.weekday_specs("base", root)
+            (root / "e2e/dated.spec.js").unlink()
             # #3610: without the base ref the weekday runs are skipped, and the
             # line says it does not affect the run, so it is not read as its cause.
             args = runner.parser().parse_args(["--base", "refs/missing"])
@@ -296,18 +308,24 @@ class BrowserRunnerTests(unittest.TestCase):
                 stderr.getvalue(),
             )
 
-    def test_a_changed_weekday_spec_lists_and_runs_on_monday_and_sunday(self):
-        # #3324: as CI's pinned-day step, after the real day's run.
+    def test_a_changed_weekday_spec_lists_and_runs_on_every_other_weekday(self):
+        # #3324: as CI's pinned-day step, after the real day's run. #4210: a
+        # Wednesday-only failure passed the Monday and Sunday runs, so every other
+        # day of this week is pinned; the real day's run is today's.
         fake = FakeProcesses()
         weekday = ["e2e/a.spec.js"]
         self.run_main(fake, list_only=True, weekday=weekday)
         listed = json.loads(self.stdout)["weekday_runs"]
         days = [date.fromisoformat(run["today"]) for run in listed]
-        self.assertEqual([day.weekday() for day in days], [0, 6])
-        self.assertEqual((days[1] - days[0]).days, 6)
+        today = datetime.now(UTC).date()
+        self.assertEqual(
+            [day.weekday() for day in days],
+            [n for n in range(7) if n != today.weekday()],
+        )
+        self.assertEqual({day.isocalendar()[:2] for day in days}, {today.isocalendar()[:2]})
         self.assertEqual(
             [(run["project"], run["specs"]) for run in listed],
-            [("desktop", weekday)] * 2,
+            [("desktop", weekday)] * 6,
         )
         # A selection without the changed weekday spec: one run, as before.
         self.run_main(
@@ -323,7 +341,7 @@ class BrowserRunnerTests(unittest.TestCase):
         pinned = [value for value in values if value["selection"]["today"]]
         self.assertEqual(
             [[c["file"] for c in value["children"]] for value in pinned],
-            [weekday] * 2,
+            [weekday] * 6,
         )
         self.assertIn("Weekday runs (#3324): real day exit 0; ", self.stderr)
         # An explicit --today is one pinned run already.
