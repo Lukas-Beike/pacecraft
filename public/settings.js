@@ -819,7 +819,7 @@ function thresholdOfferView(offer) {
 
 // "nach dem Lauf am 21.11.": the newest session; a provider value names its own day.
 function thresholdOfferWhen(offer) {
-  const [, month, day] = String(offer?.newest || "").match(/^\d{4}-(\d{2})-(\d{2})/) || [];
+  const [, month, day] = /^\d{4}-(\d{2})-(\d{2})/.exec(String(offer?.newest || "")) || [];
   if (!day) return "";
   if (!(offer.source in THRESHOLD_OFFER_SOURCES)) return `vom ${day}.${month}.`;
   return `${offer.sport === "ride" ? "nach der Fahrt am" : "nach dem Lauf am"} ${day}.${month}.`;
