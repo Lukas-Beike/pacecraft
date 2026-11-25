@@ -144,11 +144,10 @@ class EvaluationTests(unittest.TestCase):
         self.assertEqual(result["source"], "abgeleitet")
         lt1, lt2 = result["lt1"], result["lt2"]
         self.assertEqual((lt1["status"], lt1["quality"]), ("ok", "good"))
-        # The designed crossing lies near stage 3 (148 bpm) to stage 4 (153 bpm);
-        # detrending on the 4 Hz series (method 4, #3919) reads it about half a
-        # beat lower, still within one stage.
-        self.assertTrue(146 <= lt1["heart_rate_bpm"] <= 153)
-        # Between stage 2 (10 km/h, 360 s/km) and stage 4 (11 km/h, 327 s/km).
+        self.assertTrue(148 <= lt1["heart_rate_bpm"] <= 153)
+        # Between stage 2 (10 km/h, 360 s/km) and stage 4 (11 km/h, 327 s/km):
+        # detrending on the 4 Hz series (method 4, #3919) reads 344 s/km, just
+        # past stage 3 (343 s/km).
         self.assertTrue(327 <= lt1["pace_seconds_per_km"] <= 360)
         self.assertEqual((lt2["status"], lt2["quality"]), ("ok", "good"))
         self.assertTrue(163 <= lt2["heart_rate_bpm"] <= 175)
