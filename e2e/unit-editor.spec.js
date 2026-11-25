@@ -139,6 +139,8 @@ test("@responsive the Pläne tab creates, archives, restores and deletes a train
   const card = () => page.locator("#plans .library-card", { has: page.locator("h4", { hasText: "E2E Aufbau" }) });
   const lead = page.locator("#plans > .planned-move-status");
   await expect(card().locator(":scope > .planned-move-status")).toContainText("Angelegt: E2E Aufbau");
+  // The walk finds an active plan by this attribute (#4222).
+  await expect(card()).toHaveAttribute("data-plan-status", "planned");
   await expect(card().locator(":scope > .planned-activity-actions").getByRole("button")).toHaveText(["Bearbeiten", "Zeitraum ersetzen", "Archivieren", "Löschen"]);
   // The plan never shows in the Bibliothek.
   await expect(page.locator("#library .library-card h4", { hasText: "E2E Aufbau" })).toHaveCount(0);
