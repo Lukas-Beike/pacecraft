@@ -885,7 +885,7 @@ Evidence: `public/analysis.js::analysisChart`; `public/analysis.js::analysisPlot
 
 ### Requirement: Display formats
 
-The client SHALL format numbers, dates and times for `de-DE`: numbers with at most one fraction digit unless a view states otherwise, distances in km with exactly one decimal, durations as "N min" below one hour and "h:mm h" from one hour, pace and lap times as "m:ss" or "h:mm:ss", a calendar day key without shifting the day, and relative days as "Heute", "Morgen", "Gestern", "in N Tagen" and "vor N Tagen".
+The client SHALL format numbers, dates and times for `de-DE`: numbers with at most one fraction digit unless a view states otherwise, distances in km with exactly one decimal, durations in words ("45 min", "1 h 15 min"), clock times (pace, laps, forecasts) as "m:ss" or "h:mm:ss", a calendar day key without shifting the day, and relative days as "Heute", "Morgen", "Gestern", "in N Tagen" and "vor N Tagen".
 
 #### Scenario: Sport label
 - **WHEN** a session carries the neutral sport

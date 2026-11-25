@@ -66,7 +66,7 @@ test("@responsive competition summaries, saved details and archive stay compact 
   await expect(beta.locator("summary")).toContainText("Distanz unbekannt");
   await alpha.locator("summary").click();
   await expect(alpha).toContainText("08:30");
-  await expect(alpha).toContainText("1:00 h");
+  await expect(alpha).toContainText("1 h");
   await expect(alpha.locator("xpath=..")).toContainText("Lokal geändert");
   await expect(alpha).toContainText("<img src=x onerror=alert(1)>");
   await expect(alpha.locator("img")).toHaveCount(0);

@@ -367,7 +367,7 @@ test("@responsive the week review sits under a past or running week and follows 
   await expect(review.locator(".week-review-head span")).toHaveText(/^KW \d+$/);
   await expect(labels).toHaveText(["Plan", "Einheiten", "Zeit", "Belastung", "Schlaf Ø", "HRV Ø", "Check-ins", "Besondere Einheiten", "Beschwerden"]);
   await expect(review.locator(".week-review-tile").first()).toHaveText(/^Plan5 von 6verpasst: Mi Kraft$/);
-  await expect(review.locator(".week-review-change")).toHaveText(["+12 % ggü. Vorwoche", "+8 % ggü. Vorwoche", "−0:10 ggü. Vorwoche", "3 → 5"]);
+  await expect(review.locator(".week-review-change")).toHaveText(["+12 % ggü. Vorwoche", "+8 % ggü. Vorwoche", "−10 min ggü. Vorwoche", "3 → 5"]);
   await expect(review.getByText("im Normalbereich · Garmin")).toBeVisible();
   await expect(review.locator(".week-review-wide").first().locator("li")).toHaveText(/^So Langer Lauf · höchste Belastung \(120\)$/);
   // #3766 (athlete: layout A): one line per body area and side, a worsening in the danger colour.

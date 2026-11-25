@@ -36,11 +36,11 @@ test("distance returns null for missing or non-positive values", () => {
   assert.equal(AppFormat.distance("abc"), null);
 });
 
-test("duration uses minutes under one hour and h:mm h from one hour", () => {
+test("duration is written in words: minutes under one hour, then hours and minutes", () => {
   assert.equal(AppFormat.duration(2700), "45 min");
-  assert.equal(AppFormat.duration(3570), "1:00 h");
-  assert.equal(AppFormat.duration(3600), "1:00 h");
-  assert.equal(AppFormat.duration(3900), "1:05 h");
+  assert.equal(AppFormat.duration(3570), "1 h");
+  assert.equal(AppFormat.duration(3600), "1 h");
+  assert.equal(AppFormat.duration(3900), "1 h 5 min");
   assert.equal(AppFormat.duration(0), "0 min");
   assert.equal(AppFormat.duration(null), null);
   assert.equal(AppFormat.duration(undefined), null);

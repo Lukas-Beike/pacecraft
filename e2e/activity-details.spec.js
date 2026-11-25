@@ -610,7 +610,7 @@ test("@responsive a strength session leads with its total time, a run keeps its 
   await expect(card("Synthetic strength").locator(".planned-session-value strong")).toHaveText("58 min");
   await expect(card("Synthetic easy run").locator(".planned-session-value strong")).toHaveText("45 min");
   // The week sums the same durations as the cards: 58 + 45 min.
-  await expect(page.locator(".planned-week-metrics").first()).toContainText("1:43 h");
+  await expect(page.locator(".planned-week-metrics").first()).toContainText("1 h 43 min");
   const strength = await openSessionDetails(page, "Synthetic strength");
   const strengthTimes = strength.locator(".activity-analysis-stats div").filter({ hasText: /^(Gesamtzeit|Bewegungszeit)/ });
   await expect(strengthTimes).toHaveText([/^Gesamtzeit\s*58:00$/, /^Bewegungszeit\s*31:00$/]);

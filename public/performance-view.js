@@ -272,13 +272,12 @@ function renderPerformance(performance, { refreshCharts = true } = {}) {
   renderAnalysisSegments(state.route);
 }
 
-// Model estimates: 5 and 10 km as a clock with seconds ("21:47"), the longer races in hours
-// and minutes ("1:39 h"); an hour or more always carries "h".
+// Model estimates are times on the clock, m:ss or h:mm:ss with no unit (#4194): 5 and 10 km with their seconds
+// ("21:47"), the longer races rounded to the minute ("1:39:00").
 function predictionTime(seconds, withSeconds = false) {
   const total = Number(seconds);
-  if (withSeconds) return total >= 3600 ? `${AppFormat.clock(total)} h` : AppFormat.clock(total);
-  const minutes = Math.round(total / 60);
-  return `${Math.floor(minutes / 60)}:${String(minutes % 60).padStart(2, "0")} h`;
+  if (withSeconds) return AppFormat.clock(total);
+  return AppFormat.clock(Math.round(total / 60) * 60);
 }
 
 function racePredictionRows(metrics) {

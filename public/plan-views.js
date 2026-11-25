@@ -104,7 +104,7 @@ const STEP_KM_FORMAT = new Intl.NumberFormat("de-DE", { maximumFractionDigits: 2
 function plannedStepExtent(size, axis) {
   if (axis === "distance") return size < 1000 ? `${Math.round(size)} m` : `${STEP_KM_FORMAT.format(size / 1000)} km`;
   if (size < 60) return `${Math.round(size)} s`;
-  return size < 3600 && Math.round(size) % 60 ? `${AppFormat.clock(size)} min` : AppFormat.duration(size);
+  return size < 3600 && Math.round(size) % 60 ? `${Math.floor(size / 60)} min ${Math.round(size) % 60} s` : AppFormat.duration(size);
 }
 
 // "110–128 bpm", "≤ 109 bpm" for the lowest zone, "≥ 155 bpm" for the open top; pace in min/km, slower end first.
@@ -445,7 +445,7 @@ function calendarClock(seconds) {
 }
 
 function calendarHours(seconds) {
-  return `${calendarClock(seconds)} h`;
+  return AppFormat.duration(Math.round(Math.max(0, Number(seconds) || 0) / 60) * 60);
 }
 
 function plannedDurationSeconds(entry) {
@@ -2816,10 +2816,9 @@ const WEEK_REVIEW_SCORES = [["motivation", "Motivation"], ["stress", "Stress"], 
 
 const weekReviewDay = (key) => WEEK_REVIEW_SHORT_DAY.format(new Date(`${key}T00:00:00Z`)).replace(".", "");
 
-// Hours and minutes of a duration, as h:mm.
+// Hours and minutes of a duration, in words.
 function weekReviewHours(seconds) {
-  const minutes = Math.round(Math.abs(seconds) / 60);
-  return `${Math.floor(minutes / 60)}:${String(minutes % 60).padStart(2, "0")}`;
+  return AppFormat.duration(Math.round(Math.abs(seconds) / 60) * 60);
 }
 
 function weekReviewChange(text, up) {
@@ -2850,7 +2849,7 @@ function weekReviewLoadTiles(load, running, extra) {
   if (!now.sessions) return [];
   return [
     weekReviewTile("Einheiten", String(now.sessions), null, extra > 0 ? `davon ${extra} zusätzlich` : ""),
-    weekReviewTile("Zeit", `${weekReviewHours(now.duration_s || 0)} h`, !running && weekReviewPercent(now.duration_s, before.duration_s)),
+    weekReviewTile("Zeit", weekReviewHours(now.duration_s || 0), !running && weekReviewPercent(now.duration_s, before.duration_s)),
     Number.isFinite(now.training_load) ? weekReviewTile("Belastung", AppFormat.number(now.training_load, { digits: 0 }), !running && weekReviewPercent(now.training_load, before.training_load)) : null,
   ];
 }
@@ -2862,7 +2861,7 @@ function weekReviewRecoveryTiles(recovery) {
     const minutes = Number.isFinite(sleep.week_before) ? Math.round((sleep.mean - sleep.week_before) * 60) : 0;
     const sign = minutes > 0 ? "+" : "−";
     const change = minutes ? weekReviewChange(`${sign}${weekReviewHours(minutes * 60)} ggü. Vorwoche`, minutes > 0) : null;
-    tiles.push(weekReviewTile("Schlaf Ø", `${weekReviewHours(sleep.mean * 3600)} h`, change, sleep.source));
+    tiles.push(weekReviewTile("Schlaf Ø", weekReviewHours(sleep.mean * 3600), change, sleep.source));
   }
   for (const [key, label] of [["resting_hr", "Ruheherzfrequenz Ø"], ["hrv", "HRV Ø"]]) {
     const item = recovery?.[key];
