@@ -15,15 +15,20 @@ applying by themselves once the athlete can see and adopt the offers.
 from __future__ import annotations
 
 import json
+import re
 from collections.abc import Callable, Mapping
 from datetime import date
 from typing import Any, Final
 
-from backend.performance.second_threshold_service import store_garmin_in_effect
+from backend.performance.second_threshold_service import (
+    GARMIN_STORE_SOURCE,
+    store_garmin_in_effect,
+)
 from backend.sync.canonical_backfill import BatchReport
 
 STAGE: Final = "garmin_threshold_store"
 STATE_KEY: Final = "garmin_threshold_store_state"
+_STORED_NAME: Final = re.compile(r"(run|ride):(heart_rate|pace|power)")
 
 
 class GarminThresholdStore:
@@ -72,3 +77,33 @@ class GarminThresholdStore:
         self._key_values.set(
             db, STATE_KEY, json.dumps({**state, "at": self._clock()}, sort_keys=True)
         )
+
+
+def summarize_garmin_threshold_store(key_values: Any, db: Any) -> dict[str, Any]:
+    """The one-time store's result for the diagnostics (#4135): counts, never a value."""
+    text = key_values.get(db, STATE_KEY)
+    try:
+        loaded = json.loads(text) if text else {}
+    except ValueError:
+        loaded = {}
+    state = loaded if isinstance(loaded, dict) else {}
+    stored = [
+        name
+        for name in state.get("stored") or ()
+        if isinstance(name, str) and _STORED_NAME.fullmatch(name)
+    ]
+    sports: dict[str, int] = {}
+    for name in stored:
+        sport = name.split(":", 1)[0]
+        sports[sport] = sports.get(sport, 0) + 1
+    history = db.execute(
+        "SELECT COUNT(*) AS count FROM change_history WHERE source = ?",
+        (GARMIN_STORE_SOURCE,),
+    ).fetchone()["count"]
+    status = state.get("status")
+    return {
+        "status": status if status in ("complete", "failed") else "not_started",
+        "stored_count": len(stored),
+        "stored_sports": sports,
+        "history_rows": int(history),
+    }

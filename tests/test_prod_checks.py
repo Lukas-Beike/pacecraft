@@ -467,6 +467,31 @@ class ProdChecksTests(unittest.TestCase):
                  "--section", "fit_inventory", "--expect-version", "2.1.2"]
             )  # fmt: skip
 
+    def test_the_garmin_threshold_store_section_prints_counts_only(self):
+        # #4135: the one-time store's result, never a value.
+        report = {
+            "garmin_threshold_store": {
+                "status": "complete",
+                "stored_count": 3,
+                "stored_sports": {"run": 2, "ride": 1},
+                "history_rows": 3,
+                "planted": "value",
+            }
+        }
+        lines = [text for _, text in prod_diagnostics.section_lines(
+            report, "garmin_threshold_store"
+        )]  # fmt: skip
+        self.assertEqual(
+            lines,
+            [
+                "garmin_threshold_store.history_rows 3",
+                'garmin_threshold_store.status "complete"',
+                "garmin_threshold_store.stored_count 3",
+                "garmin_threshold_store.stored_sports.ride 1",
+                "garmin_threshold_store.stored_sports.run 2",
+            ],
+        )
+
     def test_the_sleep_key_section_prints_its_paths_and_dates_only(self):
         # #4017: the key names are the point; an unknown field is never printed.
         report = {

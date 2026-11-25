@@ -223,6 +223,10 @@ SECTION_FIELDS = {
         r"|scanned_days\.(get_sleep_data|get_sleep_daily|stored)"
         r"|none_found"
     ),
+    # The one-time Garmin LT2 store, counts only (#4135).
+    "garmin_threshold_store": re.compile(
+        r"status|stored_count|stored_sports\.(run|ride)|history_rows"
+    ),
     # The Wahoo profile-weight write, counts only (#3559), and why the last push
     # ended as it did, an enum (#3677).
     "wahoo_weight_push": re.compile(r"status|sent|failed|retried|pending|last_outcome"),

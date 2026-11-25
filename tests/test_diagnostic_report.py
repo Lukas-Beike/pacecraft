@@ -246,6 +246,7 @@ class DiagnosticReportServiceTests(unittest.TestCase):
                 "activity_routes",
                 "session_analysis",
                 "session_focus_backfill",
+                "garmin_threshold_store",
                 "profile_weekly_plan_removal",
                 "session_rebundle",
                 "logs",
@@ -413,8 +414,9 @@ class DiagnosticReportServiceTests(unittest.TestCase):
         # weight push adds its state (#3559); the Garmin history re-read reads
         # the Garmin state (#3729); the competition sync reads its failure
         # record and last success (#3838); the sleep key names read the stored
-        # nights once (#4017); the adopted zone maximums add one (#4161).
-        self.assertEqual(len(self.db.queries), 52)
+        # nights once (#4017); the adopted zone maximums add one (#4161); the
+        # one-time Garmin store counts its history rows (#4135).
+        self.assertEqual(len(self.db.queries), 53)
         self.assertEqual(
             [query.rsplit("FROM ", 1)[1] for query in count_queries],
             [
@@ -439,6 +441,8 @@ class DiagnosticReportServiceTests(unittest.TestCase):
                 # The Garmin history re-read marker in the Garmin state (#3729).
                 "kv WHERE key = ?",
                 "provider_sync_cursors WHERE provider=? AND stream=?",
+                # The one-time Garmin store's history rows (#4135).
+                "change_history WHERE source = ?",
             ],
         )
         # Two extra reads: the Garmin configured signal checks the token blob and
@@ -452,8 +456,9 @@ class DiagnosticReportServiceTests(unittest.TestCase):
         # counts one more (#3122), the mapper replay size the backfill state and the
         # mapping issue kinds (#2220); the retired FIT value probe no more (#3396).
         # Web Push reads its counts and subscriptions, two more (#3914).
-        # The sleep key names read their state, one more (#4017).
-        self.assertEqual(self.key_values.get.call_count, 25)
+        # The sleep key names read their state, one more (#4017), and the one-time
+        # Garmin store its state, one more (#4135).
+        self.assertEqual(self.key_values.get.call_count, 26)
 
     def test_storage_and_recovery_copies_are_sizes_and_ages_only(self):
         # Stat only: sizes, free space and the newest copy's age; no name or path.

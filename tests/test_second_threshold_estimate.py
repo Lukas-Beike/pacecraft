@@ -41,7 +41,10 @@ from backend.performance.second_threshold_service import (
 from backend.performance.threshold_offers import open_offers, threshold_values
 from backend.sync.canonical_table_reader import CanonicalTableReader
 from backend.sync.garmin_threshold_store import STATE_KEY as GARMIN_STORE_STATE_KEY
-from backend.sync.garmin_threshold_store import GarminThresholdStore
+from backend.sync.garmin_threshold_store import (
+    GarminThresholdStore,
+    summarize_garmin_threshold_store,
+)
 from tests.test_current_thresholds import ZoneSource, _obs
 from tests.test_first_threshold_estimate import add_run, open_database
 
@@ -1114,6 +1117,33 @@ class GarminThresholdStoreTests(unittest.TestCase):
             report = store.run_batch(db)
         with self.manager.reader() as db:
             return report, store.state(db)
+
+    def test_the_diagnostics_count_the_store_without_values(self) -> None:
+        # The orchestrator reads the store's result through the diagnostics only.
+        values = KeyValueRepository(lambda: STORE_NOW)
+        with self.manager.reader() as db:
+            before = summarize_garmin_threshold_store(values, db)
+        self.assertEqual(
+            before,
+            {
+                "status": "not_started",
+                "stored_count": 0,
+                "stored_sports": {},
+                "history_rows": 0,
+            },
+        )
+        self.run_store()
+        with self.manager.reader() as db:
+            after = summarize_garmin_threshold_store(values, db)
+        self.assertEqual(
+            after,
+            {
+                "status": "complete",
+                "stored_count": 3,
+                "stored_sports": {"run": 2, "ride": 1},
+                "history_rows": 3,
+            },
+        )
 
     def local(self):
         return {
