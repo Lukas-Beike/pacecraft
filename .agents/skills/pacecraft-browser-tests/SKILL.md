@@ -59,8 +59,8 @@ python scripts/run_browser_tests.py --project all --keep-going
   A spec whose expectation depends on the weekday (the week's completed units,
   yesterday) imports it and computes dates outside the page with its
   `todayIn(zone)`. Without `--today`, the runner also runs such a spec, when
-  it is changed and selected, on desktop on this week's Monday and Sunday, as
-  CI does, and prints the three exits together (#3324).
+  changed and selected, on desktop on the week's other six days (#3324, #4210);
+  a changed `addDateKey`/`planWeekStart` spec without the helper is refused.
 - A server-free spec (one that only uses `page.setContent`, such as
   `e2e/ui-walk-steps.spec.js`) runs without Docker: set `E2E_NO_LOGIN=1` and
   run `npx playwright test e2e/<name>.spec.js --project=desktop`. The login
