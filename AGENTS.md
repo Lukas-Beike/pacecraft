@@ -101,16 +101,16 @@ Use [README.md](README.md) for the overview and [docs/setup.md](docs/setup.md) a
 - Confirmed local profile/competition records are authoritative; OpenAI Conversation
   state is dialogue continuity only. Durable profile, competition, check-in, and
   planning mutations come from an explicit API/UI action or from a Coach turn
-  started by the athlete's own stored message, never from an unattended turn.
-  Named exceptions: archived never-synced library templates are deleted 30 days
-  after archiving (#3141); upgrade stores Garmin's LT2 once as local (#4135).
-  Coach writes need no extra UI confirmation; guard them server-side by impact:
-  each change shows a receipt, with whole-turn undo only when every applied
-  write is fully tracked; deletes/archives and bulk changes need a confirmed
-  request in their own domain, and Intervals.icu writes need the athlete to name
-  the sync (by Intervals.icu or a sync verb). A named Intervals.icu or Garmin
-  sync runs without a card and covers the remote deletions it carries; an
-  explicit Garmin removal keeps its card (#2342).
+  started by the athlete's own stored message, never from an unattended turn. Named
+  exceptions: archived never-synced library templates are deleted 30 days after
+  archiving (athlete, 2026-11-15, #3141); an upgrade stores Garmin's LT2 in effect
+  once as local (athlete, 2026-11-24, #4135). Coach writes need no extra UI
+  confirmation; guard them server-side by impact: each change shows a receipt, with
+  whole-turn undo only when every applied write is fully tracked; deletes/archives
+  and bulk changes need a confirmed request in their own domain, and Intervals.icu
+  writes need the athlete to name the sync (by Intervals.icu or a sync verb). A
+  named Intervals.icu or Garmin sync runs without a card and covers the remote
+  deletions it carries; an explicit Garmin removal keeps its card (#2342).
 - Explicit current-data requests refresh through existing sync before coaching
   where supported; do not refresh every chat unconditionally.
 - Preserve explicit model selection; verify options/defaults against provider code
