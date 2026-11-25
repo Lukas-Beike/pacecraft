@@ -296,7 +296,9 @@ def threshold_offer_events(offers: Any, since_day: date) -> list[Notification]:
             isinstance(offer, dict)
             and offer.get("sport") in _OFFER_SPORTS
             and isinstance(offer.get("key"), str)
-            and str(offer.get("newest"))[:10] > since_day.isoformat()
+            # An undated offer is no news: "None" would sort after every date.
+            and isinstance(offer.get("newest"), str)
+            and offer["newest"][:10] > since_day.isoformat()
         ):
             garmin = offer.get("source") == GARMIN_ID
             found.setdefault((offer["sport"], garmin), []).append(offer)

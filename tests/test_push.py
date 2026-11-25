@@ -733,6 +733,7 @@ class PushChecksTests(unittest.TestCase):
         offers = [
             offer("run", "dfa_alpha1", 171, "2026-11-22"),  # open before: not news
             offer("run", "garmin", 168),
+            offer("ride", "garmin", 280, None),  # undated: no news (Gitar, #4135)
         ]
         self.state["offers"] = []
         self._at(11)
@@ -743,6 +744,7 @@ class PushChecksTests(unittest.TestCase):
             "Von Garmin gibt es einen neuen Wert. Tippen zum Ansehen.",
             "#more/profile/run",
         )
+        self.assertEqual(self._titled("Neue Schwelle für Radfahren"), [])
         # Two run offers and a ride offer at once: one notification per sport.
         offers += [
             offer("run", "critical_speed", 301),
