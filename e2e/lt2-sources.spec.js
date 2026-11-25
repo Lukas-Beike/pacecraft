@@ -202,3 +202,13 @@ test("@responsive without offers there is no offer card (#4135)", async ({ page 
   await expect(page.locator("#zoneOverview [data-threshold-offers]")).toBeHidden();
   await expect(page.locator(".threshold-offer")).toHaveCount(0);
 });
+
+test("@responsive a zone box without a max-HR note shows no stray text (#4230)", async ({ page }) => {
+  await openRunThresholds(page);
+  const boxes = page.locator("#zoneOverview [data-zone-box]");
+  await expect(boxes.first()).toBeVisible();
+  // DOM append wrote a missing note as the text "null" below the zones.
+  const stray = await boxes.evaluateAll((nodes) => nodes.flatMap((node) => [...node.childNodes])
+    .filter((child) => child.nodeType === Node.TEXT_NODE && child.textContent.trim()).map((child) => child.textContent));
+  expect(stray).toEqual([]);
+});
