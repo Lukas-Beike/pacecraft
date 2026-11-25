@@ -63,7 +63,9 @@
 
   // The dialog shows what the inline "Details" showed (the panel of the activity analysis, in its style) and, below it, what only
   // the dialog has: the value tables, strength sets, interval quality, heart rate drift, best power, equipment and the recordings.
-  function render(payload, content, api, activityId, reload, notice, summary, read) {
+  // `panelSource`: the calendar entry the panel starts from and, when there is one, the calendar's shared read.
+  function render(payload, content, api, activityId, reload, notice, panelSource) {
+    const { summary, read } = panelSource;
     content.replaceChildren();
     const panel = h("div", "activity-analysis-panel");
     content.append(panel);
@@ -536,7 +538,7 @@
     async function load(notice) {
       const payload = await api(`/api/activities/${encodeURIComponent(activityId)}`);
       if (!isCurrent()) return;
-      render(payload, content, api, activityId, load, notice, activity, read);
+      render(payload, content, api, activityId, load, notice, { summary: activity, read });
       title.textContent = payload.session?.name || activity.name || "Aktivitätsdetails";
       status.textContent = "";
     }
