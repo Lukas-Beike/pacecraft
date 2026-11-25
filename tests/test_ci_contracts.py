@@ -276,8 +276,9 @@ class WorkflowSourceTests(unittest.TestCase):
             encoding="utf-8"
         )
         checkout_refs = re.findall(r"^          ref: (.+)$", workflow, re.MULTILINE)
-        # The syntax and SBOM jobs were merged into others (#2750).
-        self.assertEqual(len(checkout_refs), 8)
+        # The syntax and SBOM jobs were merged into others (#2750); the pinned
+        # weekdays have their own job (#4210).
+        self.assertEqual(len(checkout_refs), 9)
         self.assertTrue(all(ref == "${{ github.sha }}" for ref in checkout_refs[1:]))
         self.assertIn("'refs/heads/main' || github.sha", checkout_refs[0])
         self.assertNotIn("source_ref", workflow)
@@ -396,17 +397,21 @@ class WorkflowSourceTests(unittest.TestCase):
             "browser-test-artifacts-${{ matrix.project }}-${{ matrix.shard }}", e2e
         )
         self.assertIn("format(' {0}/{1}', matrix.shard, matrix.shards)", e2e)
-        # #3200: one desktop shard reruns the week-reading specs on a pinned Monday and
-        # Sunday, outside the aggregated evidence, without an extra job.
-        pinned = e2e.split(
-            "Run the week-reading specs on a pinned Monday and Sunday", 1
-        )[1]
-        pinned = pinned.split("      - name: ", 1)[0]
-        self.assertIn("if: matrix.project == 'desktop' && matrix.shard == 1\n", pinned)
-        self.assertIn('--today "$day"', pinned)
-        self.assertIn("--results-dir test-results/pinned-day-runs", pinned)
-        self.assertIn("e2e/calendar-week-compact.spec.js", pinned)
-        self.assertIn("e2e/ui-walk-fixture.spec.js", pinned)
+        # #3200, #4210: every clock-pinned spec (found by its helper import) reruns on the
+        # week's other six days in its own job beside the shards, outside the aggregated
+        # evidence; "Browser checks" fails when that job does.
+        weekdays = workflow.split("  e2e_weekdays:\n", 1)[1].split("  browser:\n", 1)[0]
+        self.assertIn("needs: [source, image]\n", weekdays)
+        self.assertIn("name: Browser checks (pinned weekdays)\n", weekdays)
+        self.assertIn('--today "$day" --clock-pinned', weekdays)
+        self.assertNotIn("mapfile -t specs", weekdays)
+        self.assertIn("for offset in 0 1 2 3 4 5 6; do", weekdays)
+        self.assertIn('[[ "$day" == "$today" ]] && continue', weekdays)
+        self.assertIn('--today "$day"', weekdays)
+        self.assertIn("--results-dir test-results/pinned-day-runs", weekdays)
+        self.assertNotIn("pinned-day-runs", e2e.split("  e2e_weekdays:\n", 1)[0])
+        self.assertIn("needs: [source, e2e, e2e_weekdays]\n", aggregate)
+        self.assertIn('if [[ "$WEEKDAYS_RESULT" != "success" ]]; then', aggregate)
 
     def test_e2e_fixtures_reuse_slot_networks_created_before_the_browser(self):
         root = Path(__file__).resolve().parents[1]
@@ -449,13 +454,23 @@ class WorkflowSourceTests(unittest.TestCase):
             [
                 "test-results/browser-runs/*/*/*/artifacts/",
                 "test-results/browser-runs/*/*/*/report/",
+                "!**/trace.zip",
+                "!**/.auth/**",
+            ],
+        )
+        self.assertNotIn("manifest.json", paths)
+        # The pinned weekdays' own upload excludes traces and auth state too (#4210).
+        pinned = workflow.split("name: Upload pinned-day failure artifacts\n", 1)[1]
+        pinned = pinned.split("path: |\n", 1)[1].split("if-no-files-found:", 1)[0]
+        self.assertEqual(
+            pinned.split(),
+            [
                 "test-results/pinned-day-runs/*/*/*/artifacts/",
                 "test-results/pinned-day-runs/*/*/*/report/",
                 "!**/trace.zip",
                 "!**/.auth/**",
             ],
         )
-        self.assertNotIn("manifest.json", paths)
         runner = (root / "scripts/run_browser_tests.py").read_text(encoding="utf-8")
         self.assertIn('prefix="ai-coach-browser-private-"', runner)
         self.assertIn('"--trace=off"', runner)
@@ -472,7 +487,7 @@ class WorkflowSourceTests(unittest.TestCase):
         browser = workflow.split("  browser:\n", 1)[1].split("  build-and-push:\n", 1)[
             0
         ]
-        self.assertIn("needs: [source, e2e]", browser)
+        self.assertIn("needs: [source, e2e, e2e_weekdays]", browser)
         self.assertIn(
             "name: browser-run-summary-${{ matrix.project }}-${{ matrix.shard }}-attempt-${{ github.run_attempt }}",
             workflow,
@@ -628,7 +643,7 @@ class WorkflowSourceTests(unittest.TestCase):
                     re.compile(r"^\s*(run: +)?npm (ci|install)\b", re.MULTILINE),
                 )
                 installs += workflow.count("run: bash .github/scripts/npm_ci_retry.sh")
-        self.assertEqual(installs, 4)
+        self.assertEqual(installs, 5)  # the pinned weekdays' own job (#4210)
         script = (root / ".github/scripts/npm_ci_retry.sh").read_text(encoding="utf-8")
         self.assertIn("ci --ignore-scripts", script)
         self.assertIn('attempts="${NPM_CI_ATTEMPTS:-3}"', script)

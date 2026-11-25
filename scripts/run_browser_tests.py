@@ -51,8 +51,9 @@ MAX_JOBS = 2
 HOST_NETWORK_ERROR = "net::ERR_NO_BUFFER_SPACE"
 # A spec importing this helper pins its browser clock to --today (#3200).
 TODAY_IMPORT = re.compile(r"""require\(\s*["']\./helpers/today(?:\.js)?["']\s*\)""")
-# A spec computing a date reads the weekday too, against the fixture's offsets (#4210).
-DATE_SPEC = re.compile(r"addDateKey|planWeekStart|new Date\(|Date\.now\(")
+# A spec computing a fixture-offset date reads the weekday too, against the fixture's
+# offsets (#4210); plain timestamps (new Date, Date.now) rarely do and stay unpinned.
+DATE_SPEC = re.compile(r"addDateKey|planWeekStart")
 
 
 class RunnerError(Exception):
@@ -1444,6 +1445,12 @@ def parser():
         default=[],
         help="exact e2e-relative spec path; repeatable",
     )
+    result.add_argument(
+        "--clock-pinned",
+        action="store_true",
+        help="add every spec that imports e2e/helpers/today.js to --spec; CI's pinned "
+        "weekday runs use it with --today (#4210)",
+    )
     result.add_argument("--shard", type=int, default=1)
     result.add_argument("--total", type=int, default=1)
     result.add_argument("--jobs", type=int, choices=range(1, MAX_JOBS + 1), default=1)
@@ -1603,6 +1610,15 @@ def note_unpinned_specs(today, children, root=ROOT):
             )
 
 
+def clock_pinned_specs(root=ROOT):
+    """Every spec that imports e2e/helpers/today.js, so a pinned run pins it (#4210)."""
+    return sorted(
+        f"e2e/{path.name}"
+        for path in (root / "e2e").glob("*.spec.js")
+        if TODAY_IMPORT.search(path.read_text(encoding="utf-8"))
+    )
+
+
 def weekday_specs(base, root=ROOT):
     """The changed specs whose expectation reads the weekday: those importing
     e2e/helpers/today.js (#3200) or computing a date (#4210). A date spec without
@@ -1707,6 +1723,12 @@ def main(argv=None, pinned=None):
         parser().error("--repeat-each needs a count of at least 1")
     if args.base and args.project != "changed":
         parser().error("--base applies only to --project changed")
+    if args.clock_pinned:
+        pinned_specs = clock_pinned_specs()
+        if not pinned_specs:
+            print("No spec imports e2e/helpers/today.js", file=sys.stderr)
+            return 0
+        args.spec = sorted({*args.spec, *pinned_specs})
     args.chosen_by = None
     if args.project == "changed":
         base = args.base or "origin/develop"

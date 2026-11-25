@@ -227,9 +227,14 @@ that date at the real time of day and, for specs built on `e2e/helpers/today.js`
 weekday-dependent expectation fails on a pinned Monday or Sunday; the manifest
 records the day (#3200). The runner names each selected spec without the
 helper, whose browser keeps the real day (#3410). Without `--today`, a selected spec of the diff that
-imports the helper runs again on desktop on this week's Monday and Sunday (UTC),
-as CI's pinned-day step does; `--list` names these runs under `weekday_runs`,
-and each run writes its own manifest (#3324).
+imports the helper runs again on desktop on this week's other six days (UTC),
+because the fixture's day offsets make every weekday a case (#4210); `--list`
+names these runs under `weekday_runs`, and each run writes its own manifest
+(#3324). A changed spec that calls `addDateKey` or `planWeekStart` without the
+helper is refused, naming the fix, since a pinned run would mix the pinned and
+the real day. In CI, the job "Browser checks (pinned weekdays)" runs every spec
+that imports the helper (`--clock-pinned`) on the week's other six days, beside
+the shards; the aggregate "Browser checks" fails when it does (#4210).
 
 CI builds and shares the current application image once, then starts browser
 jobs beside the native suite. Its prepared browser image is pinned by exact

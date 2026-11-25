@@ -298,6 +298,15 @@ class BrowserRunnerTests(unittest.TestCase):
                 ValueError, r"e2e/dated\.spec\.js computes a date"
             ):
                 runner.weekday_specs("base", root)
+            # --clock-pinned names every spec importing the helper, changed or not.
+            pinned = runner.clock_pinned_specs(root)
+            self.assertIn("e2e/week.spec.js", pinned)
+            self.assertNotIn("e2e/plain.spec.js", pinned)
+            self.assertNotIn("e2e/dated.spec.js", pinned)
+            # A plain timestamp is no fixture offset: neither pinned nor refused.
+            stamped = "const at = new Date().toISOString(); Date.now();\n"
+            (root / "e2e/dated.spec.js").write_text(plain + stamped, encoding="utf-8")
+            self.assertEqual(runner.weekday_specs("base", root), ["e2e/week.spec.js"])
             (root / "e2e/dated.spec.js").unlink()
             # #3610: without the base ref the weekday runs are skipped, and the
             # line says it does not affect the run, so it is not read as its cause.
