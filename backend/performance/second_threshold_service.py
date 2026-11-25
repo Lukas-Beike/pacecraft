@@ -322,12 +322,9 @@ def store_garmin_in_effect(db: Any, zones: Any, reader: Any, today: date) -> lis
             winner = winners.get((kind, canonical))
             if winner is None or not _garmin_in_effect(winner, current):
                 continue
-            adopted = _adopted(
-                current, sport, metric, winner.value.value, GARMIN_SOURCE
+            zones.save_adopted(
+                _adopted(current, sport, metric, winner.value.value, GARMIN_SOURCE)
             )
-            # A local maximum would lead the max HR (``_leading_value``): the
-            # provider set's own maximum stays with the source policy as before.
-            zones.save_adopted({**adopted, "maximum": None})
             stored.append(f"{sport}:{value}")
     return stored
 
@@ -443,7 +440,9 @@ def _adopted(
     garmin = current.provenance.provider is ProviderId.GARMIN or current.garmin_limits
     return {
         **adopted,
-        "maximum": current.maximum,
+        # A local maximum leads the max HR (``_leading_value``): a provider's
+        # stays with the source policy, the athlete's own is kept (#4161).
+        "maximum": current.maximum if current.provenance.provider is None else None,
         "limits": None if percent else list(current.limits or ()),
         "percent_limits": list(current.percent_limits or ()) if percent else None,
         # Garmin's whole-bpm heart-rate limits keep their zone rounding, also

@@ -534,7 +534,23 @@ class AdoptTests(unittest.TestCase):
         self.assertEqual(saved["threshold"], 169)
         self.assertEqual(saved["threshold_origin"], "dfa_alpha1")
         self.assertEqual(saved["percent_limits"], [80, 89, 94, 100, 103, 110])
-        self.assertEqual(saved["maximum"], 190)
+        # The provider's maximum stays with the source policy (#4161).
+        self.assertIsNone(saved["maximum"])
+
+    def test_an_adoption_over_local_zones_keeps_their_maximum(self) -> None:
+        local = zone(
+            "heart_rate",
+            165,
+            local=True,
+            origin="dfa_alpha1",
+            percent=[80, 89, 94, 100, 103, 110],
+            maximum=190,
+        )
+        zones = FakeZones(local)
+        self.adopt(
+            zones, sport="run", source="dfa_alpha1", value="heart_rate", shown=169
+        )
+        self.assertEqual(zones.saved[0]["maximum"], 190)
 
     def test_pace_is_stored_as_the_threshold_speed(self) -> None:
         zones = FakeZones(zone("pace", 3.8, percent=[78, 88, 94, 100, 106, 999]))
@@ -623,9 +639,17 @@ class AdoptTests(unittest.TestCase):
     def test_absolute_limits_that_no_longer_fit_are_refused_with_the_reason(
         self,
     ) -> None:
-        # A maximum of 168 bpm below the new 169 bpm threshold fails the HR rules.
+        # A local maximum of 168 bpm below the new 169 bpm threshold fails the HR
+        # rules (a provider's maximum is not copied, #4161).
         zones = FakeZones(
-            zone("heart_rate", 165, limits=[130, 145, 155, 165, 166, 168], maximum=168)
+            zone(
+                "heart_rate",
+                165,
+                local=True,
+                origin="dfa_alpha1",
+                limits=[130, 145, 155, 165, 166, 168],
+                maximum=168,
+            )
         )
         with self.assertRaises(AppError) as raised:
             self.adopt(
@@ -1144,7 +1168,7 @@ class GarminThresholdStoreTests(unittest.TestCase):
         settings = self.settings()
         return settings.pace_zone(speed / settings.threshold_pace * 100)
 
-    def adopt(self, garmin=None, estimates=None, **payload):
+    def adopt(self, garmin=None, estimates=None, step_test=None, **payload):
         service = SecondThresholdService(
             self.manager,
             Mock(**{"get.return_value": {}}),
@@ -1157,7 +1181,7 @@ class GarminThresholdStoreTests(unittest.TestCase):
         service.estimates = lambda: estimates or offer_estimates()  # type: ignore[method-assign]
         handler = Mock()
         handler.read_json.return_value = payload
-        routes = SecondThresholdPostRoutes(lambda: service)
+        routes = SecondThresholdPostRoutes(lambda: service, step_test)
         self.assertTrue(dispatch_route(routes, handler, ADOPT_PATH, method="POST"))
         return handler.send_json.call_args.args
 
@@ -1252,27 +1276,48 @@ class GarminThresholdStoreTests(unittest.TestCase):
         )
         self.assertEqual(body["configuration"]["threshold_origin"], "critical_speed")
 
-    def test_the_max_hr_keeps_coming_from_garmins_observation(self) -> None:
+    def max_hr_observations(self):
         # Garmin's max HR (195) differs from the watch set's maximum (192).
         day = TODAY - timedelta(days=3)
-        observations = (
+        return (
             *self.observations,
             _obs(MetricKind.MAX_HR, 195.0, ProviderId.GARMIN, Sport.RUN, day),
         )
 
-        def max_hr():
-            winners = read_export_thresholds(
-                StubReader(observations),
-                None,
-                as_of=TODAY,
-                configurations=self.zones.configurations(),
-            )
-            return winners[(MetricKind.MAX_HR, Sport.RUN)].value.value
+    def max_hr(self):
+        winners = read_export_thresholds(
+            StubReader(self.max_hr_observations()),
+            None,
+            as_of=TODAY,
+            configurations=self.zones.configurations(),
+        )
+        return winners[(MetricKind.MAX_HR, Sport.RUN)].value.value
 
-        self.assertEqual(max_hr(), 195.0)
-        self.run_store(observations=observations)
+    def test_the_max_hr_keeps_coming_from_garmins_observation(self) -> None:
+        self.assertEqual(self.max_hr(), 195.0)
+        self.run_store(observations=self.max_hr_observations())
         self.assertIsNone(self.local()[("run", "heart_rate")].maximum)
-        self.assertEqual(max_hr(), 195.0)
+        self.assertEqual(self.max_hr(), 195.0)
+
+    def test_an_lt2_adoption_leaves_the_max_hr_with_garmin(self) -> None:
+        # #4161: neither a DFA-a1 nor a step-test adoption copies the watch maximum.
+        step_test = {"lt2": {"status": "ok", "quality": "good", "heart_rate_bpm": 172}}
+        for payload in (
+            {"source": "dfa_alpha1", "shown": 170},
+            {"source": "step_test", "activity_id": "a1", "shown": 172},
+        ):
+            with self.subTest(source=payload["source"]):
+                self.assertEqual(self.max_hr(), 195.0)
+                status, _ = self.adopt(
+                    estimates=offer_estimates(dfa=GOOD_DFA),
+                    step_test=lambda _id: step_test,
+                    sport="run",
+                    value="heart_rate",
+                    **payload,
+                )
+                self.assertEqual(status, 200)
+                self.assertIsNone(self.local()[("run", "heart_rate")].maximum)
+                self.assertEqual(self.max_hr(), 195.0)
 
     def test_a_local_value_stays_and_a_missing_garmin_value_is_skipped(self) -> None:
         self.zones.save(
