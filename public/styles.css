@@ -1966,6 +1966,8 @@ button:focus-visible, a:focus-visible, summary:focus-visible {
 .feedback-effort { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 6px; }
 .feedback-step { min-height: 44px; border: 1px solid var(--control-border); border-radius: var(--radius-sm); background: var(--surface-input); color: var(--ink); font: inherit; font-weight: 650; font-variant-numeric: tabular-nums; }
 .feedback-step[aria-pressed="true"] { border-color: var(--primary-control-bg); background: var(--primary-control-bg); color: var(--primary-control-ink); }
+.feedback-feel { display: grid; grid-template-columns: repeat(auto-fit, minmax(5.5rem, 1fr)); gap: 6px; }
+.feedback-feel .feedback-step { padding: 4px 8px; font-size: .85rem; line-height: 1.2; }
 .feedback-step.is-watch { border-style: dashed; border-color: var(--primary-control-bg); }
 .feedback-more { display: grid; gap: 10px; }
 .feedback-more > summary { min-height: 44px; display: flex; align-items: center; cursor: pointer; color: var(--muted); font-size: .85rem; }

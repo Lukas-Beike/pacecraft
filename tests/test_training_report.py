@@ -710,6 +710,50 @@ class TrainingReportTests(unittest.TestCase):
         refresh.refresh.assert_called_once_with("recovery", days=None)
         handler.send_json.assert_called_once_with(200, refresh.refresh.return_value)
 
+    def test_analysis_refresh_takes_every_request_the_client_sends(self):
+        # #4212: the client sends days 28 (4 Wochen) or 91 (3, 6 and 12 Monate) for Belastung and
+        # Erholung and no days for the other tabs; the route refused every one of them with a stale
+        # 14/84 window. Anything else is refused, whatever the area.
+        from backend.errors import AppError
+        from backend.sync.analysis_refresh import AnalysisRefreshService
+
+        client = [
+            ("load", 28), ("load", 91), ("recovery", 28), ("recovery", 91),
+            ("performance", None), ("sessions", None),
+        ]  # fmt: skip
+        service = AnalysisRefreshService(
+            lambda: Mock(
+                refresh_analysis=Mock(return_value={"status": "ok", "read": True})
+            ),
+            lambda: date(2026, 11, 25),
+        )
+        route = AnalysisRoutes(Mock(), lambda: service)
+        for area, days in client:
+            with self.subTest(area=area, days=days):
+                handler = Mock()
+                handler.read_json.return_value = {
+                    "area": area,
+                    **({"days": days} if days else {}),
+                }
+                dispatch_route(route, handler, "/api/analysis/refresh", method="POST")
+                self.assertEqual(200, handler.send_json.call_args.args[0])
+        refused = [
+            ("load", 14), ("load", 84), ("load", 182), ("recovery", 365),
+            ("performance", 28), ("sessions", 91),
+        ]  # fmt: skip
+        for area, days in refused:
+            with self.subTest(area=area, days=days, refused=True):
+                handler = Mock()
+                handler.read_json.return_value = {"area": area, "days": days}
+                with self.assertRaises(AppError) as raised:
+                    dispatch_route(
+                        route, handler, "/api/analysis/refresh", method="POST"
+                    )
+                self.assertEqual(
+                    (400, "Ungültiger Analysezeitraum."),
+                    (raised.exception.status, str(raised.exception)),
+                )
+
     def test_analysis_refresh_rejects_unknown_area(self):
         from backend.errors import AppError
 

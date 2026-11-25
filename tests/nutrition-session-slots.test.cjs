@@ -7,10 +7,10 @@ const context = extractFunctions("nutrition.js", ["nutritionSessionLabel", "nutr
 });
 
 test("the session chip names sport, start and duration", () => {
-  // 11400 s are 3:10 h.
+  // 11400 s are 3 h 10 min.
   assert.equal(
     context.nutritionSessionLabel({ sport: "ride", started_at_local: "2026-11-14T09:15:00", elapsed_duration_s: 11400 }),
-    "Rad · 09:15 · 3:10 h",
+    "Rad · 09:15 · 3 h 10 min",
   );
   assert.equal(context.nutritionSessionLabel({ sport: "yoga", started_at_local: "2026-11-14T07:05:00" }), "Einheit · 07:05");
 });

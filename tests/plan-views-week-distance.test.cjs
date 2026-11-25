@@ -45,9 +45,9 @@ test("a planned week load is one value of the whole week or none", () => {
 });
 
 test("week durations always use hours and minutes", () => {
-  assert.equal(calendarHours(1800), "0:30 h");
-  assert.equal(calendarHours(29100), "8:05 h");
-  assert.equal(calendarHours(0), "0:00 h");
+  assert.equal(calendarHours(1800), "30 min");
+  assert.equal(calendarHours(29100), "8 h 5 min");
+  assert.equal(calendarHours(0), "0 min");
 });
 
 test("a planned unit counts its own distance, else the sum of its distance steps", () => {

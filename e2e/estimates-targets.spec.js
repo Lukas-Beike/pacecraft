@@ -51,8 +51,8 @@ test("@responsive derived values carry no estimate chip and race predictions sho
   await expect(page.locator("#dataPanel .estimate-chip")).toHaveCount(0);
   const rows = await predictions.locator("tbody tr").evaluateAll((items) => items.map((row) => [row.querySelector("th").textContent, row.querySelector("td").textContent]));
   expect(rows.length).toBeGreaterThan(0);
-  // #2263: 5 and 10 km as m:ss, the longer races in hours and minutes.
-  for (const [distance, time] of rows) expect(time).toMatch(["5 km", "10 km"].includes(distance) ? /^(\d{1,2}:\d{2}|\d:\d{2}:\d{2} h)$/ : /^\d{1,2}:\d{2} h$/);
+  // #2263, #4194: 5 and 10 km as m:ss, the longer races as h:mm:ss on the clock, none with a unit.
+  for (const [distance, time] of rows) expect(time).toMatch(["5 km", "10 km"].includes(distance) ? /^(\d{1,2}:\d{2}|\d:\d{2}:\d{2})$/ : /^\d{1,2}:\d{2}:\d{2}$/);
   await open(page, "analysis/load", "#sessionPerformance h3");
   for (const title of [/^RPE-Belastung/, /^RPE-Belastung kurz und lang/]) {
     await expect(page.getByRole("heading", { name: title }).first().locator(".estimate-chip")).toHaveCount(0);

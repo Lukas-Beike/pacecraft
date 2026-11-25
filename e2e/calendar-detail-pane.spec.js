@@ -62,7 +62,7 @@ test("@responsive a planned unit lists its steps with zone and target range inst
   if (!await card.evaluate((element) => element.open)) await card.locator(":scope > summary").click();
   const steps = card.getByRole("list", { name: "Ablauf" }).locator("li");
   // A zone span names both zones; a percent target without a range shows its own text.
-  await expect(steps.locator(".planned-step-text")).toHaveText(["10 min · Z1", "55 min · Z2", "30 s · Z5", "1:30 min · Z1–Z2", "10 min"]);
+  await expect(steps.locator(".planned-step-text")).toHaveText(["10 min · Z1", "55 min · Z2", "30 s · Z5", "1 min 30 s · Z1–Z2", "10 min"]);
   await expect(steps.locator(".planned-step-range")).toHaveText(["≤ 109 bpm", "110–128 bpm", "", "≤ 128 bpm", "75%"]);
   await expect(steps.nth(1)).toHaveAttribute("data-zone", "2");
   // The workout notation is gone from the pane; the free text stays.

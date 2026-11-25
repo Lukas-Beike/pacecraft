@@ -6,30 +6,30 @@
       <button aria-controls="analysis-info-6" aria-describedby="analysis-info-6" aria-expanded="false" aria-label="Erklärung zu Schlafdauer" class="analysis-legend-info" on:click="1" on:keydown="1" type="button">
         "Schlafdauer"
       <div class="analysis-info-tooltip" data-series="0" hidden="true" id="analysis-info-6" on:keydown="1" role="note">
-        "Schlafdauer: 8:12 h · 07.10.2026. Schlaf aus Garmin."
+        "Schlafdauer: 8 h 12 min · 07.10.2026. Schlaf aus Garmin."
         <span class="analysis-metric-meta">
           "Daten für 3 von 3 Tagen vorhanden."
         <span class="analysis-metric-change">
-          "Seit 05.10.2026: +0:42 h"
+          "Seit 05.10.2026: +42 min"
         <p class="analysis-reference-note">
-          "Ziellinie: 8:00 h · persönliches Schlafziel"
+          "Ziellinie: 8 h · persönliches Schlafziel"
         <p class="analysis-reference-note">
           "Gestrichelte Linie: Durchschnitt der angezeigten Werte."
   <div class="analysis-info-tooltip" id="point-info-7" on:toggle="1" popover="auto" role="tooltip">
     <strong>
       "05.10.2026"
     <p>
-      "Schlafdauer: 7:30 h"
+      "Schlafdauer: 7 h 30 min"
   <div class="analysis-info-tooltip" id="point-info-8" on:toggle="1" popover="auto" role="tooltip">
     <strong>
       "06.10.2026"
     <p>
-      "Schlafdauer: 6:48 h"
+      "Schlafdauer: 6 h 48 min"
   <div class="analysis-info-tooltip" id="point-info-9" on:toggle="1" popover="auto" role="tooltip">
     <strong>
       "07.10.2026"
     <p>
-      "Schlafdauer: 8:12 h"
+      "Schlafdauer: 8 h 12 min"
   <svg:svg aria-label="Schlaf: datierter Verlauf. Tageswerte auswählen oder Werte ansehen öffnen." role="group" viewBox="0 0 460 200">
     <svg:title>
       "Schlaf · 05.10.2026 bis 07.10.2026"
@@ -49,9 +49,9 @@
     <svg:line class="analysis-target-line" x1="60" x2="436" y1="56" y2="56">
     <svg:line class="analysis-average-line" x1="60" x2="436" y1="62.5" y2="62.5">
       <svg:title>
-        "Schlafdauer: Durchschnitt 7:30 h"
+        "Schlafdauer: Durchschnitt 7 h 30 min"
     <svg:text class="analysis-point-value analysis-average-value" paint-order="stroke" stroke="var(--surface)" stroke-linejoin="round" stroke-width="4" text-anchor="end" x="436" y="54.5">
-      "Ø 7:30 h"
+      "Ø 7 h 30 min"
     <svg:rect class="analysis-series-bar" data-color="0" height="97.5" rx="3" width="24" x="48" y="62.5">
     <svg:rect class="analysis-series-bar" data-color="0" height="88.39999999999999" rx="3" width="24" x="236" y="71.60000000000001">
     <svg:rect class="analysis-series-bar" data-color="0" height="106.6" rx="3" width="24" x="424" y="53.400000000000006">
@@ -93,14 +93,14 @@
             <th scope="row">
               "07.10.2026"
             <td>
-              "8:12 h"
+              "8 h 12 min"
           <tr>
             <th scope="row">
               "06.10.2026"
             <td>
-              "6:48 h"
+              "6 h 48 min"
           <tr>
             <th scope="row">
               "05.10.2026"
             <td>
-              "7:30 h"
+              "7 h 30 min"

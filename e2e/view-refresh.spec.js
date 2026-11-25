@@ -69,3 +69,34 @@ test("@responsive view refresh targets its active area and ignores stale views",
   ]);
   expect(broadRefreshes).toEqual([]);
 });
+
+// #4212: the real server takes the refresh of every Analyse tab at every period the tab offers; the route once
+// refused the 28 and 91 days the client sends ("Ungültiger Analysezeitraum.").
+test("@responsive the Analyse refresh is accepted on every tab at every period", async ({ page, request }) => {
+  test.setTimeout(240_000);
+  expect((await request.get("/api/fixture/demo")).ok()).toBeTruthy();
+  const bodies = [];
+  page.on("request", (item) => { if (item.method() === "POST" && new URL(item.url()).pathname === "/api/analysis/refresh") bodies.push(item.postDataJSON()); });
+  await page.goto("/#analysis/running");
+  await expect(page.locator("#appShell")).toBeVisible();
+  for (const route of ["running", "cycling", "strength", "load", "recovery"]) {
+    await page.evaluate((hash) => AppRouter.navigate(hash, { historyMode: "none" }), `analysis/${route}`);
+    await expect(page.locator("#analysisRefreshButton")).toBeVisible();
+    // The periods this tab offers: none on a tab without a period selector.
+    const periods = [];
+    for (const name of ["4 Wochen", "3 Monate", "6 Monate", "12 Monate"]) {
+      if (await page.locator("#dataPanel").getByRole("button", { name, exact: true }).first().isVisible()) periods.push(name);
+    }
+    for (const period of periods.length ? periods : [null]) {
+      if (period) await page.locator("#dataPanel").getByRole("button", { name: period, exact: true }).first().click();
+      const answered = page.waitForResponse((reply) => new URL(reply.url()).pathname === "/api/analysis/refresh" && reply.request().method() === "POST");
+      await page.locator("#analysisRefreshButton").click();
+      expect((await answered).status(), `${route} at ${period}`).toBe(200);
+      await expect(page.locator("#analysisRefreshButton")).toBeEnabled();
+      await expect(page.locator("#analysisRefreshStatus")).not.toContainText("Ungültiger");
+    }
+  }
+  // Belastung and Erholung sent a window; the other tabs sent none.
+  expect(bodies.some((body) => body.area === "load" && body.days === 91)).toBeTruthy();
+  expect(bodies.some((body) => body.area === "recovery" && body.days === 28)).toBeTruthy();
+});

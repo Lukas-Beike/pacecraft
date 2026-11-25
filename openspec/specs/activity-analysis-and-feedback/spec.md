@@ -796,7 +796,7 @@ A completed strength session SHALL be shown and counted with its total (elapsed)
 
 #### Scenario: Calendar and details
 - **WHEN** a strength session with 58 minutes total and 31 minutes moving time and a run with 50 minutes total and 45 minutes moving time are completed in one week
-- **THEN** their cards show 58 min and 45 min, the week sums 1:43 h, the strength details list "Gesamtzeit" before "Bewegungszeit" (one "Zeit" when both read the same) and the run's details keep "Bewegungszeit" first.
+- **THEN** their cards show 58 min and 45 min, the week sums 1 h 43 min, the strength details list "Gesamtzeit" before "Bewegungszeit" (one "Zeit" when both read the same) and the run's details keep "Bewegungszeit" first.
 
 #### Scenario: Training time, carbohydrates and Coach
 - **WHEN** the Analyse training time, the day's carbohydrate range or the Coach reads a completed strength session
@@ -839,10 +839,10 @@ Evidence: `public/activity-details.js::renderBundle`; `public/activity-details.j
 
 ### Requirement: Feedback sheet
 
-The feedback of a session SHALL have its own sheet "Wie war die Einheit?", opened by "Feedback" on the calendar card and by "Bearbeiten" of a refused outbox entry. It SHALL hold an effort row of the steps 1 to 10, the note (4000 characters) and, under "Mehr angeben", "Art der Einheit" and the deviation reason (500). A tap or a left field SHALL save through `POST /api/activities/{id}/feedback` with "Rückgängig"; there SHALL be no save button.
+The feedback of a session SHALL have its own sheet "Wie war die Einheit?", opened by "Feedback" on the calendar card and by "Bearbeiten" of a refused outbox entry: an effort row (1 to 10), a feel row (five steps, 1 very strong to 5 very weak), the note (4000 characters) and, under "Mehr angeben", "Art der Einheit" and the deviation reason (500). A tap or a left field SHALL save through `POST /api/activities/{id}/feedback` with "Rückgängig"; there SHALL be no save button.
 
 #### Scenario: Value of the watch
-- **WHEN** the watch delivered an effort and the athlete has none
+- **WHEN** the watch delivered an effort or a feel and the athlete has none
 - **THEN** that step is marked dashed and a tap takes it over as the athlete's own value
 
 #### Scenario: Stored rating off the grid

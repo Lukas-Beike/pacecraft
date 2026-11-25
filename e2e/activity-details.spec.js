@@ -42,6 +42,7 @@ test("@responsive activity details preserve calendar without Coach shortcuts", a
   await expect(sheet.getByRole("button", { name: "Feedback speichern" })).toHaveCount(0);
   await sheet.getByRole("button", { name: "6", exact: true }).click();
   await expect(sheet.locator('[role="status"]').filter({ hasText: "Feedback gespeichert" })).toBeVisible();
+  await sheet.getByRole("group", { name: "Gefühl" }).getByRole("button", { name: "stark", exact: true }).click();
   await expect(sheet.getByRole("button", { name: "6", exact: true })).toHaveAttribute("aria-pressed", "true");
   await sheet.getByText("Mehr angeben").click();
   await sheet.getByLabel("Abweichung vom Plan").fill("Heat");
@@ -59,6 +60,7 @@ test("@responsive activity details preserve calendar without Coach shortcuts", a
   expect(payload.streams.time_s.length).toBe(2000);
   expect(payload.session.started_at_local).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}$/);
   expect(payload.activity_feedback.session_rpe).toBe(6);
+  expect(payload.activity_feedback.feel).toBe(2);
   expect(payload.activity_feedback.deviation_reason).toBe("Heat");
   expect(payload.activity_feedback.notes).toBe("Synthetic feedback");
 });
@@ -608,7 +610,7 @@ test("@responsive a strength session leads with its total time, a run keeps its 
   await expect(card("Synthetic strength").locator(".planned-session-value strong")).toHaveText("58 min");
   await expect(card("Synthetic easy run").locator(".planned-session-value strong")).toHaveText("45 min");
   // The week sums the same durations as the cards: 58 + 45 min.
-  await expect(page.locator(".planned-week-metrics").first()).toContainText("1:43 h");
+  await expect(page.locator(".planned-week-metrics").first()).toContainText("1 h 43 min");
   const strength = await openSessionDetails(page, "Synthetic strength");
   const strengthTimes = strength.locator(".activity-analysis-stats div").filter({ hasText: /^(Gesamtzeit|Bewegungszeit)/ });
   await expect(strengthTimes).toHaveText([/^Gesamtzeit\s*58:00$/, /^Bewegungszeit\s*31:00$/]);
@@ -752,7 +754,7 @@ test("@responsive the feedback sheet keeps a typed note when a save fails and sa
   await page.goto("/#plan/overview");
   await expect(page.locator("#appShell")).toBeVisible();
   await page.evaluate(async () => {
-    const data = { session: { activity_id: "keep-1", name: "Synthetic kept ride", sport: "ride" }, streams: { time_s: [0, 1, 2], channels: {} }, detail_data: { providers: [] }, activity_feedback: null, equipment: [], session_rpe_load: null };
+    const data = { session: { activity_id: "keep-1", name: "Synthetic kept ride", sport: "ride" }, streams: { time_s: [0, 1, 2], channels: {} }, detail_data: { providers: [] }, activity_feedback: null, metrics: { feel: { value: 4 } }, equipment: [], session_rpe_load: null };
     globalThis.feedbackBodies = [];
     globalThis.failNext = true;
     const fakeApi = async (url, options) => {
@@ -772,10 +774,17 @@ test("@responsive the feedback sheet keeps a typed note when a save fails and sa
   await note.press("Tab");
   await expect(dialog.locator('[role="status"]').filter({ hasText: "Server gerade nicht erreichbar." })).toBeVisible();
   await expect(note).toHaveValue("Beine schwer");
+  // The watch's feel is dashed until the athlete rates; a tap takes it over as the own feel (#4199).
+  const feelWatch = dialog.getByRole("group", { name: "Gefühl" }).getByRole("button", { name: "schwach", exact: true });
+  await expect(feelWatch).toHaveClass(/is-watch/);
+  await feelWatch.click();
+  await expect(feelWatch).toHaveAttribute("aria-pressed", "true");
+  await expect.poll(() => page.evaluate(() => feedbackBodies.at(-1)?.feel)).toBe(4);
   await dialog.getByText("Mehr angeben").click();
   await dialog.getByLabel("Abweichung vom Plan").fill("Hitze");
   await page.keyboard.press("Escape");
   await expect(dialog).toHaveCount(0);
   await expect.poll(() => page.evaluate(() => feedbackBodies.at(-1)?.deviation_reason)).toBe("Hitze");
   expect(await page.evaluate(() => feedbackBodies.at(-1).notes)).toBe("Beine schwer");
+  expect(await page.evaluate(() => feedbackBodies.at(-1).feel)).toBe(4);
 });

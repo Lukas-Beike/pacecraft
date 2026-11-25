@@ -79,7 +79,7 @@
     return `${km} km`;
   }
 
-  // Training duration: "45 min" under one hour, otherwise "1:05 h".
+  // A duration of a session or a total in words (#4194): "45 min", "1 h 5 min", "2 h".
   function duration(seconds) {
     if (seconds == null || seconds === "") return null;
     const value = Number(seconds);
@@ -88,7 +88,7 @@
     if (totalMinutes < 60) return `${totalMinutes} min`;
     const hours = Math.floor(totalMinutes / 60);
     const minutes = totalMinutes % 60;
-    return `${hours}:${String(minutes).padStart(2, "0")} h`;
+    return minutes ? `${hours} h ${minutes} min` : `${hours} h`;
   }
 
   // Stopwatch-style clock for pace and lap values: "h:mm:ss" or "m:ss".

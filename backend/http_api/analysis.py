@@ -8,6 +8,7 @@ from typing import Any
 from backend.errors import AppError
 from backend.http_api.route_table import Access, Route, RouteRequest
 from backend.performance.comparisons import recurring_view
+from backend.sync.analysis_refresh import validate_refresh_request
 
 
 class AnalysisRoutes:
@@ -216,8 +217,8 @@ class AnalysisRoutes:
         """Run a targeted refresh of one analysis area.
 
         Request: JSON body `{"area": string, "days": integer}`. `area` is required:
-        `load`, `performance`, `recovery` or `sessions`. `days` is optional, `14` or
-        `84`, and only for `load` and `recovery` (default 84 for `load`, 14 for
+        `load`, `performance`, `recovery` or `sessions`. `days` is optional, `28` or
+        `91`, and only for `load` and `recovery` (default 91 for `load`, 28 for
         `recovery`); the other areas use fixed windows.
 
         Response: 200 with `area`, `status` (`ok`, `partial`, `already_running` or
@@ -232,18 +233,8 @@ class AnalysisRoutes:
         """
         payload = handler.read_json()
         area = payload.get("area") if isinstance(payload, dict) else None
-        if not isinstance(area, str) or area not in {
-            "load",
-            "performance",
-            "recovery",
-            "sessions",
-        }:
-            raise AppError(400, "Ungültiger Analysebereich.")
-        days = payload.get("days")
-        if days is not None and (
-            area not in {"load", "recovery"} or days not in {14, 84}
-        ):
-            raise AppError(400, "Ungültiger Analysezeitraum.")
+        days = payload.get("days") if isinstance(payload, dict) else None
+        validate_refresh_request(area, days)
         if self._refresh is None:
             raise AppError(
                 503,
