@@ -8,6 +8,15 @@
     const points = times.map((time, index) => [time, values[index]])
       .filter(([time, value]) => typeof time === "number" && typeof value === "number" && Number.isFinite(time) && Number.isFinite(value));
     if (points.length < 2) return null;
+    // The dialog keeps the value tables; the charts are the inline view's (#4221). A table of every reading is built only
+    // when it is opened: built for every channel on opening the dialog, it held back the panel's stats (#4244).
+    if (tableOnly) {
+      const more = h("details", "activity-values", h("summary", null, `${label} (${unit}): alle ${points.length} Messwerte ansehen`));
+      more.addEventListener("toggle", () => {
+        if (more.open && !more.querySelector(".analysis-chart-table")) more.append(valueTable(times, values, label, unit));
+      });
+      return more;
+    }
     const width = 680; const height = 220; const left = 64; const right = 12; const top = 16; const bottom = 34;
     const svg = svgNode("svg", { viewBox: `0 0 ${width} ${height}`, role: "img", "aria-label": `${label}, Zeitachse in Minuten; Messwerte und Lücken sind in der Tabelle aufgeführt` });
     const min = Math.min(...points.map((point) => point[1]));
@@ -36,6 +45,13 @@
       return `${command}${x(time).toFixed(1)},${y(value).toFixed(1)}`;
     }).join(" ");
     svg.append(svgNode("path", { d: path }));
+    return h("section", "activity-series", h("h3", null, `${label} (${unit})`), svg,
+      h("p", "muted", `${AppFormat.number(min, { digits: 1 })}–${AppFormat.number(max, { digits: 1 })} ${unit} · ${Math.round(start / 60)}–${Math.round(points.at(-1)[0] / 60)} min · ${times.length - points.length} fehlende Messpunkte`),
+      h("details", "activity-values", h("summary", null, `Alle ${points.length} Messwerte ansehen`), valueTable(times, values, label, unit)));
+  }
+
+  // Every reading of one channel with its time; a missing value is named as a gap.
+  function valueTable(times, values, label, unit) {
     const tableWrap = makeScrollRegionFocusable(h("div", "analysis-chart-table"), `${label} in ${unit}: Messwerte`);
     const rows = [];
     times.forEach((time, index) => {
@@ -45,11 +61,7 @@
       rows.push([h("th", { scope: "row" }, `${Math.floor(time / 60)}:${String(Math.floor(time % 60)).padStart(2, "0")}`), reading]);
     });
     tableWrap.append(table(["Zeit", label], rows, { caption: `${label} in ${unit}; fehlende Werte sind als Lücke markiert.` }));
-    // The dialog keeps the value tables; the charts are the inline view's (#4221).
-    if (tableOnly) return h("details", "activity-values", h("summary", null, `${label} (${unit}): alle ${points.length} Messwerte ansehen`), tableWrap);
-    return h("section", "activity-series", h("h3", null, `${label} (${unit})`), svg,
-      h("p", "muted", `${AppFormat.number(min, { digits: 1 })}–${AppFormat.number(max, { digits: 1 })} ${unit} · ${Math.round(start / 60)}–${Math.round(points.at(-1)[0] / 60)} min · ${times.length - points.length} fehlende Messpunkte`),
-      h("details", "activity-values", h("summary", null, `Alle ${points.length} Messwerte ansehen`), tableWrap));
+    return tableWrap;
   }
 
   // Served metric values by key; metrics the document does not carry stay absent.

@@ -145,6 +145,14 @@ function rememberAnalysisPeriod(tab, key) {
 // but stay as they are when the shown segment is navigated to again (re-login, active segment link).
 let shownMoreSegment = null;
 
+// The new-threshold notification's link names the sport; the hash is replaced only after the render (#4135).
+function openOfferSportFromHash() {
+  const sport = /^#more\/profile\/(run|ride)$/i.exec(globalThis.location.hash)?.[1].toLowerCase();
+  if (!sport) return;
+  showZoneSport(sport);
+  $("#zoneSettings").open = true;
+}
+
 function renderActiveRoute(mainRoute, panelRoute) {
   const moreSegment = mainRoute === "more" ? AppRouter.moreSegmentFromRoute(panelRoute) : null;
   if (moreSegment && moreSegment !== shownMoreSegment) {
@@ -156,6 +164,7 @@ function renderActiveRoute(mainRoute, panelRoute) {
     document.querySelector("#equipmentItems > .maintenance-receipt")?.remove();
   }
   shownMoreSegment = moreSegment;
+  openOfferSportFromHash();
   document.dispatchEvent(new CustomEvent("app:route-rendered", { detail: { route: mainRoute } }));
   AppNutrition.handleRoute(panelRoute);
   if (mainRoute === "analysis") renderAnalysisSegments(panelRoute);

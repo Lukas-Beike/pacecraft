@@ -240,7 +240,7 @@ DATA_DIR = Path(os.environ.get("DATA_DIR", ROOT / "data"))
 DB_PATH = DATA_DIR / "intervals-coach.db"
 LOG_PATH = DATA_DIR / "intervals-coach.log"
 APP_NAME = "Pacecraft · AI Coach"
-APP_VERSION = "2.2.32"
+APP_VERSION = "2.2.33"
 MAX_BODY_BYTES = 1_000_000
 COACH_CONVERSATION_GATE = CoachConversationGate()
 
@@ -1003,6 +1003,9 @@ APP.push_checks = PushChecks(
     threshold_warnings=lambda: APP.athlete.zones().threshold_warnings(),
     equipment=lambda: APP.athlete.equipment().read(),
     records=lambda: APP.performance.training_reports().profiles.records(),
+    threshold_offers=lambda: APP.athlete.second_threshold(
+        APP.performance.curve_records
+    ).offers(),
     weather_days=lambda: APP.weather.service().state(refresh=False).get("days"),
     server_state=lambda: APP.backup.server_state(),
     unrated_sessions=lambda day: APP.activity_reads.activity_read().unrated_sessions(

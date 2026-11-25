@@ -31,6 +31,7 @@ from backend.push.events import (
     personal_best_event,
     planned_units,
     server_event,
+    threshold_offer_events,
     weather_event,
 )
 from backend.push.service import Notification, PushService
@@ -46,6 +47,8 @@ REPEATED_FAILURES: Final = 3
 UPCOMING_DAYS: Final = 3
 _PROVIDERS: Final = tuple(provider.value for provider in ProviderId)
 _HISTORY_ROWS: Final = 20
+# The seeding marker of the threshold offers (#4135).
+OFFERS_SEEDED: Final = "threshold_offers"
 
 
 class PushChecks:
@@ -61,6 +64,7 @@ class PushChecks:
         threshold_warnings: Callable[[], Any] = lambda: None,
         equipment: Callable[[], Any] = lambda: None,
         records: Callable[[], Any] = lambda: None,
+        threshold_offers: Callable[[], Any] = lambda: None,
         weather_days: Callable[[], Any] = lambda: None,
         server_state: Callable[[], Any] = lambda: None,
         unrated_sessions: Callable[[date], Any] = lambda day: (),
@@ -73,6 +77,7 @@ class PushChecks:
         self._threshold_warnings = threshold_warnings
         self._equipment = equipment
         self._records = records
+        self._threshold_offers = threshold_offers
         self._weather_days = weather_days
         self._server_state = server_state
         self._unrated_sessions = unrated_sessions
@@ -154,6 +159,7 @@ class PushChecks:
             found.append(
                 personal_best_event(self._source(self._records), subscribed_on, today)
             )
+        found += self._threshold_events(subscribed_on)
         if local.hour >= MISSING_FEEDBACK_HOUR:
             found.append(
                 missing_feedback_event(
@@ -161,6 +167,20 @@ class PushChecks:
                 )
             )
         return found
+
+    def _threshold_events(self, subscribed_on: date) -> list[Notification]:
+        """The open offers are announced from the second read on; the first only seeds."""
+        offers = self._source(self._threshold_offers)
+        if not isinstance(offers, list):
+            return []
+        keys = [
+            f"threshold_offer:{offer['key']}"
+            for offer in offers
+            if isinstance(offer, dict) and isinstance(offer.get("key"), str)
+        ]
+        if self._push.seed(OFFERS_SEEDED, keys):
+            return []
+        return threshold_offer_events(offers, subscribed_on)
 
     @staticmethod
     def _source(read: Callable[..., Any], *args: Any) -> Any:

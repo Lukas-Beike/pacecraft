@@ -28,6 +28,7 @@ const PUSH_TYPE_LABELS = Object.freeze({
   checkin: "Check-in erinnern",
   maintenance: "Wartung fällig",
   personal_best: "Neue Bestleistung",
+  new_threshold: "Neue Schwelle",
   missing_feedback: "Feedback fehlt am Abend",
   server_backup: "Server oder Backup",
   weather: "Wetter für Outdoor-Einheit",

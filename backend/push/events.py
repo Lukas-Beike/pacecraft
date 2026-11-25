@@ -271,6 +271,53 @@ def personal_best_event(
     )
 
 
+# Per sport: the title's activity, the plural of the body's, the tapped Zonen & Schwellen sport (#4135).
+_OFFER_SPORTS: Final = {
+    "run": ("Laufen", "Läufen", "#more/profile/run"),
+    "ride": ("Radfahren", "Fahrten", "#more/profile/ride"),
+}
+
+
+def threshold_offer_events(offers: Any, since_day: date) -> list[Notification]:
+    """One notification per sport and origin for the open threshold offers (#4135).
+
+    The offers are already without the dismissed ones. Only an offer whose newest
+    data is younger than the subscription counts: one that was open before is no
+    news. Each offer key is its own sent key, so a new value of a source notifies
+    again and an unchanged one never does. The day comparison is strict, like
+    ``personal_best_event``: data of the subscription day itself is no news. The
+    offers are grouped per sport and origin (Garmin's own value or an estimate
+    from the athlete's sessions), so a body names the origin of every key it
+    announces. No value is named.
+    """
+    found: dict[tuple[str, bool], list[dict[str, Any]]] = {}
+    for offer in offers if isinstance(offers, list) else []:
+        if (
+            isinstance(offer, dict)
+            and offer.get("sport") in _OFFER_SPORTS
+            and isinstance(offer.get("key"), str)
+            # An undated offer is no news: "None" would sort after every date.
+            and isinstance(offer.get("newest"), str)
+            and offer["newest"][:10] > since_day.isoformat()
+        ):
+            garmin = offer.get("source") == GARMIN_ID
+            found.setdefault((offer["sport"], garmin), []).append(offer)
+    events = []
+    for (sport, garmin), group in sorted(found.items()):
+        activity, sessions, url = _OFFER_SPORTS[sport]
+        origin = "Von Garmin" if garmin else f"Aus deinen letzten {sessions}"
+        event = _one(
+            "new_threshold",
+            (f"threshold_offer:{offer['key']}" for offer in group),
+            f"Neue Schwelle für {activity}",
+            f"{origin} gibt es einen neuen Wert. Tippen zum Ansehen.",
+            url,
+        )
+        if event is not None:
+            events.append(event)
+    return events
+
+
 def missing_feedback_event(session_ids: Any, today: date) -> Notification | None:
     """A session of today still has no RPE: once a day."""
     if not session_ids:

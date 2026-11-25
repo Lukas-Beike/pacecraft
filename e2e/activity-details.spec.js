@@ -64,6 +64,25 @@ test("@responsive activity details preserve calendar without Coach shortcuts", a
   expect(payload.activity_feedback.notes).toBe("Synthetic feedback");
 });
 
+test("@responsive Alle Details builds a channel's value table only when it is opened (#4244)", async ({ page, request }) => {
+  const seed = await request.get("/api/fixture/activity");
+  expect(seed.ok()).toBeTruthy();
+  await page.goto("/#plan/overview");
+  await expect(page.locator("#appShell")).toBeVisible();
+  const entry = page.locator(".planned-entry").filter({ hasText: "Synthetic ride <img src=x>" }).first();
+  if (!(await entry.evaluate((element) => element.open))) await entry.locator(":scope > summary").click();
+  await entry.getByRole("button", { name: "Alle Details" }).click();
+  const dialog = page.getByRole("dialog", { name: "Synthetic ride <img src=x>" });
+  await expect(dialog.getByRole("img", { name: /^Leistung: Ø/ })).toBeVisible();
+  // Built for every channel on opening, the tables held back the stats; a closed table holds no rows.
+  const values = dialog.locator(".activity-values");
+  await expect(values.first()).toBeVisible();
+  expect(await dialog.locator(".activity-values table").count()).toBe(0);
+  await values.first().locator("summary").click();
+  await expect(values.first().locator("table tbody tr").first()).toBeVisible();
+  expect(await dialog.locator(".activity-values table").count()).toBe(1);
+});
+
 
 test("@responsive load tab shows the session-RPE load with its coverage", async ({ page }) => {
   await page.goto("/#analysis/load");
