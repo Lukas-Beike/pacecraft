@@ -232,9 +232,11 @@ because the fixture's day offsets make every weekday a case (#4210); `--list`
 names these runs under `weekday_runs`, and each run writes its own manifest
 (#3324). A changed spec that calls `addDateKey` or `planWeekStart` without the
 helper refuses the whole local run, also with `--spec` for another spec, naming
-the fix, since a pinned run would mix the pinned and the real day. In CI, the job "Browser checks (pinned weekdays)" runs every spec
-that imports the helper (`--clock-pinned`) on the week's other six days, beside
-the shards; the aggregate "Browser checks" fails when it does (#4210).
+the fix, since a pinned run would mix the pinned and the real day. In CI, one
+job per weekday, "Browser checks (pinned Mon)" to "(pinned Sun)", runs every
+spec that imports the helper (`--clock-pinned`) on its day, beside the shards;
+today's job skips, and the aggregate "Browser checks" fails when one fails
+(#4210, #4249).
 
 CI builds and shares the current application image once, then starts browser
 jobs beside the native suite. Its prepared browser image is pinned by exact
