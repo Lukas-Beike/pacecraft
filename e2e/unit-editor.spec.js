@@ -1,4 +1,5 @@
-const { test, expect } = require("@playwright/test");
+// The fixture calendar's markers fall on fixed offsets from today: the weekday runs pin it (#4210).
+const { test, expect, todayIn } = require("./helpers/today");
 
 // The Einplanen test fails an /api request, so the service worker is blocked (#3842).
 test.use({ serviceWorkers: "block" });
@@ -81,8 +82,9 @@ test("@responsive the calendar edits and archives a unit", async ({ page, reques
   await page.evaluate(async () => {
     const made = await api("/api/library", { method: "POST", body: JSON.stringify({ name: "E2E Ausdauer", description: "- 10m 60%", sport: "Ride", duration_minutes: 10, target: "POWER" }) });
     const today = timezoneDateKey(state.data.profile.timezone, new Date());
-    // The fixture calendar blocks today + 2 and today + 5 with [NO_TRAINING] markers: a day of next week skips them.
-    const free = (offset) => { let day = addDateKey(planWeekStart(today), offset); while ([2, 5].some((n) => addDateKey(today, n) === day)) day = addDateKey(day, 1); return day; };
+    // The fixture calendar refuses planning on today + 2 and + 5 ([NO_TRAINING]) and + 4 (a plain event); its
+    // [NO_INTENSITY] and [SHORT_ONLY] days take this short easy unit. A day of next week skips them (#4210).
+    const free = (offset) => { let day = addDateKey(planWeekStart(today), offset); while ([2, 4, 5].some((n) => addDateKey(today, n) === day)) day = addDateKey(day, 1); return day; };
     await api(`/api/library/${made.local_id}/schedule`, { method: "POST", body: JSON.stringify({ date: free(7) }) });
     await globalThis.load();
   });
@@ -208,7 +210,7 @@ test("@responsive the calendar applies a shown replan preview and Rückgängig t
     await route.fulfill({ json: { status: "undone", count: 2, remote_untouched: true } });
   });
   await openApp(page, request, "/#plan/overview");
-  const day = (offset) => new Date(Date.now() + offset * 86_400_000).toISOString().slice(0, 10);
+  const day = (offset) => new Date(Date.parse(`${todayIn("UTC")}T12:00:00Z`) + offset * 86_400_000).toISOString().slice(0, 10);
   await page.evaluate((dates) => {
     state.data.planning = { ...state.data.planning, latest_replan: {
       id: "p1", status: "preview",
@@ -267,8 +269,8 @@ test("@responsive a plan's period is replaced in one change and Rückgängig tak
     const plan = (state.data.plans || []).find((item) => item.name === "E2E Ersatzplan");
     const made = await api("/api/library", { method: "POST", body: JSON.stringify({ name: "E2E Alt", description: "- 10m 60%", sport: "Ride", duration_minutes: 10, target: "POWER" }) });
     const today = timezoneDateKey(state.data.profile.timezone, new Date());
-    // The fixture calendar blocks today + 2 and today + 5 with [NO_TRAINING] markers: a day of next week skips them.
-    const free = (offset) => { let day = addDateKey(planWeekStart(today), offset); while ([2, 5].some((n) => addDateKey(today, n) === day)) day = addDateKey(day, 1); return day; };
+    // As above, and the undo restores no unit on the fixture camp (+ 6, + 7); the walk stays in next week (#4210).
+    const free = (offset) => { let day = addDateKey(planWeekStart(today), offset); while ([2, 4, 5, 6, 7].some((n) => addDateKey(today, n) === day)) day = addDateKey(day, 1); return day; };
     await api(`/api/library/${made.local_id}/schedule`, { method: "POST", body: JSON.stringify({ date: free(9), plan_id: plan.id }) });
     await globalThis.load();
   });
@@ -344,8 +346,9 @@ test("@responsive Aus Garmin entfernen asks first and removes only the Garmin co
   await page.evaluate(async () => {
     const made = await api("/api/library", { method: "POST", body: JSON.stringify({ name: "E2E Garmin", description: "- 10m 60%", sport: "Ride", duration_minutes: 10, target: "POWER" }) });
     const today = timezoneDateKey(state.data.profile.timezone, new Date());
-    // The fixture calendar blocks today + 2 and today + 5 with [NO_TRAINING] markers: a day of next week skips them.
-    const free = (offset) => { let day = addDateKey(planWeekStart(today), offset); while ([2, 5].some((n) => addDateKey(today, n) === day)) day = addDateKey(day, 1); return day; };
+    // The fixture calendar refuses planning on today + 2 and + 5 ([NO_TRAINING]) and + 4 (a plain event); its
+    // [NO_INTENSITY] and [SHORT_ONLY] days take this short easy unit. A day of next week skips them (#4210).
+    const free = (offset) => { let day = addDateKey(planWeekStart(today), offset); while ([2, 4, 5].some((n) => addDateKey(today, n) === day)) day = addDateKey(day, 1); return day; };
     await api(`/api/library/${made.local_id}/schedule`, { method: "POST", body: JSON.stringify({ date: free(10) }) });
     await globalThis.load();
   });
