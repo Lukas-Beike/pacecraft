@@ -680,6 +680,8 @@ class ProdChecksTests(unittest.TestCase):
             "database": {
                 "schema_version": 29,
                 "messages": 40,
+                # #4161: adopted local zones carrying a maximum.
+                "adopted_zone_maximums": 2,
                 "file_bytes": 4096,
                 "wal_bytes": 512,
                 "data_dir_free_bytes": 10**9,
@@ -790,6 +792,7 @@ class ProdChecksTests(unittest.TestCase):
                 "garmin.ride.unmapped_fields.20.134 4",
             ],
             "database": [
+                "adopted_zone_maximums 2",
                 "data_dir_free_bytes 1000000000", "file_bytes 4096",
                 "messages 40", "schema_version 29",
                 "stored_payload_bytes.garmin_state 7", "wal_bytes 512",

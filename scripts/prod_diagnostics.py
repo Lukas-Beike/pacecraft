@@ -71,6 +71,8 @@ COUNTS = (
     # Weights and body fats the athlete entered by hand (#3252, #3402).
     "entered_weights",
     "entered_body_fats",
+    # Adopted local zones carrying a maximum, maybe a frozen one (#4161).
+    "adopted_zone_maximums",
 )
 MEMORY = ("rss_bytes", "peak_rss_bytes")
 # Storage and runtime health compared between releases (#2848).

@@ -336,6 +336,7 @@ class DiagnosticReportServiceTests(unittest.TestCase):
                 "nutrition_logs": 9,
                 "entered_weights": 0,
                 "entered_body_fats": 0,
+                "adopted_zone_maximums": 0,
                 "stored_payload_bytes": {
                     "garmin_state": 4096,
                     "garmin_snapshot_legacy": 0,
@@ -412,8 +413,8 @@ class DiagnosticReportServiceTests(unittest.TestCase):
         # weight push adds its state (#3559); the Garmin history re-read reads
         # the Garmin state (#3729); the competition sync reads its failure
         # record and last success (#3838); the sleep key names read the stored
-        # nights once (#4017).
-        self.assertEqual(len(self.db.queries), 51)
+        # nights once (#4017); the adopted zone maximums add one (#4161).
+        self.assertEqual(len(self.db.queries), 52)
         self.assertEqual(
             [query.rsplit("FROM ", 1)[1] for query in count_queries],
             [
@@ -502,6 +503,10 @@ class DiagnosticReportServiceTests(unittest.TestCase):
                 "CREATE TABLE observations "
                 "(metric TEXT, provider TEXT, source_kind TEXT, state TEXT)"
             )
+            db.execute(
+                "CREATE TABLE zone_configurations "
+                "(provider TEXT, state TEXT, maximum REAL, details TEXT)"
+            )
             # Only the athlete's own active weigh-ins count (#3252).
             db.executemany(
                 "INSERT INTO observations VALUES (?, ?, ?, ?)",
@@ -518,6 +523,19 @@ class DiagnosticReportServiceTests(unittest.TestCase):
             # And the body fats the athlete entered as a percentage (#3402).
             counts = self.service._database_counts(db)
             self.assertEqual(counts["entered_body_fats"], 1)
+            # #4161: active adopted local zones with a maximum, never their values.
+            db.executemany(
+                "INSERT INTO zone_configurations VALUES (?, ?, ?, ?)",
+                [
+                    (None, "active", 192.0, '{"threshold_origin":"dfa_alpha1"}'),
+                    (None, "active", None, '{"threshold_origin":"dfa_alpha1"}'),
+                    (None, "active", 192.0, "{}"),
+                    (None, "retired", 192.0, '{"threshold_origin":"garmin"}'),
+                    ("garmin", "active", 192.0, "{}"),
+                ],
+            )
+            counts = self.service._database_counts(db)
+            self.assertEqual(counts["adopted_zone_maximums"], 1)
             self.assertEqual(
                 self.service._database_counts(db)["stored_payload_bytes"],
                 {
