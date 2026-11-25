@@ -1,5 +1,5 @@
 const { test, expect } = require("./helpers/today");
-const { showCalendarDay } = require("./helpers/ui");
+const { showCalendarDay, openCardDetails } = require("./helpers/ui");
 const { openCalendar, renderSyntheticCalendar } = require("./helpers/calendar");
 
 // Routes miss requests that pass through the service worker's fetch listener; this spec
@@ -110,8 +110,8 @@ test("@responsive an opened completed session rates each planned step against it
   await showCalendarDay(page, days.past);
   const run = page.locator(`.planned-day[data-date="${days.past}"] .planned-entry`).filter({ hasText: "Vergangener Lauf" });
   await run.evaluate((element) => { for (let node = element; node; node = node.parentElement) if (node.tagName === "DETAILS") node.open = true; });
-  await run.locator(".planned-activity-more > summary").click();
-  const section = run.locator(".activity-adherence");
+  const dialog = await openCardDetails(page, run);
+  const section = dialog.locator(".activity-adherence");
   await expect(section.locator(".activity-adherence-score")).toHaveText("Zieltreue 76 %");
   await expect(section.locator(".activity-adherence-score")).toHaveAttribute("data-band", "fair");
   await expect(section.locator(".activity-adherence-strip i")).toHaveCount(12);
@@ -127,10 +127,10 @@ test("@responsive an opened completed session rates each planned step against it
   await expect(section.locator(".activity-adherence-zones li")).toHaveCount(3);
   await expect(section.locator(".activity-adherence-zones li").last().locator(".activity-analysis-zone-value")).toHaveText("20′ / 16′");
   // Each scored step draws its target band on its own channel's chart: 10 pace steps, 1 heart-rate step.
-  await expect(run.locator(".activity-analysis-chart.is-speed .activity-analysis-target")).toHaveCount(10);
-  await expect(run.locator(".activity-analysis-chart.is-heart .activity-analysis-target")).toHaveCount(1);
+  await expect(dialog.locator(".activity-analysis-chart.is-speed .activity-analysis-target")).toHaveCount(10);
+  await expect(dialog.locator(".activity-analysis-chart.is-heart .activity-analysis-target")).toHaveCount(1);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBeTruthy();
-  await run.locator(".activity-analysis-panel").screenshot({ path: testInfo.outputPath("planned-step-adherence.png"), animations: "disabled" });
+  await dialog.locator(".activity-analysis-panel").screenshot({ path: testInfo.outputPath("planned-step-adherence.png"), animations: "disabled" });
 });
 
 test("@responsive an opened completed run rates its running dynamics against the same pace", async ({ page, request }, testInfo) => {
@@ -160,8 +160,8 @@ test("@responsive an opened completed run rates its running dynamics against the
   await showCalendarDay(page, days.past);
   const run = page.locator(`.planned-day[data-date="${days.past}"] .planned-entry`).filter({ hasText: "Vergangener Lauf" });
   await run.evaluate((element) => { for (let node = element; node; node = node.parentElement) if (node.tagName === "DETAILS") node.open = true; });
-  await run.locator(".planned-activity-more > summary").click();
-  const section = run.locator(".activity-dynamics");
+  const dialog = await openCardDetails(page, run);
+  const section = dialog.locator(".activity-dynamics");
   const values = section.locator(".activity-dynamics-value");
   await expect(values.locator("dt")).toHaveText(["Bodenkontaktzeit", "Schrittfrequenz", "Bodenkontakt links", "Vertikale Oszillation", "Vertikales Verhältnis", "Schrittlänge"]);
   await expect(values.first().locator(".activity-dynamics-chip")).toHaveText("besser als sonst");
@@ -172,7 +172,7 @@ test("@responsive an opened completed run rates its running dynamics against the
   await expect(section.locator(".activity-dynamics-bands tbody tr")).toHaveCount(3);
   await expect(section.locator(".activity-dynamics-bands tbody tr").first().locator("th")).toHaveText("4:00–4:15");
   // The values sit in their own section, not again among the session's values.
-  const others = run.locator(".activity-analysis-stats:not(.activity-dynamics-values)");
+  const others = dialog.locator(".activity-analysis-stats:not(.activity-dynamics-values)");
   await expect(others).toContainText("Ø Herzfrequenz");
   await expect(others).not.toContainText("Bodenkontaktzeit");
   await expect(others).not.toContainText("Schrittfrequenz");
@@ -227,29 +227,28 @@ test("@responsive an opened completed session shows its time in zones as one bar
     else await expect.poll(runReads).toBe(start + 1);
     await expect(card.locator(".planned-zone-time")).toHaveCount(0);
   }
-  // "Details" reuses the bar's read of the same session (#2478); a failed read is not shared.
-  const failed = page.locator(`.planned-day[data-date="${days.past}"] .planned-entry`).filter({ hasText: "Vergangener Lauf" });
-  await failed.locator(".planned-activity-more > summary").click();
-  await expect.poll(runReads).toBe(start + 2);
-  await expect(failed.locator(".activity-analysis-panel")).not.toContainText("Details werden geladen");
-  expect(runReads()).toBe(start + 2);
+  // "Alle Details" reads the document once for its own load; its inline view takes the bar's read of the same session (#2478).
   await showCalendarDay(page, days.today);
   if (!await ride.evaluate((element) => element.open)) await ride.locator(":scope > summary").click();
-  await ride.locator(".planned-activity-more > summary").click();
-  const panel = ride.locator(".activity-analysis-panel");
+  const rideDialog = await openCardDetails(page, ride);
+  const panel = rideDialog.locator(".activity-analysis-panel");
   await expect(panel.locator(":scope > *").first()).toBeAttached();
   await expect(panel).not.toContainText("Details werden geladen");
-  expect(reads.filter((id) => id === "today-ride")).toHaveLength(1);
-  // A detail refresh in "Details" reads the document fresh; a rebuild then shows that one, without another read.
+  const afterOpen = reads.filter((id) => id === "today-ride").length;
+  // A detail refresh reads the document fresh; a rebuild of the card then shows that one, without another read.
   z4 = 1800;
   await panel.evaluate(async (element) => {
     await ActivityAnalysis.loadPanel(element, state.data.training_calendar.find((item) => item.id === "today-ride"), undefined, true);
+  });
+  const afterRefresh = reads.filter((id) => id === "today-ride").length;
+  expect(afterRefresh).toBe(afterOpen + 1);
+  await page.evaluate(() => {
     // A full rebuild with the same data, as after a week switch.
     plannedRenderSnapshot = null;
     renderPlanned(state.data.training_calendar);
   });
   await expect(ride.locator(".planned-zone-time-legend span").nth(2)).toHaveText("Z4 30′");
-  expect(reads.filter((id) => id === "today-ride")).toHaveLength(2);
+  expect(reads.filter((id) => id === "today-ride")).toHaveLength(afterRefresh);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBeTruthy();
 });
 
@@ -265,8 +264,8 @@ test("@responsive an opened completed session shows the provider's own training 
   await showCalendarDay(page, days.past);
   const run = page.locator(`.planned-day[data-date="${days.past}"] .planned-entry`).filter({ hasText: "Vergangener Lauf" });
   await run.evaluate((element) => { for (let node = element; node; node = node.parentElement) if (node.tagName === "DETAILS") node.open = true; });
-  await run.locator(".planned-activity-more > summary").click();
-  const section = run.locator(".activity-effect");
+  const dialog = await openCardDetails(page, run);
+  const section = dialog.locator(".activity-effect");
   await expect(section.locator("h4")).toHaveText("Garmin-Werte");
   await expect(section.locator(".activity-effect-source")).toHaveText("Garmin Connect");
   await expect(section.locator("dt")).toHaveText(["Trainingseffekt aerob", "Trainingseffekt anaerob", "Hauptnutzen"]);

@@ -464,8 +464,9 @@ test("@responsive a planned run counted in distance shows its total distance", a
   await expect(page.locator(`.planned-day[data-date="${day}"] .planned-session-value`)).toContainText("8,0 km");
 });
 
-// #4129 K-11/K-13: an opened session has its zone key under its profile, one accent action and a close control.
-test("@responsive an opened session shows its zone key, one accent action and closes with its own control", async ({ page, request }) => {
+// #4129 K-11/K-13, #4221: an opened session has its zone key under its profile, one accent action, one details entry
+// ("Alle Details", no inline "Details"), no close button and no feedback field; its header closes it.
+test("@responsive an opened session shows its zone key, one accent action and one details entry", async ({ page, request }) => {
   await openCalendar(page, request);
   await renderSyntheticCalendar(page);
   const card = page.locator(".planned-day.is-today .planned-entry", { hasText: "Heutige Ausfahrt" }).first();
@@ -474,13 +475,36 @@ test("@responsive an opened session shows its zone key, one accent action and cl
   const actions = card.locator(".planned-activity-actions").last();
   await expect(actions.getByRole("button", { name: "Mit Coach besprechen" })).toHaveClass(/push-button/);
   await expect(actions.getByRole("button", { name: "Feedback" })).not.toHaveClass(/push-button/);
-  const close = card.getByRole("button", { name: "Einheit schließen" });
-  if (page.viewportSize().width >= 1100) {
-    // The wide calendar shows the unit in its pane; the close control belongs to the narrow view.
-    await expect(close).toBeHidden();
-    return;
-  }
-  await close.click();
+  await expect(actions.getByRole("button")).toHaveText(["Mit Coach besprechen", "Alle Details", "Feedback"]);
+  await expect(card.locator(".planned-activity-more")).toHaveCount(0);
+  await expect(card.getByRole("button", { name: "Einheit schließen" })).toHaveCount(0);
+  await expect(card.getByLabel("Art der Einheit")).toHaveCount(0);
+  // The header closes the card, by keyboard too.
+  await card.locator(":scope > summary").focus();
+  await page.keyboard.press("Enter");
   await expect(card).not.toHaveAttribute("open", "");
-  await expect(card.locator(":scope > summary")).toBeFocused();
+});
+
+// #4221: a planned unit that is done carries no second "Art der Einheit" beside the feedback.
+test("@responsive a done planned unit shows no focus field in its card", async ({ page, request }) => {
+  await openCalendar(page, request);
+  const name = await page.evaluate(() => {
+    const today = timezoneDateKey(state.data?.profile?.timezone, new Date());
+    const plan = { id: "done-plan", local_id: "done-plan", payload_hash: "h", date: today, name: "Fertiger Tempolauf", type: "Run", sport: "run", duration_minutes: 45,
+      description: "- 10m Z2 HR\n- 20m Z4 HR\n- 10m Z2 HR",
+      compliance: { status: "completed", actual_activity: { id: "done-act", activity_id: "done-act", name: "Fertiger Tempolauf", type: "Run", sport: "run", is_completed_activity: true, started_at_local: `${today}T07:00:00`, moving_duration_s: 2700 } } };
+    const open = { ...plan, id: "open-plan", local_id: "open-plan", name: "Offener Tempolauf", compliance: undefined };
+    state.data.training_calendar = [...state.data.training_calendar, plan, open];
+    renderPlanned(state.data.training_calendar);
+    return plan.name;
+  });
+  // The same unit that is still to do offers its focus; the done one does not.
+  const todo = page.locator(".planned-entry", { hasText: "Offener Tempolauf" }).first();
+  await setEntryOpen(todo, true);
+  await expect(todo.locator("select[name='session_focus']")).toHaveCount(1);
+  const card = page.locator(".planned-entry", { hasText: name }).first();
+  await setEntryOpen(card, true);
+  await expect(card.getByRole("button", { name: "Alle Details" })).toBeVisible();
+  await expect(card.locator("select[name='session_focus']")).toHaveCount(0);
+  await expect(card.getByLabel("Art der Einheit")).toHaveCount(0);
 });
