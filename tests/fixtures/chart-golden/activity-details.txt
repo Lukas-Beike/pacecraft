@@ -107,84 +107,12 @@
       <p class="muted" role="status">
     <h4>
       "Messwerte"
-    <details class="activity-values">
+    <details class="activity-values" on:toggle="1">
       <summary>
         "Leistung (W): alle 4 Messwerte ansehen"
-      <div aria-label="Leistung in W: Messwerte" class="analysis-chart-table" role="region" tabIndex="0">
-        <table>
-          <caption>
-            "Leistung in W; fehlende Werte sind als Lücke markiert."
-          <thead>
-            <tr>
-              <th scope="col">
-                "Zeit"
-              <th scope="col">
-                "Leistung"
-          <tbody>
-            <tr>
-              <th scope="row">
-                "0:00"
-              <td>
-                "200 W"
-            <tr>
-              <th scope="row">
-                "1:00"
-              <td>
-                "210 W"
-            <tr>
-              <th scope="row">
-                "2:00"
-              <td>
-                "Lücke"
-            <tr>
-              <th scope="row">
-                "3:00"
-              <td>
-                "230 W"
-            <tr>
-              <th scope="row">
-                "4:00"
-              <td>
-                "225 W"
-    <details class="activity-values">
+    <details class="activity-values" on:toggle="1">
       <summary>
         "Herzfrequenz (bpm): alle 5 Messwerte ansehen"
-      <div aria-label="Herzfrequenz in bpm: Messwerte" class="analysis-chart-table" role="region" tabIndex="0">
-        <table>
-          <caption>
-            "Herzfrequenz in bpm; fehlende Werte sind als Lücke markiert."
-          <thead>
-            <tr>
-              <th scope="col">
-                "Zeit"
-              <th scope="col">
-                "Herzfrequenz"
-          <tbody>
-            <tr>
-              <th scope="row">
-                "0:00"
-              <td>
-                "140 bpm"
-            <tr>
-              <th scope="row">
-                "1:00"
-              <td>
-                "140 bpm"
-            <tr>
-              <th scope="row">
-                "2:00"
-              <td>
-                "140 bpm"
-            <tr>
-              <th scope="row">
-                "3:00"
-              <td>
-                "140 bpm"
-            <tr>
-              <th scope="row">
-                "4:00"
-              <td>
-                "140 bpm"
     <h3>
       "Kraftsätze"
     <p class="muted">
