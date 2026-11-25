@@ -252,7 +252,7 @@ function applyLoadedArea(payload, area, result, error, bootstrap, chatGeneration
   if (area === "library") Object.assign(payload, { library: result.workouts || [], library_next_cursor: result.next_cursor });
   if (area === "performance") Object.assign(payload, result);
   if (area === "feedback") Object.assign(payload, result);
-  if (area === "profile") Object.assign(payload, { profile: result.profile || bootstrap.profile, competitions: result.competitions || bootstrap.competitions, first_threshold_estimate: result.first_threshold_estimate ?? null, lt2_estimates: result.lt2_estimates ?? null, lt2_notice_baselines: result.lt2_notice_baselines ?? {} });
+  if (area === "profile") Object.assign(payload, { profile: result.profile || bootstrap.profile, competitions: result.competitions || bootstrap.competitions, first_threshold_estimate: result.first_threshold_estimate ?? null, lt2_estimates: result.lt2_estimates ?? null, threshold_offers: result.threshold_offers ?? [] });
   state.loadedAreas.add(area);
   return { applied: true, area };
 }

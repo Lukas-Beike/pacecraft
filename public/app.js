@@ -117,6 +117,8 @@ for (const [task, label] of [["conversation", "Gespräch"], ["planning", "Planen
 $("#serviceTierSelect").addEventListener("change", (event) => saveSelectSetting(event, "service-tier", "service_tier", "Geschwindigkeit"));
 $("#zoneSettings").addEventListener("toggle", (event) => { if (event.currentTarget.open) void loadZones(); });
 $("#zoneEnvironment").addEventListener("change", renderZoneEditor);
+// The offers are cards on narrow screens and rows of one card from 1100 px (#4135).
+THRESHOLD_OFFER_WIDE?.addEventListener("change", refreshThresholdOffers);
 $("#zoneSportTabs").addEventListener("click", (event) => { const sport = event.target.closest("[data-zone-sport]")?.dataset.zoneSport; if (sport) showZoneSport(sport); });
 $("#zoneOverview").addEventListener("click", (event) => {
   const edit = event.target.closest("[data-zone-edit]");

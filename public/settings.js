@@ -30,8 +30,11 @@ function applyAdoptedFirstThreshold(result) {
 }
 
 async function adoptFirstThreshold(event) {
-  const button = event.currentTarget;
-  const percent = Number($("#firstThresholdEstimate").dataset.percent);
+  await adoptFirstThresholdPercent(Number($("#firstThresholdEstimate").dataset.percent), event.currentTarget);
+}
+
+// The LT1 estimate block and the LT1 offer (#4135) adopt the same way.
+async function adoptFirstThresholdPercent(percent, button) {
   if (!Number.isFinite(percent) || button.disabled) return;
   const profile = state.data?.profile || {};
   const replacesMeasured = Boolean(profile.first_threshold_hr) && profile.first_threshold_origin === "measured";
@@ -740,6 +743,8 @@ async function adoptLt2Value(sport, row, item, flags) {
     const flag = await confirmLt2Step(error, flags);
     if (flag) return adoptLt2Value(sport, row, item, { ...flags, [flag]: true });
     if (flag === null) toast(error.message, true);
+    // The value changed since it was shown: the new value and its offer show instead (#4135).
+    if (error.reason === "lt2_changed") await reloadZonesAndThresholds();
     return false;
   }
 }
@@ -757,88 +762,136 @@ async function confirmLt2Step(error, flags) {
   return null;
 }
 
-// F10: the values of a sport as the change notice compares them; null is "unbekannt".
-function lt2NoticeValues(sport, metrics = state.data?.performance?.metrics || {}, estimates = state.data?.lt2_estimates?.[sport] || {}) {
-  const keys = LT2_METRICS[sport];
-  const ok = (estimate) => (estimate?.status === "ok" ? estimate : {});
-  const provider = (item) => lt2ProviderValue(item).value;
-  if (sport === "run") {
-    return { provider_hr: provider(metrics[keys.hr]), provider_pace: provider(metrics[keys.main]), dfa_hr: ok(estimates.dfa_alpha1).heart_rate_bpm ?? null, dfa_pace: ok(estimates.dfa_alpha1).pace_seconds_per_km ?? null, cs_pace: ok(estimates.critical_speed).pace_seconds_per_km ?? null };
-  }
-  return { provider_power: provider(metrics[keys.main]), provider_hr: provider(metrics[keys.hr]), cp_power: ok(estimates.critical_power).power_w ?? null };
+// New LT1 and LT2 values as offers (#4135): one card each above the thresholds, on wide screens one
+// card of rows, and a "Neue Schwelle" card in Analyse. They replace the status-strip LT2 notice.
+// The local sources; any other source is the provider the value comes from, named as such.
+const THRESHOLD_OFFER_SOURCES = { dfa_alpha1: "DFA-α1", critical_speed: "CS", critical_power: "CP" };
+const THRESHOLD_OFFER_DFA = { lt1: ["LT1", "DFA-α1 0,75", "Läufe"], lt2: ["LT2", "DFA-α1 0,5", "harte Läufe"] };
+const THRESHOLD_OFFER_UNITS = { heart_rate: "bpm", power: "W" };
+const THRESHOLD_OFFER_WIDE = globalThis.matchMedia?.("(min-width: 1100px)");
+
+function thresholdOffersFor(sport, offers = state.data?.threshold_offers) {
+  return (Array.isArray(offers) ? offers : []).filter((offer) => offer.sport === sport);
 }
 
-// Minimum change per value before a notice (athlete decision F10): 2 bpm, 3 s/km, 5 W.
-const LT2_NOTICE_MIN = { provider_hr: 2, dfa_hr: 2, provider_pace: 3, dfa_pace: 3, cs_pace: 3, provider_power: 5, cp_power: 5 };
-const LT2_NOTICE_UNITS = { pace: " /km", hr: " bpm", power: " W" };
-const LT2_NOTICE_LABELS = { provider_hr: "Herzfrequenz", provider_pace: "Pace", provider_power: "FTP", dfa_hr: "DFA-α1 Herzfrequenz", dfa_pace: "DFA-α1 Pace", cs_pace: "Kritische Geschwindigkeit (CS)", cp_power: "Kritische Leistung (CP)" };
-
-// Pure: the changes against the seen values; a switch between a value and "unbekannt" counts too.
-function lt2NoticeChanges(seen, current) {
-  return Object.keys(current).filter((key) => {
-    const before = seen?.[key] ?? null;
-    const now = current[key] ?? null;
-    if ((before == null) !== (now == null)) return true;
-    return before != null && Math.abs(now - before) >= LT2_NOTICE_MIN[key];
-  }).map((key) => ({ key, before: seen?.[key] ?? null, now: current[key] ?? null }));
+// A pace as m:ss, a heart rate or power as a whole number.
+function thresholdOfferNumber(offer, value) {
+  return offer.metric === "pace" ? AppFormat.clock(value) : String(Math.round(value));
 }
 
-function lt2NoticeValueText(key, value) {
-  if (value == null) return "unbekannt";
-  if (key.endsWith("_pace")) return thresholdMainText("pace", value).replace(" /km", "");
-  return String(Math.round(value));
+// DFA-α1: the runs of its window; CS and CP: their best efforts; a provider names none.
+function thresholdOfferBasis(offer, runs) {
+  if (offer.source === "dfa_alpha1") return offer.sessions == null ? null : `${offer.sessions} ${runs} in ${offer.window_days} Tagen`;
+  if (!(offer.source in THRESHOLD_OFFER_SOURCES) || offer.window_days == null) return null;
+  return `Bestwerte in ${offer.window_days} Tagen`;
 }
 
-// `provider` names the provider the provider_* values come from, such as "Garmin".
-function lt2NoticeDetail(changes, provider = "") {
-  return changes.map(({ key, before, now }) => {
-    const unit = LT2_NOTICE_UNITS[key.split("_").pop()];
-    const label = key.startsWith("provider_") ? `${provider} ${LT2_NOTICE_LABELS[key]}`.trim() : LT2_NOTICE_LABELS[key];
-    return `${label} ${lt2NoticeValueText(key, before)} → ${lt2NoticeValueText(key, now)}${now == null ? "" : unit}`;
-  }).join(", ");
+// Pure: the texts of one offer as the cards, the rows and the Analyse card show them.
+function thresholdOfferView(offer) {
+  const dfa = offer.source === "dfa_alpha1";
+  const [label, dfaSource, runs] = THRESHOLD_OFFER_DFA[offer.threshold] || THRESHOLD_OFFER_DFA.lt2;
+  const provider = String(offer.source || "");
+  const source = dfa ? dfaSource : THRESHOLD_OFFER_SOURCES[provider] || provider.charAt(0).toUpperCase() + provider.slice(1);
+  const value = offer.metric === "pace" ? AppFormat.pace(offer.value) : `${thresholdOfferNumber(offer, offer.value)} ${THRESHOLD_OFFER_UNITS[offer.metric]}`;
+  const before = offer.current == null ? null : `bisher ${thresholdOfferNumber(offer, offer.current)}`;
+  const basis = thresholdOfferBasis(offer, runs);
+  const good = offer.quality === "good";
+  const spread = offer.spread_pct == null ? null : `Spanne ${AppFormat.percent(offer.spread_pct)}`;
+  const quality = good ? ["gut", spread].filter(Boolean).join(" · ") : null;
+  const facts = [["Quelle", dfa ? `${source} · Brustgurt` : source], ["Basis", basis], ["Qualität", quality]].filter(([, text]) => text);
+  const sessions = dfa && offer.sessions != null ? `${offer.sessions} Läufe` : null;
+  return {
+    label,
+    source,
+    title: `Neue ${label}`,
+    when: thresholdOfferWhen(offer),
+    value,
+    before,
+    facts,
+    detail: [before, source, basis, good ? "gut" : null].filter(Boolean).join(" · "),
+    brief: [before, dfa ? "DFA-α1" : source, sessions].filter(Boolean).join(" · "),
+  };
 }
 
-// One save per sport at a time; a failed save is not retried by itself (Gitar on #3303).
-const lt2BaselineSaving = new Set();
+// "nach dem Lauf am 21.11.": the newest session; a provider value names its own day.
+function thresholdOfferWhen(offer) {
+  const [, month, day] = String(offer?.newest || "").match(/^\d{4}-(\d{2})-(\d{2})/) || [];
+  if (!day) return "";
+  if (!(offer.source in THRESHOLD_OFFER_SOURCES)) return `vom ${day}.${month}.`;
+  return `${offer.sport === "ride" ? "nach der Fahrt am" : "nach dem Lauf am"} ${day}.${month}.`;
+}
 
-async function seeLt2Values(sport, values) {
-  if (lt2BaselineSaving.has(sport)) return;
-  lt2BaselineSaving.add(sport);
+function thresholdOfferButtons(offers, { dismiss = true } = {}) {
+  const adopt = h("button", { type: "button", className: "push-button" }, "Übernehmen");
+  adopt.addEventListener("click", () => { void adoptThresholdOffer(offers[0], adopt); });
+  if (!dismiss) return [adopt];
+  const discard = h("button", { type: "button", className: "secondary-button" }, "Verwerfen");
+  discard.addEventListener("click", () => { void dismissThresholdOffers(offers, discard); });
+  return [adopt, discard];
+}
+
+function thresholdOfferCard(offer) {
+  const view = thresholdOfferView(offer);
+  return h("section", { className: "zone-box threshold-offer", "aria-label": `Neue Schwelle ${view.label}`, dataset: { thresholdOffer: offer.key } },
+    h("div", "threshold-offer-head", h("h3", null, view.title), view.when ? h("span", "zone-muted", view.when) : null),
+    h("p", "threshold-offer-value", h("b", null, view.value), view.before ? h("span", "zone-muted", view.before) : null),
+    h("dl", "threshold-offer-facts", ...view.facts.flatMap(([term, text]) => [h("dt", null, term), h("dd", null, text)])),
+    h("div", "threshold-offer-actions", ...thresholdOfferButtons([offer])));
+}
+
+// Wide screens: every offer of the sport is a row of one card.
+function thresholdOfferRows(offers) {
+  const newest = offers.reduce((last, offer) => (String(offer.newest || "") > String(last.newest || "") ? offer : last));
+  const when = thresholdOfferWhen(newest);
+  const heading = [offers.length > 1 ? "Neue Schwellen" : "Neue Schwelle", when].filter(Boolean).join(" ");
+  return h("section", { className: "zone-box threshold-offer is-rows", "aria-label": "Neue Schwellen" }, h("h3", null, heading),
+    ...offers.map((offer) => {
+      const view = thresholdOfferView(offer);
+      return h("div", { className: "threshold-offer-row", dataset: { thresholdOffer: offer.key } }, h("b", null, view.label), h("b", "threshold-offer-row-value", view.value), h("span", "zone-muted", view.detail), ...thresholdOfferButtons([offer]));
+    }));
+}
+
+function thresholdOfferBox(sport) {
+  const offers = thresholdOffersFor(sport);
+  const box = h("div", { className: "threshold-offers", dataset: { thresholdOffers: sport } });
+  box.hidden = !offers.length;
+  if (offers.length) box.append(...(THRESHOLD_OFFER_WIDE?.matches ? [thresholdOfferRows(offers)] : offers.map(thresholdOfferCard)));
+  return box;
+}
+
+function refreshThresholdOffers() {
+  document.querySelector("#zoneOverview [data-threshold-offers]")?.replaceWith(thresholdOfferBox(zoneSport));
+  globalThis.renderAnalysisThresholdOffers?.();
+}
+
+// Übernehmen posts the offer's adopt body through the existing flow: its confirmations, receipt and undo.
+async function adoptThresholdOffer(offer, button) {
+  if (offer.threshold === "lt1") return adoptFirstThresholdPercent(Number(offer.adopt?.percent_lthr), button);
+  if (button.disabled) return;
+  const view = thresholdOfferView(offer);
+  const { sport, source, value, shown } = offer.adopt;
+  button.disabled = true;
   try {
-    const result = await api("/api/zones/lt2/notice-baseline", { method: "PUT", body: JSON.stringify({ sport, values }) });
-    if (state.data) state.data.lt2_notice_baselines = result.lt2_notice_baselines;
-  } catch (error) {
-    toast(error.message, true);
-    return;
-  } finally { lt2BaselineSaving.delete(sport); }
-  refreshLt2Notice();
+    const adopted = await adoptLt2Value(sport, { source, name: view.source }, { value, shown, label: `${view.label} ${view.value}` }, {});
+    // In Analyse the zone receipt is out of view; its undo stays in Zonen & Schwellen.
+    if (adopted && !button.closest("#zoneOverview")) toast(`${view.label} ${view.value} übernommen`);
+  } finally { button.disabled = false; }
 }
 
-// One notice per sport in the status strip; the first values become the baseline silently.
-function refreshLt2Notice() {
-  const data = state.data;
-  if (!data?.lt2_estimates || !data.performance?.metrics) return;
-  const notices = [];
-  for (const [sport, name] of [["run", "Laufen"], ["ride", "Radfahren"]]) {
-    const current = lt2NoticeValues(sport);
-    const seen = data.lt2_notice_baselines?.[sport];
-    if (!seen) {
-      if (Object.values(current).some((value) => value != null)) void seeLt2Values(sport, current);
-      continue;
+// Verwerfen stores the dismissal; the cards follow the returned offers.
+async function dismissThresholdOffers(offers, button) {
+  button.disabled = true;
+  try {
+    for (const offer of offers) {
+      const result = await api("/api/zones/threshold-offers/dismiss", { method: "POST", body: JSON.stringify({ key: offer.key }) });
+      if (state.data) state.data.threshold_offers = result.threshold_offers;
     }
-    const changes = lt2NoticeChanges(seen, current);
-    const keys = LT2_METRICS[sport];
-    const provider = lt2ProviderValue(data.performance.metrics[keys.main]).label || lt2ProviderValue(data.performance.metrics[keys.hr]).label || "";
-    if (changes.length) notices.push({ sport, name, current, detail: lt2NoticeDetail(changes, provider) });
-  }
-  const [first, ...rest] = notices;
-  updateStatusSources({ lt2: first ? {
-    level: "notice",
-    title: rest.length ? "LT2 geändert" : `LT2 ${first.name} geändert`,
-    detail: notices.map((notice) => notice.detail).join("; "),
-    action: { href: "#more/profile", label: "Ansehen", onOpen: () => { for (const notice of notices) void seeLt2Values(notice.sport, notice.current); } },
-    dismiss: () => { for (const notice of notices) void seeLt2Values(notice.sport, notice.current); },
-  } : null });
+  } catch (error) {
+    // The offer is gone already (offer_unknown): the current offers load instead.
+    if (error.reason === "offer_unknown") await globalThis.load?.(undefined, ["profile"]);
+    else toast(error.message, true);
+  } finally { button.disabled = false; }
+  refreshThresholdOffers();
 }
 
 function zoneKindBox(sport, metric, environment = null) {
@@ -867,7 +920,7 @@ function renderZoneOverview() {
     button.classList.toggle("active", active);
     button.setAttribute("aria-pressed", String(active));
   });
-  const boxes = [thresholdBox(zoneSport)];
+  const boxes = [thresholdOfferBox(zoneSport), thresholdBox(zoneSport)];
   for (const metric of ZONE_SPORTS[zoneSport].kinds) {
     boxes.push(zoneKindBox(zoneSport, metric));
     // Indoor zones of their own stay visible beside the general ones.
@@ -1009,9 +1062,9 @@ async function removeZones() {
   finally { button.disabled = false; }
 }
 
-// A zone change moves LT1 and LT2, which the performance values carry; the zones draw after them.
+// A zone change moves LT1 and LT2, which the performance values and the offers carry; the zones draw after them.
 async function reloadZonesAndThresholds() {
-  await globalThis.load?.(undefined, ["performance"]);
+  await globalThis.load?.(undefined, ["performance", "profile"]);
   await loadZones();
 }
 

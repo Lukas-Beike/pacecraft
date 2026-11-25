@@ -184,6 +184,7 @@ from backend.sync.garmin_service import (
 )
 from backend.sync.garmin_sleep_keys import SleepKeyRecorder
 from backend.sync.garmin_snapshot_writer import GarminSnapshotWriter
+from backend.sync.garmin_threshold_store import GarminThresholdStore
 from backend.sync.garmin_wiring import GarminServices, build_garmin
 from backend.sync.gates import (
     GARMIN_RESYNC_GATE,
@@ -907,6 +908,15 @@ SESSION_REBUNDLE = SessionRebundle(
     database_manager=database_manager,
 )
 
+# Garmin's LT2 values in effect become local values once; later ones are offers (#4135).
+GARMIN_THRESHOLD_STORE = GarminThresholdStore(
+    key_values=KEY_VALUE_REPOSITORY,
+    zones=ATHLETE_DATA.zones,
+    reader=lambda: CANONICAL_READ,
+    today=lambda: ATHLETE_CLOCK.now().date(),
+    clock=runtime_clock.utc_now,
+)
+
 CANONICAL_BACKFILL = build_canonical_backfill(
     database=database_manager,
     key_values=KEY_VALUE_REPOSITORY,
@@ -929,6 +939,7 @@ CANONICAL_BACKFILL = build_canonical_backfill(
         RATING_BACKFILL_REMOVAL,
         SESSION_REBUNDLE,
         SESSION_FOCUS_BACKFILL,
+        GARMIN_THRESHOLD_STORE,
     ),
     # Weather during outdoor sessions (#1868); only 2-decimal coordinates leave.
     activity_weather_fetch=lambda *position: (
