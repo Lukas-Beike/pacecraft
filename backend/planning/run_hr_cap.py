@@ -46,8 +46,9 @@ LOW_MISMATCH: Final = "low_mismatch"
 OUTDATED_CAPS_NOTE: Final = (
     "These planned run units still store a heart-rate cap of an older rule: a "
     "default above today's default (#3915), or a measured or estimated cap below "
-    "today's cap (#4254). Offer the update to current_percent_lthr in a turn the "
-    "athlete starts; never change them unasked."
+    "today's cap (#4254). A lower cap may be intentional (heat, a return after "
+    "illness) or follow a threshold HR that moved: keep one the athlete chose. Offer the update to current_percent_lthr "
+    "in a turn the athlete starts; never change them unasked."
 )
 
 
