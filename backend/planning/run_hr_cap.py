@@ -44,28 +44,40 @@ LOW_MISMATCH: Final = "low_mismatch"
 
 
 OUTDATED_CAPS_NOTE: Final = (
-    "These planned run units still store an older default heart-rate cap above "
-    "today's default (#3915). Offer the update in a turn the athlete starts; "
-    "never change them unasked."
+    "These planned run units still store a heart-rate cap of an older rule: a "
+    "default above today's default (#3915), or a measured or estimated cap below "
+    "today's cap (#4254). A lower cap may be intentional (heat, a return after "
+    "illness) or follow a threshold HR that moved: keep one the athlete chose. Offer the update to current_percent_lthr "
+    "in a turn the athlete starts; never change them unasked."
 )
 
 
-def outdated_default_caps(units: Iterable[Mapping[str, Any]]) -> list[dict[str, Any]]:
-    """Capped run units whose stored default cap lies above today's default.
+def outdated_caps(
+    units: Iterable[Mapping[str, Any]],
+    first_threshold_pct: float | None = None,
+    estimated: bool = False,
+) -> list[dict[str, Any]]:
+    """Capped run units whose stored cap an older rule set.
 
-    Non-blocking: the guard re-checks only units the Coach writes, so a unit
-    planned before a lower default keeps its cap until the athlete agrees.
+    A default cap above today's default, or a measured or estimated cap below
+    today's effective cap of the same source. Non-blocking: the guard re-checks
+    only units the Coach writes, so such a unit keeps its cap until the athlete
+    agrees.
     """
+    percents, source = cap_percents(first_threshold_pct, estimated)
     found = []
     for unit in units:
         focus = capped_focus(unit)
         cap = None if focus is None else stored_cap(unit)
-        if (
-            focus is None
-            or cap is None
-            or cap[SOURCE_KEY] != SOURCE_DEFAULT
-            or cap[PERCENT_KEY] <= HR_CAP_PERCENT[focus]
-        ):
+        if focus is None or cap is None:
+            continue
+        if cap[SOURCE_KEY] == SOURCE_DEFAULT:
+            current = HR_CAP_PERCENT[focus]
+            outdated = cap[PERCENT_KEY] > current
+        else:
+            current = percents[focus]
+            outdated = cap[SOURCE_KEY] == source and cap[PERCENT_KEY] < current
+        if not outdated:
             continue
         found.append(
             {
@@ -74,7 +86,8 @@ def outdated_default_caps(units: Iterable[Mapping[str, Any]]) -> list[dict[str, 
                 "name": str(unit.get("name") or ""),
                 "focus": focus,
                 "stored_percent_lthr": cap[PERCENT_KEY],
-                "default_percent_lthr": HR_CAP_PERCENT[focus],
+                "stored_source": cap[SOURCE_KEY],
+                "current_percent_lthr": current,
             }
         )
     return found

@@ -728,7 +728,7 @@ A run unit whose focus has a cap in `HR_CAP_PERCENT` (`backend/activities/hr_cap
 
 #### Scenario: Measured first threshold
 - **WHEN** the athlete enters a measured first-threshold heart rate in bpm (profile form or API, never by the Coach)
-- **THEN** it is stored in bpm (`first_threshold_hr`, #3915), so a later change of the threshold HR never moves it; the easy and long cap becomes its percent of today's run threshold HR minus a fixed margin and the recovery cap the lower of its default and the easy cap minus a fixed gap (constants in `backend/activities/hr_cap.py`), the cap source is `measured`, and a cap with another source than the current one is rejected like a wrong value.
+- **THEN** it is stored in bpm (`first_threshold_hr`, #3915), so a later change of the threshold HR never moves it; the easy and long cap becomes its percent of today's run threshold HR itself, without a margin (#4254), and the recovery cap the lower of its default and the easy cap minus a fixed gap (constants in `backend/activities/hr_cap.py`), the cap source is `measured`, and a cap with another source than the current one is rejected like a wrong value.
 
 #### Scenario: First threshold stored before the bpm field
 - **WHEN** a stored profile still holds only the percent of LTHR (`first_threshold_pct`, before #3915)
@@ -738,13 +738,13 @@ A run unit whose focus has a cap in `HR_CAP_PERCENT` (`backend/activities/hr_cap
 - **WHEN** the athlete adopts the first threshold estimate from chest-strap RR intervals (`POST /api/profile/first-threshold/adopt`, or the Coach's `save_zones` on the athlete's request)
 - **THEN** it is stored in bpm of today's run threshold HR as `first_threshold_hr` with the origin `estimated` (`first_threshold_origin`) through the profile save path with change receipt and undo, the caps follow it like a measured value, the cap source is `estimated` (label `geschätzt`), a stored measured value is replaced only when the request says so, and a later manual entry sets the origin back to `measured`.
 
-#### Scenario: Units with an older default cap
-- **WHEN** future planned run units store a default cap above today's default (planned before the default was lowered, #3915)
+#### Scenario: Units with a cap of an older rule
+- **WHEN** future planned run units store a default cap above today's default (planned before the default was lowered, #3915), or a measured or estimated cap below today's effective cap of the same source (planned before the margin was dropped, #4254)
 - **THEN** the planning brief lists them as `outdated_hr_caps` with a note that the Coach offers the update in a turn the athlete starts; nothing is rewritten and an untouched unit never blocks a write
 
 #### Scenario: Cap values
 - **WHEN** a cap is derived
-- **THEN** the default is 80 % of the run threshold HR for recovery units and 84 % for easy and long units (below the 85 % LT1 stand-in, #3915); from a measured or adopted first threshold the easy and long cap is that percent minus 3.0 points and the recovery cap the lower of 80 and the easy cap minus 7.0 points, each rounded down to one decimal, and the defaults apply (source `default`) when the easy cap would exceed 100 or a cap or its exported lower bound would fall below 20; the exported lower bound `low_percent_lthr` is the lower of 65 and the cap minus 15 points, rounded down to one decimal.
+- **THEN** the default is 80 % of the run threshold HR for recovery units and 84 % for easy and long units (below the 85 % LT1 stand-in, #3915); from a measured or adopted first threshold the easy and long cap is that percent itself (#4254) and the recovery cap the lower of 80 and the easy cap minus 7.0 points, each rounded down to one decimal, and the defaults apply (source `default`) when the easy cap would exceed 100 or a cap or its exported lower bound would fall below 20; the exported lower bound `low_percent_lthr` is the lower of 65 and the cap minus 15 points, rounded down to one decimal.
 
 #### Scenario: Stored cap
 - **WHEN** a cap is validated or resolved
