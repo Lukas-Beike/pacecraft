@@ -800,7 +800,7 @@ The current performance context SHALL carry fixed sections and SHALL express eve
 
 #### Scenario: Sections
 - **WHEN** the context is available
-- **THEN** it has `available`, `source` ("Gespeicherte Provider-Daten"), `as_of` (the activity sync time), `metrics`, `thresholds`, `current_load`, `recovery`, `rolling_training`, `comparisons`, `activity_validation`, `personal_recovery`, `garmin_training_load` and `training_focus`; `thresholds` holds `ftp_w`, `ftp_source`, `max_hr`, `lthr`, `run_lthr`, `weight`, `run_hr_caps`, `first_thresholds` and, when another source has a current FTP, `ftp_alternatives` and `ftp_conflict`.
+- **THEN** it has `available`, `source` ("Gespeicherte Provider-Daten"), `as_of` (the activity sync time), `metrics`, `thresholds`, `current_load`, `recovery`, `rolling_training`, `comparisons`, `activity_validation`, `personal_recovery`, `garmin_training_load` and `training_focus`; `thresholds` holds `ftp_w`, `ftp_source`, `max_hr`, `lthr`, `run_lthr`, `weight`, `run_hr_caps`, `run_hr_cap_basis`, `first_thresholds` and, when another source has a current FTP, `ftp_alternatives` and `ftp_conflict`.
 
 #### Scenario: Comparison entry
 - **WHEN** a current value and its average are both known

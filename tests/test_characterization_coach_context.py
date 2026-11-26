@@ -356,6 +356,7 @@ class CurrentPerformanceProvenanceTests(unittest.TestCase):
                 "lthr",
                 "run_lthr",
                 "run_hr_caps",
+                "run_hr_cap_basis",
                 "weight",
                 "first_thresholds",
                 "unsupported_by_recent_effort",
