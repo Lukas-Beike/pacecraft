@@ -29,10 +29,11 @@ HR_CAP_PERCENT: Final[Mapping[str, float]] = {
     "easy": 84.0,
     "long": 84.0,
 }
-# With a measured first threshold: the easy and long cap is that threshold's
-# percent of the threshold HR minus this margin (percentage points), and the
-# recovery cap is the lower of its default and the easy cap minus the gap.
-MEASURED_MARGIN_PCT: Final = 3.0
+# With a measured or adopted first threshold: the easy and long cap is that
+# threshold's percent of the threshold HR minus this margin (percentage points),
+# and the recovery cap is the lower of its default and the easy cap minus the gap.
+# The athlete decides no margin: the cap is LT1 itself (#4254, was 3 since #3915).
+MEASURED_MARGIN_PCT: Final = 0.0
 RECOVERY_BELOW_EASY_PCT: Final = 7.0
 # The lower bound of the exported range, in percent of the threshold HR, never
 # above the cap minus the gap (percentage points): a wide range so that only the

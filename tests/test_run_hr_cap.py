@@ -8,7 +8,6 @@ arithmetic use literals of their own.
 
 from __future__ import annotations
 
-import math
 import unittest
 from collections.abc import Sequence
 from datetime import UTC, date, datetime
@@ -24,10 +23,10 @@ from backend.activities.hr_cap import (
     EXPORT_FLOOR_PERCENT,
     HR_CAP_PERCENT,
     LOW_PERCENT_KEY,
-    MEASURED_MARGIN_PCT,
     PERCENT_KEY,
     RECOVERY_BELOW_EASY_PCT,
     SOURCE_DEFAULT,
+    SOURCE_ESTIMATED,
     SOURCE_KEY,
     SOURCE_MEASURED,
     cap_label,
@@ -296,12 +295,24 @@ class LthrChangeTests(unittest.TestCase):
 
 
 class MeasuredFirstThresholdTests(unittest.TestCase):
-    def test_easy_and_long_follow_the_threshold_minus_the_margin(self) -> None:
+    def test_easy_and_long_are_the_threshold_itself(self) -> None:
         percents, source = cap_percents(FIRST_PCT)
         self.assertEqual(SOURCE_MEASURED, source)
-        easy = math.floor((FIRST_PCT - MEASURED_MARGIN_PCT) * 10) / 10
-        self.assertEqual(easy, percents["easy"])
-        self.assertEqual(easy, percents["long"])
+        self.assertEqual(FIRST_PCT, percents["easy"])
+        self.assertEqual(FIRST_PCT, percents["long"])
+
+    def test_worked_example_of_an_adopted_lt1_without_a_margin(self) -> None:
+        # #4254: LT1 129 bpm of an LTHR of 163 bpm is 79.14 %, floored to 79.1;
+        # recovery is the lower of 80 and 79.1 - 7. Without LT1 the defaults stay.
+        percents, source = cap_percents(129 / 163 * 100, estimated=True)
+        self.assertEqual(
+            ({"recovery": 72.1, "easy": 79.1, "long": 79.1}, SOURCE_ESTIMATED),
+            (percents, source),
+        )
+        self.assertEqual(
+            ({"recovery": 80.0, "easy": 84.0, "long": 84.0}, SOURCE_DEFAULT),
+            cap_percents(None),
+        )
 
     def test_recovery_is_the_lower_of_its_default_and_easy_minus_the_gap(self) -> None:
         percents, _ = cap_percents(FIRST_PCT)
@@ -511,15 +522,13 @@ class GuardTests(unittest.TestCase):
 
 
 class OutdatedCapTests(unittest.TestCase):
-    """Units with an older, higher default cap get a brief note only (#3915)."""
+    """Units with a cap of an older rule get a brief note only (#3915, #4254)."""
 
     def test_only_default_caps_above_todays_default_are_listed(self) -> None:
         old = unit(FOCI[1], hr_cap=hr_cap(87.0))
         current = with_cap(FOCI[1])
         measured = unit(FOCI[1], hr_cap=hr_cap(90.0, "measured"))
-        found = run_hr_cap.outdated_default_caps(
-            [old, current, measured, unit("tempo")]
-        )
+        found = run_hr_cap.outdated_caps([old, current, measured, unit("tempo")])
         self.assertEqual(
             [
                 {
@@ -528,11 +537,64 @@ class OutdatedCapTests(unittest.TestCase):
                     "name": "Dauerlauf",
                     "focus": FOCI[1],
                     "stored_percent_lthr": 87.0,
-                    "default_percent_lthr": HR_CAP_PERCENT[FOCI[1]],
+                    "stored_source": SOURCE_DEFAULT,
+                    "current_percent_lthr": HR_CAP_PERCENT[FOCI[1]],
                 }
             ],
             found,
         )
+
+    def test_estimated_and_measured_caps_below_todays_cap_are_listed(self) -> None:
+        # #4254: planned under LT1 minus 3, an estimated 76.1 % lies below 79.1 %.
+        lt1 = 129 / 163 * 100
+        old = unit("long", hr_cap=hr_cap(76.1, SOURCE_ESTIMATED))
+        current = unit("easy", hr_cap=hr_cap(79.1, SOURCE_ESTIMATED))
+        lower_by_hand = unit("recovery", hr_cap=hr_cap(70.0, SOURCE_MEASURED))
+        found = run_hr_cap.outdated_caps(
+            [old, current, lower_by_hand], lt1, estimated=True
+        )
+        self.assertEqual(
+            [
+                ("long", 76.1, SOURCE_ESTIMATED, 79.1),
+                ("recovery", 70.0, SOURCE_MEASURED, 72.1),
+            ],
+            [
+                (
+                    u["focus"],
+                    u["stored_percent_lthr"],
+                    u["stored_source"],
+                    u["current_percent_lthr"],
+                )
+                for u in found
+            ],
+        )
+
+    def test_the_brief_lists_an_estimated_cap_below_todays_cap(self) -> None:
+        old = unit("long", hr_cap=hr_cap(76.1, SOURCE_ESTIMATED))
+        guard = PlanGuardService(
+            planned_units=lambda: [old],
+            completed_activities=list,
+            competitions=list,
+            illness=lambda: "",
+            progress=lambda: {"week_list": []},
+            training_model=lambda: "pyramidal",
+            today=lambda: TODAY,
+            estimate_unit=lambda item: estimate_planned_unit(item, ZoneSettings()),
+            profile=lambda: {
+                FIRST_THRESHOLD_FIELD: 129,
+                "first_threshold_origin": SOURCE_ESTIMATED,
+            },
+        ).with_first_threshold_percent(lambda: 129 / 163 * 100)
+        brief = guard.brief()
+        self.assertEqual(
+            [(76.1, 79.1)],
+            [
+                (u["stored_percent_lthr"], u["current_percent_lthr"])
+                for u in brief["outdated_hr_caps"]["units"]
+            ],
+        )
+        # The lower stored cap still passes the guard: nothing is rewritten.
+        guard.verify(guard.findings(), accepted=[])
 
     def test_the_brief_names_them_and_no_finding_blocks(self) -> None:
         old = unit(FOCI[1], hr_cap=hr_cap(87.0))

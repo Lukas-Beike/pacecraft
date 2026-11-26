@@ -742,8 +742,12 @@ class PlanGuardService:
         )
         if coverage:
             brief = brief_budget.fit_brief({**brief, "load_coverage": coverage})
-        # Units still carrying an older, higher default cap (#3915): a note only.
-        outdated = run_hr_cap.outdated_default_caps(units)
+        # Units still carrying a cap of an older rule (#3915, #4254): a note only.
+        outdated = run_hr_cap.outdated_caps(
+            units,
+            self._first_threshold_percent(),
+            first_threshold_estimated(self._profile()),
+        )
         if outdated:
             brief = brief_budget.fit_brief(
                 {
