@@ -439,24 +439,6 @@ jobs:
             --shard "$SPEC_SHARD" --total "$SPEC_SHARDS" --jobs 1 --keep-going \
             --image pacecraft:ci --browser-image "$browser_image" \
             --results-dir test-results/browser-runs --cache-state unknown
-      # #3200: the specs whose expectations read the week also run on its edges, so a
-      # weekday-dependent expectation fails in its own PR, not on every PR from Monday on;
-      # a backend-only PR runs desktop shard 1 too, so it runs them as well.
-      # One desktop shard, after its own run: no extra job or container slot. Its
-      # manifests stay out of the aggregated browser evidence.
-      - name: Run the week-reading specs on a pinned Monday and Sunday
-        if: matrix.project == 'desktop' && matrix.shard == 1
-        shell: bash
-        run: |
-          set -euo pipefail
-          browser_image="$(python -c "import json; print(json.load(open('scripts/browser_environment.json'))['image'])")"
-          monday="$(date -u -d 'last monday' +%F)"
-          for day in "$monday" "$(date -u -d "$monday + 6 days" +%F)"; do
-            python scripts/run_browser_tests.py --project desktop --today "$day" \
-              --spec e2e/calendar-week-compact.spec.js --spec e2e/ui-walk-fixture.spec.js \
-              --jobs 1 --keep-going --image pacecraft:ci --browser-image "$browser_image" \
-              --results-dir test-results/pinned-day-runs --cache-state unknown
-          done
       - name: Upload browser run summaries
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
@@ -474,6 +456,101 @@ jobs:
           path: |
             test-results/browser-runs/*/*/*/artifacts/
             test-results/browser-runs/*/*/*/report/
+            !**/trace.zip
+            !**/.auth/**
+          if-no-files-found: ignore
+          retention-days: 7
+
+  e2e_weekdays:
+    # #3200, #4210: every spec that pins its clock (imports e2e/helpers/today.js) also runs on
+    # the week's other six days, as the fixture's day offsets make every weekday a case. One job
+    # per day beside the shards, so none sets the critical path (#4249); "Browser checks" gates on
+    # them. Today's day is the shards' real-day run and skips.
+    needs: [source, image]
+    if: needs.source.outputs.docs_only != 'true' && needs.source.outputs.reuse_run == ''
+    name: Browser checks (pinned ${{ matrix.weekday }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - {offset: 0, weekday: Mon}
+          - {offset: 1, weekday: Tue}
+          - {offset: 2, weekday: Wed}
+          - {offset: 3, weekday: Thu}
+          - {offset: 4, weekday: Fri}
+          - {offset: 5, weekday: Sat}
+          - {offset: 6, weekday: Sun}
+    steps:
+      - name: Pick this job's day of the week
+        id: day
+        shell: bash
+        env:
+          OFFSET: ${{ matrix.offset }}
+        run: |
+          set -euo pipefail
+          today="$(date -u +%F)"
+          monday="$(date -u -d "$today - $(( $(date -u +%u) - 1 )) days" +%F)"
+          day="$(date -u -d "$monday + $OFFSET days" +%F)"
+          echo "day=$day" >> "$GITHUB_OUTPUT"
+          if [[ "$day" == "$today" ]]; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            echo "$day is today: the shards' real-day run covers it."
+          fi
+      - name: Check out repository
+        if: steps.day.outputs.skip != 'true'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          ref: ${{ github.sha }}
+      - name: Set up Python
+        if: steps.day.outputs.skip != 'true'
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: '3.14'
+      - name: Set up Node.js
+        if: steps.day.outputs.skip != 'true'
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v6.0.0
+        with:
+          node-version: '22'
+          package-manager-cache: false
+      - name: Install browser test dependencies
+        if: steps.day.outputs.skip != 'true'
+        run: bash .github/scripts/npm_ci_retry.sh
+      - name: Pull immutable prepared browser environment
+        if: steps.day.outputs.skip != 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          browser_image="$(python -c "import json; print(json.load(open('scripts/browser_environment.json'))['image'])")"
+          docker pull "$browser_image"
+      - name: Download shared CI image
+        if: steps.day.outputs.skip != 'true'
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: pacecraft-ci-image
+      - name: Load shared CI image
+        if: steps.day.outputs.skip != 'true'
+        run: gunzip -c pacecraft-ci-image.tar.gz | docker load
+      - name: Run the clock-pinned specs on this day
+        if: steps.day.outputs.skip != 'true'
+        shell: bash
+        env:
+          DAY: ${{ steps.day.outputs.day }}
+        run: |
+          set -euo pipefail
+          browser_image="$(python -c "import json; print(json.load(open('scripts/browser_environment.json'))['image'])")"
+          # The runner picks the specs that import the helper and checks them against the Playwright listing.
+          python scripts/run_browser_tests.py --project desktop --today "$DAY" --clock-pinned \
+            --jobs 1 --keep-going --image pacecraft:ci --browser-image "$browser_image" \
+            --results-dir test-results/pinned-day-runs --cache-state unknown
+      - name: Upload pinned-day failure artifacts
+        if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: browser-test-artifacts-pinned-${{ matrix.weekday }}
+          path: |
             test-results/pinned-day-runs/*/*/*/artifacts/
             test-results/pinned-day-runs/*/*/*/report/
             !**/trace.zip
@@ -483,7 +560,7 @@ jobs:
 
   browser:
     if: always()
-    needs: [source, e2e]
+    needs: [source, e2e, e2e_weekdays]
     name: Browser checks
     runs-on: ubuntu-latest
     env:
@@ -512,6 +589,7 @@ jobs:
       - name: Aggregate browser results
         env:
           E2E_RESULT: ${{ needs.e2e.result }}
+          WEEKDAYS_RESULT: ${{ needs.e2e_weekdays.result }}
           UI: ${{ needs.source.outputs.ui }}
         shell: bash
         run: |
@@ -526,6 +604,11 @@ jobs:
           fi
           if [[ "$E2E_RESULT" != "success" ]]; then
             echo "Browser checks: $E2E_RESULT"
+            exit 1
+          fi
+          # The clock-pinned specs on the week's other days gate this check too (#4210).
+          if [[ "$WEEKDAYS_RESULT" != "success" ]]; then
+            echo "Browser checks (pinned weekdays): $WEEKDAYS_RESULT"
             exit 1
           fi
           # Only a pull request without a UI change may omit mobile and tablet.
