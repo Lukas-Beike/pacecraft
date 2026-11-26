@@ -187,6 +187,25 @@ def cap_label(cap: Mapping[str, Any], lthr: float | None = None) -> str:
     return " · ".join(parts)
 
 
+def cap_rule_text(
+    percents: Mapping[str, float], source: str, lt1_stored: bool = False
+) -> str:
+    """The rule that gave ``percents`` (from ``cap_percents``), with its numbers (#4255)."""
+    if source == SOURCE_DEFAULT:
+        why = (
+            "stored LT1 gives no cap (no run LTHR or implausible)"
+            if lt1_stored
+            else "no measured or adopted LT1"
+        )
+        return f"{why}: default {cap_table_text()} {LTHR_LABEL}"
+    margin = f" - {percent_text(MEASURED_MARGIN_PCT)}" if MEASURED_MARGIN_PCT else ""
+    return (
+        f"easy, long ≤ LT1 % {LTHR_LABEL}{margin} = {percent_text(percents['easy'])} %; "
+        f"recovery ≤ min({percent_text(HR_CAP_PERCENT['recovery'])}, easy - "
+        f"{percent_text(RECOVERY_BELOW_EASY_PCT)}) = {percent_text(percents['recovery'])} %"
+    )
+
+
 def cap_table_text() -> str:
     """The default caps of all capped types in one line, derived from the table."""
     return ", ".join(

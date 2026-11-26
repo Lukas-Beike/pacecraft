@@ -9,7 +9,14 @@ from collections.abc import Callable, Iterable, Mapping
 from datetime import date
 from typing import Any, Final
 
-from backend.activities.hr_cap import effective_caps, resolved_range
+from backend.activities.hr_cap import (
+    SOURCE_DEFAULT,
+    SOURCE_MEASURED,
+    cap_percents,
+    cap_rule_text,
+    hr_cap,
+    resolved_range,
+)
 from backend.activities.identity import activity_kind
 from backend.activities.zone_settings import (
     LT1_HR_SHARE,
@@ -91,9 +98,21 @@ def coach_thresholds(
         if first_threshold_bpm and lthr
         else None
     )
+    percents, source = cap_percents(share, first_threshold_estimated)
     result["run_hr_caps"] = {
-        focus: _with_resolved_bpm(cap, lthr)
-        for focus, cap in effective_caps(share, first_threshold_estimated).items()
+        focus: _with_resolved_bpm(hr_cap(percent, source), lthr)
+        for focus, percent in percents.items()
+    }
+    # The LT1 the caps follow, its adoption state and the rule (#4255).
+    # The adoption state is the stored value's own, even when it gives no cap.
+    state = SOURCE_DEFAULT
+    if first_threshold_bpm:
+        state = "adopted_estimate" if first_threshold_estimated else SOURCE_MEASURED
+    result["run_hr_cap_basis"] = {
+        "lt1": state,
+        **({"lt1_bpm": round(first_threshold_bpm)} if first_threshold_bpm else {}),
+        **({"lt1_pct": share} if share else {}),
+        "rule": cap_rule_text(percents, source, bool(first_threshold_bpm)),
     }
     if ftp.get("alternatives"):
         result["ftp_alternatives"] = [

@@ -958,12 +958,28 @@ def _seed(server: Any, case: dict[str, Any]) -> dict[str, str]:
             "priority": "A",
         }
     )
+    lt1 = setup.get("first_threshold") or {}
     server.ATHLETE_DATA.profile().save(
         {
             "sports": "Running, Cycling, Strength",
             "performance_notes": f"Gespeicherte Rad-FTP: {FTP_WATTS} W.",
+            "first_threshold_hr": str(lt1.get("bpm", "")),
+            "first_threshold_origin": lt1.get("origin", ""),
         }
     )
+    if lt1:
+        # #4255: the adopted LT1 over the 167 bpm threshold, and one easy run
+        # still capped by an older rule (74.2 % = 124 bpm).
+        from backend.activities.hr_cap import hr_cap
+
+        server.ATHLETE_DATA.zones().save({**LONG_RUN_ZONES, "from_beginning": True})
+        unit(
+            "old_cap",
+            "2026-09-08",
+            TEMPLATE_NAMES["Run"],
+            "Run",
+            hr_cap=hr_cap(lt1["old_cap_percent"], lt1["origin"]),
+        )
     if not setup.get("no_blocker"):
         _seed_blocker(server)
     _seed_nutrition(server, setup)
