@@ -246,6 +246,50 @@ class CapSourceTests(unittest.TestCase):
         }
         thresholds = coach_thresholds(metrics, 90.0, True)
         self.assertEqual(thresholds["run_hr_caps"]["easy"]["source"], "estimated")
+        # #4255: the adopted 129 bpm of a 167 bpm LTHR, its state, caps and rule.
+        metrics["run_threshold_hr_bpm"] = {"value": 167}
+        adopted = coach_thresholds(metrics, 129.0, True)
+        self.assertEqual(
+            {
+                "lt1_bpm": 129,
+                "lt1_pct": 77.2,
+                "lt1": "adopted_estimate",
+                "rule": "easy, long ≤ LT1 % LSHF = 77.2 %; "
+                "recovery ≤ min(80, easy - 7) = 70.2 %",
+            },
+            adopted["run_hr_cap_basis"],
+        )
+        self.assertEqual(
+            {"recovery": (70.2, 117), "easy": (77.2, 129), "long": (77.2, 129)},
+            {
+                focus: (cap["percent_lthr"], cap["bpm"])
+                for focus, cap in adopted["run_hr_caps"].items()
+            },
+        )
+        measured = coach_thresholds(metrics, 129.0, False)["run_hr_cap_basis"]
+        self.assertEqual("measured", measured["lt1"])
+        self.assertEqual(
+            {
+                "lt1": "default",
+                "rule": "no measured or adopted LT1: default "
+                "recovery ≤80 %, easy ≤84 %, long ≤84 % LSHF",
+            },
+            coach_thresholds(metrics)["run_hr_cap_basis"],
+        )
+        # A stored LT1 that gives no cap keeps its adoption state.
+        implausible = coach_thresholds(metrics, 200.0, True)["run_hr_cap_basis"]
+        metrics["run_threshold_hr_bpm"] = {"value": None}
+        no_lthr = coach_thresholds(metrics, 129.0, True)["run_hr_cap_basis"]
+        self.assertEqual(
+            {
+                "lt1": "adopted_estimate",
+                "lt1_bpm": 129,
+                "rule": "stored LT1 gives no cap (no run LTHR or implausible): "
+                "default recovery ≤80 %, easy ≤84 %, long ≤84 % LSHF",
+            },
+            no_lthr,
+        )
+        self.assertEqual({**no_lthr, "lt1_bpm": 200}, implausible)
 
 
 def stream_set(

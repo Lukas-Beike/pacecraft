@@ -742,6 +742,10 @@ A run unit whose focus has a cap in `HR_CAP_PERCENT` (`backend/activities/hr_cap
 - **WHEN** future planned run units store a default cap above today's default (planned before the default was lowered, #3915), or a measured or estimated cap below today's effective cap of the same source (planned before the margin was dropped, #4254)
 - **THEN** the planning brief lists them as `outdated_hr_caps` with a note that the Coach offers the update in a turn the athlete starts; nothing is rewritten and an untouched unit never blocks a write
 
+#### Scenario: The Coach explains a cap from its rule (#4255)
+- **WHEN** the Coach context is built with a run threshold HR
+- **THEN** `current_performance.thresholds.run_hr_cap_basis` holds the LT1 the caps follow (`lt1`: `measured`, `adopted_estimate` or `default`; with `lt1_bpm` and `lt1_pct` unless `default`) and `rule`, the rule text with its numbers derived from `backend/activities/hr_cap.py`; the context notes tell the Coach to explain run caps only from it and never to guess the adoption state.
+
 #### Scenario: Cap values
 - **WHEN** a cap is derived
 - **THEN** the default is 80 % of the run threshold HR for recovery units and 84 % for easy and long units (below the 85 % LT1 stand-in, #3915); from a measured or adopted first threshold the easy and long cap is that percent itself (#4254) and the recovery cap the lower of 80 and the easy cap minus 7.0 points, each rounded down to one decimal, and the defaults apply (source `default`) when the easy cap would exceed 100 or a cap or its exported lower bound would fall below 20; the exported lower bound `low_percent_lthr` is the lower of 65 and the cap minus 15 points, rounded down to one decimal.
