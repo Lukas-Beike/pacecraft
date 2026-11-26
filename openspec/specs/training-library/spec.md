@@ -739,7 +739,7 @@ A run unit whose focus has a cap in `HR_CAP_PERCENT` (`backend/activities/hr_cap
 - **THEN** it is stored in bpm of today's run threshold HR as `first_threshold_hr` with the origin `estimated` (`first_threshold_origin`) through the profile save path with change receipt and undo, the caps follow it like a measured value, the cap source is `estimated` (label `geschätzt`), a stored measured value is replaced only when the request says so, and a later manual entry sets the origin back to `measured`.
 
 #### Scenario: Units with a cap of an older rule
-- **WHEN** future planned run units store a default cap above today's default (planned before the default was lowered, #3915), or a measured or estimated cap below today's effective cap (planned before the margin was dropped, #4254)
+- **WHEN** future planned run units store a default cap above today's default (planned before the default was lowered, #3915), or a measured or estimated cap below today's effective cap of the same source (planned before the margin was dropped, #4254)
 - **THEN** the planning brief lists them as `outdated_hr_caps` with a note that the Coach offers the update in a turn the athlete starts; nothing is rewritten and an untouched unit never blocks a write
 
 #### Scenario: Cap values

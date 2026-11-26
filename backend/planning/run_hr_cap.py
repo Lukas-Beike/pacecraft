@@ -59,10 +59,11 @@ def outdated_caps(
     """Capped run units whose stored cap an older rule set.
 
     A default cap above today's default, or a measured or estimated cap below
-    today's effective cap. Non-blocking: the guard re-checks only units the
-    Coach writes, so such a unit keeps its cap until the athlete agrees.
+    today's effective cap of the same source. Non-blocking: the guard re-checks
+    only units the Coach writes, so such a unit keeps its cap until the athlete
+    agrees.
     """
-    percents, _ = cap_percents(first_threshold_pct, estimated)
+    percents, source = cap_percents(first_threshold_pct, estimated)
     found = []
     for unit in units:
         focus = capped_focus(unit)
@@ -74,7 +75,7 @@ def outdated_caps(
             outdated = cap[PERCENT_KEY] > current
         else:
             current = percents[focus]
-            outdated = cap[PERCENT_KEY] < current
+            outdated = cap[SOURCE_KEY] == source and cap[PERCENT_KEY] < current
         if not outdated:
             continue
         found.append(

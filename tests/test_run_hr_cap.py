@@ -549,14 +549,16 @@ class OutdatedCapTests(unittest.TestCase):
         lt1 = 129 / 163 * 100
         old = unit("long", hr_cap=hr_cap(76.1, SOURCE_ESTIMATED))
         current = unit("easy", hr_cap=hr_cap(79.1, SOURCE_ESTIMATED))
-        lower_by_hand = unit("recovery", hr_cap=hr_cap(70.0, SOURCE_MEASURED))
+        recovery = unit("recovery", hr_cap=hr_cap(69.1, SOURCE_ESTIMATED))
+        # Another source is no older rule of today's cap: not offered.
+        other_source = unit("easy", hr_cap=hr_cap(76.1, SOURCE_MEASURED))
         found = run_hr_cap.outdated_caps(
-            [old, current, lower_by_hand], lt1, estimated=True
+            [old, current, recovery, other_source], lt1, estimated=True
         )
         self.assertEqual(
             [
                 ("long", 76.1, SOURCE_ESTIMATED, 79.1),
-                ("recovery", 70.0, SOURCE_MEASURED, 72.1),
+                ("recovery", 69.1, SOURCE_ESTIMATED, 72.1),
             ],
             [
                 (
