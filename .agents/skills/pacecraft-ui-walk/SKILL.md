@@ -45,7 +45,7 @@ chart, zone bar, running dynamics, the equipment select and fuelling, the
 Analyse tabs, Ernährung Verlauf and Körper, Mehr Ausrüstung and the changelog,
 and the Coach history. A step opens its controls, then waits for its element and
 checks it is not empty (chart: drawn marks; numbers: a digit; options: a select
-with two or more; text: any), and times interaction to ready. One line per step
+with two or more; text: any; labelled: a name, also an icon's), and times it. One line per step
 at both widths: `ok|FAIL <width> <step> <ms> ms`; `info ... skipped` when the
 data does not exist (no planned unit, no recorded running dynamics); a missing
 or empty element where data exists is `FAIL` and names the feature it covers.

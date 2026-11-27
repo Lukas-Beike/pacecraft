@@ -1635,7 +1635,7 @@ function plannedUnitActions(entry, dateKey, todayKey) {
   const receipt = plannedMoveReceipts.get(key);
   if (receipt) status.append(receipt.text, ...(receipt.change?.id ? plannedMoveUndo(key, receipt, status) : []));
   const [remove, confirm] = plannedDeleteControls(entry, dateKey, key);
-  const edit = h("button", { type: "button", className: "secondary-button" }, "Bearbeiten");
+  const edit = messageActionButton("edit", `Einheit bearbeiten: ${entry.name || "Trainingseinheit"}`);
   edit.addEventListener("click", () => openUnitEditor({ kind: "unit", entry, onSaved: plannedUnitSaved }));
   const [archive, archiveNote] = plannedArchiveControls(entry, dateKey);
   // The day strip opens right under "Verschieben", not below "Löschen" (#3932 K-11).
@@ -1659,7 +1659,7 @@ async function plannedUnitSaved(result, editor) {
 // "Archivieren" takes the unit out of the calendar at once; the day's receipt offers "Rückgängig".
 function plannedArchiveControls(entry, dateKey) {
   const name = entry.name || "Trainingseinheit";
-  const [archive, note] = inCardDelete(async () => {
+  const [archive, note] = inCardAction(h("button", { type: "button", className: "secondary-button" }, "Archivieren"), async () => {
     let result;
     try {
       result = await api(`/api/planned-units/${encodeURIComponent(entry.local_id)}/archive`, { method: "POST", body: JSON.stringify({ confirmed: true, expected_payload_hash: entry.payload_hash }) });
@@ -1675,8 +1675,6 @@ function plannedArchiveControls(entry, dateKey) {
     await globalThis.load?.();
     announcePlanChange(`Archiviert: ${name}`);
   });
-  archive.textContent = "Archivieren";
-  archive.classList.remove("danger-button");
   return [archive, note];
 }
 
@@ -1733,11 +1731,16 @@ function plannedDayStrip(todayKey, skip, label, pick) {
 
 // "Löschen" acts at once (athlete decision, #3934 G-03): the card's undo line at its place takes the
 // question's place. `remove` runs on the tap and its error shows beside the button.
-function inCardDelete(remove) {
-  const button = h("button", { type: "button", className: "secondary-button danger-button" }, "Löschen");
+function inCardDelete(remove, label) {
+  return inCardAction(messageActionButton("trash", label), remove, true);
+}
+
+// The button of an in-card action that waits for its request and names a failure under it; an icon button
+// shows the spinner alone.
+function inCardAction(button, remove, icon = false) {
   const failure = h("p", { className: "planned-delete-note", role: "status" });
   button.addEventListener("click", async () => {
-    setSaving(button, true);
+    setSaving(button, true, icon ? "" : undefined);
     failure.textContent = "";
     try {
       await remove();
@@ -1768,7 +1771,7 @@ function plannedDeleteControls(entry, dateKey, key) {
     }
     await globalThis.load?.();
     announcePlanChange(`Gelöscht: ${name}`);
-  });
+  }, `Einheit löschen: ${name}`);
 }
 
 // "Mit Coach besprechen" (#2193) opens the Coach with the unit named by date, sport, start, duration and
@@ -3294,10 +3297,10 @@ function libraryActions(workout) {
     libraryReceipts.set(id, { text: `Gelöscht: ${name}`, change: result.change });
     await globalThis.load?.();
     announcePlanChange(`Gelöscht: ${name}`);
-  });
+  }, `Bibliothekseintrag löschen: ${name}`);
   const receipt = libraryReceipts.get(id);
   if (receipt) libraryReceiptLine(status, id, receipt);
-  const edit = h("button", { type: "button", className: "secondary-button" }, "Bearbeiten");
+  const edit = messageActionButton("edit", `Bibliothekseintrag bearbeiten: ${name}`);
   edit.addEventListener("click", () => openLibraryEditor(workout));
   return [h("div", "planned-activity-actions", edit, toggle, remove), confirm, days, planField, again, status];
 }
@@ -3371,7 +3374,7 @@ function planCard(plan) {
   const status = h("p", { className: "planned-move-status", role: "status" });
   const receipt = planReceipts.get(id);
   if (receipt) planReceiptLine(status, id, receipt);
-  const [remove, removeNote] = inCardDelete(planPost(plan, "delete", { confirmed: true }, `Gelöscht: ${plan.name}`));
+  const [remove, removeNote] = inCardDelete(planPost(plan, "delete", { confirmed: true }, `Gelöscht: ${plan.name}`), `Plan löschen: ${plan.name}`);
   const buttons = [];
   const notes = [removeNote];
   if (plan.status === "archived") {
@@ -3382,13 +3385,11 @@ function planCard(plan) {
     });
     buttons.push(restore);
   } else {
-    const edit = h("button", { type: "button", className: "secondary-button" }, "Bearbeiten");
+    const edit = messageActionButton("edit", `Plan bearbeiten: ${plan.name}`);
     edit.addEventListener("click", () => openPlanForm(plan));
     const replace = h("button", { type: "button", className: "secondary-button" }, "Zeitraum ersetzen");
     replace.addEventListener("click", () => openPlanReplace({ plan, onReplaced: (result, counts) => planChanged(`Ersetzt: ${counts.replaced} → ${counts.created} Einheiten`, { ...result, plan_id: plan.id }) }));
-    const [archive, archiveNote] = inCardDelete(planPost(plan, "update", { status: "archived", confirmed: true }, `Archiviert: ${plan.name}`));
-    archive.textContent = "Archivieren";
-    archive.classList.remove("danger-button");
+    const [archive, archiveNote] = inCardAction(h("button", { type: "button", className: "secondary-button" }, "Archivieren"), planPost(plan, "update", { status: "archived", confirmed: true }, `Archiviert: ${plan.name}`));
     buttons.push(edit, replace, archive);
     notes.push(archiveNote);
   }
@@ -3478,8 +3479,7 @@ function archivedLibraryCard(workout) {
       libraryReceipts.set(id, { text: `Endgültig gelöscht: ${name}`, change: result.change });
       await loadArchivedLibrary();
       announcePlanChange(`Endgültig gelöscht: ${name}`);
-    });
-    remove.textContent = "Endgültig löschen";
+    }, `Endgültig löschen: ${name}`);
     buttons.push(remove);
     notes.push(failure);
   }

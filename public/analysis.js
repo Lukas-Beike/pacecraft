@@ -3284,7 +3284,8 @@ function equipmentCard(item, source, parents, place) {
   if (local && item.status !== "archived") {
     const actions = h("div", "connection-actions");
     const form = equipmentForm(place, item);
-    const edit = h("button", { className: "secondary-button", type: "button", "aria-expanded": "false" }, "Bearbeiten");
+    const edit = messageActionButton("edit", `Ausrüstung bearbeiten: ${item.name}`);
+    edit.setAttribute("aria-expanded", "false");
     edit.addEventListener("click", () => {
       form.hidden = !form.hidden;
       edit.setAttribute("aria-expanded", String(!form.hidden));

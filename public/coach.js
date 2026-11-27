@@ -1412,14 +1412,14 @@ function createPendingMessage(entry, index = 0) {
     h(
       "div",
       "pending-actions",
-      pendingQueueButton("Bearbeiten", `Bearbeiten: wartende Nachricht ${position}`, () => editQueuedChatMessage(entry.id)),
-      pendingQueueButton("Entfernen", `Entfernen: wartende Nachricht ${position}`, () => removeQueuedChatMessage(entry.id)),
+      pendingQueueButton("edit", `Bearbeiten: wartende Nachricht ${position}`, () => editQueuedChatMessage(entry.id)),
+      pendingQueueButton("trash", `Entfernen: wartende Nachricht ${position}`, () => removeQueuedChatMessage(entry.id)),
     ),
   );
 }
 
-function pendingQueueButton(text, name, onClick) {
-  const button = h("button", { type: "button", className: "pending-action", "aria-label": name, title: name }, text);
+function pendingQueueButton(icon, name, onClick) {
+  const button = messageActionButton(icon, name);
   button.addEventListener("click", onClick);
   return button;
 }
@@ -2358,7 +2358,8 @@ function renderChatAttachments() {
   for (const [index, item] of (state.chatAttachments || []).entries()) {
     const icon = svgNode("svg", { class: "chat-attachment-icon", viewBox: "0 0 24 24", "aria-hidden": "true", focusable: "false" });
     icon.append(svgNode("path", { d: "M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8zM14 3v5h5" }));
-    const remove = h("button", { type: "button", className: "chat-attachment-remove", "aria-label": `Anhang ${item.name} entfernen`, title: `Anhang ${item.name} entfernen` }, "×");
+    const remove = messageActionButton("trash", `Anhang ${item.name} entfernen`);
+    remove.classList.add("chat-attachment-remove");
     remove.addEventListener("click", () => {
       state.chatAttachments.splice(index, 1);
       renderChatAttachments();

@@ -148,7 +148,7 @@ test("product editor follows the barcode result before the product lists", () =>
 });
 
 // The product page: one merged list in two sections (#2267).
-const LIST_FUNCTIONS = ["showNutritionProductActions", "noNutritionProductsText", "nutritionNumber", "NUTRITION_FIELD_NAMES", "NUTRITION_SOURCE_NAMES", "NUTRITION_PRODUCT_SECTIONS", "nutritionProductSectionsOpen", "nutritionProductSearchShown", "nutritionProductSectionsBeforeSearch", "nutritionIsDatabaseProduct", "nutritionMissingFields", "nutritionProductDate", "nutritionOriginText", "nutritionIncompleteMark", "nutritionProductSection", "nutritionUsageCount", "nutritionShortDay", "nutritionLastUseText", "nutritionProductSizes", "nutritionProductCard", "renderNutritionProducts", "appendNutritionProductActions", "nutritionFavoriteButton", "normalizeNutritionProduct", "nutritionDatabaseSource", "handleNutritionRoute"];
+const LIST_FUNCTIONS = ["showNutritionProductActions", "noNutritionProductsText", "nutritionNumber", "NUTRITION_FIELD_NAMES", "NUTRITION_SOURCE_NAMES", "NUTRITION_PRODUCT_SECTIONS", "nutritionProductSectionsOpen", "nutritionProductSearchShown", "nutritionProductSectionsBeforeSearch", "nutritionIsDatabaseProduct", "nutritionMissingFields", "nutritionProductDate", "nutritionOriginText", "nutritionIncompleteMark", "nutritionProductSection", "nutritionUsageCount", "nutritionShortDay", "nutritionLastUseText", "nutritionProductSizes", "nutritionProductCard", "renderNutritionProducts", "nutritionProductActionButton", "appendNutritionProductActions", "nutritionFavoriteButton", "normalizeNutritionProduct", "nutritionDatabaseSource", "handleNutritionRoute"];
 const OWN = { id: "own-1", name: "Whey", brand: "Fixture", barcode: "4000000000017", basis_amount: 100, basis_unit: "g", origin: "own", fetched_at: null, favorite: 1, kcal: 380, carbs_g: 5, protein_g: 72, fat_g: 6, sugar_g: 2, fiber_g: 1, salt_g: 0.1, missing_fields: [] };
 const FOOD = { id: "off:4006381333931", name: "Haferdrink", brand: "Beispiel", barcode: "4006381333931", basis_amount: 100, basis_unit: "ml", origin: "open_food_facts", source: "open_food_facts", fetched_at: "2026-10-01T08:00:00+00:00", favorite: 0, kcal: 46, carbs_g: 6.7, protein_g: 1, fat_g: 1.5, sugar_g: null, fiber_g: 0, salt_g: null, missing_fields: ["sugar_g", "salt_g"] };
 
@@ -225,7 +225,7 @@ test("every card shows its origin, its missing fields and the same actions and s
   assert.equal(missing.attributes["aria-label"], "Unvollständig, es fehlen: Zucker, Salz");
   assert.match(textOf(food), /EAN 4006381333931 · Basis: 100 ml/);
   for (const card of [own, food]) {
-    assert.deepEqual(withClass(card, "nutrition-actions")[0].children.map(textOf), ["Verwenden", "Bearbeiten", "Aktualisieren", "Löschen"]);
+    assert.deepEqual(withClass(card, "nutrition-actions")[0].children.map((button) => textOf(button) || button.attributes["aria-label"].split(":")[0]), ["Verwenden", "Produkt bearbeiten", "Aktualisieren", "Produkt löschen"]);
     assert.equal(withClass(card, "nutrition-favorite").length, 1);
   }
   assert.equal(withClass(food, "nutrition-favorite")[0].attributes["aria-pressed"], "false");

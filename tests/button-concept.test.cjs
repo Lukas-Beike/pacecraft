@@ -75,6 +75,15 @@ test("a dialog's Löschen or Entfernen is red outlined and its leftmost button (
   assert.deepEqual(wrong, []);
 });
 
+test("a ×/✕ glyph button is an icon-button, rows and cards edit and delete with icons (#4279)", () => {
+  const scripts = buttons().filter(([file]) => file !== "index.html");
+  const glyphs = scripts.filter(([, , classes, text]) => /^[×✕]$/.test(text) && !classes.includes("icon-button"));
+  assert.deepEqual(where(glyphs), []);
+  // A row or card button for editing or deleting is the pencil or trash icon with a named label, never a word.
+  const words = scripts.filter(([, , classes, text]) => /^(Bearbeiten|Ändern)$/.test(text) || (/^(Löschen|Entfernen)$/.test(text) && !classes.includes("danger-button")));
+  assert.deepEqual(where(words), []);
+});
+
 test("the scan reads the buttons it guards", () => {
   const all = buttons();
   assert.ok(all.some(([file, , classes, text]) => file === "index.html" && text === "Speichern" && classes.includes("push-button")));

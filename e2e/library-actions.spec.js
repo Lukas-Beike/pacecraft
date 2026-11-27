@@ -1,4 +1,4 @@
-const { test, expect } = require("@playwright/test");
+const { test, expect } = require("./helpers/today");
 
 // Routes miss requests that pass through the service worker's fetch listener; this spec does not
 // test the worker, so it is blocked and every route applies (#3842).
@@ -19,7 +19,10 @@ test("@responsive Einplanen and Löschen work in the library card and Rückgäng
   const name = (await first.locator("h4").textContent()).trim();
   const card = page.locator("#library .library-card", { has: page.locator("h4", { hasText: name }) }).first();
   const actions = card.locator(":scope > .planned-activity-actions");
-  await expect(actions.getByRole("button")).toHaveText(["Bearbeiten", "Einplanen", "Löschen"]);
+  // Edit and delete are the pencil and the trash icon, named by their label (#4279).
+  await expect(actions.getByRole("button")).toHaveText(["", "Einplanen", ""]);
+  await expect(actions.getByRole("button", { name: /^Bibliothekseintrag bearbeiten: / })).toHaveCount(1);
+  await expect(actions.getByRole("button", { name: /^Bibliothekseintrag löschen: / })).toHaveCount(1);
 
   // Einplanen opens the calendar's day strip, which marks a day an entry blocks (#4060); one tap plans the entry locally.
   const blockedDay = await page.evaluate(() => addDateKey(timezoneDateKey(state.data?.profile?.timezone, new Date()), 3));

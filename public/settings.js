@@ -559,8 +559,16 @@ function recordedMaxHrNote(thresholds = state.data?.performance?.thresholds) {
   return found ? `Brustgurt ${Math.round(found.value)} bpm am ${dateLabel(found.date)}` : null;
 }
 
+function zoneEditName(label, attributes) {
+  if (attributes.zoneEdit === "lt1") return "Schwelle (LT1) bearbeiten";
+  const kind = attributes.zoneEnvironment ? `${ZONE_KIND_TITLES[attributes.zoneEdit]} · Indoor` : ZONE_KIND_TITLES[attributes.zoneEdit];
+  return `Zonen ${label.toLowerCase()}: ${kind}`;
+}
+
 function zoneEditButton(label, attributes) {
-  return h("button", { type: "button", className: "zone-edit", dataset: attributes }, label);
+  const button = messageActionButton("edit", zoneEditName(label, attributes));
+  Object.assign(button.dataset, attributes);
+  return button;
 }
 
 // A small yellow "i" names the origin of a threshold row in a popover (athlete decision 2026-11-12, #2427).

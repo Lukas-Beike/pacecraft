@@ -37,6 +37,8 @@ function contextFor(globals) {
   if (!("AppFormat" in globals)) globals.AppFormat = require("../public/format.js");
   // The saving button helper of components.js (#4268): here it only locks the button; a test may stub it.
   if (!("setSaving" in globals)) globals.setSaving = (button, busy) => { if (button) button.disabled = busy; };
+  // The icon button of coach.js (#4279): a button with a class and an accessible name.
+  if (!("messageActionButton" in globals)) globals.messageActionButton = (icon, label) => { const button = new FakeElement("button"); Object.assign(button, { type: "button", className: "message-action", title: label }); button.setAttribute("aria-label", label); return button; };
   return vm.createContext(globals);
 }
 

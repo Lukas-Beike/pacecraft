@@ -60,7 +60,7 @@ async function openProfileForms(page) {
   await expect(page.locator("#appShell")).toBeVisible();
   await page.locator("#zoneSettings > summary").click();
   // #2262: a zone kind's "Bearbeiten"/"Anlegen" opens the editor under it.
-  await page.locator('#zoneOverview [data-zone-box="power"] .zone-edit').click();
+  await page.locator('#zoneOverview [data-zone-box="power"] [data-zone-edit]').click();
   await expect(page.locator("#zoneLimits")).toBeVisible();
   // The fixture has no FTP to prefill, and the power editor needs one.
   await page.locator("#zoneThreshold").fill("250");
