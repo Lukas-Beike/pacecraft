@@ -1,4 +1,6 @@
 const { test, expect } = require("@playwright/test");
+const path = require("node:path");
+const { pathToFileURL } = require("node:url");
 
 const DAY = "2026-11-05";
 const component = (name, amount, unit, kcal, source) => ({ kind: "database", name, amount, unit, kcal, carbs_g: 10, protein_g: 5, fat_g: 1, nutrition_basis: { kind: "database", food: { id: `bls:${name}`, name, source } } });
@@ -241,4 +243,18 @@ test("@responsive an error that arrives after the dialog was closed shows as a t
   release();
   await expect(page.locator(".toast")).toContainText("Mahlzeit konnte nicht gespeichert werden");
   expect(errors).toEqual([]);
+});
+
+// #4342: the release walk's step finds a logged meal's pencil, and on a day without meals its skip says so.
+test("@responsive the release walk finds a logged meal's pencil and names a day without meals", async ({ page }) => {
+  const { STEPS, runStep } = await import(pathToFileURL(path.join(__dirname, "..", "scripts", "ui_walk.mjs")).href);
+  const step = STEPS.find((item) => item.name === "Ernährung: Mahlzeit bearbeiten");
+  await mockDiary(page);
+  await page.goto("/#nutrition/diary");
+  await expect(page.locator("#nutritionEntries .nutrition-card")).toHaveCount(1);
+  expect((await runStep(page, step, 3000)).status).toBe("ok");
+  await page.route("**/api/nutrition/day**", (route) => route.fulfill({ json: { ok: true, date: DAY, entry_count: 0, entries: [] } }));
+  await page.reload();
+  await expect(page.locator("#nutritionEmptyDay")).toBeVisible();
+  expect(await runStep(page, step, 3000)).toMatchObject({ status: "skip", why: "none of 1 has it (no meal logged today)" });
 });
