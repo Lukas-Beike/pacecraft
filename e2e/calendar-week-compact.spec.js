@@ -525,14 +525,18 @@ test("@responsive the phone calendar header is compact and the week's totals sta
   // One row of chips, each a 44 px target, the chosen one in view.
   const chips = week.locator(".planned-sport-filter");
   expect((await chips.boundingBox()).height).toBeLessThan(60);
-  await expect(chips.locator("label:has(input:checked)")).toBeInViewport();
-  // The first day starts right under the week row: about 310 px from the page top without the notices.
-  await page.evaluate(() => scrollTo(0, 0));
+  // Inside the row's scroll box; the page itself may have scrolled down to today.
+  const rowBox = await chips.boundingBox();
+  const chosenBox = await chips.locator("label:has(input:checked)").boundingBox();
+  expect(chosenBox.x).toBeGreaterThanOrEqual(rowBox.x - 1);
+  expect(chosenBox.x + chosenBox.width).toBeLessThanOrEqual(rowBox.x + rowBox.width + 1);
+  // The first day starts right under the week's header: about 190 px below the card's top (about 490 before
+  // #4308); the notices above the card vary by day.
   const start = await page.evaluate(() => {
-    const notices = [...document.querySelectorAll("#plannedCalendar > :not(.planned-week)")].reduce((sum, node) => sum + node.getBoundingClientRect().height, 0);
-    return document.querySelector(".planned-week-days .planned-day").getBoundingClientRect().top + scrollY - notices;
+    const top = (selector) => document.querySelector(selector).getBoundingClientRect().top;
+    return top(".planned-week-days .planned-day") - top(".planned-week");
   });
-  expect(start).toBeLessThanOrEqual(340);
+  expect(start).toBeLessThanOrEqual(220);
   // The count and the totals left the heading for the week's end, the review when it has one.
   await expect(week.locator(".planned-week-heading :is(.planned-week-summary, .planned-week-metrics)")).toHaveCount(0);
   const end = week.locator(":is(.week-review, .planned-week-end)");
