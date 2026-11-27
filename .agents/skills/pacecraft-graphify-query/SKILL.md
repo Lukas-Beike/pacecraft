@@ -1,6 +1,6 @@
 ---
 name: pacecraft-graphify-query
-description: Base skill. Query the local structural code graph for symbols, callers, dependencies and paths between them. Use before Grep for symbol or dependency lookups; domain knowledge is in pacecraft-graphify.
+description: Base skill. Query the local structural code graph for symbols, callers, dependencies and paths between them. Optional for wide symbol or dependency lookups; a targeted lookup may use Grep directly. Domain knowledge is in pacecraft-graphify.
 ---
 
 # Query the graph
