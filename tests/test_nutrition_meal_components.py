@@ -195,6 +195,11 @@ class MealComponentEditTests(unittest.TestCase):
         with self.assertRaises(AppError) as limit:
             self.edit(self.meal["id"], many)
         self.assertIn("höchstens 20", limit.exception.message)
+        # Too many foods to add are refused before any is looked up (review on #4270).
+        foods = [{"add": {"food_id": "off:4000000000000", "amount": 10, "unit": "g"}}]
+        with self.assertRaises(AppError) as over:
+            self.edit(self.meal["id"], foods * 21)
+        self.assertIn("höchstens 20", over.exception.message)
         for malformed in (
             {"add": {"amount": 10, "unit": "g"}},
             {

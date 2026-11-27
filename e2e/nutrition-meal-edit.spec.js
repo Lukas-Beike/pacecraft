@@ -99,7 +99,8 @@ test("@responsive the dialog adds a component from the search, and Abbrechen sto
     await expect(dialog.locator(".swap-result")).toHaveCount(2);
     await dialog.locator(".swap-result", { hasText: "Tofu gebacken" }).click();
     await expect(rows).toHaveCount(4);
-    await expect(rows.nth(3)).toContainText("BLS 4.0 · neu");
+    await expect(rows.nth(3)).toContainText("BLS 4.0");
+    await expect(rows.nth(3).getByRole("button", { name: /tauschen/ })).toHaveCount(0);
     await expect(rows.nth(3).getByRole("spinbutton")).toBeFocused();
   };
   await addTofu();

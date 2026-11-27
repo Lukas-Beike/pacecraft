@@ -115,6 +115,8 @@ function renderNutritionMealEdit() {
   nodes.title.textContent = "Mahlzeit bearbeiten";
   renderNutritionMealFields();
   nodes.list.replaceChildren(...rows.map(nutritionMealEditRow));
+  // A meal holds at most 20 components, as the server checks.
+  nodes.add.disabled = rows.filter((row) => !row.removed).length >= 20;
   updateNutritionMealEditSave();
 }
 
@@ -132,7 +134,7 @@ function nutritionMealEditRow(row) {
   const shown = row.swap ? row.swap.name : row.name;
   // The stored kcal fits only the stored amount.
   const detail = () => {
-    if (row.added) return `${row.origin} · neu`;
+    if (row.added) return row.origin;
     if (row.swap) return `${row.swap.origin} · statt ${row.name}`;
     return [row.origin, row.amount === row.original && row.kcal != null ? `${nutritionNumber(row.kcal)} kcal` : ""].filter(Boolean).join(" · ");
   };

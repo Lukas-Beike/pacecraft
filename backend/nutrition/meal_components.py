@@ -21,6 +21,7 @@ from backend.nutrition.food_database import NUTRIENTS
 EDIT_KEYS = {"index", "remove", "amount", "unit", "food_id", "product_id"}
 ADD_KEYS = {"amount", "unit", "food_id", "product_id"}
 MAX_COMPONENTS = 20
+TOO_MANY = "Eine Mahlzeit kann höchstens 20 Komponenten enthalten."
 CLOCK = re.compile(r"(\d{2}:\d{2})(?::(\d{2}))?")
 MEAL_KEYS = {"meal_date", "meal_type", "meal_time", "logged_time_known"}
 INVALID_EDIT = "Ungültige Änderung der Mahlzeitenkomponenten."
@@ -184,6 +185,9 @@ def swap_foods(
     a swap's by its index, an add's by ``("add", n)``."""
     edits = edits if isinstance(edits, list) else []
     adds = [edit["add"] for edit in edits if _is_add(edit)]
+    # Over the limit by the adds alone: refused before any food is looked up.
+    if len(adds) > MAX_COMPONENTS:
+        raise AppError(400, TOO_MANY)
     named = [
         (edit.get("index"), edit)
         for edit in edits
@@ -271,7 +275,7 @@ def edited_components(
         )
     # The limit and the checks of a single add (#4270), as the add of a saved product.
     if len(result) + len(adds) > MAX_COMPONENTS:
-        raise AppError(400, "Eine Mahlzeit kann höchstens 20 Komponenten enthalten.")
+        raise AppError(400, TOO_MANY)
     for n, add in enumerate(adds):
         key = "food_id" if "food_id" in add else "product_id"
         spec = {
