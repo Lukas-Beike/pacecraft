@@ -237,6 +237,28 @@ class CoachTurnFailureTests(unittest.TestCase):
                     self._stored()[1]["usage"], {**usage, "by_model": {"": usage}}
                 )
 
+    def test_a_failed_automatic_turn_leaves_the_athletes_pending_request(
+        self,
+    ) -> None:
+        # #4274: neither a failure nor a cancel of an automatic turn touches it.
+        for reason in ("chat_request_timeout", "chat_cancelled"):
+            with self.subTest(reason=reason):
+                with self.manager.unit_of_work() as db:
+                    db.execute("DELETE FROM coach_commands")
+                    prompt = self.chat.add(
+                        db,
+                        "user",
+                        "Automatischer Morgen-Check-in",
+                        client_turn_id="turn-1",
+                    )
+                    self.kv.set(db, "coach_pending_request", '{"status": "failed"}')
+                self._seed({"user_message_id": prompt["id"], "automatic": True})
+                self.service.persist("turn-1", {}, AppError(504, "x", reason=reason))
+                with self.manager.reader() as db:
+                    self.assertEqual(
+                        self.kv.get(db, "coach_pending_request"), '{"status": "failed"}'
+                    )
+
     def test_cancellation_clears_pending_and_completed_replay_does_not_duplicate(
         self,
     ) -> None:

@@ -88,8 +88,8 @@ class AutomaticCoachTurnTests(unittest.TestCase):
     def test_an_answered_turn_replaces_the_night_push_with_its_key_statement(self):
         job = {"client_turn_id": "auto:morning:2026-11-27"}
         answer = (
-            "## **Gut erholt** (HRV im Normalbereich) – der Dauerlauf heute passt "
-            "wie geplant. Danach folgt mehr Text."
+            "## Morgen-Check-in\n**Gut erholt** (HRV im Normalbereich) – der Dauerlauf "
+            "heute passt wie geplant. Danach folgt mehr Text."
         )
         event = self.turns.record(job, "completed", answer)
         self.assertEqual(
@@ -102,8 +102,19 @@ class AutomaticCoachTurnTests(unittest.TestCase):
                 "#coach",
             ),
         )
-        self.assertIsNone(self.turns.record(job, "failed", ""))
-        self.assertEqual(self._counts(), {"started": 0, "completed": 1, "failed": 1})
+        # Without an answer the plain night push still comes, under the same key.
+        for outcome, answer in (("failed", ""), ("completed", "")):
+            event = self.turns.record(job, outcome, answer)
+            self.assertEqual(
+                (event.key, event.title, event.body, event.url),
+                (
+                    "morning_data:2026-11-27",
+                    "Morgenwerte",
+                    "Die Werte der Nacht sind da.",
+                    "#analysis/recovery",
+                ),
+            )
+        self.assertEqual(self._counts(), {"started": 0, "completed": 2, "failed": 1})
 
     def test_the_key_statement_is_plain_text_and_capped(self):
         cases = {
@@ -113,6 +124,16 @@ class AutomaticCoachTurnTests(unittest.TestCase):
             ),
             "a list item": ("\n- `Locker` laufen!\n- mehr", "Locker laufen!"),
             "no sentence end": ("Kurz und knapp", "Kurz und knapp"),
+            "abbreviations and numbers": (
+                "Schlaf ca. 7 h, z. B. gut. Mehr.",
+                "Schlaf ca. 7 h, z. B. gut.",
+            ),
+            "a numbered first point": ("1. Erholung gut. Weiter", "1. Erholung gut."),
+            "a closing bracket": ("Locker (Zone 2). Danach", "Locker (Zone 2)."),
+            "identifiers keep underscores": (
+                "Wert hr_cap passt.",
+                "Wert hr_cap passt.",
+            ),
             "empty": ("  \n ", ""),
         }
         for label, (answer, statement) in cases.items():

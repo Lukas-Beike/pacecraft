@@ -14,6 +14,7 @@ from __future__ import annotations
 import json
 import re
 from collections.abc import Callable
+from contextlib import AbstractContextManager, nullcontext
 from datetime import date, datetime
 from typing import Any, Final
 
@@ -51,6 +52,7 @@ class AutomaticCoachTurns:
         local_now: Callable[[], datetime],
         database: Callable[[], DatabaseManager],
         key_values: KeyValueRepository,
+        operation: Callable[[], AbstractContextManager[Any]] = nullcontext,
     ) -> None:
         self._settings = settings
         self._submission = submission
@@ -60,6 +62,7 @@ class AutomaticCoachTurns:
         self._local_now = local_now
         self._database = database
         self._key_values = key_values
+        self._operation = operation
 
     def check(self) -> bool:
         """Queue today's morning check-in when it is due; True when one was queued.
@@ -90,23 +93,34 @@ class AutomaticCoachTurns:
     def record(
         self, job: dict[str, Any], outcome: str, answer: str
     ) -> Notification | None:
-        """Count a finished automatic turn; the push for an answered one."""
-        self._count(outcome)
+        """Count a finished automatic turn; the push that announces it.
+
+        It runs after the turn's operation, so the count takes the gate itself.
+        """
+        with self._operation():
+            self._count(outcome)
         turn_id = str(job.get("client_turn_id") or "")
-        statement = key_statement(answer)
-        if outcome != "completed" or not statement:
+        statement = key_statement(answer) if outcome == "completed" else ""
+        if not turn_id.startswith(MORNING_TURN_PREFIX):
             return None
-        if turn_id.startswith(MORNING_TURN_PREFIX):
-            day = turn_id.removeprefix(MORNING_TURN_PREFIX)
-            # The key of "Morgenwerte": the day gets one of the two.
+        day = turn_id.removeprefix(MORNING_TURN_PREFIX)
+        # The key of "Morgenwerte": the day gets one of the two; without an
+        # answer the plain "Morgenwerte" still tells that the night is there.
+        if not statement:
             return Notification(
                 "morning_data",
                 f"morning_data:{day}",
-                "Morgen-Check-in",
-                statement,
-                "#coach",
+                "Morgenwerte",
+                "Die Werte der Nacht sind da.",
+                "#analysis/recovery",
             )
-        return None
+        return Notification(
+            "morning_data",
+            f"morning_data:{day}",
+            "Morgen-Check-in",
+            statement,
+            "#coach",
+        )
 
     def _count(self, outcome: str) -> None:
         with self._database().unit_of_work() as db:
@@ -127,14 +141,18 @@ def diagnostics(key_values: KeyValueRepository, db: Any) -> dict[str, int]:
     }
 
 
-_MARKUP = re.compile(r"\[([^\]]*)\]\([^)]*\)|[*_`#>|~]")
-_SENTENCE = re.compile(r"^(.+?[.!?])(?:\s|$)")
+_MARKUP = re.compile(r"\[([^\]]*)\]\([^)]*\)|[*`]")
+# A sentence ends after a word of three letters or a closing mark, before a
+# capital or the end: "z. B.", "ca. 7 h" and "1." do not end it.
+_SENTENCE = re.compile(r"^(.*?(?:[^\W\d_]{3}|[)\"”])[.!?])(?=\s+[A-ZÄÖÜ\"„(]|$)")
 
 
 def key_statement(answer: str) -> str:
     """The answer's first sentence as plain text, capped (#4274)."""
     for line in str(answer or "").splitlines():
-        text = " ".join(_MARKUP.sub(r"\1", line).split()).lstrip("-• ")
+        if line.lstrip().startswith("#"):
+            continue  # a heading is no statement
+        text = " ".join(_MARKUP.sub(r"\1", line).split()).lstrip("->• ")
         if text:
             match = _SENTENCE.match(text)
             sentence = match[1] if match else text

@@ -351,6 +351,10 @@ class CoachTurnFailureService:
         cancelled: bool,
         successes: list[dict[str, Any]],
     ) -> None:
+        if receipt.get("automatic") is True:
+            # An automatic turn (#4274) is no athlete request: it neither opens
+            # nor clears the athlete's pending request.
+            return
         if cancelled:
             self._deps.key_values.set(db, "coach_pending_request", "null")
         elif receipt.get("user_message_id") and not question:

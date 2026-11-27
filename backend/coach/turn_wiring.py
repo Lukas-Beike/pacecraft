@@ -156,6 +156,7 @@ def build_coach_background_jobs(
             ctx.clock.now,
             ctx.database,
             ctx.key_values,
+            runtime_maintenance.MAINTENANCE_GATE.operation,
         )
 
     def record_automatic(job: dict[str, Any], outcome: str, answer: str) -> None:
