@@ -158,6 +158,22 @@ def _system(request: ModelRequest) -> str:
     return system
 
 
+def _system_blocks(request: ModelRequest) -> list[dict[str, Any]]:
+    """The shared rules form their own cached block, so the next turn reads them
+    from the cache although its context differs (#4288)."""
+    system = _system(request)
+    if not system:
+        return []
+    cached = request.cached_instructions
+    static = system[:cached] if 0 < cached < len(system) else system
+    blocks: list[dict[str, Any]] = [
+        {"type": "text", "text": static, "cache_control": {"type": "ephemeral"}}
+    ]
+    if static != system:
+        blocks.append({"type": "text", "text": system[cached:]})
+    return blocks
+
+
 def request_payload(request: ModelRequest, *, stream: bool = False) -> dict[str, Any]:
     """The Messages API payload for one request."""
     payload: dict[str, Any] = {
@@ -166,17 +182,9 @@ def request_payload(request: ModelRequest, *, stream: bool = False) -> dict[str,
             request.max_output_tokens or DEFAULT_MAX_TOKENS, MIN_MAX_TOKENS
         ),
     }
-    system = _system(request)
+    system = _system_blocks(request)
     if system:
-        # The shared rules form their own cached block, so the next turn reads
-        # them from the cache although its context differs (#4288).
-        cached = request.cached_instructions
-        static = system[:cached] if 0 < cached < len(system) else system
-        payload["system"] = [
-            {"type": "text", "text": static, "cache_control": {"type": "ephemeral"}}
-        ]
-        if static != system:
-            payload["system"].append({"type": "text", "text": system[cached:]})
+        payload["system"] = system
     payload["messages"] = _messages(request)
     # The last cacheable block: tool rounds of one turn reuse the earlier ones.
     payload["cache_control"] = {"type": "ephemeral"}
