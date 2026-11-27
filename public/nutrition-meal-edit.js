@@ -12,7 +12,7 @@ const NUTRITION_FOOD_ORIGINS = { bls: "BLS 4.0", off: "Open Food Facts", yazio: 
 function nutritionMealEditNodes() {
   const root = document.querySelector("#nutritionMealEditDialog");
   const pick = (id) => root.querySelector(`#nutritionMealEdit${id}`);
-  return { root, form: pick("Main"), main: pick("Main"), swap: pick("Swap"), date: pick("Date"), time: pick("Time"), type: pick("Type"), unknown: pick("Unknown"), title: pick("Title"), subtitle: pick("Subtitle"), list: pick("List"), save: pick("Save"), status: pick("Status"), query: pick("Query"), results: pick("Results"), swapStatus: pick("SwapStatus"), add: pick("Add") };
+  return { root, form: pick("Main"), main: pick("Main"), swap: pick("Swap"), date: pick("Date"), time: pick("Time"), type: pick("Type"), unknown: pick("Unknown"), title: pick("Title"), subtitle: pick("Subtitle"), list: pick("List"), save: pick("Save"), status: pick("Status"), query: pick("Query"), results: pick("Results"), swapStatus: pick("SwapStatus"), add: pick("Add"), estimate: pick("Estimate") };
 }
 
 // "BLS 4.0", "Open Food Facts", "Yazio", "Eigenes Produkt" or "Schätzung" for a stored component.
@@ -45,6 +45,7 @@ async function openNutritionMealEdit(item) {
   const nodes = nutritionMealEditNodes();
   nodes.subtitle.textContent = [nutritionMealTitle(item), item.description].filter(Boolean).join(" · ");
   nodes.status.textContent = "";
+  nodes.estimate.textContent = item.estimate_uncertain ? "Markierung entfernen" : "Als geschätzt markieren";
   // A save still running from an earlier open keeps no spinner on the reopened dialog (#4268).
   setSaving(nodes.save, false);
   nodes.type.replaceChildren(...Object.entries(NUTRITION_MEAL_LABELS).map(([value, label]) => h("option", { value }, label)));
@@ -261,6 +262,15 @@ async function saveNutritionMealEdit() {
 document.querySelector(".nutrition-meal-edit .edit-meal")?.addEventListener("input", changeNutritionMealField);
 document.querySelector("#nutritionMealEditCancel")?.addEventListener("click", () => document.querySelector("#nutritionMealEditDialog").close());
 document.querySelector("#nutritionMealEditBack")?.addEventListener("click", closeNutritionMealSwap);
+// The two rare actions of a meal (#4305) act on the opened meal; the dialog closes and the diary shows the receipt.
+function nutritionMealEditThen(action) {
+  const item = nutritionMealEdit?.item;
+  if (!item) return;
+  document.querySelector("#nutritionMealEditDialog").close();
+  void action(item);
+}
+document.querySelector("#nutritionMealEditEstimate")?.addEventListener("click", () => nutritionMealEditThen(markNutritionEstimate));
+document.querySelector("#nutritionMealEditKeep")?.addEventListener("click", () => nutritionMealEditThen(openNutritionTemplateFromEntry));
 // "+ Zutat" (#4279: "+ {Objekt}") opens the swap's search for a new component (#4270).
 document.querySelector("#nutritionMealEditAdd")?.addEventListener("click", () => openNutritionMealSwap({ adding: true }));
 document.querySelector("#nutritionMealEditMain")?.addEventListener("submit", (event) => { event.preventDefault(); void saveNutritionMealEdit(); });

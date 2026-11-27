@@ -1862,7 +1862,8 @@ button:focus-visible, a:focus-visible, summary:focus-visible {
 #nutritionPanel button { min-width: 44px; min-height: 44px; }
 /* A diary meal's pencil and its component dialog (#3948). */
 .nutrition-card-head { display: flex; gap: 8px; align-items: flex-start; justify-content: space-between; }
-.nutrition-card-head h3 { min-width: 0; }
+.nutrition-card-head h3 { flex: 1 1 auto; min-width: 0; }
+.nutrition-meal-edit-more { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
 .nutrition-card-head .message-action { margin: -8px 0 0; }
 .nutrition-meal-edit { display: grid; gap: 15px; }
 .nutrition-meal-edit form, #nutritionMealEditSwap { display: grid; gap: 12px; }
