@@ -80,7 +80,7 @@ function statusStripAction(item) {
 
 function statusStripDismiss(item) {
   if (!item.dismiss) return null;
-  const button = h("button", { type: "button", className: "secondary-button status-strip-dismiss", "aria-label": "Für diese Sitzung ausblenden", title: "Für diese Sitzung ausblenden" }, "✕");
+  const button = h("button", { type: "button", className: "icon-button status-strip-dismiss", "aria-label": "Für diese Sitzung ausblenden", title: "Für diese Sitzung ausblenden" }, "✕");
   button.addEventListener("click", () => {
     item.dismiss();
     // The focused button is gone with the notice; keep the keyboard user on the page.

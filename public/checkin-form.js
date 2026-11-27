@@ -146,7 +146,7 @@ async function openCheckinForm(dateKey) {
   const status = h("output", { className: "tab-sync-detail", "aria-live": "polite" });
   const fields = h("div", "checkin-fields", ...checkinFormNodes(stored));
   const cancel = h("button", { type: "button", className: "secondary-button" }, "Abbrechen");
-  const save = h("button", { type: "submit" }, "Speichern");
+  const save = h("button", { type: "submit", className: "push-button" }, "Speichern");
   const form = h("form", { className: "confirmation-dialog checkin-form" }, h("h2", { id: "checkinDialogTitle" }, "Check-in"),
     h("label", null, "Tag", date), status, fields, h("div", "dialog-actions", cancel, save));
   const dialog = h("dialog", { id: "checkinDialog", "aria-labelledby": "checkinDialogTitle" }, form);

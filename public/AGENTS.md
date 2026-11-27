@@ -16,10 +16,11 @@
   inserts a newline. On touch-first devices, Enter inserts a newline; the send
   button or Ctrl/Cmd+Enter sends.
 - Workouts are stored directly in the local training library; the athlete can
-  explicitly synchronize them to Intervals.icu later. Adaptive replan previews
-  still require a separate explicit apply action; the one exception is the
-  athlete's own Intervals.icu sync request for an illness pause, which approves
-  it (#2342).
+  synchronize them to Intervals.icu later. Adaptive replan previews need a
+  separate explicit apply action; only the athlete's own Intervals.icu sync
+  request for an illness pause approves one (#2342).
+- One button concept (#4279): icons on rows and cards, words in dialogs (red
+  Löschen leftmost), every save `push-button`; `tests/button-concept.test.cjs`.
 - The service worker is part of the release cache contract. Source files carry
   no versions: reference assets as `/app.js` in `index.html` and `ASSETS`, and
   keep the `__ASSET_HASH__` cache-name placeholder. `StaticAssetService` stamps
@@ -37,7 +38,6 @@
   server cannot be reached or the fresh start data fails to load. Logout, a 401, an
   unauthenticated start and a privacy deletion clear this device data. Never
   store credentials, session data or CSRF tokens in it.
-- Keep notifications opt-in, bounded, and functional in browsers that do not
-  support them.
+- Keep notifications opt-in, bounded, and functional in browsers without push.
 - Keep UI text and the `README.md` and `docs/` files it links accurate when
-  adding or changing user-visible behavior.
+  changing user-visible behavior.

@@ -687,7 +687,7 @@ function lt2SourceItem(sport, row) {
   const values = h("span", { className: "lt2-source-values", dataset: row.unknown ? { unknown: "" } : {} }, row.values);
   const item = h("li", { className: "lt2-source", dataset: { lt2Source: row.source } }, h("span", "lt2-source-name", row.name, ...chips), values, h("span", "lt2-source-basis", row.basis));
   if (row.adopt.length) {
-    const button = h("button", { type: "button", className: "secondary-button" }, "Übernehmen");
+    const button = h("button", { type: "button", className: "push-button" }, "Übernehmen");
     button.addEventListener("click", () => { void adoptLt2(sport, row, button); });
     item.append(button);
   }

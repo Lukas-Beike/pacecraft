@@ -2297,7 +2297,7 @@ function energyLearnedLine(read) {
   const values = fits.map(([key, label], index) => `${label} ${energyFitSigned(learned[key].kcal)}${index ? "" : " kcal/Tag"} (${span(learned[key])})`).join(" · ");
   const line = h("div", { className: "energy-learned", dataset: { learned: "offered" } }, h("p", null, head, ` aus ${windows} Fenstern`, h("br"), h("small", null, values)));
   if (energyLearnedDeferred) return line;
-  const take = h("button", { type: "button", className: "secondary-button" }, "Übernehmen");
+  const take = h("button", { type: "button", className: "push-button" }, "Übernehmen");
   const later = h("button", { type: "button", className: "secondary-button" }, "Noch nicht");
   take.addEventListener("click", () => void saveLearnedCheck(todayIso(), take));
   later.addEventListener("click", () => {
@@ -3526,7 +3526,7 @@ function equipmentRuleReceipt(status, result) {
 // The button and the form of the shown tab: the button toggles the form.
 function equipmentAddControl(tab) {
   const form = equipmentForm(tab, null);
-  const add = h("button", { className: "push-button equipment-add", type: "button", "aria-expanded": "false" }, "+ Hinzufügen");
+  const add = h("button", { className: "secondary-button equipment-add", type: "button", "aria-expanded": "false" }, "+ Ausrüstung");
   add.addEventListener("click", () => {
     form.hidden = !form.hidden;
     add.setAttribute("aria-expanded", String(!form.hidden));
@@ -3563,7 +3563,7 @@ function equipmentForm(tab, item) {
     h("label", null, "Lebensdauer-Ziel (km)", number("lifetime_target_km", item?.lifetime_target_km)),
     h("label", null, "Wartung alle (km)", number("maintenance_km", item?.maintenance_km)),
     h("label", null, "Wartung alle (h)", number("maintenance_hours", item?.maintenance_hours)),
-    error, h("button", { className: "secondary-button", type: "submit" }, "Speichern"));
+    error, h("button", { className: "push-button", type: "submit" }, "Speichern"));
   form.addEventListener("submit", async (event) => {
     event.preventDefault();
     const submit = form.querySelector("button[type='submit']");

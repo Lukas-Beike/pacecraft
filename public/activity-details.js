@@ -259,7 +259,7 @@
     };
     const edit = () => {
       const input = h("input", { maxLength: 60, required: true, value: label, "aria-label": "Streckenname" });
-      const save = h("button", { type: "submit" }, "Speichern");
+      const save = h("button", { type: "submit", className: "push-button" }, "Speichern");
       const cancel = h("button", { className: "secondary-button", type: "button" }, "Abbrechen"); cancel.addEventListener("click", show);
       const status = h("span", "muted"); status.setAttribute("role", "status");
       const form = h("form", null, input, " ", save, " ", cancel, " ", status);
