@@ -190,6 +190,20 @@ async function expectStructure(page, view) {
   expect(found, `axe structure: ${found.join(" | ")}`).toEqual([]);
 }
 
+// #4347: on the phone no view is wider than the screen. A wider page shifts every view and surfaces in CI as a
+// timeout in an unrelated sweep, so the widest element reaching past the edge is named here instead.
+async function expectNoPageOverflow(page, view) {
+  const wide = await page.evaluate(() => {
+    const page = document.documentElement.scrollWidth;
+    if (page <= innerWidth) return null;
+    const reaching = [...document.querySelectorAll(".panel.active *")].filter((element) => element.getBoundingClientRect().right > innerWidth + 0.5);
+    const widest = reaching.reduce((best, element) => (element.getBoundingClientRect().width > (best?.getBoundingClientRect().width ?? 0) ? element : best), null);
+    const first = typeof widest?.className === "string" ? widest.className.trim().split(/\s+/)[0] : "";
+    return `page ${page} > ${innerWidth} (${widest ? widest.tagName + (first ? "." + first : "") : "no element in the active view"})`;
+  });
+  expect(wide, `${view}: horizontal overflow`).toBeNull();
+}
+
 // #3935 X-03: on the phone every control that is not a link inside a sentence keeps a 44 px hit area.
 async function expectTouchTargets(page, view) {
   const small = await page.evaluate(() => {
@@ -306,6 +320,7 @@ test.describe("colour contrast sweep", () => {
         for (const [view, route, calendarView] of views) {
           await showView(page, route, calendarView);
           await applyTheme(page, theme);
+          if (page.viewportSize().width <= 480) await expectNoPageOverflow(page, view);
           await expectContrast(page, view, theme);
           if (route === "plan/overview" && !calendarView) await expectDetailsContrast(page, view, theme, "Synthetic completed");
           if (theme === "light") await expectTextFormats(page, view);
