@@ -186,7 +186,7 @@ The system SHALL compute displayed sugar and salt from the quantity and nutrient
 - **WHEN** at least one component has no sugar or salt value
 - **THEN** that complete total remains null, available values appear only as a known subtotal, and the UI marks incompleteness.
 
-Evidence: `backend/nutrition/intake_totals.py::_snapshot_values`, `backend/nutrition/intake_totals.py::add_intake_totals`, `public/nutrition.js::nutritionTotalTile`; `tests/test_nutrition_composition.py::NutritionCompositionTests.test_sugar_and_salt_follow_consumption_snapshots_and_unknowns`, `tests/test_nutrition_composition.py::NutritionCompositionTests.test_composite_salt_sugar_scale_with_template_portions_and_week_coverage`.
+Evidence: `backend/nutrition/intake_totals.py::_snapshot_values`, `backend/nutrition/intake_totals.py::add_intake_totals`, `public/nutrition.js::nutritionTotalTile`, `public/nutrition.js::nutritionMinorLine`; `tests/test_nutrition_composition.py::NutritionCompositionTests.test_sugar_and_salt_follow_consumption_snapshots_and_unknowns`, `tests/test_nutrition_composition.py::NutritionCompositionTests.test_composite_salt_sugar_scale_with_template_portions_and_week_coverage`.
 
 ### Requirement: Closed-day history preserves independent coverage
 The system SHALL return 7, 14, or 84 closed days ending yesterday, keep absent intake and expenditure unknown, and calculate balances only for dates with both values. Each day's expenditure SHALL be its own "Aus deinen Daten" day total from the energy table, named by `expenditure_source` "own", with the wearable's day kept beside it (#3600). Each average SHALL report its own observed-day count.

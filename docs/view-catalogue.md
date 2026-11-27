@@ -118,7 +118,7 @@ expression. Other inline status lines are not listed.
 
 | Function | Helper | Text | Detail |
 | --- | --- | --- | --- |
-| `nutritionTotalTile` | `markValueMissing` | nicht erfasst |  |
+| `nutritionTotalValue` | `markValueMissing` | nicht erfasst |  |
 | `nutritionStatTile` | `markValueMissing` | nicht erfasst |  |
 | `nutritionBalanceCard` | `markValueMissing` | nicht erfasst |  |
 

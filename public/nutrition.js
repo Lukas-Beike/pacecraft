@@ -327,33 +327,34 @@ function nutritionMinorLine(day, hasEntries) {
   const line = h("div", "nutrition-minor-line");
   let partial = false;
   for (const [label, key] of [["Zucker", "sugar_g"], ["Salz", "salt_g"]]) {
-    const complete = hasEntries ? day[`total_${key}`] : null;
-    const total = hasEntries ? (complete ?? day.known_macro_totals?.[key] ?? day.known_intake_totals?.[key]) : null;
-    const value = h("strong");
-    if (total == null) markValueMissing(value);
-    else setValueWithUnit(value, `${nutritionNumber(total, "g")} g`);
-    partial ||= complete == null && total != null;
-    if (key === "salt_g") line.append(h("span", null, " · "));
-    line.append(h("span", null, `${label} `, value));
+    const read = nutritionTotalValue(key, "g", day, hasEntries);
+    partial ||= read.partial;
+    line.append(h("span", null, `${key === "salt_g" ? " · " : ""}${label} `, read.value));
   }
   if (partial) line.append(h("span", "nutrition-minor-partial", "unvollständig"));
   return line;
 }
 
-function nutritionTotalTile(label, key, unit, day, hasEntries) {
-  const tile = h("div", "nutrition-total");
+// A day total with its value element: the complete sum, else a known partial sum, else "nicht erfasst".
+function nutritionTotalValue(key, unit, day, hasEntries) {
   const value = h("strong");
   const complete = hasEntries ? day[`total_${key}`] : null;
+  const total = hasEntries ? (complete ?? day.known_macro_totals?.[key] ?? day.known_intake_totals?.[key]) : null;
+  if (total == null) markValueMissing(value);
+  else setValueWithUnit(value, `${nutritionNumber(total, unit)} ${unit}`);
+  return { value, complete, partial: complete == null && total != null };
+}
+
+function nutritionTotalTile(label, key, unit, day, hasEntries) {
+  const tile = h("div", "nutrition-total");
+  const { value, complete, partial } = nutritionTotalValue(key, unit, day, hasEntries);
   const range = day.macro_ranges?.[key];
   if (complete != null && Array.isArray(range) && range.length === 2) {
     if (complete < range[0] && day.date < todayIso()) tile.classList.add("nutrition-below-range");
     else if (complete > range[1]) tile.classList.add("nutrition-above-range");
   }
   // A partial sum of known values is shown only with an explicit incompleteness label.
-  const total = hasEntries ? (complete ?? day.known_macro_totals?.[key] ?? day.known_intake_totals?.[key]) : null;
-  if (total == null) markValueMissing(value);
-  else setValueWithUnit(value, `${nutritionNumber(total, unit)} ${unit}`);
-  tile.append(value, h("span", null, label + (complete == null && total != null ? " · unvollständig" : "")));
+  tile.append(value, h("span", null, label + (partial ? " · unvollständig" : "")));
   return tile;
 }
 
