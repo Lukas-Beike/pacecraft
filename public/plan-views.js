@@ -2568,6 +2568,40 @@ function calendarSportShown(entry, sport = calendarSport) {
   return CALENDAR_SPORTS[sport][1].includes(label);
 }
 
+// On a phone the page heading "Kalender" gives way (#4308): its refresh button sits at the end of
+// the week's Woche/Monat row while the overview's week shows, and returns to the heading otherwise.
+const PLAN_PHONE = globalThis.matchMedia?.("(max-width: 767px)");
+
+// `home` brings it back first, so a re-render of the calendar never drops it.
+function placePlanRefresh(home = false) {
+  const refresh = document.querySelector("#workoutsPanel .view-refresh");
+  const slot = document.querySelector("#plannedCalendar .planned-refresh-slot");
+  const heading = document.querySelector("#workoutsPanel > .section-heading");
+  const overview = AppRouter.baseRoute(state.route) === "plan" && AppRouter.planSegmentFromRoute(state.route) === "overview";
+  const target = !home && PLAN_PHONE?.matches && slot && overview ? slot : heading;
+  if (!refresh || !target || refresh.parentElement === target) return;
+  // A move detaches the button: a focused one gets its focus back.
+  const focused = refresh.contains(document.activeElement) ? document.activeElement : null;
+  target.append(refresh);
+  focused?.focus({ preventScroll: true });
+}
+
+// The sport chips scroll in one row on a phone; the chosen one stays in view.
+function keepCalendarSportVisible(week) {
+  const row = week.querySelector(".planned-sport-filter");
+  const chosen = row?.querySelector("input:checked")?.closest("label");
+  if (!chosen || row.scrollWidth <= row.clientWidth) return;
+  row.scrollLeft = Math.max(0, chosen.offsetLeft - row.offsetLeft - 8);
+}
+
+PLAN_PHONE?.addEventListener?.("change", () => placePlanRefresh());
+globalThis.document?.addEventListener?.("app:route-rendered", () => {
+  placePlanRefresh();
+  // A calendar rendered while hidden scrolls its chosen chip into view once it shows.
+  const week = document.querySelector("#plannedCalendar .planned-week");
+  if (week) keepCalendarSportVisible(week);
+});
+
 function plannedSportFilter() {
   const group = h("div", { className: "chip-group planned-sport-filter", "aria-label": "Sportart" });
   group.setAttribute("role", "radiogroup");
@@ -2738,13 +2772,16 @@ function renderPlannedWeek(view) {
     h("span", "planned-week-number", `KW ${isoWeekNumber(weekKey)}`),
     plannedWeekStep(-1, weekKey > firstWeekKey ? addDateKey(weekKey, -7) : ""),
     plannedWeekStep(1, weekKey < lastWeekKey ? addDateKey(weekKey, 7) : ""),
-    calendarView === "week" ? plannedViewSwitch() : null,
-    calendarView === "week" ? plannedSportFilter() : null,
+    // On a phone the page's refresh button joins the switch row (#4308, placePlanRefresh).
+    calendarView === "week" ? h("div", "planned-view-row", plannedViewSwitch(), h("div", "planned-refresh-slot")) : null,
+    calendarView === "week" ? plannedSportFilter() : null);
+  // The count and the Geplant/Absolviert totals stand under the week, in its review (#4308).
+  const figures = h("div", "planned-week-figures",
     h("span", "planned-week-summary", [calendarSport === "all" ? "" : `Gefiltert: ${CALENDAR_SPORTS[calendarSport][0]} · `, calendarCountLabel(weekEntries, todayKey) || "Keine Einheiten"]));
   const planned = weekEntries.filter((entry) => !entry.is_completed_activity);
   const actual = weekEntries.map(calendarActualActivity).filter(Boolean);
   const totals = plannedWeekMetrics(planned, actual);
-  if (totals) heading.append(totals);
+  if (totals) figures.append(totals);
   const syncButton = plannedWeekSyncButton(weekKey, allWeekEntries, view.leftoversByWeek?.get(weekKey), todayKey);
   if (syncButton) heading.append(h("div", "planned-week-sync", syncButton));
   week.append(heading);
@@ -2756,14 +2793,14 @@ function renderPlannedWeek(view) {
   const legend = plannedZoneLegend(days);
   if (legend) week.append(legend);
   // The plan line and the review count the whole week, so a sport filter leaves both out.
-  const closing = calendarSport === "all" ? plannedWeekClosing(view, weekEntries, weekHasPlan) : null;
-  if (closing) week.append(closing);
+  const closing = calendarSport === "all" ? plannedWeekClosing(view, weekEntries, weekHasPlan, figures) : null;
+  week.append(closing || h("div", "planned-week-end", figures));
   return week;
 }
 
 // The week's last line: the review of a past or running week the server reviews, whose Plan tile
 // carries the compliance (#3298), else the plan line, which also stands in when the review fails.
-function plannedWeekClosing(view, weekEntries, weekHasPlan) {
+function plannedWeekClosing(view, weekEntries, weekHasPlan, figures) {
   const { todayKey, weekKey, weeklyCompliance } = view;
   const extra = weekEntries.filter((entry) => entry.is_completed_activity).length;
   const planned = weekEntries.length - extra;
@@ -2774,8 +2811,8 @@ function plannedWeekClosing(view, weekEntries, weekHasPlan) {
     planLine = text ? h("p", "planned-week-totals", text) : null;
   }
   const currentWeekKey = planWeekStart(todayKey);
-  if (weekKey > currentWeekKey || weekKey < addDateKey(currentWeekKey, -7 * WEEK_REVIEW_WEEKS_BACK)) return planLine;
-  return plannedWeekReview(weekKey, todayKey, weekHasPlan ? extra : 0, planLine);
+  if (weekKey > currentWeekKey || weekKey < addDateKey(currentWeekKey, -7 * WEEK_REVIEW_WEEKS_BACK)) return h("div", "planned-week-end", figures, planLine);
+  return plannedWeekReview(weekKey, todayKey, weekHasPlan ? extra : 0, planLine, figures);
 }
 
 // The week review under the selected past or running week (#3298, layout B): computed on the
@@ -2890,10 +2927,13 @@ function weekReviewTiles(review, extra, running) {
   return [weekReviewPlanTile(review.plan), sessions, time, load, ...weekReviewRecoveryTiles(review.recovery), checkins, weekReviewNotableTile(review.notable), complaints].filter(Boolean);
 }
 
-function plannedWeekReview(weekKey, todayKey, extra, planLine) {
+// The head and the week's count and totals under it stay through every refill of the card (#4308).
+const weekReviewKept = (card) => [...card.querySelectorAll(":scope > :is(.week-review-head, .planned-week-figures)")];
+
+function plannedWeekReview(weekKey, todayKey, extra, planLine, figures) {
   const thisWeek = weekKey === planWeekStart(todayKey);
   const card = h("section", { className: "week-review", dataset: { weekReview: weekKey, extra: String(extra), thisWeek: String(thisWeek) }, "aria-labelledby": "weekReviewTitle" },
-    h("header", "week-review-head", h("h5", { id: "weekReviewTitle" }, "Wochenrückblick"), h("span", null, [`KW ${isoWeekNumber(weekKey)}`, thisWeek ? "bis heute" : null].filter(Boolean).join(" · "))),
+    h("header", "week-review-head", h("h5", { id: "weekReviewTitle" }, "Wochenrückblick"), h("span", null, [`KW ${isoWeekNumber(weekKey)}`, thisWeek ? "bis heute" : null].filter(Boolean).join(" · "))), figures,
     createLoadingState("Wochenrückblick wird geladen…"));
   weekReviewFallbacks.set(card, planLine);
   void fillWeekReview(card);
@@ -2913,7 +2953,7 @@ function weekReviewFailed(card) {
   card.dataset.failed = "true";
   const retry = h("button", { type: "button", className: "secondary-button" }, "Erneut laden");
   retry.addEventListener("click", () => retryWeekReview(card, true));
-  card.replaceChildren(card.firstElementChild, h("p", "empty", "Wochenrückblick gerade nicht verfügbar"), retry);
+  card.replaceChildren(...weekReviewKept(card), h("p", "empty", "Wochenrückblick gerade nicht verfügbar"), retry);
   // A retry started from the button keeps the keyboard there when it fails again (Gitar #3413).
   if (card.dataset.retryFocus && document.activeElement === card) retry.focus();
   delete card.dataset.retryFocus;
@@ -2922,7 +2962,7 @@ function weekReviewFailed(card) {
 // The pressed button leaves the card, so a tapped retry moves focus to the card while it loads.
 function retryWeekReview(card, focus = false) {
   delete card.dataset.failed;
-  card.replaceChildren(card.firstElementChild, createLoadingState("Wochenrückblick wird geladen…"));
+  card.replaceChildren(...weekReviewKept(card), createLoadingState("Wochenrückblick wird geladen…"));
   if (focus) {
     card.dataset.retryFocus = "true";
     card.tabIndex = -1;
@@ -2953,9 +2993,11 @@ async function fillWeekReview(card, refill = false) {
   }
   if (!tiles.length) {
     const planLine = weekReviewFallbacks.get(card);
+    // The week's figures stay with the plan line that replaces the card (#4308).
+    const fallback = h("div", "planned-week-end", card.querySelector(".planned-week-figures"), planLine);
     // A focused card hands the keyboard to the plan line that replaces it (Gitar #3413).
     const hadFocus = card.contains(document.activeElement);
-    if (planLine) card.replaceWith(planLine); else card.remove();
+    card.replaceWith(fallback);
     if (hadFocus && planLine) {
       planLine.tabIndex = -1;
       planLine.focus();
@@ -2964,7 +3006,7 @@ async function fillWeekReview(card, refill = false) {
   }
   card.dataset.version = version;
   delete card.dataset.retryFocus;
-  card.replaceChildren(card.firstElementChild, h("div", "week-review-tiles", ...tiles));
+  card.replaceChildren(...weekReviewKept(card), h("div", "week-review-tiles", ...tiles));
 }
 
 // Wide screens show the open card's body as the detail pane beside the week (styles.css). It starts level
@@ -3129,6 +3171,7 @@ function renderPlanned(trainingCalendar) {
     globalThis.addEventListener?.("scroll", syncPlannedDetailHeight, { passive: true });
   }
   const focusedEntry = rememberPlannedEntryState(root);
+  placePlanRefresh(true);
   root.replaceChildren();
   root.append(...[plannedUndecidedBanner(), plannedReplanCard()].filter(Boolean));
   const weeklyCompliance = new Map(
@@ -3177,6 +3220,8 @@ function renderPlanned(trainingCalendar) {
   const week = renderPlannedWeek(view);
   openDefaultPlannedEntry(week);
   root.append(week);
+  placePlanRefresh();
+  keepCalendarSportVisible(week);
   restorePlannedEntryFocus(root, focusedEntry);
   watchPlannedDetail();
   if (state.plannedTodayFocusPending) requestAnimationFrame(() => focusPlannedToday());

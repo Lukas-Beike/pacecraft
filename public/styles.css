@@ -981,7 +981,24 @@ a.message-retry { display: grid; place-items: center; text-decoration: none; }
 .planned-week-number { margin-right: auto; color: var(--muted); font-size: .75rem; }
 .planned-week-step { font-size: 1.5rem; line-height: 1; cursor: pointer; }
 .planned-week-step:disabled { opacity: .4; cursor: default; }
-.planned-week-heading > :is(.planned-week-summary, .planned-week-metrics, .planned-week-sync, .planned-sport-filter) { flex-basis: 100%; }
+.planned-week-heading > :is(.planned-view-row, .planned-week-sync, .planned-sport-filter) { flex-basis: 100%; }
+.planned-view-row { display: flex; align-items: center; gap: 8px; }
+.planned-view-row > .planned-view-switch { flex: 1 1 auto; }
+.planned-refresh-slot:empty { display: none; }
+.planned-refresh-slot .view-refresh { justify-items: center; }
+/* The page heading gives way while its refresh button sits in the week's row (#4308); it stays the
+   panel's heading for assistive technology. The status line there stays a live region, out of sight
+   so it never covers the chips. */
+#workoutsPanel > .section-heading:not(:has(.view-refresh)), .planned-refresh-slot #planRefreshStatus { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
+.planned-week-figures { display: grid; gap: 6px; flex-basis: 100%; }
+.planned-week-end { display: grid; gap: 6px; padding: 10px 12px; border-top: 1px solid var(--line); }
+.planned-week-end > .planned-week-totals { padding: 0; border-top: 0; }
+.planned-week-end:empty { display: none; }
+@media (max-width: 767px) {
+  /* The row's chips never widen the card: in the month view they pushed the page past the screen (#4308). */
+  .planned-week-heading .planned-sport-filter { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; scroll-padding-inline: 8px; contain: inline-size; }
+  .planned-week-heading .planned-sport-filter > .chip { flex: 0 0 auto; }
+}
 .planned-week-summary { color: var(--muted); font-size: .75rem; line-height: 1.4; }
 /* Timeline: a date column with a connecting line beside each day's units (#2189). */
 .planned-week-days { display: grid; padding: 6px 0; }
@@ -2262,6 +2279,7 @@ button:focus-visible, a:focus-visible, summary:focus-visible {
 /* The week review under the calendar week (#3298, layout B). */
 .week-review { margin: 4px 12px 12px; border: 1px solid var(--line-strong); border-radius: var(--radius-sm); background: var(--surface-raised); }
 .week-review-head { display: flex; align-items: baseline; gap: 8px; padding: 10px 12px; }
+.week-review > .planned-week-figures { padding: 0 12px 10px; }
 .week-review-head h5 { margin: 0; font-size: .85rem; font-weight: 750; }
 .week-review-head span { margin-left: auto; color: var(--muted); font-size: .76rem; font-variant-numeric: tabular-nums; }
 .week-review > .loading-state, .week-review > .error-state { margin: 0 12px 12px; }
