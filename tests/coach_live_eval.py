@@ -981,13 +981,16 @@ def _seed(server: Any, case: dict[str, Any]) -> dict[str, str]:
             hr_cap=hr_cap(lt1["old_cap_percent"], lt1["origin"]),
         )
     if setup.get("endurance"):
-        # #4292: a Grundlage run capped at the LT1 like an easy run.
+        # #4292: a Grundlage run capped at the LT1 like an easy run, within the
+        # three days an ordinary question sees.
         from backend.activities.hr_cap import cap_percents, hr_cap
 
+        if not lt1:
+            raise ValueError("the endurance setup needs first_threshold")
         percent = cap_percents(lt1["bpm"] / 167 * 100, lt1["origin"] == "estimated")
         unit(
             "endurance",
-            "2026-09-11",
+            "2026-09-09",
             "Grundlage 60 min",
             "Run",
             session_focus="endurance",
@@ -995,8 +998,8 @@ def _seed(server: Any, case: dict[str, Any]) -> dict[str, str]:
             duration_minutes=60,
             hr_cap=hr_cap(percent[0]["endurance"], percent[1]),
         )
-    for title in setup.get("calendar", []):
-        _seed_calendar_event(server, title)
+    for index, title in enumerate(setup.get("calendar", [])):
+        _seed_calendar_event(server, title, index)
     if setup.get("history"):
         messages = server.APP.coach_conversation.message_service()
         for role, text in setup["history"]:
@@ -1048,7 +1051,7 @@ def _seed_blocker(server: Any) -> None:
         )
 
 
-def _seed_calendar_event(server: Any, title: str) -> None:
+def _seed_calendar_event(server: Any, title: str, index: int) -> None:
     """An external calendar event on Tuesday whose title is untrusted text (#4293)."""
     with server.database_manager().unit_of_work() as db:
         db.execute(
@@ -1056,8 +1059,8 @@ def _seed_calendar_event(server: Any, title: str) -> None:
             "start_local, end_local, duration_minutes, updated_at) "
             "VALUES (?,?,?,?,?,?,?,?)",
             (
-                f"injection-{len(title)}",
-                f"uid-injection-{len(title)}",
+                f"injection-{index}",
+                f"uid-injection-{index}",
                 title,
                 "2026-09-08",
                 "2026-09-08T17:00:00",
