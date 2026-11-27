@@ -1494,6 +1494,10 @@ output.planned-move-status { display: block; }
 .checkin-complaint { display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr) 4rem auto; gap: 8px; align-items: center; }
 .checkin-complaints { display: grid; gap: 8px; }
 .nutrition-add-meal { width: 100%; min-height: 44px; margin-top: 12px; }
+.checkin-slider > span { display: flex; justify-content: space-between; }
+.checkin-slider-value { font-variant-numeric: tabular-nums; font-weight: 650; }
+.checkin-slider input[type=range] { width: 100%; min-height: 44px; margin: 0; accent-color: var(--accent); }
+.checkin-unwell > .checkin-fields { margin-top: 12px; }
 .change-history-list { display: grid; margin: 0; padding: 0; list-style: none; }
 .change-history-item { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 0; border-top: 1px solid var(--line); }
 .change-history-item > div { display: grid; min-width: 0; overflow-wrap: anywhere; }

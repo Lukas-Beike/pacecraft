@@ -1,4 +1,11 @@
-const { test, expect } = require("@playwright/test");
+const { test, expect } = require("./helpers/today");
+
+// Illness and complaints are one row that starts closed unless the day has any (#4306); this opens it.
+async function openUnwell(dialog) {
+  const row = dialog.locator("details.checkin-unwell");
+  if (await row.getAttribute("open") === null) await row.locator("summary").click();
+  await expect(row).toHaveAttribute("open", "");
+}
 
 // Without a connected source the calendar is one empty state (#3936 G-13); the days need one.
 test.use({ serviceWorkers: "block" });
@@ -24,6 +31,8 @@ test("@responsive the calendar day's check-in form saves a correction and undoes
   const dialog = page.locator("#checkinDialog");
   await expect(dialog).toBeVisible();
   await dialog.getByLabel("Stress (0–10)").fill("7");
+  // Illness and complaints are one collapsed row (#4306).
+  await openUnwell(dialog);
   await dialog.getByRole("button", { name: "+ Beschwerde" }).click();
   await dialog.locator("select[name=area]").selectOption("achilles");
   await dialog.locator("select[name=side]").selectOption("left");
@@ -55,6 +64,7 @@ test("@responsive an unchanged form saves nothing and a refused save keeps the f
   expect(posts).toHaveLength(0);
   await row.getByRole("button").click();
   // The same area and side twice is refused by the server; the entered values stay.
+  await openUnwell(dialog);
   for (const index of [0, 1]) {
     await dialog.getByRole("button", { name: "+ Beschwerde" }).click();
     await dialog.locator("input[name=severity]").nth(index).fill("2");
@@ -115,9 +125,53 @@ test("@responsive the add button for a complaint follows the limit of eight", as
   await page.locator(".planned-day.is-today [data-checkin] button").click();
   const dialog = page.locator("#checkinDialog");
   const add = dialog.getByRole("button", { name: "+ Beschwerde" });
+  await openUnwell(dialog);
   for (let count = 0; count < 8; count += 1) await add.click();
   await expect(dialog.locator(".checkin-complaint")).toHaveCount(8);
   await expect(add).toBeHidden();
   await dialog.getByRole("button", { name: "Beschwerde entfernen" }).first().click();
   await expect(add).toBeVisible();
+});
+
+// #4306: the 0–10 scores are sliders. A key and a pointer set them, an untouched one stores nothing,
+// and illness and complaints are one row that opens when the day has any.
+test("@responsive the scores are sliders, an untouched one stores nothing, and complaints collapse", async ({ page }) => {
+  await page.goto("/#plan/checkin");
+  const dialog = page.locator("#checkinDialog");
+  await expect(dialog).toBeVisible();
+  const earlier = await page.evaluate(() => addDateKey(todayIso(), -3));
+  await dialog.locator("input[name=checkin_date]").fill(earlier);
+  const save = dialog.getByRole("button", { name: "Speichern" });
+  await expect(save).toBeEnabled();
+  const soreness = dialog.getByLabel("Muskelkater (0–10)");
+  const stress = dialog.getByLabel("Stress (0–10)");
+  const motivation = dialog.getByLabel("Motivation (0–10)");
+  await expect(dialog.locator(".checkin-slider-value")).toHaveText(["–", "–", "–"]);
+  await expect(motivation).toHaveAttribute("aria-valuetext", "nicht angegeben");
+  // By keyboard: two steps up from the resting middle.
+  await soreness.focus();
+  await soreness.press("ArrowRight");
+  await soreness.press("ArrowRight");
+  await expect(soreness).toHaveValue("7");
+  await expect(soreness).toHaveAttribute("aria-valuetext", "7");
+  // By pointer: a tap on the track's left part.
+  const box = await stress.boundingBox();
+  await page.mouse.click(box.x + box.width * 0.2, box.y + box.height / 2);
+  const tapped = Number(await stress.inputValue());
+  expect(tapped).toBeLessThan(5);
+  await expect(dialog.locator(".checkin-slider-value").nth(1)).toHaveText(String(tapped));
+  // The thumb's row is a 44 px touch target.
+  expect(box.height).toBeGreaterThanOrEqual(44);
+  await expect(dialog.locator("details.checkin-unwell")).not.toHaveAttribute("open", "");
+  await save.click();
+  await expect(dialog).toHaveCount(0);
+  const stored = await page.evaluate((date) => api(`/api/checkins?date=${date}`), earlier);
+  expect([stored.checkin.soreness, stored.checkin.stress, stored.checkin.motivation ?? null]).toEqual([7, tapped, null]);
+  // A day with a complaint opens the row at once and loads its scores onto the sliders.
+  await page.evaluate((date) => api("/api/checkins", { method: "POST", body: JSON.stringify({ checkin_date: date, complaints: [{ area: "achilles", side: "left", severity: 3 }] }) }), earlier);
+  await page.locator(".planned-day.is-today [data-checkin] button").click();
+  await dialog.locator("input[name=checkin_date]").fill(earlier);
+  await expect(dialog.locator("details.checkin-unwell")).toHaveAttribute("open", "");
+  await expect(soreness).toHaveValue("7");
+  await expect(dialog.locator(".checkin-slider-value").first()).toHaveText("7");
 });

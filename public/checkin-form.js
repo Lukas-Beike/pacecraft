@@ -35,6 +35,20 @@ function checkinNumberField(name, label, value, max) {
   return h("label", null, label, h("input", { name, type: "number", min: 0, max, step: 1, inputMode: "numeric", value: checkinFilled(value) ? value : "" }));
 }
 
+// A 0–10 score as a slider (#4306): a stored value loads onto it; without one it reads "–" and is
+// sent only once it was moved, so an untouched score stays unanswered.
+function checkinSlider(name, label, value) {
+  const set = checkinFilled(value);
+  const shown = h("output", { className: "checkin-slider-value" }, set ? String(value) : "–");
+  const input = h("input", { name, type: "range", min: 0, max: 10, step: 1, value: set ? value : 5, "aria-label": `${label} (0–10)`, "aria-valuetext": set ? String(value) : "nicht angegeben", dataset: { set: set ? "1" : "" } });
+  input.addEventListener("input", () => {
+    input.dataset.set = "1";
+    shown.textContent = input.value;
+    input.setAttribute("aria-valuetext", input.value);
+  });
+  return h("div", "checkin-slider", h("span", { "aria-hidden": "true" }, label, shown), input);
+}
+
 function checkinSelect(name, label, options, value) {
   return h("select", { name, "aria-label": label }, options.map(([key, text]) => h("option", { value: key, selected: key === value }, text)));
 }
@@ -65,7 +79,11 @@ function checkinSymptoms(stored) {
 
 // What the form shows now, as plain values.
 function checkinValues(form) {
-  const text = (name) => form.elements[name].value.trim();
+  // An unmoved slider without a stored value is no answer.
+  const text = (name) => {
+    const field = form.elements[name];
+    return field.type === "range" && !field.dataset.set ? "" : field.value.trim();
+  };
   return {
     texts: Object.fromEntries([...CHECKIN_SCORES.map(([name]) => name), "available_minutes", "illness", "notes"].map((name) => [name, text(name)])),
     day_status: form.elements.day_status.value,
@@ -117,14 +135,17 @@ function checkinFormNodes(stored) {
   refresh();
   const dayStatus = h("fieldset", "appearance-control", h("legend", null, "Tagesstatus"), h("div", "segmented-control", CHECKIN_DAY_STATUS.map(([key, label]) =>
     h("label", null, h("input", { type: "radio", name: "day_status", value: key, checked: key === (stored.day_status || "unknown") }), label))));
+  // Illness, symptoms and complaints are one collapsed row, open when the day has any (#4306).
+  const unwell = Boolean(stored.illness || stored.symptoms?.length || stored.complaints?.length);
   return [
     dayStatus,
-    ...CHECKIN_SCORES.map(([key, label]) => checkinNumberField(key, `${label} (0–10)`, stored[key], 10)),
+    ...CHECKIN_SCORES.map(([key, label]) => checkinSlider(key, label, stored[key])),
     checkinNumberField("available_minutes", "Verfügbare Zeit (min)", stored.available_minutes, 1440),
     checkinChips(stored),
-    checkinSymptoms(stored),
-    h("label", null, "Krank", h("textarea", { name: "illness", rows: 2, maxLength: 1000, value: stored.illness || "" })),
-    h("fieldset", "chip-field", h("legend", null, "Beschwerden"), complaints, add),
+    h("details", { className: "training-focus-details checkin-unwell", open: unwell }, h("summary", null, "Krank oder Beschwerden"),
+      h("div", "checkin-fields", checkinSymptoms(stored),
+        h("label", null, "Krank", h("textarea", { name: "illness", rows: 2, maxLength: 1000, value: stored.illness || "" })),
+        h("fieldset", "chip-field", h("legend", null, "Beschwerden"), complaints, add))),
     h("label", null, "Notiz", h("textarea", { name: "notes", rows: 2, maxLength: 4000, value: stored.notes || "" })),
   ];
 }
