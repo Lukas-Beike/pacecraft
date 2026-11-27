@@ -559,8 +559,14 @@ function recordedMaxHrNote(thresholds = state.data?.performance?.thresholds) {
   return found ? `Brustgurt ${Math.round(found.value)} bpm am ${dateLabel(found.date)}` : null;
 }
 
+function zoneEditName(label, attributes) {
+  if (attributes.zoneEdit === "lt1") return "Schwelle (LT1) bearbeiten";
+  const kind = attributes.zoneEnvironment ? `${ZONE_KIND_TITLES[attributes.zoneEdit]} · Indoor` : ZONE_KIND_TITLES[attributes.zoneEdit];
+  return `Zonen ${label.toLowerCase()}: ${kind}`;
+}
+
 function zoneEditButton(label, attributes) {
-  const button = messageActionButton("edit", attributes.zoneEdit === "lt1" ? "Schwelle (LT1) bearbeiten" : `Zonen ${label.toLowerCase()}: ${ZONE_KIND_TITLES[attributes.zoneEdit]}${attributes.zoneEnvironment ? " · Indoor" : ""}`);
+  const button = messageActionButton("edit", zoneEditName(label, attributes));
   Object.assign(button.dataset, attributes);
   return button;
 }
