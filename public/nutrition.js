@@ -1343,10 +1343,10 @@ function addNutritionProductToCoachDraft() {
   jumpToLatestMessages();
 }
 
-// A meal of today that waits in the outbox keeps the time it was entered, not the later
-// time it is sent (review on #3761).
+// A snack of today that waits in the outbox keeps the time it was entered, not the later
+// time it is sent (review on #3761); the fixed meals take the server's type default (#4271).
 function queuedMealPayload(body) {
-  if (body.meal_date !== todayIso()) return body;
+  if (body.meal_date !== todayIso() || (body.meal_type && body.meal_type !== "snack")) return body;
   const time = new Intl.DateTimeFormat("de-DE", { hour: "2-digit", minute: "2-digit", hourCycle: "h23", timeZone: state.data?.profile?.timezone || undefined }).format(new Date());
   return { ...body, meal_time: time };
 }
@@ -1385,7 +1385,7 @@ async function addNutritionProductToMeal() {
     // clears the status line, so the receipt follows it.
     await reloadNutritionProducts();
     if (generation !== state.sessionGeneration) return;
-    showNutritionReceipt(document.querySelector("#nutritionProductStatus"), `„${use.product.name}“ ${mealId ? "zur Mahlzeit ergänzt" : `als ${mealLabel} erfasst`}.`, result.change, () => reloadNutritionProducts());
+    showNutritionReceipt(document.querySelector("#nutritionProductStatus"), `„${use.product.name}“ ${mealId ? "zur Mahlzeit ergänzt" : "als " + mealLabel + " erfasst"}.`, result.change, () => reloadNutritionProducts());
   } catch (error) {
     if (generation !== state.sessionGeneration) return;
     // The queued entry is gone meanwhile: the next save goes out as a new snack (Gitar on #3830).

@@ -262,3 +262,12 @@ test("a product card names its last use, or that it was never used and since whe
   // A list read without counts shows no last use.
   assert.equal(nutritionLastUseText({ name: "Skyr" }, today), "");
 });
+
+test("a queued snack of today keeps its entry time, a queued fixed meal takes the server's type default (#4271)", () => {
+  const { queuedMealPayload } = extractFunctions("nutrition.js", ["queuedMealPayload"], { todayIso: () => "2026-11-27", state: { data: {} } });
+  assert.match(queuedMealPayload({ meal_type: "snack", meal_date: "2026-11-27" }).meal_time, /^\d{2}:\d{2}$/);
+  assert.deepEqual({ ...queuedMealPayload({ meal_type: "breakfast", meal_date: "2026-11-27" }) }, { meal_type: "breakfast", meal_date: "2026-11-27" });
+  assert.deepEqual({ ...queuedMealPayload({ meal_type: "snack", meal_date: "2026-11-26" }) }, { meal_type: "snack", meal_date: "2026-11-26" });
+  // Adding to an existing meal sends no type and no time of its own.
+  assert.equal(queuedMealPayload({ id: "7", product_id: "p" }).meal_time, undefined);
+});
