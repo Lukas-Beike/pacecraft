@@ -522,8 +522,9 @@ export async function runStep(page, { pre = [], post = [], unseek, ...step }, ca
   }
 }
 
-// A step newer than the running release is not checked (#3886): the walk runs from develop, where a
-// feature merged after the release already has its step. Without a readable version every step runs.
+// A step newer than the running release is not checked (#3886): a checkout at the deployed APP_VERSION
+// (see requireDeployedCheckout) may be ahead of the release by features whose steps already exist.
+// Without a readable version every step runs.
 // The skip outcome for such a step, else null (the step runs).
 export function releaseSkip(step, running) {
   if (!step.since || !running) return null;
@@ -555,7 +556,7 @@ export function versionMismatch(deployed, checkout) {
 }
 
 // Logs out and stops the walk before its first step when the checkout is not the deployed release.
-async function requireDeployedCheckout(page, deployed) {
+export async function requireDeployedCheckout(page, deployed) {
   const mismatch = versionMismatch(deployed, checkoutVersion());
   if (!mismatch) return;
   await logout(page);
@@ -631,9 +632,9 @@ async function walk({ chromium, url, password, outDir, earlier = {} }) {
       await login(page, password);
       // Every error counts against a step: login, a view (with its calendar walk), or the rest.
       result.errors[`${name} login`] = errors.length;
-      result.curves ??= await waitForCurves(page);
       result.version ??= await runningVersion(page);
       await requireDeployedCheckout(page, result.version);
+      result.curves ??= await waitForCurves(page);
       let counted = errors.length;
       const shot = async (label) => writeFresh(outDir, `${name}-${label}.png`, await page.screenshot({ fullPage: false }));
       for (const route of VIEWS) {
