@@ -82,7 +82,7 @@ test("@responsive the pencil edits a meal's components: remove, restore, resize 
   await expect(card).toContainText("669 kcal");
 });
 
-// #4270: "+ Hinzufügen" under the rows reuses the swap search; the new row is stored with "Speichern" only.
+// #4270: "+ Zutat" under the rows reuses the swap search; the new row is stored with "Speichern" only.
 test("@responsive the dialog adds a component from the search, and Abbrechen stores nothing", async ({ page }) => {
   const posts = await mockDiary(page);
   await page.goto("/#nutrition/diary");
@@ -91,7 +91,7 @@ test("@responsive the dialog adds a component from the search, and Abbrechen sto
   const rows = dialog.locator(".edit-row");
   const addTofu = async () => {
     await card.getByRole("button", { name: "Mahlzeit bearbeiten: Reis mit Tofu" }).click();
-    await dialog.getByRole("button", { name: "+ Hinzufügen" }).click();
+    await dialog.getByRole("button", { name: "+ Zutat" }).click();
     await expect(dialog.locator("#nutritionMealEditTitle")).toHaveText("Zutat hinzufügen");
     await dialog.getByLabel("Datenbank durchsuchen").fill("Tofu");
     await dialog.getByRole("button", { name: "Suchen" }).click();

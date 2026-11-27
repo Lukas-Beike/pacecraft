@@ -261,7 +261,7 @@ async function saveNutritionMealEdit() {
 document.querySelector(".nutrition-meal-edit .edit-meal")?.addEventListener("input", changeNutritionMealField);
 document.querySelector("#nutritionMealEditCancel")?.addEventListener("click", () => document.querySelector("#nutritionMealEditDialog").close());
 document.querySelector("#nutritionMealEditBack")?.addEventListener("click", closeNutritionMealSwap);
-// "+ Hinzufügen" opens the swap's search for a new component (#4270).
+// "+ Zutat" (#4279: "+ {Objekt}") opens the swap's search for a new component (#4270).
 document.querySelector("#nutritionMealEditAdd")?.addEventListener("click", () => openNutritionMealSwap({ adding: true }));
 document.querySelector("#nutritionMealEditMain")?.addEventListener("submit", (event) => { event.preventDefault(); void saveNutritionMealEdit(); });
 document.querySelector("#nutritionMealEditSearch")?.addEventListener("submit", (event) => { event.preventDefault(); void searchNutritionMealSwap(); });
