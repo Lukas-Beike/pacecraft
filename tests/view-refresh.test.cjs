@@ -104,9 +104,10 @@ test("nutrition product refresh reload preserves the selected search query", () 
   assert.match(source, /if \(background && nutritionLookupResultShown && !refresh\) return;/);
   // A preserved lookup (or a receipt shown before the reload, #4269) keeps the status line.
   assert.match(source, /const quiet = preserveLookup \|\| keepStatus \|\| background;/);
-  assert.match(source, /renderNutritionProducts\(result\.products \|\| \[\], \{ search: query \}\);\s*if \(!quiet\) status\.textContent/);
+  // A quiet load only replaces a searching message it left behind (Gitar on #4301).
+  assert.match(source, /renderNutritionProducts\(result\.products \|\| \[\], \{ search: query \}\);\s*if \(!quiet \|\| status\.textContent === searching\) status\.textContent/);
   assert.match(source, /targetId: "#nutritionLookupResult"/);
-  assert.match(source, /if \(!quiet\) status\.textContent = "Produkte werden gesucht/);
+  assert.match(source, /const searching = "Produkte werden gesucht …";\s*if \(!quiet\) status\.textContent = searching;/);
 });
 
 

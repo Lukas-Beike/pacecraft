@@ -1436,12 +1436,14 @@ async function loadNutritionProducts(query = "", { background = false, throwOnEr
   // A background load never takes the status line from a lookup or a receipt.
   const quiet = preserveLookup || keepStatus || background;
   try {
-    if (!quiet) status.textContent = "Produkte werden gesucht …";
+    // A quiet load still ends a searching message an overtaken load left behind (Gitar on #4301).
+    const searching = "Produkte werden gesucht …";
+    if (!quiet) status.textContent = searching;
     const search = query ? "&q=" + encodeURIComponent(query) : "";
     const result = await api(`/api/nutrition/products?scope=all${search}`);
     if (!isCurrentNutritionProductLoad(sequence, generation, expectedQuery)) return;
     renderNutritionProducts(result.products || [], { search: query });
-    if (!quiet) status.textContent = result.products?.length ? "" : "Keine Produkte gefunden.";
+    if (!quiet || status.textContent === searching) status.textContent = result.products?.length ? "" : "Keine Produkte gefunden.";
   } catch (error) {
     showNutritionProductLoadError(quiet, sequence, generation, expectedQuery, error);
     if (throwOnError) throw error;
