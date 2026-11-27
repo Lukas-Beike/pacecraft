@@ -14,6 +14,7 @@ from backend.coach.context import (
 from backend.coach.context_selection import (
     CONTEXT_SECTIONS,
 )
+from backend.coach.prompt import COACH_PROMPT
 from backend.coach.tool_schemas import build_structured_tool_schemas
 from backend.providers.source_labels import SourceView, provider_label
 from tests import test_coach_structured_context as context_tests
@@ -153,11 +154,12 @@ class CoachDomainSectionSourceTests(unittest.TestCase):
         self.assertIn(_label(ProviderId.GARMIN), policy["activities"])
         self.assertIn(_label(ProviderId.WAHOO), policy["activities"])
         self.assertIn(_label(ProviderId.GARMIN), policy["recovery"])
-        # Every LT1 stand-in is named an estimate (#2427).
+        # Every LT1 stand-in is named an estimate (#2427); since #4288 C7 the
+        # trusted rules say so, not the untrusted source_policy.
         self.assertIn(
-            "nenne own_sessions und fixed_share immer als Schätzung bzw. Standardwert",
-            policy["current_performance"],
+            "call own_sessions an estimate, fixed_share a default", COACH_PROMPT
         )
+        self.assertIn("own_sessions eigene Einheiten", policy["current_performance"])
         for text in policy.values():
             self.assertNotIn("Intervals", text)
         self.assertEqual(
