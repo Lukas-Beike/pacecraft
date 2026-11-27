@@ -4,7 +4,7 @@ const { test, expect } = require("./helpers/today");
 // test the worker, so it is blocked and every route applies (#3842).
 test.use({ serviceWorkers: "block" });
 
-// #3028: a library entry is planned and deleted without the Coach, each with a receipt and "Rückgängig".
+// #3028: a library entry is planned and archived without the Coach, each with a receipt and "Rückgängig".
 test("@responsive Einplanen and Archivieren work in the library card and Rückgängig takes each back", async ({ page, request }) => {
   test.setTimeout(180_000);
   expect((await request.get("/api/fixture/demo")).ok()).toBeTruthy();

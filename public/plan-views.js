@@ -1643,7 +1643,7 @@ function plannedUnitActions(entry, dateKey, todayKey) {
   return [h("div", "planned-activity-actions", edit, h("div", "planned-move-group", toggle, days), coach, garminOpen, remove), confirm, garminAsk, garminStatus, status].filter(Boolean);
 }
 
-// "Bearbeiten" and "Archivieren" (#3950): the unit editor over the Coach's change batch; the card shows the receipt
+// The pencil (#3950): the unit editor over the Coach's change batch; the card shows the receipt
 // with "Rückgängig" and the calendar jumps to the unit's day. A new unit is planned from the Bibliothek ("Einplanen").
 async function plannedUnitSaved(result, editor) {
   const key = `local:${result.local_id}`;
@@ -3268,7 +3268,7 @@ function libraryActions(workout) {
   };
   toggle.addEventListener("click", () => showDays(days.hidden));
   if (libraryOpenStrips.has(id)) showDays(true);
-  const [remove, confirm] = inCardAction(h("button", { type: "button", className: "secondary-button" }, "Archivieren"), async () => {
+  const [remove, confirm] = inCardAction(h("button", { type: "button", className: "secondary-button", "aria-label": `Archivieren: ${name}` }, "Archivieren"), async () => {
     const result = await api(`/api/library/${encodeURIComponent(id)}/archive`, { method: "POST", body: JSON.stringify({ confirmed: true }) });
     libraryReceipts.clear();
     libraryReceipts.set(id, { text: `Archiviert: ${name}`, change: result.change });
@@ -3450,7 +3450,7 @@ function archivedLibraryCard(workout) {
   const buttons = [restore];
   const notes = [status];
   if (!workout.external_id) {
-    const [remove, failure] = inCardAction(h("button", { type: "button", className: "secondary-button danger-button" }, "Löschen"), async () => {
+    const [remove, failure] = inCardAction(h("button", { type: "button", className: "secondary-button danger-button", "aria-label": `Endgültig löschen: ${name}` }, "Löschen"), async () => {
       const result = await api(`/api/library/${encodeURIComponent(id)}/delete`, { method: "POST", body: JSON.stringify({ confirmed: true }) });
       libraryReceipts.clear();
       libraryReceipts.set(id, { text: `Endgültig gelöscht: ${name}`, change: result.change });

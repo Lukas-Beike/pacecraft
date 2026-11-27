@@ -69,7 +69,7 @@ test("@responsive the Bibliothek creates, edits, restores and deletes an entry",
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBeTruthy();
 });
 
-test("@responsive the calendar edits and archives a unit", async ({ page, request }) => {
+test("@responsive the calendar edits and deletes a unit", async ({ page, request }) => {
   test.setTimeout(180_000);
   const posts = [];
   page.on("request", (item) => {
