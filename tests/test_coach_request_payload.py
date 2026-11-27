@@ -259,7 +259,7 @@ class CoachRequestPayloadTests(unittest.TestCase):
                 allow_mutations=True,
                 model="claude-sonnet-5-5",
                 thinking_level="low",
-                conversation_id=None,
+                conversation_id="conversation-1",
                 attachments=[],
                 retain_openai_attachment_context=False,
                 has_prior_openai_attachments=False,
