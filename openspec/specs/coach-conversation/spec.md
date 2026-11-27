@@ -409,6 +409,10 @@ With the opt-in switch "Morgen-Check-in automatisch" on, the system SHALL queue 
 - **WHEN** the automatic turn's model calls a write tool
 - **THEN** it was offered only read tools and the server refuses the call (`intent_scope_denied`); an athlete request, streamed turn or HTTP payload can neither use an `auto:` turn id nor mark a turn automatic
 
+#### Scenario: Automatic session analysis
+- **WHEN** "Einheiten automatisch analysieren" is on and a new Garmin or Wahoo session of a checked sport group (Laufen, Radfahren, Kraft, Sonstiges; running and cycling preselected) is stored after it was switched on
+- **THEN** the session analysis quick action runs for that session once (`auto:session:<id>`), newest first and one at a time, at most 5 a day; an unchecked group, a replayed, backfilled or duplicate session queues none
+
 #### Scenario: Answer
 - **WHEN** the turn completes
 - **THEN** its answer shows in the chat after the prompt "Automatischer Morgen-Check-in: …", and diagnostics count started, completed and failed automatic turns
@@ -420,6 +424,8 @@ Evidence:
 - `backend/coach/background_job.py:CoachBackgroundJobRunner._run_claimed`
 - `backend/coach/dialogue_action.py:CoachDialogueActionService.classify`
 - `tests/test_coach_auto_turns.py:test_the_morning_check_in_is_queued_only_when_switched_on_and_due`
+- `tests/test_coach_auto_turns.py:test_each_new_session_of_a_checked_sport_is_analysed_once_newest_first`
+- `tests/test_coach_auto_turns.py:test_a_burst_is_capped_per_day_and_switching_off_forgets_the_start`
 - `tests/test_coach_dialogue.py:test_an_automatic_morning_turn_only_reads_and_authorizes_nothing_later`
 - `tests/test_coach_background_job.py:test_only_an_automatic_read_only_job_runs_without_a_session`
 - `tests/test_http_chat_stream.py:test_stream_relays_events_and_unregisters_after_terminal_event`

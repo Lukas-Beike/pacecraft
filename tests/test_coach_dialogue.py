@@ -27,7 +27,7 @@ from backend.coach import dialogue as coach_dialogue
 from backend.coach import service as coach_service
 from backend.coach import streams as coach_streams
 from backend.coach import structured_tool_round
-from backend.coach.auto_turns import MORNING_MESSAGE
+from backend.coach.auto_turns import MORNING_MESSAGE, SESSION_MESSAGE
 from backend.coach.chat_turn import CoachChatTurnService
 from backend.coach.dialogue import validate_request
 from backend.coach.dialogue_action import CoachDialogueActionService
@@ -1690,6 +1690,34 @@ class CoachDialogueTests(DialogueHarness, unittest.TestCase):
             )
         )
         self.assertEqual(result["status"], "failed")
+        with server.database_manager().unit_of_work() as db:
+            self.assertIsNone(db.execute("SELECT 1 FROM athlete_checkins").fetchone())
+        # The automatic session analysis (#4275) is refused a write the same way.
+        prompt_text = SESSION_MESSAGE.format(session_id="act_synthetic")
+        self.assertTrue(
+            server.COACH_BACKGROUND_JOBS.job_submission_service().enqueue_automatic(
+                prompt_text, "auto:session:act_synthetic", "session_analysis"
+            )
+        )
+        result, model = self.turn(
+            prompt_text,
+            [
+                lambda _: self.call(
+                    "save_checkin", {"payload": {"notes": "x"}}, ["local_checkin"]
+                ),
+                {"output_text": "Analyse."},
+            ],
+            turn="auto:session:act_synthetic",
+            background_job=True,
+            session_csrf_hash="",
+        )
+        self.assertEqual(result["status"], "failed")
+        self.assertTrue(
+            all(
+                tool["name"] in server.STRUCTURED_READ_ONLY_TOOLS
+                for tool in model.call_args_list[0].args[0]["tools"]
+            )
+        )
         with server.database_manager().unit_of_work() as db:
             self.assertIsNone(db.execute("SELECT 1 FROM athlete_checkins").fetchone())
         # A later athlete turn can never cite the automatic prompt as its request.

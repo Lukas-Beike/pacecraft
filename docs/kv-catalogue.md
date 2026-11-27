@@ -16,7 +16,7 @@ read. A new key needs no entry: it appears here when its write is added.
   `profile` is only set when absent.
 
 <!-- BEGIN GENERATED KEYS -->
-111 keys and 25 key patterns; `<value>` stands for a value the code computes.
+112 keys and 25 key patterns; `<value>` stands for a value the code computes.
 
 | Key | Written by | Deleted by | Export | Reset at start | Purge |
 | --- | --- | --- | --- | --- | --- |
@@ -39,6 +39,7 @@ read. A new key needs no entry: it appears here when its write is added.
 | `checkin_symptoms:<value>` | backend/athlete/checkins.py:CheckinService._write<br>backend/athlete/checkins.py:CheckinService.restore_in_transaction | backend/athlete/checkins.py:CheckinService._write<br>backend/athlete/checkins.py:CheckinService.restore_in_transaction | yes | - | - |
 | `checkin_tags:<value>` | backend/athlete/checkins.py:CheckinService._write<br>backend/athlete/checkins.py:CheckinService.restore_in_transaction | backend/athlete/checkins.py:CheckinService._write<br>backend/athlete/checkins.py:CheckinService.restore_in_transaction | yes | - | - |
 | `claude_models` | backend/providers/model_wiring.py:build_model_transport | - | yes | - | - |
+| `coach_automatic_sessions` | backend/coach/auto_turns.py:AutomaticCoachTurns._check_sessions | - | yes | - | - |
 | `coach_automatic_turn_counts` | backend/coach/auto_turns.py:AutomaticCoachTurns._count | - | yes | - | - |
 | `coach_automatic_turns` | backend/settings.py:SettingsService.save_automatic_turns | - | yes | - | - |
 | `coach_pending_request` | backend/coach/clarification.py:CoachClarificationService.save_question<br>backend/coach/conversation.py:CoachConversationResetService._reset_local<br>backend/coach/tool_execution_service.py:CoachStructuredToolExecutionService._execute_tool<br>backend/coach/turn_failures.py:CoachTurnFailureService._pending_request<br>backend/coach/turn_outcome.py:CoachStructuredOutcomeService._persist_pending | - | yes | - | - |

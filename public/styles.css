@@ -1333,6 +1333,7 @@ output.planned-move-status { display: block; }
 .notification-types { display: grid; min-width: 0; margin: 0; padding: 0; border: 0; }
 .notification-types .chip { display: flex; border-top: 1px solid var(--line); }
 .notification-types .chip span { flex: 1; flex-direction: row-reverse; justify-content: space-between; }
+.automatic-sports { padding-inline-start: 16px; }
 .collapsible-section > summary { cursor: pointer; display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: -17px -17px 0; padding: 17px; color: var(--ink); list-style: none; }
 #settingsPanel .collapsible-section:not([open]) { gap: 0; margin-bottom: 10px; padding: 0; }
 #settingsPanel .collapsible-section:not([open]) > summary { margin: 0; padding: 12px 17px; }
