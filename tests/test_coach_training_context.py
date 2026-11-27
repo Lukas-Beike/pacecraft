@@ -236,8 +236,10 @@ class CoachTrainingContextServiceTests(unittest.TestCase):
                 ],
             }
         ]
+        context = {"daily_planning_context": days}
+        coach_daily_unit_refs(context, {"u1"})
         self.assertEqual(
-            coach_daily_unit_refs(days, {"u1"})[0]["planned"],
+            context["daily_planning_context"][0]["planned"],
             [
                 {"id": "u1", "starts_at_local": "2026-12-01T07:00:00"},
                 {"id": "u9", "name": "Nicht gelistet", "type": "Ride"},

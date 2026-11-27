@@ -1103,11 +1103,12 @@ def _run_cap(unit: Any) -> dict[str, Any] | None:
     return stored_cap(unit)
 
 
-def coach_daily_unit_refs(days: Any, listed: set[Any]) -> Any:
-    """A day's planned unit that ``local_planned_workouts`` lists keeps only its
-    id and start time: the row there names it (#4286, R12 C12)."""
+def coach_daily_unit_refs(context: dict[str, Any], listed: set[Any]) -> None:
+    """In ``context``, a day's planned unit that ``local_planned_workouts`` lists
+    keeps only its id and start time: the row there names it (#4286, R12 C12)."""
+    days = context.get("daily_planning_context")
     if not isinstance(days, list) or not listed:
-        return days
+        return
     rows = []
     for row in days:
         planned = row.get("planned") if isinstance(row, dict) else None
@@ -1121,7 +1122,7 @@ def coach_daily_unit_refs(days: Any, listed: set[Any]) -> Any:
             for unit in planned
         ]
         rows.append({**row, "planned": refs})
-    return rows
+    context["daily_planning_context"] = rows
 
 
 def coach_daily_rows(days: Any) -> Any:
@@ -1531,11 +1532,9 @@ class CoachTrainingContextService:
             select=planning_context.selected,
         )
         prompt_context["local_planned_workouts"] = local_planned_workouts
-        if "daily_planning_context" in prompt_context:
-            prompt_context["daily_planning_context"] = coach_daily_unit_refs(
-                prompt_context["daily_planning_context"],
-                {row.get("id") for row in local_planned_workouts},
-            )
+        coach_daily_unit_refs(
+            prompt_context, {row.get("id") for row in local_planned_workouts}
+        )
 
         prompt_context, truncations = bounded_coach_context_sections(
             prompt_context, section_limits=self._section_limits
