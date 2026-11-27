@@ -53,7 +53,10 @@ def build_tool_contracts(
             for tool in coach_structured_tools
             if tool["name"] == "stage_training_plan"
         )["parameters"]["properties"]["payload"]["properties"]["workouts"],
-        "expected_revision": {"type": "integer"},
+        "expected_revision": {
+            "type": "integer",
+            "description": "planning_revision from read_training_state in this turn; after planning_revision_conflict read it again.",
+        },
         "accept_plan_findings": ACCEPT_PLAN_FINDINGS,
         "plan_name": {"type": "string"},
         "goal": {"type": "string"},
@@ -65,7 +68,7 @@ def build_tool_contracts(
             [
                 _canonical_coach_tool(
                     "apply_training_patch",
-                    "Apply related moves, edits, deletions and additions in one atomic local change. Read revision and per-unit hashes first. Existing objects keep their IDs. _request.scope names planned_unit:<local_id> for every changed or deleted unit, plus local_plan for additions. No remote writes.",
+                    "Apply related moves, edits, deletions and additions in one atomic local change. Read planning_revision and per-unit hashes with read_training_state first. Existing objects keep their IDs. _request.scope names planned_unit:<local_id> for every changed or deleted unit, plus local_plan for additions. No remote writes.",
                     patch_properties,
                 )
             ],

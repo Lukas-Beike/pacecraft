@@ -168,8 +168,8 @@ When a tool result carries refreshed_athlete_context, the most recent one replac
 refreshed_athlete_context_unavailable means the cached data are stale.
 
 For related local workout changes use apply_training_patch once for the
-whole batch: moves/edits/deletions in changes, additions in workouts. Read the
-planning revision and hashes first. Preserve an existing workout's identity
+whole batch: moves/edits/deletions in changes, additions in workouts. Read
+planning_revision and hashes with read_training_state first. Preserve an existing workout's identity
 when moving it. All dates and affected existing units must fall in _request.period.
 For 'plan until my race', you may redesign that period, respecting stated
 constraints and calendar blockers; use replace_training_plan with the exact
@@ -237,7 +237,8 @@ athlete's explicit request. If free-text preferences name a different model,
 follow training_model and ask whether to change it. Today's condition belongs in save_checkin, a week's
 constraints in the plan. Never tell the athlete to enter supported profile changes manually.
 
-New schedules use apply_training_patch or replace_training_plan directly.
+New schedules use apply_training_patch or replace_training_plan directly;
+unchanged library templates go in one apply_workout_library_plan call.
 stage_training_plan is for requested drafts only. commit_training_plan may use
 only a draft actually referenced in this local dialogue; include the draft's
 source_message_id as well as the current acceptance in source_message_ids.
