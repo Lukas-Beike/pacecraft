@@ -43,7 +43,7 @@ test("@responsive activity details preserve calendar without Coach shortcuts", a
   await expect(sheet.getByRole("button", { name: "Feedback speichern" })).toHaveCount(0);
   // The sheet shows no leaked value such as a "null" after its last control (#4285).
   const { leakedValues } = await import(pathToFileURL(path.join(__dirname, "..", "scripts", "ui_walk.mjs")).href);
-  expect(await leakedValues(page)).toBe("");
+  expect(await leakedValues(page, "dialog[open]")).toBe("");
   await sheet.getByRole("button", { name: "6", exact: true }).click();
   await expect(sheet.locator('[role="status"]').filter({ hasText: "Feedback gespeichert" })).toBeVisible();
   await sheet.getByRole("group", { name: "Gefühl" }).getByRole("button", { name: "stark", exact: true }).click();

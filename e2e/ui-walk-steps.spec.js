@@ -17,10 +17,11 @@ const PAGE = `<main>
   <button id="delete" type="button">Löschen</button>
   <p id="words">nullable, undefinedx und NaNa sind Wörter, kein Leck</p>
   <details id="leaky"><summary>Leck</summary><p id="leak">Wert null</p></details>
+  <div id="messages"><p>Bilanz auf null gesetzt</p></div>
 </main>`;
 
 test("a step fails on an empty chart or panel and passes on a drawn one", async ({ page }) => {
-  const { runStep } = await import(pathToFileURL(path.join(__dirname, "..", "scripts", "ui_walk.mjs")).href);
+  const { runStep, leakedValues } = await import(pathToFileURL(path.join(__dirname, "..", "scripts", "ui_walk.mjs")).href);
   await page.setContent(PAGE);
   const run = (step) => runStep(page, { name: "x", covers: "test", ...step }, 300);
   expect((await run({ ready: "#good svg", kind: "chart" })).status).toBe("ok");
@@ -37,7 +38,8 @@ test("a step fails on an empty chart or panel and passes on a drawn one", async 
   // A step that opens text with a leaked value fails and names the word and the element, not the text (#4285).
   const leaked = await run({ pre: ["#leaky > summary"], ready: "#leak", kind: "text" });
   expect([leaked.status, leaked.why]).toEqual(["fail", "shows null in p"]);
-  expect(await (await import(pathToFileURL(path.join(__dirname, "..", "scripts", "ui_walk.mjs")).href)).leakedValues(page)).toBe("null in p");
+  expect(await leakedValues(page)).toBe("null in p");
+  expect(await leakedValues(page, "#more")).toBe("");
   await page.evaluate(() => { document.querySelector("#leaky").open = false; });
   // An optional step without its data is skipped, not failed.
   expect((await run({ ready: "#missing", kind: "text", optional: true })).status).toBe("skip");
