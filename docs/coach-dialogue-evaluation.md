@@ -175,6 +175,8 @@ $env:COACH_EVAL_API_KEY = '<evaluation key>'  # never stored or logged
 python tests/coach_live_eval.py --provider openai --base-url https://api.openai.com/v1 --model <id> --thinking low --price-input <usd> --price-output <usd>
 python tests/coach_live_eval.py --provider anthropic --base-url https://api.anthropic.com --model claude-sonnet --thinking low --price-input <usd> --price-output <usd>
 Remove-Item Env:COACH_EVAL_API_KEY
+# or, instead of the variable, the key in a file (an absolute path), sent only to the provider's own API:
+python tests/coach_live_eval.py --provider anthropic --base-url https://api.anthropic.com --model claude-sonnet --key-file <file> --price-input <usd> --price-output <usd>
 ```
 
 `--report <case id>` needs no key and makes no model call: it seeds the case and

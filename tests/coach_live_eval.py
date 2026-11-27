@@ -1865,13 +1865,10 @@ def _preflight(args: argparse.Namespace) -> str | None:
         return (
             f"Only a loopback endpoint or the {label} API is used for this evaluation."
         )
-    # The key file's content goes only to the provider's own API, never to a loopback
-    # listener (#4329 review).
-    if args.key_file and host != api_host:
-        return f"--key-file is sent only to the {label} API; nothing was run."
     # An Anthropic key has its own prefix: a key never goes to the other provider.
     if host == api_host and not (
         args.api_key
+        and args.api_key.startswith("sk-ant-" if anthropic else "sk-")
         and args.api_key.startswith("sk-ant-") == anthropic
         and args.price_input > 0
         and args.price_output > 0
@@ -2022,11 +2019,27 @@ def print_reports(case_ids: list[str]) -> int:
     return 0
 
 
-def _api_key(key_file: str) -> str:
-    """The key in the file --key-file names, else COACH_EVAL_API_KEY (#4329)."""
-    return (
-        read_secret(key_file) if key_file else os.environ.get("COACH_EVAL_API_KEY", "")
-    )
+def _load_key(args: argparse.Namespace) -> str | None:
+    """Set args.api_key from the file --key-file names, else COACH_EVAL_API_KEY;
+    None, or one line why not (#4329). A file's key goes only to the provider's own
+    API, never to a loopback listener, and a byte order mark, which PowerShell
+    writes, is no part of it. Neither the path nor the key is named."""
+    args.api_key = os.environ.get("COACH_EVAL_API_KEY", "")
+    if not args.key_file:
+        return None
+    api_host, label, _, _ = PROVIDERS[args.provider]
+    if urlsplit(args.base_url).hostname != api_host:
+        return f"--key-file is sent only to the {label} API; nothing was run."
+    try:
+        args.api_key = read_secret(args.key_file).lstrip(
+            "\N{ZERO WIDTH NO-BREAK SPACE}"
+        )
+    except ProdError:
+        return (
+            "--key-file must be a non-empty file in the system temp directory "
+            "or the T3 secret folder; nothing was run."
+        )
+    return None
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -2045,14 +2058,9 @@ def main(argv: list[str] | None = None) -> int:
     # The key from a file in the system temp directory or T3's secret folder (#4329).
     parser.add_argument("--key-file", default="")
     args = parser.parse_args(argv)
-    try:
-        args.api_key = _api_key(args.key_file)
-    except ProdError:
-        # Neither the path nor the key is named.
-        print(
-            "--key-file must be a non-empty file in the system temp directory "
-            "or the T3 secret folder; nothing was run."
-        )
+    problem = _load_key(args)
+    if problem:
+        print(problem)
         return 2
     cases = load_cases()
     chosen = [c for c in args.cases.split(",") if c]

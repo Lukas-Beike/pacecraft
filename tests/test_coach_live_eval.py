@@ -2124,6 +2124,31 @@ class CommandLineTests(unittest.TestCase):
                         self.assertIn("--key-file must be a non-empty file", text)
                         self.assertNotIn(str(path), text)
                 models.assert_not_called()
+                # A file that holds another secret, not a provider key, is not sent
+                # to the OpenAI API; a byte order mark is no part of a real key.
+                other = Path(folder) / "other"
+                other.write_text("app-password-synthetic\n", encoding="utf-8")
+                openai = (
+                    "--provider",
+                    "openai",
+                    "--base-url",
+                    "https://api.openai.com/v1",
+                )
+                priced = ("--model", "m", "--price-input", "1", "--price-output", "1")
+                code, text = run_main(*openai, *priced, "--key-file", str(other))
+                self.assertEqual(code, 2)
+                self.assertIn("needs a OpenAI key", text)
+                self.assertNotIn("app-password-synthetic", text)
+                models.assert_not_called()
+                # A file PowerShell wrote starts with a byte order mark; it is no
+                # part of the key.
+                keyed.write_text(f"{key}\n", encoding="utf-8-sig")
+                code, text = run_main(*anthropic, "--key-file", str(keyed))
+                self.assertEqual(code, 0)
+                models.assert_called_with(
+                    "https://api.anthropic.com", key, provider="anthropic"
+                )
+                models.reset_mock()
                 # The file's key goes only to the provider's API, never to a
                 # loopback listener.
                 loopback = (
