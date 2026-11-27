@@ -378,7 +378,7 @@ def build_structured_tool_schemas(
         ),
         _canonical_coach_tool(
             "read_coach_context",
-            "Read omitted local coaching context and enable remaining tools for this turn. Use when context or available tools do not cover the athlete's request. If projection.complete=false, request fewer sections; never treat a partial result as complete. Does not refresh providers or authorize writes.",
+            "Read omitted local coaching context for this turn; it enables no further tools. Use when the context does not cover the athlete's request. If projection.complete=false, request fewer sections; never treat a partial result as complete. Does not refresh providers or authorize writes.",
             {
                 "sections": {
                     "type": "array",
