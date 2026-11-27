@@ -1,5 +1,6 @@
 const { test, expect } = require("@playwright/test");
 const AxeBuilder = require("@axe-core/playwright").default;
+const { waitForSettledState } = require("./helpers/settled-state");
 
 async function open(page, route, ready) {
   await page.goto(`/#${route}`);
@@ -153,10 +154,14 @@ test("@responsive nutrition history collapses days without data and products kee
   await open(page, "nutrition/week", "#nutritionWeek .nutrition-week-chart-day");
   const empty = page.locator("#nutritionWeek .nutrition-week-chart-day.is-empty");
   await expect(empty.first()).toContainText("keine Daten");
-  const heights = await page.locator("#nutritionWeek .nutrition-week-chart-day").evaluateAll((nodes) => nodes.map((node) => [node.classList.contains("is-empty"), node.getBoundingClientRect().height]));
-  const emptyHeight = Math.max(...heights.filter(([isEmpty]) => isEmpty).map(([, height]) => height));
-  const fullHeight = Math.min(...heights.filter(([isEmpty]) => !isEmpty).map(([, height]) => height));
-  expect(emptyHeight).toBeLessThan(fullHeight / 1.5);
+  // #4339: the first chart row can show before the week's data settles; poll the heights, which names both in a failure.
+  await waitForSettledState(page);
+  await expect.poll(() => page.locator("#nutritionWeek .nutrition-week-chart-day").evaluateAll((nodes) => {
+    const heights = nodes.map((node) => [node.classList.contains("is-empty"), node.getBoundingClientRect().height]);
+    const emptyHeight = Math.max(...heights.filter(([isEmpty]) => isEmpty).map(([, height]) => height));
+    const fullHeight = Math.min(...heights.filter(([isEmpty]) => !isEmpty).map(([, height]) => height));
+    return emptyHeight < fullHeight / 1.5 ? "collapsed" : `empty ${emptyHeight} px, full ${fullHeight} px`;
+  })).toBe("collapsed");
   expect(await smallControls(page)).toEqual([]);
   await open(page, "nutrition/products", "#nutritionBarcodeButton");
   const actions = page.locator(".nutrition-tools > .nutrition-actions");
