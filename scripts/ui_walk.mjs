@@ -447,13 +447,12 @@ async function tryWeek(page, step, capMs, began) {
   return { count, empty };
 }
 
-// Texts written by people that may quote any word: the Coach chat (German prose says "null") and the release notes,
-// whose commit titles quote values such as "null" (#4313).
-const QUOTING_TEXT = "#messages, .release-changelog";
+// Texts written by people that may quote any word: the Coach chat (German prose says "null") and the commit titles
+// of the release notes, which quote values such as "null" (#4313). Their headings and counts stay scanned.
+const QUOTING_TEXT = "#messages, .release-changelog li";
 
 // A value that leaked into the text (#4285): the visible text names `null`, `undefined`, `NaN` or `[object Object]`
-// as a word of its own, outside QUOTING_TEXT. `root` limits the scan to
-// one element. Returns up to three "<word> in <element>" names, never the text around them.
+// as a word of its own, outside QUOTING_TEXT (never scanned, even under `root`). `root` limits the scan to one element. Returns up to three "<word> in <element>" names, never the text around them.
 export async function leakedValues(page, root = "body") {
   return page.evaluate(([rootSelector, quoting]) => {
     const word = /(?:^|[^\p{L}\p{N}_])(null|undefined|NaN|\[object Object\])(?![\p{L}\p{N}_])/u;

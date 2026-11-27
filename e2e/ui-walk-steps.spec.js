@@ -41,6 +41,10 @@ test("a step fails on an empty chart or panel and passes on a drawn one", async 
   expect([leaked.status, leaked.why]).toEqual(["fail", "shows null in p"]);
   expect(await leakedValues(page)).toBe("null in p");
   expect(await leakedValues(page, "#more")).toBe("");
+  // The release notes' commit titles may quote a word, their own headings may not (#4313).
+  await page.evaluate(() => { document.querySelector(".release-changelog summary").textContent = "Seit undefined"; });
+  expect(await leakedValues(page)).toMatch(/^null in p, undefined in summary$/);
+  await page.evaluate(() => { document.querySelector(".release-changelog summary").textContent = "2.2.38"; });
   await page.evaluate(() => { document.querySelector("#leaky").open = false; });
   // An optional step without its data is skipped, not failed.
   expect((await run({ ready: "#missing", kind: "text", optional: true })).status).toBe("skip");
