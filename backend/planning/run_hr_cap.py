@@ -11,7 +11,7 @@ names the value to write. Pure, no I/O.
 
 from __future__ import annotations
 
-from collections.abc import Iterable, Mapping
+from collections.abc import Callable, Iterable, Mapping
 from typing import Any, Final
 
 from backend.activities.hr_cap import (
@@ -27,6 +27,7 @@ from backend.activities.hr_cap import (
     hr_cap,
     normalize_hr_cap,
     percent_text,
+    resolve_bpm,
     stored_cap,
 )
 from backend.canonical.first_threshold import (
@@ -45,8 +46,9 @@ LOW_MISMATCH: Final = "low_mismatch"
 
 OUTDATED_CAPS_NOTE: Final = (
     "These planned run units still store a heart-rate cap of an older rule: a "
-    "default above today's default (#3915), or a measured or estimated cap below "
-    "today's cap (#4254). A lower cap may be intentional (heat, a return after "
+    "default above today's default, or a measured or estimated cap below "
+    "today's cap. stored_bpm and current_bpm are both caps in bpm on the unit's "
+    "date. A lower cap may be intentional (heat, a return after "
     "illness) or follow a threshold HR that moved: keep one the athlete chose. Offer the update to current_percent_lthr "
     "in a turn the athlete starts; never change them unasked."
 )
@@ -56,13 +58,15 @@ def outdated_caps(
     units: Iterable[Mapping[str, Any]],
     first_threshold_pct: float | None = None,
     estimated: bool = False,
+    lthr_for: Callable[[Mapping[str, Any]], float | None] = lambda unit: None,
 ) -> list[dict[str, Any]]:
     """Capped run units whose stored cap an older rule set.
 
     A default cap above today's default, or a measured or estimated cap below
     today's effective cap of the same source. Non-blocking: the guard re-checks
     only units the Coach writes, so such a unit keeps its cap until the athlete
-    agrees.
+    agrees. With ``lthr_for`` (the threshold HR on the unit's date) both caps
+    also come in bpm (#4286).
     """
     percents, source = cap_percents(first_threshold_pct, estimated)
     found = []
@@ -79,6 +83,15 @@ def outdated_caps(
             outdated = cap[SOURCE_KEY] == source and cap[PERCENT_KEY] < current
         if not outdated:
             continue
+        lthr = lthr_for(unit)
+        bpm = {
+            name: value
+            for name, value in (
+                ("stored_bpm", resolve_bpm(cap[PERCENT_KEY], lthr)),
+                ("current_bpm", resolve_bpm(current, lthr)),
+            )
+            if value is not None
+        }
         found.append(
             {
                 "id": str(unit.get("local_id") or unit.get("id") or ""),
@@ -88,6 +101,7 @@ def outdated_caps(
                 "stored_percent_lthr": cap[PERCENT_KEY],
                 "stored_source": cap[SOURCE_KEY],
                 "current_percent_lthr": current,
+                **bpm,
             }
         )
     return found

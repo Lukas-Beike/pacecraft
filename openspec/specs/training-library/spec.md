@@ -740,7 +740,11 @@ A run unit whose focus has a cap in `HR_CAP_PERCENT` (`backend/activities/hr_cap
 
 #### Scenario: Units with a cap of an older rule
 - **WHEN** future planned run units store a default cap above today's default (planned before the default was lowered, #3915), or a measured or estimated cap below today's effective cap of the same source (planned before the margin was dropped, #4254)
-- **THEN** the planning brief lists them as `outdated_hr_caps` with a note that the Coach offers the update in a turn the athlete starts; nothing is rewritten and an untouched unit never blocks a write
+- **THEN** the planning brief lists them as `outdated_hr_caps`, each with the stored and the current cap in percent and, with a known run threshold HR on the unit's date, in bpm (`stored_bpm`, `current_bpm`), and a note without issue numbers that the Coach offers the update in a turn the athlete starts; nothing is rewritten and an untouched unit never blocks a write
+
+#### Scenario: Planned rows carry their cap (#4286)
+- **WHEN** the Coach context lists a planned unit
+- **THEN** its compact row carries `session_focus` and, for a stored cap, `hr_cap` with the stored `percent_lthr` and the `bpm` resolved with the run threshold HR on the unit's date, as the calendar card shows it
 
 #### Scenario: The Coach explains a cap from its rule (#4255)
 - **WHEN** the Coach context is built with a run threshold HR

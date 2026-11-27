@@ -13,6 +13,7 @@ from typing import Any
 from zoneinfo import ZoneInfo
 
 from backend.athlete.profile import ProfileService, timezone_name
+from backend.canonical.change_detail import weekday
 from backend.coach.authorization import REQUEST_SCHEMA, dialogue_tools, validate_request
 from backend.coach.conversation import CoachMessageService
 from backend.coach.service import command_receipt
@@ -320,6 +321,8 @@ class CoachDialogueReadService:
         now = self._local_clock(ZoneInfo(timezone))
         return {
             "local_date": now.date().isoformat(),
+            # The weekday of today, as every dated context row carries it (#4286).
+            "local_weekday": weekday(now.date().isoformat()),
             "timezone": timezone,
             "current_user_message_id": current["id"] if current else None,
             "messages": [

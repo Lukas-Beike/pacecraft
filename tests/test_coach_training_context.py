@@ -2,8 +2,17 @@ import json
 import unittest
 from unittest.mock import Mock
 
-from backend.coach.context import CoachTrainingContextService
+from backend.coach.context import (
+    PLANNED_CAP_BPM,
+    CoachPlanningContextReader,
+    CoachTrainingContextService,
+    bounded_with_day_refs,
+    coach_daily_rows,
+    coach_daily_unit_refs,
+    compact_coach_local_planned_workout,
+)
 from backend.coach.prompt import COACH_PROMPT
+from backend.planning import context as planning_context
 
 
 class CoachTrainingContextServiceTests(unittest.TestCase):
@@ -64,6 +73,8 @@ class CoachTrainingContextServiceTests(unittest.TestCase):
 
         compacted_plans = [
             {
+                # 2026-09-24 is a Thursday (#4286).
+                "weekday": "Do",
                 "id": "local-1",
                 "date": "2026-09-24",
                 "name": "Easy run",
@@ -107,6 +118,185 @@ class CoachTrainingContextServiceTests(unittest.TestCase):
         self.assertEqual(result, expected)
         self.assertNotIn("private_description", result)
         self.structured.build.assert_called_once_with(selection=None)
+
+    def test_planned_rows_carry_weekday_focus_and_cap_and_leave_defaults_out(self):
+        # #4286: the Coach reads the stored cap in percent and bpm on the unit's
+        # date and the weekday, never infers them; defaults are named once.
+        unit = {
+            "id": "local-1",
+            "date": "2026-12-01",
+            "name": "Lockerer Dauerlauf",
+            "type": "Run",
+            "session_focus": "easy",
+            "hr_cap": {
+                "percent_lthr": 79.1,
+                "low_percent_lthr": 64.1,
+                "source": "measured",
+            },
+            PLANNED_CAP_BPM: 129,
+            "status": "planned",
+            "sync_status": "local",
+        }
+        row = compact_coach_local_planned_workout(
+            unit, select=planning_context.selected
+        )
+        self.assertEqual(
+            row,
+            {
+                "weekday": "Di",
+                "id": "local-1",
+                "date": "2026-12-01",
+                "name": "Lockerer Dauerlauf",
+                "type": "Run",
+                "session_focus": "easy",
+                "hr_cap": {"percent_lthr": 79.1, "bpm": 129},
+            },
+        )
+        other = compact_coach_local_planned_workout(
+            {"id": "local-2", "date": "2026-12-06", "status": "completed"},
+            select=planning_context.selected,
+        )
+        self.assertEqual(
+            other,
+            {
+                "weekday": "So",
+                "id": "local-2",
+                "date": "2026-12-06",
+                "status": "completed",
+            },
+        )
+
+    def test_the_planning_reader_resolves_each_cap_on_the_units_date(self):
+        capped = {
+            "id": "u1",
+            "date": "2026-12-01",
+            "type": "Run",
+            "session_focus": "long",
+            "hr_cap": {
+                "percent_lthr": 76.1,
+                "low_percent_lthr": 61.1,
+                "source": "estimated",
+            },
+        }
+        plain = {"id": "u2", "date": "2026-12-02", "session_focus": "threshold"}
+        planned = Mock()
+        planned.list.return_value = [capped, plain]
+        reader = CoachPlanningContextReader(
+            planned,
+            Mock(),
+            Mock(),
+            Mock(),
+            Mock(),
+            Mock(),
+            Mock(),
+            lthr_for=lambda: lambda unit: 163.0,
+        )
+        first, second = reader.planned()
+        self.assertEqual(first[PLANNED_CAP_BPM], 124)  # 76.1 % of 163
+        self.assertNotIn(PLANNED_CAP_BPM, second)
+        # Only a run unit's cap resolves with the run threshold HR.
+        ride = {**capped, "id": "u3", "type": "Ride"}
+        planned.list.return_value = [ride]
+        self.assertNotIn(PLANNED_CAP_BPM, reader.planned()[0])
+        self.assertNotIn(
+            "hr_cap",
+            compact_coach_local_planned_workout(ride, select=planning_context.selected),
+        )
+
+        # A failing threshold read keeps the percent and leaves only the bpm out.
+        def broken():
+            raise RuntimeError("thresholds down")
+
+        failing = CoachPlanningContextReader(
+            planned, Mock(), Mock(), Mock(), Mock(), Mock(), Mock(), lthr_for=broken
+        )
+        planned.list.return_value = [capped]
+        with self.assertLogs("intervals_coach", "WARNING") as logs:
+            (unit,) = failing.planned()
+        self.assertNotIn("thresholds down", "".join(logs.output))
+        self.assertEqual(
+            compact_coach_local_planned_workout(unit, select=planning_context.selected)[
+                "hr_cap"
+            ],
+            {"percent_lthr": 76.1},
+        )
+
+    def test_a_clipped_unit_keeps_its_details_in_its_day(self):
+        # Gitar on #4318: the total budget clips the full day rows and drops later
+        # planned rows; a day shortens only a unit the clipped list still names.
+        full = [
+            {
+                "date": "2026-12-01",
+                "planned": [
+                    {"id": f"u{n}", "name": f"Dauerlauf {n}", "type": "Run"}
+                    for n in range(40)
+                ],
+            }
+        ]
+        context = {
+            "projection": {},
+            "daily_planning_context": [
+                {"date": "2026-12-01", "planned": [{"id": f"u{n}"} for n in range(40)]}
+            ],
+            "local_planned_workouts": [
+                {"id": f"u{n}", "name": f"Einheit {n} " + "x" * 200} for n in range(40)
+            ],
+        }
+        clipped = bounded_with_day_refs(context, full, 5000)
+        kept = {row["id"] for row in clipped["local_planned_workouts"]}
+        self.assertTrue(0 < len(kept) < 40)
+        for unit in clipped["daily_planning_context"][0]["planned"]:
+            with self.subTest(unit=unit["id"]):
+                self.assertEqual("name" in unit, unit["id"] not in kept)
+        # With room for every row, each day keeps the short reference.
+        roomy = bounded_with_day_refs(context, full, 100_000)
+        self.assertTrue(
+            all(set(u) == {"id"} for u in roomy["daily_planning_context"][0]["planned"])
+        )
+
+    def test_a_day_names_a_listed_unit_only_by_id_and_start(self):
+        # #4286 (R12 C12): local_planned_workouts names the unit once.
+        days = [
+            {
+                "date": "2026-12-01",
+                "planned": [
+                    {
+                        "id": "u1",
+                        "name": "Dauerlauf",
+                        "type": "Run",
+                        "starts_at_local": "2026-12-01T07:00:00",
+                    },
+                    {"id": "u9", "name": "Nicht gelistet", "type": "Ride"},
+                ],
+            }
+        ]
+        context = {"daily_planning_context": days}
+        coach_daily_unit_refs(context, {"u1"})
+        self.assertEqual(
+            context["daily_planning_context"][0]["planned"],
+            [
+                {"id": "u1", "starts_at_local": "2026-12-01T07:00:00"},
+                {"id": "u9", "name": "Nicht gelistet", "type": "Ride"},
+            ],
+        )
+
+    def test_day_rows_carry_their_weekday_and_no_repeated_check_in_date(self):
+        rows = coach_daily_rows(
+            [
+                {
+                    "date": "2026-12-01",
+                    "checkin": {"checkin_date": "2026-12-01", "notes": "x"},
+                },
+                {"date": "2026-12-07"},
+            ]
+        )
+        self.assertEqual(
+            rows,
+            [
+                {"weekday": "Di", "date": "2026-12-01", "checkin": {"notes": "x"}},
+                {"weekday": "Mo", "date": "2026-12-07"},
+            ],
+        )
 
     def test_external_text_cannot_reproduce_the_untrusted_data_fence(self):
         forged = (

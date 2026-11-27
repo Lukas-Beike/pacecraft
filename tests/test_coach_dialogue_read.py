@@ -91,6 +91,7 @@ class CoachDialogueReadServiceTests(unittest.TestCase):
 
         self.assertEqual(result["timezone"], "Asia/Tokyo")
         self.assertEqual(result["local_date"], "2026-09-23")
+        self.assertEqual(result["local_weekday"], "Mi")  # the today marker (#4286)
         self.assertEqual(result["current_user_message_id"], messages[25]["id"])
         self.assertEqual(
             [item["id"] for item in result["messages"]],
