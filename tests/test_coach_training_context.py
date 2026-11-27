@@ -6,6 +6,7 @@ from backend.coach.context import (
     PLANNED_CAP_BPM,
     CoachPlanningContextReader,
     CoachTrainingContextService,
+    bounded_with_day_refs,
     coach_daily_rows,
     coach_daily_unit_refs,
     compact_coach_local_planned_workout,
@@ -218,6 +219,39 @@ class CoachTrainingContextServiceTests(unittest.TestCase):
                 "hr_cap"
             ],
             {"percent_lthr": 76.1},
+        )
+
+    def test_a_clipped_unit_keeps_its_details_in_its_day(self):
+        # Gitar on #4318: the total budget clips the full day rows and drops later
+        # planned rows; a day shortens only a unit the clipped list still names.
+        full = [
+            {
+                "date": "2026-12-01",
+                "planned": [
+                    {"id": f"u{n}", "name": f"Dauerlauf {n}", "type": "Run"}
+                    for n in range(40)
+                ],
+            }
+        ]
+        context = {
+            "projection": {},
+            "daily_planning_context": [
+                {"date": "2026-12-01", "planned": [{"id": f"u{n}"} for n in range(40)]}
+            ],
+            "local_planned_workouts": [
+                {"id": f"u{n}", "name": f"Einheit {n} " + "x" * 200} for n in range(40)
+            ],
+        }
+        clipped = bounded_with_day_refs(context, full, 5000)
+        kept = {row["id"] for row in clipped["local_planned_workouts"]}
+        self.assertTrue(0 < len(kept) < 40)
+        for unit in clipped["daily_planning_context"][0]["planned"]:
+            with self.subTest(unit=unit["id"]):
+                self.assertEqual("name" in unit, unit["id"] not in kept)
+        # With room for every row, each day keeps the short reference.
+        roomy = bounded_with_day_refs(context, full, 100_000)
+        self.assertTrue(
+            all(set(u) == {"id"} for u in roomy["daily_planning_context"][0]["planned"])
         )
 
     def test_a_day_names_a_listed_unit_only_by_id_and_start(self):

@@ -1103,6 +1103,28 @@ def _run_cap(unit: Any) -> dict[str, Any] | None:
     return stored_cap(unit)
 
 
+def bounded_with_day_refs(
+    context: dict[str, Any], full_days: Any, limit: int
+) -> dict[str, Any]:
+    """The context clipped to ``limit`` by section priority (#4286): it clips the
+    full day rows, as before the short references, and shortens only the units
+    the clipped ``local_planned_workouts`` still lists, so a clipped unit keeps
+    its details in its day."""
+    if "daily_planning_context" in context:
+        context = {**context, "daily_planning_context": full_days}
+    clipped = bounded_coach_context_sections_by_priority(context, limit)
+    if not isinstance(clipped, dict):
+        return {}
+    listed = clipped.get("local_planned_workouts")
+    coach_daily_unit_refs(
+        clipped,
+        {row.get("id") for row in listed if isinstance(row, dict)}
+        if isinstance(listed, list)
+        else set(),
+    )
+    return clipped
+
+
 def coach_daily_unit_refs(context: dict[str, Any], listed: set[Any]) -> None:
     """In ``context``, a day's planned unit that ``local_planned_workouts`` lists
     keeps only its id and start time: the row there names it (#4286, R12 C12)."""
@@ -1532,6 +1554,7 @@ class CoachTrainingContextService:
             select=planning_context.selected,
         )
         prompt_context["local_planned_workouts"] = local_planned_workouts
+        full_days = prompt_context.get("daily_planning_context")
         coach_daily_unit_refs(
             prompt_context, {row.get("id") for row in local_planned_workouts}
         )
@@ -1631,11 +1654,9 @@ class CoachTrainingContextService:
                 - len(context_suffix)
                 - note_reserve,
             )
-            clipped_context = bounded_coach_context_sections_by_priority(
-                prompt_context, structured_limit
+            clipped_context = bounded_with_day_refs(
+                prompt_context, full_days, structured_limit
             )
-            if not isinstance(clipped_context, dict):
-                clipped_context = {}
             original_calendar = prompt_context.get("external_calendar")
             clipped_calendar = clipped_context.get("external_calendar")
             _reconcile_calendar_clip(original_calendar, clipped_calendar)
