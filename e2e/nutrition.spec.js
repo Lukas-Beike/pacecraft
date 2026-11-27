@@ -21,16 +21,23 @@ test("@responsive nutrition diary keeps saved meals in Produkte and preserves co
   await expect(page.locator("#appShell")).toBeVisible();
   await expect(page.locator("#nutritionStatus")).not.toContainText("wird geladen");
   await expect(page.locator("#nutritionEntries .nutrition-card")).toHaveCount(0);
-  // An empty day shows no row of missing tiles; the status says so and offers the message to the Coach (#3936 G-13, G-14).
+  // An empty day shows no row of missing tiles; its sentence reads below the energy cards, with no button (#3936 G-13, #4265).
   await expect(page.locator("#nutritionTotals")).toBeHidden();
-  await expect(page.locator("#nutritionStatus")).toHaveText("Noch keine Mahlzeiten erfasst.");
-  await expect(page.locator("#nutritionTellCoach")).toBeVisible();
-  // A future day names itself and offers no message to the Coach (#4037).
+  await expect(page.locator("#nutritionEmptyDay")).toHaveText("Noch keine Mahlzeiten erfasst.");
+  await expect(page.locator("#nutritionStatus")).toHaveText("");
+  await expect(page.getByRole("button", { name: "Dem Coach sagen" })).toHaveCount(0);
+  // The sentence reads below the energy cards (and so below the date toolbar), where the meal list would be.
+  const below = async () => page.evaluate(() => {
+    const top = (selector) => document.querySelector(selector).getBoundingClientRect();
+    const energy = top("#nutritionEnergy");
+    return energy.height > 0 && top("#nutritionEmptyDay").top >= energy.bottom && energy.top >= top(".nutrition-toolbar").bottom;
+  });
+  await expect.poll(below).toBe(true);
+  // A future day names itself (#4037).
   await page.locator("#nutritionNext").click();
-  await expect(page.locator("#nutritionStatus")).toHaveText("Dieser Tag liegt in der Zukunft.");
-  await expect(page.locator("#nutritionTellCoach")).toBeHidden();
+  await expect(page.locator("#nutritionEmptyDay")).toHaveText("Dieser Tag liegt in der Zukunft.");
   await page.locator("#nutritionToday").click();
-  await expect(page.locator("#nutritionStatus")).toHaveText("Noch keine Mahlzeiten erfasst.");
+  await expect(page.locator("#nutritionEmptyDay")).toHaveText("Noch keine Mahlzeiten erfasst.");
   // Saved meals (#3952) live under Produkte, not in the diary: no own segment, and the list is hidden here.
   await expect(page.locator('[data-nutrition-segment="meals"], #nutritionMeals')).toHaveCount(0);
   await expect(page.locator("#nutritionTemplates")).toBeHidden();
@@ -586,7 +593,7 @@ test("@responsive a failed diary load keeps the requested date, shows one error 
   const retried = dayResponse("2026-10-05", 200);
   await page.getByRole("button", { name: "Erneut laden" }).click();
   await retried;
-  await expect(page.locator("#nutritionStatus")).toContainText("Noch keine Mahlzeiten erfasst");
+  await expect(page.locator("#nutritionEmptyDay")).toHaveText("Noch keine Mahlzeiten erfasst.");
   await expect(page.locator("#nutritionStatus")).not.toContainText("wird geladen");
   await expect(page.locator("#nutritionStatus")).not.toContainText("konnte nicht geladen werden");
   await expect(page.locator("#nutritionStatus").getByRole("button")).toHaveCount(0);

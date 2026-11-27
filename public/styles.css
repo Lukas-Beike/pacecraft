@@ -853,6 +853,7 @@ button.is-loading .button-spinner { display: inline-block; vertical-align: -.15e
 .section-heading h2 { margin: 0; line-height: 1.12; }
 .section-heading .tab-sync-detail { margin-top: 0; }
 .tab-sync-detail { display: block; margin-top: 5px; color: var(--muted); font-size: .75rem; font-weight: 400; }
+#nutritionEmptyDay[hidden] { display: none; }
 .section-heading > .secondary-button { padding: 8px 11px; font-size: .72rem; }
 .view-refresh { position: relative; display: grid; justify-items: end; align-content: start; gap: 4px; }
 .view-refresh .icon-button { cursor: pointer; }
@@ -2284,7 +2285,7 @@ button:focus-visible, a:focus-visible, summary:focus-visible {
   .profile-form .profile-section > :not(summary) { max-width: 720px; }
   /* #3981 G-11: forms and tool blocks keep a reading width; card lists use two columns. */
   #chatPanel > .coach-adaptive-planning-notice { margin-top: 16px; }
-  .more-area > .panel, .nutrition-tools, .nutrition-toolbar, #nutritionTellCoach, .nutrition-week-table, [data-body-overview] { max-width: 720px; }
+  .more-area > .panel, .nutrition-tools, .nutrition-toolbar,.nutrition-week-table, [data-body-overview] { max-width: 720px; }
   .competition-list, .library-sport-cards, #nutritionEntries, #nutritionProducts { grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: start; }
   .competition-list > :not(.competition-item), :is(#nutritionEntries, #nutritionProducts) > :not(.nutrition-card) { grid-column: 1 / -1; }
   .analysis-period-controls { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(4.5rem, 1fr); max-width: 720px; }

@@ -132,4 +132,4 @@ Write routes that are no athlete action on data: `POST /api/login`,
 `POST /api/coach/actions/execute`, `POST /api/diagnostics/delete`,
 `POST /api/logs/delete`, `POST /api/zones/threshold-offers/dismiss`.
 
-G-14 in #3936 adds interim "Dem Coach sagen" hints on the screens with a Coach-only action.
+G-14 in #3936 added interim "Dem Coach sagen" hints on the screens with a Coach-only action; the last one, on the empty nutrition diary, was removed at the athlete's request (#4265).

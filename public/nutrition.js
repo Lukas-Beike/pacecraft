@@ -71,8 +71,6 @@ function renderNutritionSegments(route) {
   document.querySelector("#nutritionDiary").hidden = week || products || body;
   document.querySelector("#bodyAnalysisCharts").hidden = !body;
   document.querySelector("#nutritionStatus").hidden = week || products || body;
-  // The diary's message to the Coach belongs to the diary alone.
-  if (week || products || body) document.querySelector("#nutritionTellCoach").hidden = true;
   document.querySelector("#nutritionWeek").hidden = !week;
   document.querySelector("#nutritionProductsPanel").hidden = !products;
   document.querySelectorAll("[data-nutrition-segment]").forEach((link) => {
@@ -617,12 +615,6 @@ function nutritionIntakeKey(day) {
   return JSON.stringify([day.date, day.total_kcal, day.entries || []]);
 }
 
-// The message the empty diary hands to the Coach: only written into the composer, never sent.
-function nutritionCoachDraft(date, today) {
-  const when = date === today ? "heute" : `am ${dateLabel(date)}`;
-  return `Ich habe ${when} gegessen: `;
-}
-
 // "Heute · Montag" or "Montag": the diary's date names its weekday (#4037).
 function nutritionDayName(date, today) {
   const weekday = new Intl.DateTimeFormat("de-DE", { weekday: "long", timeZone: "UTC" }).format(new Date(`${date}T12:00:00Z`));
@@ -644,16 +636,13 @@ function renderNutritionDay(day) {
   if (energyIntakeKey !== null && energyIntakeKey !== intake && JSON.parse(energyIntakeKey)[0] === day.date) resetEnergy();
   energyIntakeKey = intake;
   renderDiaryEnergy();
-  // A day that has not come yet is not eaten: it says so and offers no message to the Coach (#4037).
-  const future = day.date > todayIso();
-  let statusText = "";
-  if (!day.entry_count) statusText = future ? "Dieser Tag liegt in der Zukunft." : "Noch keine Mahlzeiten erfasst.";
-  document.querySelector("#nutritionStatus").textContent = statusText;
-  // An empty day shows no row of "nicht erfasst" tiles; meals are entered through the Coach, so the empty
-  // view says that and offers the message (athlete decisions, #3936 G-13, G-14).
-  const tellCoach = document.querySelector("#nutritionTellCoach");
-  tellCoach.hidden = Boolean(day.entry_count) || future;
-  tellCoach.dataset.date = day.date;
+  // Load and sync messages stay in the status line on top; an empty or future day says so below the
+  // energy cards, where the meal list would be, and offers no button (athlete, #4265, #4037).
+  document.querySelector("#nutritionStatus").textContent = "";
+  const empty = document.querySelector("#nutritionEmptyDay");
+  empty.textContent = day.date > todayIso() ? "Dieser Tag liegt in der Zukunft." : "Noch keine Mahlzeiten erfasst.";
+  empty.hidden = Boolean(day.entry_count);
+  // An empty day shows no row of "nicht erfasst" tiles (athlete decision, #3936 G-13).
   const totals = document.querySelector("#nutritionTotals");
   totals.replaceChildren();
   totals.hidden = !day.entry_count;
@@ -691,6 +680,7 @@ async function loadNutrition({ preserve = false, expectedRoute = null, expectedD
   const cached = showCachedNutritionView(cacheKey, renderNutritionDay);
   if (!cached && !preserve) {
     status.textContent = "Ernährung wird geladen…";
+    document.querySelector("#nutritionEmptyDay").hidden = true;
     document.querySelector("#nutritionEntries").replaceChildren();
     document.querySelector("#nutritionTotals").replaceChildren();
   }
@@ -708,7 +698,6 @@ async function loadNutrition({ preserve = false, expectedRoute = null, expectedD
 }
 
 document.querySelector("#nutritionDate").addEventListener("change", () => { syncNutritionDateName(); void loadNutrition(); });
-document.querySelector("#nutritionTellCoach").addEventListener("click", (event) => void globalThis.askCoach?.(nutritionCoachDraft(event.currentTarget.dataset.date, todayIso())));
 for (const [id, offset] of [["nutritionPrevious", -1], ["nutritionNext", 1]]) {
   document.getElementById(id).addEventListener("click", () => {
     const input = document.querySelector("#nutritionDate");
@@ -775,7 +764,8 @@ function resetNutritionView() {
   document.querySelector("#nutritionDate").value = "";
   syncNutritionDateName();
   nutritionWeekShown = null;
-  for (const id of ["nutritionWeekBalance", "nutritionWeekStatus", "nutritionWeekMacros", "nutritionWeekDays", "nutritionWeekChart", "nutritionEntries", "nutritionTotals", "nutritionEnergy", "nutritionStatus", "nutritionProducts", "nutritionLookupResult", "nutritionProductStatus"]) document.getElementById(id)?.replaceChildren();
+  for (const id of ["nutritionWeekBalance", "nutritionWeekStatus", "nutritionWeekMacros", "nutritionWeekDays", "nutritionWeekChart", "nutritionEntries", "nutritionTotals", "nutritionEnergy", "nutritionStatus", "nutritionEmptyDay", "nutritionProducts", "nutritionLookupResult", "nutritionProductStatus"]) document.getElementById(id)?.replaceChildren();
+  document.querySelector("#nutritionEmptyDay").hidden = true;
   document.querySelector("#nutritionLookupResult").hidden = true;
   document.querySelector("#nutritionWeekChartSection").hidden = true;
   const editor = document.querySelector("#nutritionExtraction"); if (editor) { editor.replaceChildren(); editor.hidden = true; }
