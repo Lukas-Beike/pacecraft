@@ -53,7 +53,8 @@ test("@responsive the pencil edits a meal's components: remove, restore, resize 
   // The estimate mark and "Als Mahlzeit speichern" (#4305) work on the saved meal only: unsaved edits would be lost.
   const rare = dialog.locator("#nutritionMealEditEstimate, #nutritionMealEditKeep");
   await expect(rare).toHaveText(["Als geschätzt markieren", "Als Mahlzeit speichern"]);
-  await expect(rare).toBeEnabled();
+  await expect(rare.first()).toBeEnabled();
+  await expect(rare.last()).toBeEnabled();
 
   // A removed component stays visible until save and comes back.
   await rows.nth(2).getByRole("button", { name: "Olivenöl entfernen" }).click();
