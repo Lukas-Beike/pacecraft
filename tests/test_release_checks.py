@@ -146,17 +146,27 @@ class ReleaseDispatchTests(unittest.TestCase):
         self.assertIn("failed publish run 9 failure", out)
 
     def test_failed_create_release_run_is_named_with_the_rerun_command(self):
-        # The promotion merged, no release exists and the Daily release run for
-        # that commit failed: no waiting for the timeout (#4264).
-        merged = dict(PROMOTION_PR, mergeCommit={"oid": "abc"})
-        failed = {"databaseId": 77, "status": "completed", "conclusion": "failure", "headSha": "abc"}  # fmt: skip
+        # The promotion merged, no release exists and the Daily release run after
+        # it failed: no waiting for the timeout (#4264). Such a run carries the
+        # develop head, so it is matched by time, and skipped runs are ignored.
+        merged = dict(PROMOTION_PR, mergedAt="2026-11-11T10:10:00Z")
+
+        def daily(run_id, created, conclusion):
+            return {
+                "databaseId": run_id,
+                "createdAt": created,
+                "conclusion": conclusion,
+            }
+
+        failed = daily(77, "2026-11-11T10:20:00Z", "failure")
+        runs = [daily(78, "2026-11-11T10:30:00Z", "skipped"), failed, daily(70, "2026-11-11T09:00:00Z", "success")]  # fmt: skip
         jobs = [{"name": "create-release", "steps": [
             {"name": "Check out main", "conclusion": "success"},
             {"name": "Create release with commit changelog", "conclusion": "failure"},
         ]}]  # fmt: skip
         for args in (("--version", V), ("--version", V, "--wait", "--timeout", "1")):
             code, out, calls = follow(
-                *args, prs=[VERSION_PR, merged], create_runs=[failed], jobs=jobs
+                *args, prs=[VERSION_PR, merged], create_runs=runs, jobs=jobs
             )
             self.assertEqual(code, 1, out)
             self.assertIn(
@@ -165,25 +175,18 @@ class ReleaseDispatchTests(unittest.TestCase):
             )
             for call in calls:
                 self.assertNotIn("rerun", call[1:3])
-        # A running rerun, another commit's run, or an unmerged promotion stays pending.
-        pending = [
-            dict(failed, conclusion=None, status="in_progress"),
-            dict(failed, headSha="other"),
-        ]
-        for run in pending:
+        # A running rerun (no conclusion yet), a run from before the merge and an
+        # unmerged promotion stay pending.
+        for prs, create_runs in (
+            ([VERSION_PR, merged], [dict(failed, conclusion="")]),
+            ([VERSION_PR, merged], [dict(failed, createdAt="2026-11-11T10:00:00Z")]),
+            ([VERSION_PR, dict(merged, state="OPEN")], [failed]),
+        ):
             code, out, _ = follow(
-                "--version", V, prs=[VERSION_PR, merged], create_runs=[run], jobs=jobs
+                "--version", V, prs=prs, create_runs=create_runs, jobs=jobs
             )
             self.assertEqual(code, 3, out)
             self.assertIn(f"pending release {V} not published yet", out)
-        code, out, _ = follow(
-            "--version",
-            V,
-            prs=[VERSION_PR, dict(merged, state="OPEN")],
-            create_runs=[failed],
-            jobs=jobs,
-        )
-        self.assertEqual(code, 3, out)
 
     def test_transient_github_errors_are_pending_and_real_ones_stay_terminal(self):
         # One 503 is retried and the chain still completes (#3345).

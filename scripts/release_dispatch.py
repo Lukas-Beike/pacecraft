@@ -287,7 +287,7 @@ def _follow_round(version: str | None, since: str | None) -> int:
 def pull(title: str, base: str) -> dict | None:
     found = gh_json(
         "pr", "list", "--base", base, "--state", "all", "--search", f'"{title}" in:title',
-        "--limit", "5", "--json", "number,title,state,mergedAt,createdAt,url,mergeCommit",
+        "--limit", "5", "--json", "number,title,state,mergedAt,createdAt,url",
     )  # fmt: skip
     exact = [p for p in found if p["title"] == title]
     return exact[0] if exact else None
@@ -315,27 +315,29 @@ def pr_state(pr: dict | None) -> str:
 
 
 def failed_release_run(promotion: dict | None) -> str | None:
-    """The failed Daily release run for the merged promotion commit, naming its
-    failed step and the rerun command (#4264); None when there is none."""
-    sha = ((promotion or {}).get("mergeCommit") or {}).get("oid")
-    if not sha:
+    """The newest Daily release run since the promotion merged, when it failed:
+    its failed step and the rerun command (#4264); None otherwise. A run that
+    publish completions trigger carries the develop head, not the promotion
+    commit, so it is matched by time; skipped runs belong to other branches."""
+    merged = (promotion or {}).get("mergedAt")
+    if not merged:
         return None
     try:
         runs = gh_json(
             "run", "list", "--workflow", WORKFLOW, "--event", "workflow_run",
-            "--limit", "10", "--json", "databaseId,status,conclusion,headSha",
+            "--limit", "30", "--json", "databaseId,createdAt,conclusion",
         )  # fmt: skip
-        mine = [r for r in runs if r.get("headSha") == sha]
-        if (
-            not mine
-            or mine[0]["status"] != "completed"
-            or mine[0]["conclusion"] != "failure"
-        ):
+        mine = [
+            r for r in runs if r["createdAt"] >= merged and r["conclusion"] != "skipped"
+        ]
+        if not mine or mine[0]["conclusion"] != "failure":
             return None
         run_id = mine[0]["databaseId"]
         jobs = gh_json("run", "view", str(run_id), "--json", "jobs")["jobs"]
-    except CliError:
-        return None
+    except CliError as exc:
+        if TRANSIENT.search(str(exc)):
+            return None
+        raise
     step = next(
         (s["name"] for j in jobs for s in j.get("steps", []) if s.get("conclusion") == "failure"),
         "unknown",
