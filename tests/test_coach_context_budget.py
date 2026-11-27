@@ -369,18 +369,57 @@ STATIC_PROMPT_CEILING = 14_400
 # Exact present sections and a character ceiling for each kind's dynamic part
 # (context JSON, library, closing note). Each plus STATIC_PROMPT_CEILING is the
 # whole-context ceiling the test held before #4287, so no total rose.
+# The measured size of production's available current_performance per kind,
+# which the fixture rendered in the unavailable shape until #4323. A strictly
+# mechanical re-baseline (orchestrator V12, option A, 2026-11-27): each kind keeps
+# exactly the raw headroom it had. #4325 pays it back: every character trimmed
+# from the dedupe of thresholds and recovery lowers these values, and freed room
+# is never spent elsewhere.
+PRODUCTION_SNAPSHOT_SHAPE: dict[str, int] = {
+    "session_analysis": 5_243,
+    "progress_review": 5_243,
+    "block_review": 5_243,
+    "plan_week": 3_318,
+    "plan_block": 3_318,
+    "adjust_week": 3_318,
+    "morning_checkin": 3_318,
+    "free_text_planning": 3_318,
+    "general_question": 3_318,
+    "nutrition_message": 3_318,
+}
 EXPECTED: dict[str, tuple[set[str], int]] = {
-    "session_analysis": (COMMON | {"recovery"}, 12_900),
+    "session_analysis": (
+        COMMON | {"recovery"},
+        12_900 + PRODUCTION_SNAPSHOT_SHAPE["session_analysis"],
+    ),
     # Progress and block review are one review with the same sections.
-    "progress_review": (COMMON | {"planning", "recovery", "training_plans"}, 17_900),
-    "block_review": (COMMON | {"planning", "recovery", "training_plans"}, 17_900),
-    "plan_week": (PLAN, 36_400),
-    "plan_block": (PLAN, 50_400),
-    "adjust_week": (PLAN, 32_400),
-    "morning_checkin": (COMMON | {"daily_planning_context", "recovery"}, 12_900),
-    "free_text_planning": (PLAN, 36_400),
-    "general_question": (COMMON | {"recovery"}, 11_900),
-    "nutrition_message": (COMMON | {"nutrition_products"}, 11_900),
+    "progress_review": (
+        COMMON | {"planning", "recovery", "training_plans"},
+        17_900 + PRODUCTION_SNAPSHOT_SHAPE["progress_review"],
+    ),
+    "block_review": (
+        COMMON | {"planning", "recovery", "training_plans"},
+        17_900 + PRODUCTION_SNAPSHOT_SHAPE["block_review"],
+    ),
+    "plan_week": (PLAN, 36_400 + PRODUCTION_SNAPSHOT_SHAPE["plan_week"]),
+    "plan_block": (PLAN, 50_400 + PRODUCTION_SNAPSHOT_SHAPE["plan_block"]),
+    "adjust_week": (PLAN, 32_400 + PRODUCTION_SNAPSHOT_SHAPE["adjust_week"]),
+    "morning_checkin": (
+        COMMON | {"daily_planning_context", "recovery"},
+        12_900 + PRODUCTION_SNAPSHOT_SHAPE["morning_checkin"],
+    ),
+    "free_text_planning": (
+        PLAN,
+        36_400 + PRODUCTION_SNAPSHOT_SHAPE["free_text_planning"],
+    ),
+    "general_question": (
+        COMMON | {"recovery"},
+        11_900 + PRODUCTION_SNAPSHOT_SHAPE["general_question"],
+    ),
+    "nutrition_message": (
+        COMMON | {"nutrition_products"},
+        11_900 + PRODUCTION_SNAPSHOT_SHAPE["nutrition_message"],
+    ),
 }
 
 
@@ -416,7 +455,9 @@ class CoachContextBudgetTests(unittest.TestCase):
     def test_every_kind_keeps_one_percent_headroom(self) -> None:
         # #4100: two PRs that each fit can together exceed a ceiling on
         # develop; a PR that eats the last 1 % fails in its own CI instead.
-        # Make room by trimming context text, never by raising the ceiling.
+        # Make room by trimming context text, never by raising the ceiling. The
+        # one exception: a fixture-shape correction that keeps every kind's
+        # headroom identical (PRODUCTION_SNAPSHOT_SHAPE, #4323).
         # The fixed prompt and each kind's dynamic part keep it each (#4287).
         static = STATIC_PROMPT_CEILING
         for label, (_sections, ceiling) in EXPECTED.items():
