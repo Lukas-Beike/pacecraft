@@ -1393,8 +1393,9 @@ async function addNutritionProductToMeal() {
     }
     // The receipt comes with the write's answer; the list then reads the new use count (#3435)
     // without waiting for it: that read scans the whole diary (#4269).
-    showNutritionReceipt(document.querySelector("#nutritionProductStatus"), `„${use.product.name}“ ${mealId ? "zur Mahlzeit ergänzt" : "als " + mealLabel + " erfasst"}.`, result.change, () => reloadNutritionProducts());
-    void reloadNutritionProducts({ keepStatus: true });
+    const reload = () => { void reloadNutritionProducts({ keepStatus: true }); };
+    showNutritionReceipt(document.querySelector("#nutritionProductStatus"), `„${use.product.name}“ ${mealId ? "zur Mahlzeit ergänzt" : "als " + mealLabel + " erfasst"}.`, result.change, reload);
+    reload();
   } catch (error) {
     if (generation !== state.sessionGeneration) return;
     // The queued entry is gone meanwhile: the next save goes out as a new meal of the stored type, the choice
@@ -1432,7 +1433,8 @@ async function loadNutritionProducts(query = "", { background = false, throwOnEr
   const sequence = ++nutritionProductLoadSequence;
   const generation = state.sessionGeneration;
   const status = document.querySelector("#nutritionProductStatus");
-  const quiet = preserveLookup || keepStatus;
+  // A background load never takes the status line from a lookup or a receipt.
+  const quiet = preserveLookup || keepStatus || background;
   try {
     if (!quiet) status.textContent = "Produkte werden gesucht …";
     const search = query ? "&q=" + encodeURIComponent(query) : "";

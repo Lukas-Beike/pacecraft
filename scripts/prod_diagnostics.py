@@ -565,7 +565,8 @@ ROUTE_TIMING_FIELDS = ("count", "p50_ms", "p95_ms", "max_ms", "disconnects")
 
 def route_timing_lines(report: dict[str, Any]) -> list[tuple[str, str]]:
     """The slowest routes since start by route pattern (no ids or queries):
-    counts and milliseconds only (#3017, #3630)."""
+    counts and milliseconds only (#3017, #3630), with the count per duration
+    bucket (#4269)."""
     routes = (report.get("runtime") or {}).get("slowest_routes")
     if not isinstance(routes, list):
         return [("FAIL", "section runtime.slowest_routes missing")]
@@ -578,6 +579,13 @@ def route_timing_lines(report: dict[str, Any]) -> list[tuple[str, str]]:
             for name in ROUTE_TIMING_FIELDS
             if printable(row.get(name))
         )
+        buckets = row.get("buckets_ms")
+        if isinstance(buckets, dict):
+            values += "".join(
+                f" {name} {count}"
+                for name, count in buckets.items()
+                if re.fullmatch(r"[<>]=?\d+", str(name)) and type(count) is int
+            )
         lines.append(("info", f"route_timings.{row['route']} {values}"))
     return lines or [("info", "section route_timings empty")]
 

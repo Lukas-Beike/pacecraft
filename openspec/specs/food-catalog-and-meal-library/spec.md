@@ -240,8 +240,8 @@ Evidence:
 - `public/nutrition.js::addNutritionProductToMeal`
 - `public/nutrition.js::nutritionComponentDetails`
 - `public/nutrition.js::saveNutritionProduct`
-- `tests/nutrition-lookup-status.test.cjs::adding a product to a meal shows its receipt without waiting for the product list (#4269)`
 - `public/nutrition.js::useNutritionProduct`
+- `tests/nutrition-lookup-status.test.cjs::adding a product to a meal shows its receipt without waiting for the product list (#4269)`
 - `tests/test_nutrition_favorites_and_meal_additions.py::FavoritesAndMealAdditionTests.test_adding_a_product_turns_a_single_product_meal_into_a_composite`
 - `tests/test_nutrition_favorites_and_meal_additions.py::FavoritesAndMealAdditionTests.test_favorites_are_listed_first_and_survive_edits`
 
