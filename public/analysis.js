@@ -1897,7 +1897,7 @@ function settleBodyPush(follow, pushes) {
     follow.targets.garmin = GARMIN_PUSH_STATES[outcome];
     if (!follow.targets.garmin) delete follow.targets.garmin;
   }
-  if (follow.targets.wahoo === "running" && !wahoo.running) follow.targets.wahoo = wahoo.pending ? "failed" : WAHOO_PUSH_STATES[wahoo.outcome] || "done";
+  if (follow.targets.wahoo === "running" && !wahoo.running) follow.targets.wahoo = WAHOO_PUSH_STATES[wahoo.outcome] || (wahoo.pending ? "failed" : "done");
 }
 
 // The sync poll's body pushes. A followed receipt ends done or failed; after two minutes its line

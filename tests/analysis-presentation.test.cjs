@@ -1085,6 +1085,11 @@ test("a followed body push ends with its outcome, never on an older status, and 
   assert.equal(fns.followBodyPush({ garmin: { running: [], outcomes: { [day]: "needs_weight" }, pending: [] }, wahoo: { running: false, pending: false, outcome: "http_4xx" } }, 1000), false);
   assert.equal(current.line.text, "Garmin braucht ein Gewicht am selben Tag. · Wahoo-Sync fehlgeschlagen.");
   assert.equal(toastNode.added, "error");
+  // A missing write scope waits pending, but asks for a reconnect, not a retry (Gitar on #4296).
+  current = follow({ wahoo: "running" });
+  set(current);
+  fns.followBodyPush({ wahoo: { running: false, pending: true, outcome: "scope_missing" } }, 1000);
+  assert.equal(current.line.text, "Wahoo: Berechtigung fehlt – Wahoo neu verbinden.");
   // After a restart no outcome is known: still pending reads failed.
   current = follow({ garmin: "running" });
   set(current);
