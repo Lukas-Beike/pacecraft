@@ -1851,7 +1851,8 @@ function bodyFatReceipt(day, folds, done) {
 
 // #4267 (option B): the save answers at once; the Garmin and Wahoo pushes run on and the receipt
 // follows them through the sync poll for at most two minutes.
-const BODY_PUSH_NAMES = { garmin: "Garmin", wahoo: "Wahoo" };
+// A push's target key is its provider's name in lower case.
+const bodyPushName = (key) => key[0].toUpperCase() + key.slice(1);
 const BODY_PUSH_FOLLOW_MS = 120_000;
 const GARMIN_PUSH_STATES = { running: "running", pending: "failed", needs_weight: "needs_weight", sent: "done", removed: "done", unchanged: "done" };
 // How a finished Wahoo push ended (its diagnostics enum); a final refusal is not retried.
@@ -1866,12 +1867,12 @@ function bodyPushTargets(garmin, wahoo) {
 
 function bodyPushText(targets, done) {
   const keys = Object.keys(targets);
-  const names = (list) => list.map((key) => BODY_PUSH_NAMES[key]).join(" und ");
+  const names = (list) => list.map(bodyPushName).join(" und ");
   if (keys.some((key) => targets[key] === "running")) return `An ${names(keys)} senden…`;
   const saved = keys.filter((key) => targets[key] === "done");
   return [
     saved.length ? `✓ In ${names(saved)} ${done === "gespeichert" ? "gespeichert" : "aktualisiert"}` : "",
-    ...keys.filter((key) => targets[key] === "failed").map((key) => `${BODY_PUSH_NAMES[key]}-Sync fehlgeschlagen – wird erneut versucht.`),
+    ...keys.filter((key) => targets[key] === "failed").map((key) => `${bodyPushName(key)}-Sync fehlgeschlagen – wird erneut versucht.`),
     targets.garmin === "needs_weight" ? "Garmin braucht ein Gewicht am selben Tag." : "",
     targets.wahoo === "refused" ? "Wahoo-Sync fehlgeschlagen." : "",
     targets.wahoo === "scope" ? "Wahoo: Berechtigung fehlt – Wahoo neu verbinden." : "",

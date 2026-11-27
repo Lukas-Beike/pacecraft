@@ -14,6 +14,7 @@ from backend.athlete.body_records import read_current_body
 from backend.backup.database import MAX_BACKUP_BYTES
 from backend.calendar import local as calendar_local
 from backend.canonical.records import Observation
+from backend.canonical.vocabulary import ProviderId
 from backend.coach import attachments as coach_attachments
 from backend.coach import streams as coach_streams
 from backend.coach.turn_undo import CoachTurnUndoService
@@ -182,8 +183,8 @@ def build_public_state(
 
         with ctx.database().reader() as db:
             return {
-                "garmin": garmin_push_state(db, ctx.clock.now().date()),
-                "wahoo": wahoo_push_state(db),
+                ProviderId.GARMIN.value: garmin_push_state(db, ctx.clock.now().date()),
+                ProviderId.WAHOO.value: wahoo_push_state(db),
             }
 
     def sync_public_state_service() -> SyncPublicStateService:

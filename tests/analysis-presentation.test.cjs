@@ -1036,7 +1036,7 @@ test("a diary render with the shown energy read keeps the card and its open popo
 
 test("a body receipt puts the day back on undo and names each push's state (#3403, #4267)", () => {
   let weightRead = { entries: [{ date: "2026-11-15", kg: 80 }] };
-  const { weightReceipt, bodyPushTargets, bodyPushText } = extractFunctions("analysis.js", ["bodyReceipt", "weightReceipt", "BODY_PUSH_NAMES", "GARMIN_PUSH_STATES", "bodyPushTargets", "bodyPushText"], {
+  const { weightReceipt, bodyPushTargets, bodyPushText } = extractFunctions("analysis.js", ["bodyReceipt", "weightReceipt", "bodyPushName", "GARMIN_PUSH_STATES", "bodyPushTargets", "bodyPushText"], {
     get weightRead() { return weightRead; },
   });
   // Undo restores the day's earlier entry, or removes a day that had none.
@@ -1064,7 +1064,7 @@ test("a followed body push ends with its outcome, never on an older status, and 
   const toasts = [];
   const toastNode = { classList: { contains: () => true, add(name) { toastNode.added = name; } } };
   const clock = { now: 1000 };
-  const fns = extractFunctions("analysis.js", ["BODY_PUSH_NAMES", "GARMIN_PUSH_STATES", "WAHOO_PUSH_STATES", "bodyPushFollows", "bodyPushText", "bodyPushFailed", "renderBodyPushLine", "settleBodyPush", "followBodyPush"], {
+  const fns = extractFunctions("analysis.js", ["bodyPushName", "GARMIN_PUSH_STATES", "WAHOO_PUSH_STATES", "bodyPushFollows", "bodyPushText", "bodyPushFailed", "renderBodyPushLine", "settleBodyPush", "followBodyPush"], {
     document: { querySelector: () => toastNode },
     toast: (text, error) => toasts.push([text, error]),
     h: () => ({}),
