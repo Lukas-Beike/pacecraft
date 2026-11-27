@@ -1,4 +1,4 @@
-"""Heart-rate caps of recovery, easy and long run units (#1851).
+"""Heart-rate caps of recovery, easy, endurance and long run units (#1851, #4292).
 
 The plan stores percentages only; bpm is resolved from the lactate threshold HR in
 effect on the unit's date. Cap values come from the constants table in
