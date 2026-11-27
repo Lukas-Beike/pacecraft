@@ -234,3 +234,35 @@ test("@responsive the automatic morning check-in is an opt-in switch under App t
   expect(await (await reset).json()).toEqual({ morning: false });
   await expect(toggle).not.toBeChecked();
 });
+
+test("@responsive the session analysis switch shows its sports with running and cycling preselected (#4275)", async ({ page }) => {
+  await openMore(page, "app");
+  const toggle = page.getByRole("checkbox", { name: "Einheiten automatisch analysieren" });
+  const sports = page.locator("#coachAutomaticSports");
+  await expect(toggle).not.toBeChecked();
+  await expect(sports).toBeHidden();
+  const saves = () => page.waitForResponse((response) => response.url().endsWith("/api/settings/automatic-turns") && response.request().method() === "PUT");
+  let saved = saves();
+  await toggle.check();
+  await saved;
+  await expect(sports).toBeVisible();
+  for (const [name, checked] of [["Laufen", true], ["Radfahren", true], ["Kraft", false], ["Sonstiges", false]]) {
+    const box = sports.getByRole("checkbox", { name });
+    if (checked) await expect(box).toBeChecked();
+    else await expect(box).not.toBeChecked();
+  }
+  saved = saves();
+  await sports.getByRole("checkbox", { name: "Radfahren" }).uncheck();
+  expect((await (await saved).json()).sports).toEqual({ run: true, ride: false, strength: false, other: false });
+  await page.reload();
+  await page.waitForFunction(() => state.initialStateLoaded);
+  await expect(sports.getByRole("checkbox", { name: "Radfahren" })).not.toBeChecked();
+  // The fixture is shared: restore the defaults.
+  saved = saves();
+  await sports.getByRole("checkbox", { name: "Radfahren" }).check();
+  await saved;
+  saved = saves();
+  await toggle.uncheck();
+  expect(await (await saved).json()).toEqual({ morning: false, sessions: false, sports: { run: true, ride: true, strength: false, other: false } });
+  await expect(sports).toBeHidden();
+});
