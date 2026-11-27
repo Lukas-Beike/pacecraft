@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 import unittest
 from datetime import date
+from typing import Any
 from unittest.mock import Mock
 
 from backend.coach.background_job import CoachBackgroundJobRunner
@@ -346,6 +347,67 @@ class CoachBackgroundJobRunnerTests(unittest.TestCase):
 
         announced.assert_not_called()
         self.assertEqual(self.chat.run.call_count, 0)
+
+    def test_only_an_automatic_read_only_job_runs_without_a_session(self) -> None:
+        recorded = []
+        self.runner._on_automatic = lambda job, outcome, answer: recorded.append(
+            (outcome, answer)
+        )
+        self.runner._on_answer = announced = Mock()
+        self.sessions.restore_coach_session_csrf_hash.return_value = ""
+        self.failures.persist.return_value = {"status": "failed"}
+        read_only = '{"allow_mutations": false}'
+        cases: dict[str, tuple[dict[str, Any], str, int]] = {
+            "automatic and read-only": ({"automatic": True}, read_only, 1),
+            "automatic but writing": (
+                {"automatic": True},
+                '{"allow_mutations": true}',
+                0,
+            ),
+            "read-only but not automatic": ({}, read_only, 0),
+            "automatic as a string": ({"automatic": "true"}, read_only, 0),
+        }
+        for label, (receipt, intent, runs) in cases.items():
+            with self.subTest(label):
+                self.chat.run.reset_mock()
+                recorded.clear()
+                job = {**self.job("operation-auto", **receipt), "intent": intent}
+                self.runner.run(job)
+                self.assertEqual(self.chat.run.call_count, runs)
+                if runs:
+                    self.assertEqual(
+                        self.chat.run.call_args.kwargs["session_csrf_hash"], ""
+                    )
+                    self.assertEqual(recorded, [("completed", "synthetic")])
+                    self.sessions.restore_coach_session_csrf_hash.assert_not_called()
+        # An automatic turn never sends the "Coach" answer push.
+        announced.assert_not_called()
+
+    def test_a_failed_automatic_job_is_recorded_once_and_a_waiting_one_never(
+        self,
+    ) -> None:
+        recorded = []
+        self.runner._on_automatic = lambda job, outcome, answer: recorded.append(
+            outcome
+        )
+        job = {
+            **self.job(
+                "operation-auto", automatic=True, request_kind="morning_checkin"
+            ),
+            "intent": '{"allow_mutations": false}',
+        }
+        self.morning.prepare.side_effect = AppError(
+            503, "waiting", reason="garmin_sleep_not_ready"
+        )
+        self.jobs.requeue.return_value = True
+        self.runner.run(job)
+        self.assertEqual(recorded, [])  # waits for the night, no outcome yet
+        self.morning.prepare.side_effect = None
+        self.morning.prepare.return_value = date(2026, 11, 27)
+        self.chat.run.side_effect = AppError(502, "provider down", reason="openai")
+        self.failures.persist.return_value = {"status": "failed"}
+        self.runner.run(job)
+        self.assertEqual(recorded, ["failed"])
 
     def test_a_failing_announcement_never_fails_the_turn(self) -> None:
         self.runner._on_answer = Mock(side_effect=RuntimeError("push down"))

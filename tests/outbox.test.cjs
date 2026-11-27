@@ -80,6 +80,23 @@ test("the replay sends in creation order, one at a time, with the key of the fir
   assert.deepEqual(toasts, ["3 Einträge gesendet"]);
 });
 
+test("a replayed body entry whose pushes still run is sent once and reported as sent (#4267)", async () => {
+  // The answer's running Garmin and Wahoo pushes change nothing for the outbox: it is removed,
+  // the notice counts it, and no receipt or push line follows.
+  let offline = true;
+  const { context, stored, requests, toasts } = outbox(async () => {
+    if (offline) throw networkError();
+    return { entries: [], remote: "running", remote_wahoo: "running" };
+  });
+  await save(context, "weight", { n: 1 });
+  requests.length = 0;
+  offline = false;
+  await context.replayOutbox();
+  assert.equal(requests.length, 1);
+  assert.equal(stored.size, 0);
+  assert.deepEqual(toasts, ["1 Eintrag gesendet"]);
+});
+
 test("a network failure leaves the entry and stops the pass; the next trigger sends it", async () => {
   let offline = true;
   const { context, stored, requests } = outbox(async () => { if (offline) throw networkError(); return { ok: true }; });

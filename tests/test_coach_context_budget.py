@@ -13,11 +13,12 @@ import os
 import unittest
 from datetime import date, timedelta
 from typing import Any, ClassVar
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 
 from activity_row_support import FixedActivityRows, ReadOnlyManager, StoredCoverage
 from server_test_support import server
 
+from backend.coach import context as coach_context
 from backend.coach.context import (
     COACH_CONTEXT_SECTION_LIMITS,
     CoachPerformanceContextReader,
@@ -248,6 +249,9 @@ def measure() -> dict[str, dict[str, Any]]:
             "sections": sorted(sizes),
             "sizes": sizes,
             "total": len(text),
+            # The fixed rules and headers before the context JSON (#4287).
+            "static": start,
+            "dynamic": len(text) - start,
             "context": context,
         }
     return result
@@ -272,57 +276,27 @@ PLAN = COMMON | {
     "training_plans",
     "weather",
 }
-# The fixed Coach prompt's rule 8h on subjective rating scales (issue #1671).
-RATING_RULE = 500
-# Rule 8i on the local fitness, fatigue and form (M7, #1726).
-FITNESS_RULE = 300
-# Rule 8f's strength exception (session-RPE TSS, M6 v2, #1726).
-STRENGTH_LOAD_RULE = 200
-# Rule 2b on the infection hint (M14, #3762).
-INFECTION_HINT_RULE = 300
-# Exact present sections and a character ceiling (whole prompt context) per case.
+# The fixed Coach rules and context headers, the same for every kind, on a
+# budget of their own (#4287): a rule edit raises only this one and never moves
+# a kind's dynamic measurement. It includes rules 8h (rating scales, #1671),
+# 8i (fitness, fatigue and form) and 8f (strength exception, #1726) and 2b
+# (infection hint, #3762).
+STATIC_PROMPT_CEILING = 14_400
+# Exact present sections and a character ceiling for each kind's dynamic part
+# (context JSON, library, closing note). Each plus STATIC_PROMPT_CEILING is the
+# whole-context ceiling the test held before #4287, so no total rose.
 EXPECTED: dict[str, tuple[set[str], int]] = {
-    "session_analysis": (
-        COMMON | {"recovery"},
-        26_000 + RATING_RULE + FITNESS_RULE + STRENGTH_LOAD_RULE + INFECTION_HINT_RULE,
-    ),
+    "session_analysis": (COMMON | {"recovery"}, 12_900),
     # Progress and block review are one review with the same sections.
-    "progress_review": (
-        COMMON | {"planning", "recovery", "training_plans"},
-        31_000 + RATING_RULE + FITNESS_RULE + STRENGTH_LOAD_RULE + INFECTION_HINT_RULE,
-    ),
-    "block_review": (
-        COMMON | {"planning", "recovery", "training_plans"},
-        31_000 + RATING_RULE + FITNESS_RULE + STRENGTH_LOAD_RULE + INFECTION_HINT_RULE,
-    ),
-    "plan_week": (
-        PLAN,
-        49_500 + RATING_RULE + FITNESS_RULE + STRENGTH_LOAD_RULE + INFECTION_HINT_RULE,
-    ),
-    "plan_block": (
-        PLAN,
-        63_500 + RATING_RULE + FITNESS_RULE + STRENGTH_LOAD_RULE + INFECTION_HINT_RULE,
-    ),
-    "adjust_week": (
-        PLAN,
-        45_500 + RATING_RULE + FITNESS_RULE + STRENGTH_LOAD_RULE + INFECTION_HINT_RULE,
-    ),
-    "morning_checkin": (
-        COMMON | {"daily_planning_context", "recovery"},
-        26_000 + RATING_RULE + FITNESS_RULE + STRENGTH_LOAD_RULE + INFECTION_HINT_RULE,
-    ),
-    "free_text_planning": (
-        PLAN,
-        49_500 + RATING_RULE + FITNESS_RULE + STRENGTH_LOAD_RULE + INFECTION_HINT_RULE,
-    ),
-    "general_question": (
-        COMMON | {"recovery"},
-        25_000 + RATING_RULE + FITNESS_RULE + STRENGTH_LOAD_RULE + INFECTION_HINT_RULE,
-    ),
-    "nutrition_message": (
-        COMMON | {"nutrition_products"},
-        25_000 + RATING_RULE + FITNESS_RULE + STRENGTH_LOAD_RULE + INFECTION_HINT_RULE,
-    ),
+    "progress_review": (COMMON | {"planning", "recovery", "training_plans"}, 17_900),
+    "block_review": (COMMON | {"planning", "recovery", "training_plans"}, 17_900),
+    "plan_week": (PLAN, 36_400),
+    "plan_block": (PLAN, 50_400),
+    "adjust_week": (PLAN, 32_400),
+    "morning_checkin": (COMMON | {"daily_planning_context", "recovery"}, 12_900),
+    "free_text_planning": (PLAN, 36_400),
+    "general_question": (COMMON | {"recovery"}, 11_900),
+    "nutrition_message": (COMMON | {"nutrition_products"}, 11_900),
 }
 
 
@@ -346,21 +320,37 @@ class CoachContextBudgetTests(unittest.TestCase):
 
     def test_sections_and_budget_per_kind(self) -> None:
         self.assertEqual(set(CASES), set(EXPECTED))
+        static = {row["static"] for row in self.measured.values()}
+        self.assertEqual(len(static), 1)  # one fixed prompt for every kind
+        self.assertLessEqual(static.pop(), STATIC_PROMPT_CEILING)
         for label, (sections, ceiling) in EXPECTED.items():
             with self.subTest(case=label):
                 row = self.measured[label]
                 self.assertEqual(sections, present(row))
-                self.assertLessEqual(row["total"], ceiling)
+                self.assertLessEqual(row["dynamic"], ceiling)
 
     def test_every_kind_keeps_one_percent_headroom(self) -> None:
         # #4100: two PRs that each fit can together exceed a ceiling on
         # develop; a PR that eats the last 1 % fails in its own CI instead.
         # Make room by trimming context text, never by raising the ceiling.
+        # The fixed prompt and each kind's dynamic part keep it each (#4287).
+        static = STATIC_PROMPT_CEILING
         for label, (_sections, ceiling) in EXPECTED.items():
             with self.subTest(case=label):
-                self.assertLessEqual(
-                    self.measured[label]["total"], ceiling - ceiling // 100
-                )
+                row = self.measured[label]
+                self.assertLessEqual(row["static"], static - static // 100)
+                self.assertLessEqual(row["dynamic"], ceiling - ceiling // 100)
+
+    def test_a_rule_edit_leaves_every_dynamic_measurement(self) -> None:
+        # #4287: the fixed prompt grows on its own budget, never a kind's.
+        with patch.object(
+            coach_context, "COACH_PROMPT", coach_context.COACH_PROMPT + "x" * 500
+        ):
+            grown = measure()
+        for label, row in grown.items():
+            with self.subTest(case=label):
+                self.assertEqual(row["dynamic"], self.measured[label]["dynamic"])
+                self.assertEqual(row["static"], self.measured[label]["static"] + 500)
 
     def test_a_given_structured_build_gives_the_identical_text(self) -> None:
         """The preview's one build yields the same text as the text's own build (#2966)."""

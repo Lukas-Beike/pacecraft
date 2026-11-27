@@ -543,6 +543,31 @@ class ProdChecksTests(unittest.TestCase):
             ],
         )
 
+    def test_automatic_coach_turns_print_counts_only(self):
+        # #4274: the started, completed and failed counts are readable on prod.
+        report = {
+            "coach_automatic_turns": {
+                "started": 3,
+                "completed": 2,
+                "failed": 1,
+                "answer": "planted",
+            }
+        }
+        lines = [
+            text
+            for _, text in prod_diagnostics.section_lines(
+                report, "coach_automatic_turns"
+            )
+        ]
+        self.assertEqual(
+            sorted(lines),
+            [
+                "coach_automatic_turns.completed 2",
+                "coach_automatic_turns.failed 1",
+                "coach_automatic_turns.started 3",
+            ],
+        )
+
     def test_energy_balance_prints_the_body_codes_and_counts(self):
         # #3362: the energy table's body source and reason are readable on prod.
         report = {

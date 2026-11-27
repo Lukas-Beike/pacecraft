@@ -190,7 +190,7 @@
       h("div", "feedback-field", h("span", "feedback-label", "Anstrengung (RPE)"), effort.row, effort.note),
       h("div", "feedback-field", h("span", "feedback-label", "Gefühl"), feel.row),
       h("label", "feedback-field", h("span", "feedback-label", "Notiz"), notes),
-      more, load, explicit, status);
+      more, load, ...(explicit ? [explicit] : []), status);
   }
 
   // `edit` is the rejected queued entry of the outbox; `backLabel` names where closing returns to.

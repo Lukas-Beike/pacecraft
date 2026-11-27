@@ -18,6 +18,7 @@ from datetime import date, datetime, timedelta
 from typing import Any, Final
 
 from backend.canonical.vocabulary import ProviderId
+from backend.db import coach_store
 from backend.performance.threshold_staleness import REASON_STALE, STALE_AFTER_DAYS
 from backend.push.events import (
     MISSING_FEEDBACK_HOUR,
@@ -35,6 +36,7 @@ from backend.push.events import (
     weather_event,
 )
 from backend.push.service import Notification, PushService
+from backend.settings import AUTOMATIC_TURNS_KEY, automatic_turns_from
 from backend.sync.retry_hold import ATHLETE_ACTION_ERROR_CODES
 
 _LOGGER = logging.getLogger("intervals_coach")
@@ -42,6 +44,8 @@ _LOGGER = logging.getLogger("intervals_coach")
 # Local hours in which notifications are sent.
 DAY_START_HOUR: Final = 7
 DAY_END_HOUR: Final = 22
+# Local hour until which the night push waits for an automatic check-in (#4274).
+AUTOMATIC_MORNING_UNTIL_HOUR: Final = 10
 # Consecutive failed refreshes that count as a repeated sync failure.
 REPEATED_FAILURES: Final = 3
 UPCOMING_DAYS: Final = 3
@@ -120,12 +124,16 @@ class PushChecks:
             return []
         today = local.date()
         with self._database().reader() as db:
+            automatic = automatic_turns_from(
+                self._push.stored(db, AUTOMATIC_TURNS_KEY, {})
+            )
+            automatic_night = automatic["morning"] and _automatic_morning_due(db, local)
             recent = new_sessions(db, since, today)
             units = planned_units(db, today, today + timedelta(days=1))
             found = [
                 *provider_problems(db, since),
                 *upcoming_competitions(db, today),
-                morning_data_event(db, today),
+                None if automatic_night else morning_data_event(db, today),
                 checkin_event(db, today),
                 new_activity_event(recent),
             ]
@@ -199,6 +207,16 @@ class PushChecks:
                 "Push check source failed", extra={"event": "push_check_source_failed"}
             )
             return None
+
+
+def _automatic_morning_due(db: Any, local: datetime) -> bool:
+    """The automatic morning check-in announces the night itself (#4274): once
+    its turn of today exists, or until ``AUTOMATIC_MORNING_UNTIL_HOUR`` while it
+    may still start. Later, without one, "Morgenwerte" goes as before."""
+    if local.hour < AUTOMATIC_MORNING_UNTIL_HOUR:
+        return True
+    turn_id = f"{coach_store.AUTOMATIC_MORNING_PREFIX}{local.date().isoformat()}"
+    return coach_store.command_row(db, turn_id, "status") is not None
 
 
 def _parse(value: Any) -> datetime | None:

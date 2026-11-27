@@ -398,6 +398,33 @@ The fixed Coach instructions SHALL be the normative text of these modules, not r
 
 Evidence: `backend/coach/request_payload.py:compose_model_instructions`; `backend/coach/context.py` (training context prefix); `backend/coach/dialogue.py:INSTRUCTIONS`; `backend/coach/prompt.py:COACH_PROMPT`; `backend/coach/playbooks.py:playbook_for`, `backend/coach/playbooks.py:nutrition_playbook`; `tests/test_coach_playbooks.py:PlaybookInjectionTests.test_other_turns_carry_no_playbook`, `tests/test_coach_playbooks.py:PlaybookInjectionTests.test_nutrition_rules_only_on_nutrition_turns`; `backend/coach/structured_tool_round.py:CoachStructuredToolRoundService._refreshed_context`; `tests/test_coach_structured_tool_round.py:StructuredToolRoundTests.test_claude_system_is_identical_through_refresh_and_budget`, `tests/test_coach_structured_tool_round.py:StructuredToolRoundTests.test_openai_instructions_are_identical_through_refresh_and_budget`.
 
+### Requirement: CC9d Opt-in automatic read-only turns
+With the opt-in switch "Morgen-Check-in automatisch" on, the system SHALL queue the morning check-in once per local day, from 07:00, when tonight's sleep is stored, no check-in exists for today and no Coach turn runs. It SHALL run as the quick action with the selected model, without a login session and with every write refused, and its stored prompt SHALL never authorize a later write.
+
+#### Scenario: Switched off or already attempted
+- **WHEN** the switch is off, or the day's automatic turn id `auto:morning:<day>` was queued before
+- **THEN** nothing is queued: one attempt a day, also after a failure, which is stored like any turn failure
+
+#### Scenario: Write refused
+- **WHEN** the automatic turn's model calls a write tool
+- **THEN** it was offered only read tools and the server refuses the call (`intent_scope_denied`); an athlete request, streamed turn or HTTP payload can neither use an `auto:` turn id nor mark a turn automatic
+
+#### Scenario: Answer
+- **WHEN** the turn completes
+- **THEN** its answer shows in the chat after the prompt "Automatischer Morgen-Check-in: …", and diagnostics count started, completed and failed automatic turns
+
+Evidence:
+- `backend/coach/auto_turns.py:AutomaticCoachTurns.check`
+- `backend/coach/job_submission.py:CoachJobSubmissionService.enqueue_automatic`
+- `backend/coach/authorization.py:automatic_read_only`
+- `backend/coach/background_job.py:CoachBackgroundJobRunner._run_claimed`
+- `backend/coach/dialogue_action.py:CoachDialogueActionService.classify`
+- `tests/test_coach_auto_turns.py:test_the_morning_check_in_is_queued_only_when_switched_on_and_due`
+- `tests/test_coach_dialogue.py:test_an_automatic_morning_turn_only_reads_and_authorizes_nothing_later`
+- `tests/test_coach_background_job.py:test_only_an_automatic_read_only_job_runs_without_a_session`
+- `tests/test_http_chat_stream.py:test_stream_relays_events_and_unregisters_after_terminal_event`
+- `e2e/settings-hub.spec.js` (the switch)
+
 ### Requirement: CC10 Composer continuity and user-controlled input
 The system SHALL keep drafts editable while the Coach runs, serialize queued follow-ups, preserve rejected input on session expiry and require the athlete to send drafts explicitly as chat messages.
 

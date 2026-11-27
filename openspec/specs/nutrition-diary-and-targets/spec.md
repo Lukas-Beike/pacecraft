@@ -445,6 +445,10 @@ A correction SHALL accept only meal date, time, time knowledge, meal type, descr
 - **WHEN** the meal already has 20 components
 - **THEN** the addition fails with 400; otherwise the description gains " + {product name}" and stays within 500 characters, cutting the older text first.
 
+#### Scenario: Product used for a new meal
+- **WHEN** the athlete uses a product and chooses "Neues Frühstück", "Neues Mittagessen", "Neues Abendessen" or "Neuer Snack" (the default)
+- **THEN** a new entry is posted with the type `breakfast`, `lunch`, `dinner` or `snack`, the server's type-default rules give its time, and the receipt and the outbox label name the meal ("als Frühstück erfasst"); the day's existing meals follow in the choice, and a queued entry that is edited keeps its stored type.
+
 Evidence: `backend/nutrition/diary.py::NutritionDiaryService.correct_meal`, `backend/nutrition/diary.py::NutritionDiaryService._apply_meal_correction`, `backend/nutrition/diary.py::NutritionDiaryService.add_product_to_meal`, `backend/nutrition/meal_components.py::wrapped_component`, `backend/nutrition/diary.py::NutritionDiaryService._extended_description`; `tests/test_nutrition_favorites_and_meal_additions.py::test_an_estimated_meal_keeps_its_values_as_the_first_component`, `tests/test_nutrition_favorites_and_meal_additions.py::test_description_keeps_the_newest_product_within_the_limit`, `tests/test_nutrition_favorites_and_meal_additions.py::test_wrapped_meal_keeps_sugar_and_salt_totals`, `tests/test_nutrition.py::test_database_values_override_model_values_and_provenance_survives_corrections`.
 
 ### Requirement: Diary and history view states

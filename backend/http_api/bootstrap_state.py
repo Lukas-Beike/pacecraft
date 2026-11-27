@@ -208,6 +208,7 @@ class PublicBootstrapService:
                     "provider": provider,
                     "options": deps.settings.available_model_options(),
                     "tasks": deps.settings.task_settings(),
+                    "automatic_turns": deps.settings.automatic_turns(),
                 },
                 "service_tier": deps.settings.service_tier_state(),
                 "thinking_level": {

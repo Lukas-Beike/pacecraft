@@ -29,7 +29,25 @@ class SettingsPutRoutes:
                 Access.SESSION_CSRF,
                 self._thinking_level,
             ),
+            Route(
+                "PUT",
+                "/api/settings/automatic-turns",
+                Access.SESSION_CSRF,
+                self._automatic_turns,
+            ),
         ]
+
+    def _automatic_turns(self, handler: Any, _request: RouteRequest) -> None:
+        """Switch the automatic Coach turns on or off.
+
+        Request: JSON body `{"morning": bool}`: the morning check-in that runs
+        once the night's sleep is stored. The turn only reads and proposes.
+
+        Response: 200 `{"morning": bool}`, every switch.
+
+        Errors: 400 "Unbekannte automatische Coach-Einstellung.".
+        """
+        handler.send_json(200, self._settings.save_automatic_turns(handler.read_json()))
 
     def _model(self, handler: Any, _request: RouteRequest) -> None:
         """Select the Coach model of one task.

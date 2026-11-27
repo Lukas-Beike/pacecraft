@@ -221,6 +221,16 @@ class SyncPublicStateServiceTests(unittest.TestCase):
             read_only=True,
         )
         self.jobs.list.assert_called_once_with()
+        self.assertNotIn("body_push", actual)
+
+    def test_state_carries_the_body_push_state(self) -> None:
+        # #4267: the browser follows a body save's pushes through this poll.
+        pushes = {
+            "garmin": {"running": ["2026-11-15"], "pending": []},
+            "wahoo": {"running": False, "pending": True},
+        }
+        self.service._body_push = lambda: pushes
+        self.assertEqual(pushes, self.service.state()["body_push"])
 
     def test_running_and_the_operation_fields_never_contradict(self) -> None:
         # The fields describe the Garmin operation; a Wahoo-only run showed its

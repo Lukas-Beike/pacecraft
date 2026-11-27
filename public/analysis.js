@@ -1822,55 +1822,141 @@ async function openWeightDialog(edit = null) {
   document.querySelector("#weightDialog").showModal();
 }
 
-// The receipt of a body change (#3403): what happened locally and at Garmin Connect, and the
-// request that puts the day back as it was (the day's previous entry, else its removal).
-function bodyReceipt(noun, done, garmin, undo) {
-  const local = { sent: done === "gelöscht" ? `${noun} gelöscht, Garmin Connect aktualisiert.` : `${noun} ${done} und an Garmin Connect gesendet.`,
-    removed: `${noun} ${done} und in Garmin Connect entfernt.`,
-    pending: `${noun} lokal ${done}, Garmin-Sync fehlgeschlagen – wird erneut versucht.`,
-    needs_weight: `${noun} lokal ${done}, Garmin braucht ein Gewicht am selben Tag.` };
-  return { text: local[garmin] || `${noun} ${done}.`, error: garmin === "pending", undo };
+// The receipt of a body change (#3403): what was done, and the request that puts the day back as it
+// was (the day's previous entry, else its removal); sendBodyEntry adds the text and the pushes.
+function bodyReceipt(noun, done, undo) {
+  return { noun, done, undo };
 }
 
 function weightReceipt(day, done) {
   const before = weightRead?.entries.find((item) => item.date === day);
   const undo = before ? ["/api/body/weight", { date: day, kg: before.kg }] : ["/api/body/weight/remove", { date: day, confirmed: true }];
-  return (garmin) => bodyReceipt("Gewicht", done, garmin, undo);
+  return bodyReceipt("Gewicht", done, undo);
 }
 
 function bodyFatReceipt(day, folds, done) {
   if (folds) {
     // Without the read the earlier measurement is unknown, so no undo is offered.
-    if (!skinfoldRead?.measurements) return (garmin) => bodyReceipt("Messung", done, garmin, null);
+    if (!skinfoldRead?.measurements) return bodyReceipt("Messung", done, null);
     const before = skinfoldRead.measurements.find((item) => item.date === day);
     // The read lists at most 20 measurements: an older day's earlier state is unknown.
-    if (!before && skinfoldRead.measurements.length >= SKINFOLD_READ_LIMIT) return (garmin) => bodyReceipt("Messung", done, garmin, null);
+    if (!before && skinfoldRead.measurements.length >= SKINFOLD_READ_LIMIT) return bodyReceipt("Messung", done, null);
     const undo = before ? ["/api/body/skinfolds", { date: day, folds_mm: Object.fromEntries(before.folds_mm.map((fold) => [fold.site, fold.mm])) }] : ["/api/body/skinfolds/remove", { date: day, confirmed: true }];
-    return (garmin) => bodyReceipt("Messung", done, garmin, undo);
+    return bodyReceipt("Messung", done, undo);
   }
   const before = bodyFatEntries.find((item) => item.date === day);
   const undo = before ? ["/api/body/body-fat", { date: day, pct: before.pct }] : ["/api/body/body-fat/remove", { date: day, confirmed: true }];
-  return (garmin) => bodyReceipt("Körperfett", done, garmin, undo);
+  return bodyReceipt("Körperfett", done, undo);
 }
 
-// The receipt stays in the toast with "Rückgängig" a little longer than a plain message.
-function showBodyReceipt(receipt) {
-  toast(receipt.text, receipt.error);
-  if (!receipt.undo) return;
-  const undo = h("button", { type: "button", className: "message-undo" }, "Rückgängig");
-  undo.addEventListener("click", async () => {
-    setSaving(undo, true);
-    const [path, payload] = receipt.undo;
-    try {
-      const read = await api(path, { method: "PUT", body: JSON.stringify(payload) });
-      await bodyEntryChanged();
-      toast(read?.remote === "pending" ? "Zurückgenommen. Garmin-Sync fehlgeschlagen – wird erneut versucht." : "Zurückgenommen.", read?.remote === "pending");
-    } catch (error) {
-      setSaving(undo, false);
-      toast(error.message, true);
+// #4267 (option B): the save answers at once; the Garmin and Wahoo pushes run on and the receipt
+// follows them through the sync poll for at most two minutes.
+// A push's target key is its provider's name in lower case.
+const bodyPushName = (key) => key[0].toUpperCase() + key.slice(1);
+const BODY_PUSH_FOLLOW_MS = 120_000;
+const GARMIN_PUSH_STATES = { running: "running", pending: "failed", needs_weight: "needs_weight", sent: "done", removed: "done", unchanged: "done" };
+// How a finished Wahoo push ended (its diagnostics enum); a final refusal is not retried.
+const WAHOO_PUSH_STATES = { sent: "done", unchanged: "done", scope_missing: "scope", http_4xx: "refused" };
+let bodyPushFollows = [];
+
+// Each push's state from the save's answer: running, done, failed or needs_weight; off is no push.
+function bodyPushTargets(garmin, wahoo) {
+  const targets = { garmin: GARMIN_PUSH_STATES[garmin], wahoo: { running: "running", pending: "failed" }[wahoo] };
+  return Object.fromEntries(Object.entries(targets).filter(([, value]) => value));
+}
+
+function bodyPushText(targets, done) {
+  const keys = Object.keys(targets);
+  const names = (list) => list.map(bodyPushName).join(" und ");
+  if (keys.some((key) => targets[key] === "running")) return `An ${names(keys)} senden…`;
+  const saved = keys.filter((key) => targets[key] === "done");
+  const verb = done === "gespeichert" ? "gespeichert" : "aktualisiert";
+  return [
+    saved.length ? `✓ In ${names(saved)} ${verb}` : "",
+    ...keys.filter((key) => targets[key] === "failed").map((key) => `${bodyPushName(key)}-Sync fehlgeschlagen – wird erneut versucht.`),
+    targets.garmin === "needs_weight" ? "Garmin braucht ein Gewicht am selben Tag." : "",
+    targets.wahoo === "refused" ? "Wahoo-Sync fehlgeschlagen." : "",
+    targets.wahoo === "scope" ? "Wahoo: Berechtigung fehlt – Wahoo neu verbinden." : "",
+  ].filter(Boolean).join(" · ");
+}
+
+const bodyPushFailed = (targets) => Object.values(targets).some((value) => !["running", "done"].includes(value));
+
+function renderBodyPushLine(line, targets, done) {
+  const running = Object.values(targets).includes("running");
+  line.classList.toggle("is-loading", running);
+  line.replaceChildren(...(running ? [h("span", { className: "button-spinner", "aria-hidden": "true" })] : []), bodyPushText(targets, done));
+}
+
+// One followed receipt against a sync status asked for after its save: a push that stopped running
+// takes its day's outcome (after a restart: still pending is failed, else done).
+function settleBodyPush(follow, pushes) {
+  const { garmin = {}, wahoo = {} } = pushes;
+  if (follow.targets.garmin === "running" && !garmin.running?.includes(follow.day)) {
+    const outcome = garmin.outcomes?.[follow.day] ?? (garmin.pending?.includes(follow.day) ? "pending" : "sent");
+    follow.targets.garmin = GARMIN_PUSH_STATES[outcome];
+    if (!follow.targets.garmin) delete follow.targets.garmin;
+  }
+  if (follow.targets.wahoo === "running" && !wahoo.running) follow.targets.wahoo = WAHOO_PUSH_STATES[wahoo.outcome] || (wahoo.pending ? "failed" : "done");
+}
+
+// The sync poll's body pushes. A followed receipt ends done or failed; after two minutes its line
+// turns neutral; a closed toast gets the end in a second one. A status asked for before a save
+// (requestedAt) settles nothing of it. Returns whether to keep polling fast.
+function followBodyPush(pushes, requestedAt = Date.now()) {
+  const toastNode = document.querySelector("#toast");
+  bodyPushFollows = bodyPushFollows.filter((follow) => {
+    const shown = follow.line.isConnected && toastNode?.classList.contains("show");
+    if (Date.now() > follow.until) {
+      if (shown) { follow.line.classList.remove("is-loading"); follow.line.replaceChildren("Wird im Hintergrund weiter übertragen."); }
+      return false;
     }
+    if (!pushes || requestedAt < follow.since) return true;
+    settleBodyPush(follow, pushes);
+    if (Object.values(follow.targets).includes("running")) return true;
+    const failed = bodyPushFailed(follow.targets);
+    if (!shown) toast(bodyPushText(follow.targets, follow.done), failed);
+    else {
+      renderBodyPushLine(follow.line, follow.targets, follow.done);
+      if (failed) toastNode.classList.add("error");
+    }
+    return false;
   });
-  document.querySelector("#toast")?.append(undo);
+  return bodyPushFollows.length > 0;
+}
+
+// The receipt stays in the toast with "Rückgängig" and the push line a little longer than a plain message.
+function showBodyReceipt(receipt, day) {
+  const targets = bodyPushTargets(receipt.garmin, receipt.wahoo);
+  toast(receipt.text, bodyPushFailed(targets));
+  const node = document.querySelector("#toast");
+  if (receipt.undo) {
+    const undo = h("button", { type: "button", className: "message-undo" }, "Rückgängig");
+    undo.addEventListener("click", async () => {
+      setSaving(undo, true);
+      const [path, payload] = receipt.undo;
+      try {
+        const read = await api(path, { method: "PUT", body: JSON.stringify(payload) });
+        await bodyEntryChanged();
+        showBodyReceipt({ text: "Zurückgenommen.", done: "zurückgenommen", garmin: read?.remote, wahoo: read?.remote_wahoo }, day);
+      } catch (error) {
+        setSaving(undo, false);
+        toast(error.message, true);
+      }
+    });
+    node?.append(undo);
+  }
+  if (Object.keys(targets).length) {
+    const line = h("span", "body-push");
+    renderBodyPushLine(line, targets, receipt.done);
+    node?.append(line);
+    if (Object.values(targets).includes("running")) {
+      const since = Date.now();
+      bodyPushFollows.push({ day, targets, done: receipt.done, line, since, until: since + BODY_PUSH_FOLLOW_MS });
+      scheduleSyncPoll(SYNC_POLL_ACTIVE_MS);
+    }
+  }
+  if (!receipt.undo && !Object.keys(targets).length) return;
   clearTimeout(toast.timer);
   toast.timer = setTimeout(hideToast, 10000);
 }
@@ -1922,7 +2008,10 @@ async function sendBodyEntry(dialog, path, payload, button, receipt, replaces = 
     return true;
   }
   await bodyEntryChanged();
-  showBodyReceipt(receipt(read?.remote));
+  // A save names its value and day ("Gewicht 78,4 kg · 27.11. gespeichert."), a removal its kind.
+  const own = OUTBOX_BODY_ENTRIES[path];
+  const text = own ? `${own.label(payload)} · ${dateLabel(payload.date)} ${receipt.done}.` : `${receipt.noun} ${receipt.done}.`;
+  showBodyReceipt({ ...receipt, text, garmin: read?.remote, wahoo: read?.remote_wahoo }, payload.date);
   return true;
 }
 

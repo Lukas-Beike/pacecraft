@@ -18,6 +18,7 @@ from backend.sync.executor import WahooJobAdapter
 from backend.sync.wahoo_weight_push import (
     STATE_KEY,
     WahooWeightPushService,
+    push_state,
     summarize_weight_push,
 )
 from tests.test_wahoo_client import ClientCase
@@ -258,14 +259,43 @@ class WahooWeightPushTests(unittest.TestCase):
         self.assertEqual(["off"], self.outcomes)
 
     def test_start_pushes_in_the_background(self):
+        # #4267: the save answers "running" at once; the sync status follows the
+        # push until it is done, and a failed one reads as pending.
         self.status = {"connected": False, "scope": None}
         self.weights.save({"date": DAY.isoformat(), "kg": 80.4})
+        self.assertEqual("off", self.push.start())
+        # Without a connection the off outcome is still recorded (review on #4267).
+        with self.manager.reader() as db:
+            self.assertEqual(
+                {"running": False, "pending": False, "outcome": "off"}, push_state(db)
+            )
         self.status = dict(ONLINE)
-        self.push.start()
+        release = threading.Event()
+        update = self.client.update_user_weight
+        self.client.update_user_weight = lambda kg: (release.wait(5), update(kg))
+        self.assertEqual("running", self.push.start())
+        with self.manager.reader() as db:
+            self.assertTrue(push_state(db)["running"])
+        release.set()
         for thread in threading.enumerate():
             if thread.name == "wahoo-weight-push":
                 thread.join(5)
         self.assertEqual([80.4], self.client.weights)
+        with self.manager.reader() as db:
+            self.assertEqual(
+                {"running": False, "pending": False, "outcome": "sent"}, push_state(db)
+            )
+        self.client.fail = TimeoutError()
+        self.weights.save({"date": DAY.isoformat(), "kg": 80.6})
+        with self.assertLogs("intervals_coach"):
+            self.assertEqual("running", self.push.start())
+            for thread in threading.enumerate():
+                if thread.name == "wahoo-weight-push":
+                    thread.join(5)
+        with self.manager.reader() as db:
+            self.assertEqual(
+                {"running": False, "pending": True, "outcome": "error"}, push_state(db)
+            )
 
 
 class UpdateUserWeightTests(ClientCase):

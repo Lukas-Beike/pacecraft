@@ -73,7 +73,7 @@ The system SHALL bound per-section and total Coach context, retain valid structu
 
 #### Scenario: Context sized per task
 - **WHEN** a Coach turn is built for an analysis, review, planning, morning check-in, typed planning, general or nutrition request
-- **THEN** only the sections that task needs are included, within a deterministic character budget per kind, and the request diagnostics record the selection name, request kind and the characters of each present section so live sizes can be compared.
+- **THEN** only the sections that task needs are included, within a deterministic character budget per kind, measured on the kind's dynamic part while the fixed rules have one budget of their own and both sum to the kind's total, and the request diagnostics record the selection name, request kind and the characters of each present section so live sizes can be compared.
 
 #### Scenario: Canonical data is not yet available
 - **WHEN** the first canonical backfill is pending or failed and a scoped Coach context is built
@@ -96,6 +96,7 @@ Evidence:
 - `backend/coach/context.py:COACH_CONTEXT_TOTAL_CHAR_LIMIT`
 - `backend/coach/context.py:CoachTrainingContextService.build`
 - `tests/test_coach_context_budget.py:CoachContextBudgetTests.test_sections_and_budget_per_kind`
+- `tests/test_coach_context_budget.py:CoachContextBudgetTests.test_a_rule_edit_leaves_every_dynamic_measurement`
 - `tests/test_coach_context_budget.py:CoachContextBudgetTests.test_size_diagnostics_name_the_selection_and_sections_for_every_kind`
 - `tests/test_coach_context_reduction.py:test_oversized_single_section_retains_useful_prefix`
 - `tests/test_coach_context_reduction.py:test_pending_data_marker_survives_scoped_planning_projection`

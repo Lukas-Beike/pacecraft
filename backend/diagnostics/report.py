@@ -20,6 +20,7 @@ from backend.backup.recovery_copies import RecoveryCopies
 from backend.calendar.external import ExternalCalendarReader
 from backend.canonical.garmin_payload import RETIRED_SNAPSHOT_KEY, STATE_KEY
 from backend.canonical.vocabulary import ProviderId
+from backend.coach.auto_turns import diagnostics as automatic_turn_diagnostics
 from backend.coach.morning import MorningCheckinStateService
 from backend.config import DEFAULT_ANTHROPIC_BASE_URL, DEFAULT_OPENAI_BASE_URL, Config
 from backend.db import planning_store
@@ -447,6 +448,11 @@ class DiagnosticReportService:
                 "push_notifications": section(
                     "push_notifications",
                     lambda: push_diagnostics(key_values, db),
+                ),
+                # Automatic Coach turns, counts only (#4274).
+                "coach_automatic_turns": section(
+                    "coach_automatic_turns",
+                    lambda: automatic_turn_diagnostics(key_values, db),
                 ),
                 "plan_sync": section(
                     "plan_sync",

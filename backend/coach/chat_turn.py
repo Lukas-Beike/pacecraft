@@ -7,6 +7,7 @@ import threading
 from collections.abc import Callable
 from typing import Any
 
+from backend.coach.authorization import AUTOMATIC_TURN_PREFIX
 from backend.coach.conversation import CoachConversationProvisionService
 from backend.coach.conversation_gate import CoachConversationGate
 from backend.coach.receipt_compaction import compact_receipt
@@ -217,6 +218,13 @@ class CoachChatTurnService:
         background_job: bool,
     ) -> dict[str, Any]:
         message, client_turn_id = self._validate(message, client_turn_id, cancel_event)
+        if not background_job and client_turn_id.startswith(AUTOMATIC_TURN_PREFIX):
+            # Only the job worker runs an automatic turn the server queued (#4274).
+            raise AppError(
+                400,
+                "client_turn_id muss eine begrenzte, nicht leere Kennung sein.",
+                reason="invalid_client_turn",
+            )
         existing_command, background_receipt, background_owned = self._command_state(
             client_turn_id,
             session_csrf_hash,

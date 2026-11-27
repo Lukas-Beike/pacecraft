@@ -71,6 +71,29 @@ async function savePushType(event) {
   }
 }
 
+// The opt-in automatic Coach turns (#4274), off by default; a save in flight keeps its switch.
+function renderAutomaticTurns(data) {
+  const turns = data?.model?.automatic_turns || {};
+  for (const input of document.querySelectorAll("#coachAutomaticTurns input[data-automatic-turn]")) {
+    if (!input.disabled) input.checked = turns[input.dataset.automaticTurn] === true;
+  }
+}
+
+async function saveAutomaticTurn(event) {
+  const input = event.target.closest?.("input[data-automatic-turn]");
+  if (!input) return;
+  input.disabled = true;
+  try {
+    const turns = await api("/api/settings/automatic-turns", { method: "PUT", body: JSON.stringify({ [input.dataset.automaticTurn]: input.checked }) });
+    if (state.data?.model) state.data.model.automatic_turns = turns;
+  } catch (error) {
+    input.checked = !input.checked;
+    toast(error.message || "Die Einstellung konnte nicht gespeichert werden", true);
+  } finally {
+    input.disabled = false;
+  }
+}
+
 async function renderNotificationStatus() {
   const node = $("#notificationStatus");
   const button = $("#notificationEnableButton");
@@ -221,6 +244,7 @@ function pageInputPending() {
   return Boolean(active?.matches?.("input, textarea, select") && !active.closest?.("#chatForm"))
     || [...document.querySelectorAll(UPDATE_RELOAD_INPUT_FIELDS)].some((field) => field.value.trim())
     || Boolean($("#notificationTypes input[data-push-type]:disabled"))
+    || Boolean($("#coachAutomaticTurns input:disabled"))
     || (typeof providerCredentialBusy !== "undefined" && providerCredentialBusy.size > 0)
     || editedFormPending()
     || Boolean($("#nutritionExtraction") && !$("#nutritionExtraction").hidden && $("#nutritionExtraction").childElementCount);

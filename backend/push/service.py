@@ -7,7 +7,8 @@ sent-event record are plain settings. Each event key is sent once; a type that
 is switched off is recorded as handled so turning it on later does not replay
 old events. Delivery is three steps, so the network calls hold no gate: claim
 (database), deliver (push services only), settle (database). Notification bodies are lock-screen safe: no names, values, places,
-provider error text or Coach content, except the units of "Heute" (#4273).
+provider error text or Coach content, except the units of "Heute" (#4273)
+and the first sentence of an automatic Coach answer (#4274), athlete decisions.
 """
 
 from __future__ import annotations
@@ -99,6 +100,10 @@ class PushService:
         self._key_values = key_values
         self._now = now
         self._sender = sender
+
+    def stored(self, db: Any, key: str, default: Any) -> Any:
+        """The decoded setting ``key`` (also another owner's), ``default`` without one."""
+        return self._read(db, key, default)
 
     def _read(self, db: Any, key: str, default: Any) -> Any:
         return _stored(self._key_values, db, key, default)

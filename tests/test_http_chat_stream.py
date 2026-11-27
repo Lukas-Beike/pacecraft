@@ -30,6 +30,8 @@ class CoachChatStreamTransportTests(unittest.TestCase):
             "client_turn_id": "  synthetic-turn  ",
             "request_kind": "synthetic-kind",
             "attachments": [{"id": "synthetic-attachment"}],
+            # Only server code marks a turn automatic (#4274); the route drops it.
+            "automatic": True,
         }
         self.session = {"csrf_hash": "synthetic-session"}
         self.transport = CoachChatStreamTransport(

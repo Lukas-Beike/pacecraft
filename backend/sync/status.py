@@ -160,6 +160,7 @@ class SyncPublicStateService:
         state_version_service: _StateVersionProvider,
         *,
         running_probes: Mapping[str, Callable[[], bool]] | None = None,
+        body_push: Callable[[], dict[str, Any]] | None = None,
     ) -> None:
         self._config = config
         self._database_manager = database_manager
@@ -173,6 +174,8 @@ class SyncPublicStateService:
         self._running_probes: Mapping[str, Callable[[], bool]] = (
             {} if running_probes is None else running_probes
         )
+        # The body pushes the browser follows after a save (#4267).
+        self._body_push = body_push
 
     def _get_value(self, key: str) -> str | None:
         with self._database_manager.reader() as db:
@@ -215,6 +218,8 @@ class SyncPublicStateService:
         result["jobs"] = (
             jobs if jobs is not None else self._sync_job_queue_service.list()
         )
+        if self._body_push is not None:
+            result["body_push"] = self._body_push()
         return result
 
     def browser_state(

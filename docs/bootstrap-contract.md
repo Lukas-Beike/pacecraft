@@ -63,7 +63,7 @@ when its marker changes. Each marker is built from local durable state
 | `local_feedback` | object | `recent`, `scope`, `today` |
 | `messages` | list |  |
 | `messages_next_cursor` | null |  |
-| `model` | object | `options`, `provider`, `selected`, `tasks` |
+| `model` | object | `automatic_turns`, `options`, `provider`, `selected`, `tasks` |
 | `morning_checkin` | object | `current_for_today`, `date`, `status` |
 | `performance` | object | always empty here; its area route loads it |
 | `planned` | list |  |
@@ -77,7 +77,7 @@ when its marker changes. Each marker is built from local durable state
 | `provider_status` | object | `anthropic`, `openai` |
 | `service_tier` | object | `options`, `selected` |
 | `state_versions` | object | `activities`, `activity_feedback`, `chat`, `checkins`, `garmin`, `library`, `performance`, `plan`, `profile` |
-| `sync` | object | `finished_at`, `jobs`, `last_error`, `message`, `operation_id`, `phase`, `progress`, `running`, `started_at`, `status` |
+| `sync` | object | `body_push`, `finished_at`, `jobs`, `last_error`, `message`, `operation_id`, `phase`, `progress`, `running`, `started_at`, `status` |
 | `sync_settings` | object | `garmin_days`, `wahoo_days` |
 | `thinking_level` | object | `options`, `selected` |
 | `threshold_warnings` | null |  |
