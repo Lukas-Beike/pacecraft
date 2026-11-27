@@ -270,6 +270,7 @@ class PushServiceTests(unittest.TestCase):
                         "url": "#plan/season",
                         # One tag per event: two events never replace each other.
                         "tag": "competition:c1:2026-11-25",
+                        "kind": "upcoming",
                     },
                 )
             ],
@@ -1082,8 +1083,8 @@ class PushChecksTests(unittest.TestCase):
         self.assertFalse(self.checks.notify(coach_answer_event("turn-1")))
         (message,) = self._titled("Coach")
         self.assertEqual(
-            (message["body"], message["url"], message["tag"]),
-            ("Deine Antwort ist da.", "#coach", "coach:turn-1"),
+            (message["body"], message["url"], message["tag"], message["kind"]),
+            ("Deine Antwort ist da.", "#coach", "coach:turn-1", "coach_answer"),
         )
         self.assertTrue(self.checks.notify(coach_answer_event("turn-2")))
 

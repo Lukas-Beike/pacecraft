@@ -207,6 +207,10 @@ function registerServiceWorker() {
   document.addEventListener("focusout", () => { if (!pointerHeld) requestAnimationFrame(reloadForUpdateWhenSafe); });
   document.addEventListener("pointerdown", () => { pointerHeld = true; }, true);
   for (const type of ["pointerup", "pointercancel"]) document.addEventListener(type, () => { pointerHeld = false; setTimeout(() => requestAnimationFrame(reloadForUpdateWhenSafe), 0); }, true);
+  // A Coach answer push stays silent while this window shows the Coach: the worker asks the route (#4276).
+  navigator.serviceWorker.addEventListener("message", (event) => {
+    if (event.data?.type === "route-request") event.ports[0]?.postMessage({ route: `#${AppRouter.baseRoute()}` });
+  });
   navigator.serviceWorker.register("/service-worker.js").catch(() => {});
 }
 

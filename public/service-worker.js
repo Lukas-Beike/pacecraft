@@ -103,14 +103,47 @@ globalThis.addEventListener("fetch", (event) => {
     });
   }));
 });
+// A Coach answer stays silent while the athlete reads the Coach: an app window that is visible, focused and on
+// #coach. Every other push, and a Coach answer anywhere else, shows (#4276). A push may go without a notification
+// only while a client is focused, so the browser shows no generic "updated in the background" notice.
+function pushIsSilent(kind, states) {
+  return kind === "coach_answer" && states.some((state) => state.visible && state.focused && /^#coach(\/|$)/.test(state.route));
+}
+
+// The page's own route, asked over a message channel: the worker may sleep, and a client's url need not follow
+// hash changes. No answer within 300 ms counts as unknown, and the notification shows.
+function askRoute(client) {
+  return new Promise((resolve) => {
+    const channel = new MessageChannel();
+    const settle = (route) => { clearTimeout(timer); channel.port1.close(); resolve(route); };
+    const timer = setTimeout(() => settle(""), 300);
+    channel.port1.onmessage = (reply) => settle(String(reply.data?.route || ""));
+    client.postMessage({ type: "route-request" }, [channel.port2]);
+  });
+}
+
+async function windowStates() {
+  const windows = await clients.matchAll({ type: "window", includeUncontrolled: true });
+  return Promise.all(windows.map(async (client) => {
+    const live = client.visibilityState === "visible" && client.focused;
+    return { visible: client.visibilityState === "visible", focused: Boolean(client.focused), route: live ? await askRoute(client) : "" };
+  }));
+}
+
 // Web Push (#3914): the server's message is lock-screen safe; a tap opens its screen.
+async function showPush(message) {
+  const states = message.kind === "coach_answer" ? await windowStates().catch(() => []) : [];
+  // The window is checked once more: a window that went away meanwhile leaves no one to see the answer.
+  if (pushIsSilent(message.kind, states) && (await clients.matchAll({ type: "window", includeUncontrolled: true }).catch(() => [])).some((client) => client.visibilityState === "visible" && client.focused)) return;
+  const route = typeof message.url === "string" && /^#[a-z/-]*$/.test(message.url) ? message.url : "";
+  await globalThis.registration.showNotification(String(message.title || "Pacecraft"), {
+    body: String(message.body || ""), tag: String(message.tag || "pacecraft"), icon: "/icon-192.png", badge: "/icon.svg", data: { route },
+  });
+}
 globalThis.addEventListener("push", (event) => {
   let message = {};
   try { message = event.data?.json() ?? {}; } catch { message = {}; }
-  const route = typeof message.url === "string" && /^#[a-z/-]*$/.test(message.url) ? message.url : "";
-  event.waitUntil(globalThis.registration.showNotification(String(message.title || "Pacecraft"), {
-    body: String(message.body || ""), tag: String(message.tag || "pacecraft"), icon: "/icon-192.png", badge: "/icon.svg", data: { route },
-  }));
+  event.waitUntil(showPush(message));
 });
 globalThis.addEventListener("notificationclick", (event) => {
   event.notification.close();
