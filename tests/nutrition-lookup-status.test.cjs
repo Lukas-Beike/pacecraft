@@ -83,6 +83,20 @@ test("a background load overtaking a search ends its searching message (Gitar on
   assert.equal(elements["#nutritionProductStatus"].textContent, "Keine Produkte gefunden.");
 });
 
+test("a failed background load overtaking a search names its error (Gitar on #4301)", async () => {
+  let releaseSearch;
+  const gate = new Promise((resolve) => { releaseSearch = resolve; });
+  const { context, elements } = harness(async (url) => {
+    if (url.includes("q=")) { await gate; return { products: [] }; }
+    throw new Error("Zeitüberschreitung");
+  });
+  const search = context.loadNutritionProducts("skyr");
+  await context.loadNutritionProducts("", { background: true });
+  releaseSearch();
+  await search;
+  assert.equal(elements["#nutritionProductStatus"].textContent, "Produktsuche fehlgeschlagen: Zeitüberschreitung");
+});
+
 test("a background state render does not clobber a fresh lookup result", async () => {
   const { context, elements, rendered } = harness(async (url) => (url.includes("/lookup") ? LOCAL_LOOKUP : { products: [] }));
   await context.lookupNutritionProduct("4006381333931");
