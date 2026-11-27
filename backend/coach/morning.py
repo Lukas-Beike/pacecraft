@@ -66,7 +66,7 @@ class ManualMorningCheckinService:
                 exc_info=True,
             )
 
-        if not self._sleep_ready(checkin_date):
+        if not self.sleep_ready(checkin_date):
             raise AppError(
                 503,
                 "Der Morgen-Check-in wartet auf Garmins Schlafdaten für heute.",
@@ -76,7 +76,7 @@ class ManualMorningCheckinService:
         self._morning_battery.refresh(checkin_date)
         return checkin_date
 
-    def _sleep_ready(self, checkin_date: date) -> bool:
+    def sleep_ready(self, checkin_date: date) -> bool:
         # Only the stored sleep freshness is read, never a Garmin section.
         state = self._garmin_payload.state()
         with self._observations.database_manager.reader() as db:

@@ -13,7 +13,11 @@ from backend.coach.attachments import (
     AttachmentRequestTooLarge,
     validate_attachments,
 )
-from backend.coach.authorization import coach_execution_scope, coach_session_key
+from backend.coach.authorization import (
+    AUTOMATIC_TURN_PREFIX,
+    coach_execution_scope,
+    coach_session_key,
+)
 from backend.coach.constants import turn_ai_provider
 from backend.coach.playbooks import REQUEST_KINDS
 from backend.coach.service import command_receipt
@@ -169,6 +173,66 @@ class CoachJobSubmissionService:
             "plan_scope": scope,
         }
 
+    def enqueue_automatic(
+        self, message: str, client_turn_id: str, request_kind: str
+    ) -> bool:
+        """Queue an unattended, read-only turn once per turn id (#4274).
+
+        Only server code calls this: the receipt marks the turn automatic, its
+        intent withholds every write and it belongs to no login session. False
+        when the turn id was queued before (one attempt, no retry storm).
+        """
+        if not client_turn_id.startswith(AUTOMATIC_TURN_PREFIX):
+            raise ValueError("automatic turn ids carry the automatic prefix")
+        model, thinking_level = self._model_settings(request_kind)
+        operation_id = uuid.uuid4().hex
+        now = self._utc_now()
+        with self._database_manager().unit_of_work() as db:
+            if coach_store.command_row(db, client_turn_id, "status"):
+                return False
+            user_message = self._chat_repository.add(
+                db, "user", message, client_turn_id=client_turn_id
+            )
+            coach_store.insert_command(
+                db,
+                uuid.uuid4().hex,
+                client_turn_id,
+                None,
+                # No athlete message started this turn: it only reads and proposes.
+                {"allow_mutations": False},
+                target_system="local",
+                status="queued",
+                receipt={
+                    "status": "queued",
+                    "mode": "background",
+                    "phase": "queued",
+                    "automatic": True,
+                    "operation_id": operation_id,
+                    "session_key": coach_session_key(""),
+                    "user_message_id": user_message["id"],
+                    "client_turn_id": client_turn_id,
+                    "plan_scope": coach_execution_scope(
+                        None, background_horizon_days=self._background_horizon_days
+                    ),
+                    "ai_provider": turn_ai_provider(model),
+                    "model": model,
+                    "thinking_level": thinking_level,
+                    "request_kind": request_kind,
+                },
+                created_at=now,
+                updated_at=now,
+            )
+        self._state_event_buffer.publish(
+            "coach",
+            {
+                "message_id": user_message["id"],
+                "role": "user",
+                "client_turn_id": client_turn_id,
+            },
+        )
+        self._wake_event.set()
+        return True
+
     def _persist_early_cancel(self, client_turn_id: str) -> None:
         with self._database_manager().unit_of_work() as db:
             coach_store.merge_command_receipt(
@@ -218,7 +282,11 @@ class CoachJobSubmissionService:
                 "Die Coach-Nachricht ist leer oder zu lang.",
                 reason="invalid_chat_message",
             )
-        if not client_turn_id or len(client_turn_id) > 120:
+        if (
+            not client_turn_id
+            or len(client_turn_id) > 120
+            or client_turn_id.startswith(AUTOMATIC_TURN_PREFIX)
+        ):
             raise AppError(
                 400,
                 "client_turn_id muss eine begrenzte, nicht leere Kennung sein.",

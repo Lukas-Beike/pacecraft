@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 from copy import deepcopy
 from datetime import date
 from typing import Any
@@ -11,7 +12,25 @@ from backend.errors import AppError
 from backend.sync.provider_registry import DEFAULT_PROVIDER_REGISTRY
 
 TRAINING_PLAN_SCOPE_PREFIX = "training_plan:"
+# The turn ids of automatic turns (#4274); no athlete request may carry one, and
+# their stored prompt never authorizes a write.
+AUTOMATIC_TURN_PREFIX = "auto:"
 LOCAL_REQUEST_TARGET = "local"
+
+
+def automatic_read_only(receipt: Any, intent: Any) -> bool:
+    """A turn the server started unattended (#4274): its receipt says so and its
+    stored intent withholds every write. Only such a turn runs without a session."""
+    try:
+        stored = json.loads(intent) if isinstance(intent, str) else intent
+    except ValueError:
+        return False
+    return (
+        isinstance(receipt, dict)
+        and receipt.get("automatic") is True
+        and isinstance(stored, dict)
+        and stored.get("allow_mutations") is False
+    )
 
 
 def coach_session_key(session_csrf_hash: str) -> str:

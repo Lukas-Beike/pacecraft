@@ -27,6 +27,7 @@ The Coach interacts with the athlete's data via structured tools covering plan i
 - **Transaction Locks**: All database updates share SQLite transaction locks to guarantee that conversational actions and background syncs never collide.
 - **Revision Control**: Plan modifications require passing the current planning revision and object hash, preventing overwrite collisions if edits occur concurrently.
 - **Named Remote Sync**: An Intervals.icu or Garmin write the athlete names in their own message runs in the same turn without an approval card, bound to the stored units, payload hashes and manifests as a card would bind it; the receipt lists the queued sync and each remote deletion it carries. An unclear request gets an offer instead. Only an explicit Garmin removal still shows a card, bound to the current session and originating Coach turn; a changed or stale manifest fails closed.
+- **Automatic Turns**: The opt-in automatic morning check-in is queued by the server, not by an athlete message. It is offered only the read tools, every write it calls is refused, and its stored prompt never authorizes a later write. It reuses the morning check-in's context selection.
 - **Receipt Verification**: Tool invocations produce structured receipts in the chat UI, distinguishing saved local modifications, pending approval, queued sync jobs, and rejected parameters.
 
 ## Multimodal Capabilities

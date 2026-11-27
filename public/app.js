@@ -141,6 +141,7 @@ $("#gpsTracksToggle").addEventListener("change", saveGpsTracks);
 $("#gpsTracksDeleteButton").addEventListener("click", deleteGpsTracks);
 $("#notificationEnableButton").addEventListener("click", enableNotifications);
 $("#notificationTypes").addEventListener("change", savePushType);
+$("#coachAutomaticTurns").addEventListener("change", saveAutomaticTurn);
 $("#backupDownloadButton").addEventListener("click", () => { downloadDatabaseBackup().catch((error) => toast(error.message, true)); });
 $("#backupRestoreButton").addEventListener("click", restoreDatabaseBackup);
 $("#backupFileInput").addEventListener("change", restoreDatabaseBackup);

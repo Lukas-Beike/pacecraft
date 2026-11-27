@@ -215,6 +215,7 @@ class DiagnosticReportServiceTests(unittest.TestCase):
                 "energy_balance",
                 "wahoo",
                 "push_notifications",
+                "coach_automatic_turns",
                 "plan_sync",
                 "garmin_past_workout_removal",
                 "garmin_daily_calories",
@@ -457,8 +458,9 @@ class DiagnosticReportServiceTests(unittest.TestCase):
         # mapping issue kinds (#2220); the retired FIT value probe no more (#3396).
         # Web Push reads its counts and subscriptions, two more (#3914).
         # The sleep key names read their state, one more (#4017), and the one-time
-        # Garmin store its state, one more (#4135).
-        self.assertEqual(self.key_values.get.call_count, 26)
+        # Garmin store its state, one more (#4135). The automatic Coach turns
+        # read their counts, one more (#4274).
+        self.assertEqual(self.key_values.get.call_count, 27)
 
     def test_storage_and_recovery_copies_are_sizes_and_ages_only(self):
         # Stat only: sizes, free space and the newest copy's age; no name or path.

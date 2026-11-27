@@ -173,6 +173,7 @@ handler's docstring. Regenerate it with
 | POST | `/api/push/unsubscribe` | Session + CSRF | after access | Remove this device's push subscription. |
 | GET | `/api/readiness` | Public | no | Readiness status; 503 while not ready. |
 | POST | `/api/routes/rename` | Session + CSRF | after access | Rename one recognised activity route; nothing is written remotely. |
+| PUT | `/api/settings/automatic-turns` | Session + CSRF | before access | Switch the automatic Coach turns on or off. |
 | PUT | `/api/settings/credentials` | Session + CSRF | before access | Save or clear provider credentials in the encrypted database. |
 | PUT | `/api/settings/model` | Session + CSRF | before access | Select the Coach model of one task. |
 | PUT | `/api/settings/service-tier` | Session + CSRF | before access | Select the OpenAI service tier. |
@@ -2494,6 +2495,15 @@ as `label`.
 Errors: 400 "Der Name muss aus 1 bis 60 Zeichen ohne Steuerzeichen
 bestehen." for an invalid `name`; 404 "Nicht gefunden." when `route_id`
 names no stored route.
+
+### `PUT /api/settings/automatic-turns`
+
+Request: JSON body `{"morning": bool}`: the morning check-in that runs
+once the night's sleep is stored. The turn only reads and proposes.
+
+Response: 200 `{"morning": bool}`, every switch.
+
+Errors: 400 "Unbekannte automatische Coach-Einstellung.".
 
 ### `PUT /api/settings/credentials`
 

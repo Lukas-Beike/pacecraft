@@ -161,6 +161,7 @@ const blockers = {
   "an open dialog": ({ nodes }) => { nodes["dialog[open]"] = {}; return () => { nodes["dialog[open]"] = null; }; },
   // #3914: a notification switch is disabled while its save runs.
   "a notification switch save": ({ nodes }) => { nodes["#notificationTypes input[data-push-type]:disabled"] = {}; return () => { nodes["#notificationTypes input[data-push-type]:disabled"] = null; }; },
+  "an automatic turn switch save": ({ nodes }) => { nodes["#coachAutomaticTurns input:disabled"] = {}; return () => { nodes["#coachAutomaticTurns input:disabled"] = null; }; },
   "a typed credential": ({ credentialFields }) => { credentialFields[1].value = "123456"; return () => { credentialFields[1].value = ""; }; },
   "a credential save": ({ providerCredentialBusy }) => { providerCredentialBusy.add("garmin-login"); return () => { providerCredentialBusy.clear(); }; },
   "an edited form": ({ dirtyForms }) => { dirtyForms.push({ dataset: { dirty: "1" }, closest: () => null }); return () => { dirtyForms.length = 0; }; },
