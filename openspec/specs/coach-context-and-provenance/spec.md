@@ -73,7 +73,7 @@ The system SHALL bound per-section and total Coach context, retain valid structu
 
 #### Scenario: Context sized per task
 - **WHEN** a Coach turn is built for an analysis, review, planning, morning check-in, typed planning, general or nutrition request
-- **THEN** only the sections that task needs are included, within a deterministic character budget per kind, measured on the kind's dynamic part while the fixed rules have one budget of their own and both sum to the kind's total, and the request diagnostics record the selection name, request kind and the characters of each present section so live sizes can be compared.
+- **THEN** only the sections that task needs are included, within a deterministic character budget per kind, measured on the kind's dynamic part while the fixed rules have one budget of their own and both sum to the kind's total; `source_policy` explains only the included sections and the whole policy stays loadable; and the request diagnostics record the selection name, request kind and the characters of each present section so live sizes can be compared.
 
 #### Scenario: Weekdays on dated rows (#4286)
 - **WHEN** the Coach context holds planned units and day rows

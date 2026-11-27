@@ -1,4 +1,4 @@
-"""Heart-rate caps of recovery, easy and long run units (#1851).
+"""Heart-rate caps of recovery, easy, endurance and long run units (#1851, #4292).
 
 The plan stores percentages only; bpm is resolved from the lactate threshold HR in
 effect on the unit's date. Cap values come from the constants table in
@@ -306,11 +306,18 @@ class MeasuredFirstThresholdTests(unittest.TestCase):
         # recovery is the lower of 80 and 79.1 - 7. Without LT1 the defaults stay.
         percents, source = cap_percents(129 / 163 * 100, estimated=True)
         self.assertEqual(
-            ({"recovery": 72.1, "easy": 79.1, "long": 79.1}, SOURCE_ESTIMATED),
+            (
+                # Endurance ("Grundlage") follows easy (#4292).
+                {"recovery": 72.1, "easy": 79.1, "endurance": 79.1, "long": 79.1},
+                SOURCE_ESTIMATED,
+            ),
             (percents, source),
         )
         self.assertEqual(
-            ({"recovery": 80.0, "easy": 84.0, "long": 84.0}, SOURCE_DEFAULT),
+            (
+                {"recovery": 80.0, "easy": 84.0, "endurance": 84.0, "long": 84.0},
+                SOURCE_DEFAULT,
+            ),
             cap_percents(None),
         )
 
@@ -523,6 +530,21 @@ class GuardTests(unittest.TestCase):
 
 class OutdatedCapTests(unittest.TestCase):
     """Units with a cap of an older rule get a brief note only (#3915, #4254)."""
+
+    def test_a_grundlage_run_is_capped_and_offered_like_an_easy_run(self) -> None:
+        # #4292: endurance ("Grundlage") lies below LT1 like easy: the same cap,
+        # the post-session cap check (it reads the stored cap) and the offer.
+        lt1 = 129 / 163 * 100
+        percents, _source = cap_percents(lt1, estimated=True)
+        self.assertEqual(percents["endurance"], percents["easy"])
+        self.assertEqual(run_hr_cap.capped_focus(unit("endurance")), "endurance")
+        capped = with_cap("endurance", lt1)
+        self.assertEqual(stored_cap(capped), stored_cap(with_cap("easy", lt1)))
+        old = unit("endurance", hr_cap=hr_cap(76.1, SOURCE_ESTIMATED))
+        (found,) = run_hr_cap.outdated_caps([old, capped], lt1, estimated=True)
+        self.assertEqual(
+            (found["focus"], found["current_percent_lthr"]), ("endurance", 79.1)
+        )
 
     def test_only_default_caps_above_todays_default_are_listed(self) -> None:
         old = unit(FOCI[1], hr_cap=hr_cap(87.0))

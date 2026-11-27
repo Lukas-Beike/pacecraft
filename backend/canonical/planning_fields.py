@@ -32,6 +32,20 @@ ENDURANCE_FOCI: Final = (
     "test",
 )
 RIDE_FOCI: Final = (*ENDURANCE_FOCI[:6], "sweet_spot", *ENDURANCE_FOCI[6:])
+# The German label of each endurance focus, as the calendar shows it (#4292).
+FOCUS_LABELS_DE: Final = {
+    "recovery": "Regeneration",
+    "easy": "Locker",
+    "endurance": "Grundlage",
+    "long": "Lang",
+    "tempo": "Tempo",
+    "threshold": "Schwelle",
+    "sweet_spot": "Sweet Spot",
+    "vo2max": "VO2max",
+    "anaerobic": "Anaerob",
+    "race": "Wettkampf",
+    "test": "Test",
+}
 STRENGTH_FOCI: Final = (
     "legs",
     "upper",

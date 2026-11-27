@@ -81,7 +81,7 @@ The server SHALL send each event key at most once, only to subscribed devices, o
 
 #### Scenario: Morning plan
 - **WHEN** today has a planned unit
-- **THEN** from 07:00 one "Heute" notification a day lists each non-rest unit of today as "{title} · {duration} · {key target}", a part the unit does not store left out: the key target is the stored heart-rate cap in bpm of an easy or long unit, the first repeat block of an interval unit unless its title names it, and none for strength; it opens `#plan/overview`
+- **THEN** from 07:00 one "Heute" notification a day lists each non-rest unit of today as "{title} · {duration} · {key target}", a part the unit does not store left out: the key target is the stored heart-rate cap in bpm of a recovery, easy, endurance or long unit, the first repeat block of an interval unit unless its title names it, and none for strength; it opens `#plan/overview`
 
 #### Scenario: New session
 - **WHEN** a Garmin or Wahoo session started within two days is stored after the subscription

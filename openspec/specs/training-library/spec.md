@@ -728,7 +728,7 @@ A run unit whose focus has a cap in `HR_CAP_PERCENT` (`backend/activities/hr_cap
 
 #### Scenario: Measured first threshold
 - **WHEN** the athlete enters a measured first-threshold heart rate in bpm (profile form or API, never by the Coach)
-- **THEN** it is stored in bpm (`first_threshold_hr`, #3915), so a later change of the threshold HR never moves it; the easy and long cap becomes its percent of today's run threshold HR itself, without a margin (#4254), and the recovery cap the lower of its default and the easy cap minus a fixed gap (constants in `backend/activities/hr_cap.py`), the cap source is `measured`, and a cap with another source than the current one is rejected like a wrong value.
+- **THEN** it is stored in bpm (`first_threshold_hr`, #3915), so a later change of the threshold HR never moves it; the easy, endurance and long cap becomes its percent of today's run threshold HR itself, without a margin (#4254), and the recovery cap the lower of its default and the easy cap minus a fixed gap (constants in `backend/activities/hr_cap.py`), the cap source is `measured`, and a cap with another source than the current one is rejected like a wrong value.
 
 #### Scenario: First threshold stored before the bpm field
 - **WHEN** a stored profile still holds only the percent of LTHR (`first_threshold_pct`, before #3915)
@@ -752,7 +752,7 @@ A run unit whose focus has a cap in `HR_CAP_PERCENT` (`backend/activities/hr_cap
 
 #### Scenario: Cap values
 - **WHEN** a cap is derived
-- **THEN** the default is 80 % of the run threshold HR for recovery units and 84 % for easy and long units (below the 85 % LT1 stand-in, #3915); from a measured or adopted first threshold the easy and long cap is that percent itself (#4254) and the recovery cap the lower of 80 and the easy cap minus 7.0 points, each rounded down to one decimal, and the defaults apply (source `default`) when the easy cap would exceed 100 or a cap or its exported lower bound would fall below 20; the exported lower bound `low_percent_lthr` is the lower of 65 and the cap minus 15 points, rounded down to one decimal.
+- **THEN** the default is 80 % of the run threshold HR for recovery units and 84 % for easy, endurance ("Grundlage", #4292) and long units (below the 85 % LT1 stand-in, #3915); from a measured or adopted first threshold the easy, endurance and long cap is that percent itself (#4254) and the recovery cap the lower of 80 and the easy cap minus 7.0 points, each rounded down to one decimal, and the defaults apply (source `default`) when the easy cap would exceed 100 or a cap or its exported lower bound would fall below 20; the exported lower bound `low_percent_lthr` is the lower of 65 and the cap minus 15 points, rounded down to one decimal.
 
 #### Scenario: Stored cap
 - **WHEN** a cap is validated or resolved

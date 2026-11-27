@@ -113,6 +113,7 @@ def frontend_source():
     )
 
 
+from backend.canonical.planning_fields import FOCUS_LABELS_DE
 from backend.errors import AppError
 from backend.http_api.static_assets import (
     CACHE_NAME_TOKEN,
@@ -472,6 +473,14 @@ class ServerFrontendTests(ServerTestCase):
         self.assertEqual(index.count('aria-label="Kalender"'), 2)
         self.assertNotIn("coachReceipts", state)
         self.assertNotIn('id="activitiesPanel"', index)
+
+    def test_the_coach_names_each_focus_with_the_calendar_label(self):
+        # #4292: the tool schema's German focus labels are the calendar's.
+        public = Path(__file__).resolve().parents[1] / "public"
+        plan_views = (public / "plan-views.js").read_text(encoding="utf-8")
+        for key, label in FOCUS_LABELS_DE.items():
+            with self.subTest(key=key):
+                self.assertIn(f'{key}: "{label}"', plan_views)
 
     def test_plan_route_has_read_only_overview_and_library_segments(self):
         public = server.PUBLIC_DIR

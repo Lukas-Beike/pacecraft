@@ -254,13 +254,18 @@ class CapSourceTests(unittest.TestCase):
                 "lt1_bpm": 129,
                 "lt1_pct": 77.2,
                 "lt1": "adopted_estimate",
-                "rule": "easy, long ≤ LT1 % LSHF = 77.2 %; "
+                "rule": "easy, endurance, long ≤ LT1 % LSHF = 77.2 %; "
                 "recovery ≤ min(80, easy - 7) = 70.2 %",
             },
             adopted["run_hr_cap_basis"],
         )
         self.assertEqual(
-            {"recovery": (70.2, 117), "easy": (77.2, 129), "long": (77.2, 129)},
+            {
+                "recovery": (70.2, 117),
+                "easy": (77.2, 129),
+                "endurance": (77.2, 129),
+                "long": (77.2, 129),
+            },
             {
                 focus: (cap["percent_lthr"], cap["bpm"])
                 for focus, cap in adopted["run_hr_caps"].items()
@@ -272,7 +277,7 @@ class CapSourceTests(unittest.TestCase):
             {
                 "lt1": "default",
                 "rule": "no measured or adopted LT1: default "
-                "recovery ≤80 %, easy ≤84 %, long ≤84 % LSHF",
+                "recovery ≤80 %, easy ≤84 %, endurance ≤84 %, long ≤84 % LSHF",
             },
             coach_thresholds(metrics)["run_hr_cap_basis"],
         )
@@ -285,7 +290,7 @@ class CapSourceTests(unittest.TestCase):
                 "lt1": "adopted_estimate",
                 "lt1_bpm": 129,
                 "rule": "stored LT1 gives no cap (no run LTHR or implausible): "
-                "default recovery ≤80 %, easy ≤84 %, long ≤84 % LSHF",
+                "default recovery ≤80 %, easy ≤84 %, endurance ≤84 %, long ≤84 % LSHF",
             },
             no_lthr,
         )
