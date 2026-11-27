@@ -743,6 +743,10 @@ The client SHALL use words in dialogs and icons on rows and cards. In a dialog "
 - **WHEN** a dialog offers a delete, a cancel and a save
 - **THEN** they read "Löschen" (red outline), "Abbrechen" and the green "Speichern" from the left
 
+#### Scenario: Rows and cards
+- **WHEN** a list row, card or editor row offers an edit or a delete
+- **THEN** it is the pencil or the trash icon (`message-action`) with an accessible name that names the object ("Einheit löschen: …"), never a word or a ×/✕ glyph
+
 #### Scenario: Guarded by a scan
 - **WHEN** a button in `public/*.js` or `index.html` breaks one of these rules
 - **THEN** `tests/button-concept.test.cjs` fails
