@@ -1,6 +1,7 @@
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
+const vm = require("node:vm");
 const { test } = require("node:test");
 const { extractFunctions, FakeElement, textOf } = require("./frontend-harness.cjs");
 
@@ -261,6 +262,27 @@ test("a product card names its last use, or that it was never used and since whe
   assert.equal(nutritionLastUseText({ usage_count: 0, last_used: null, created_at: "2026-11-03T08:00:00+00:00" }, today), "nie genutzt · angelegt 03.11.");
   // A list read without counts shows no last use.
   assert.equal(nutritionLastUseText({ name: "Skyr" }, today), "");
+});
+
+test("a queued Frühstück whose entry is gone is retried as a new Frühstück, not a snack (#4298)", async () => {
+  const meal = { value: "", closest: () => ({ hidden: true }) };
+  const elements = { "#nutritionProductUseMeal": meal, "#nutritionDate": { value: "2026-11-27" }, "#nutritionProductUseAdd": {},"#nutritionProductUseStatus": { textContent: "" } };
+  const sent = [];
+  const context = extractFunctions("nutrition.js", ["NUTRITION_MEAL_LABELS", "nutritionOutboxEdit", "queuedMealPayload", "addNutritionProductToMeal"], {
+    document: { querySelector: (selector) => elements[selector] },
+    state: { sessionGeneration: 1, data: {} },
+    todayIso: () => "2026-11-27",
+    nutritionProductUseAmount: () => ({ product: { id: "p1", name: "Haferflocken" }, unit: "g", amount: "50" }),
+    saveOwnEntry: async (entry) => { sent.push(entry.payload.meal_type); if (sent.length === 1) throw Object.assign(new Error("weg"), { reason: "outbox_entry_gone" }); return {}; },
+    closeNutritionProductUse() {},
+    reloadNutritionProducts: async () => {},
+    showNutritionReceipt() {},
+  });
+  vm.runInContext('nutritionOutboxEdit = { payload: { meal_type: "breakfast", meal_date: "2026-11-27", amount: 50 } }', context);
+  await context.addNutritionProductToMeal();
+  assert.equal(meal.value, "new:breakfast");
+  await context.addNutritionProductToMeal();
+  assert.deepEqual(sent, ["breakfast", "breakfast"], elements["#nutritionProductUseStatus"].textContent);
 });
 
 test("a queued snack of today keeps its entry time, a queued fixed meal takes the server's type default (#4271)", () => {

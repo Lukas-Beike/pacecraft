@@ -1388,8 +1388,12 @@ async function addNutritionProductToMeal() {
     showNutritionReceipt(document.querySelector("#nutritionProductStatus"), `„${use.product.name}“ ${mealId ? "zur Mahlzeit ergänzt" : "als " + mealLabel + " erfasst"}.`, result.change, () => reloadNutritionProducts());
   } catch (error) {
     if (generation !== state.sessionGeneration) return;
-    // The queued entry is gone meanwhile: the next save goes out as a new snack (Gitar on #3830).
-    if (error?.reason === "outbox_entry_gone") nutritionOutboxEdit = null;
+    // The queued entry is gone meanwhile: the next save goes out as a new meal of the stored type, the choice
+    // set to it (Gitar on #3830, #4298).
+    if (error?.reason === "outbox_entry_gone") {
+      nutritionOutboxEdit = null;
+      document.querySelector("#nutritionProductUseMeal").value = mealType === "snack" ? "" : `new:${mealType}`;
+    }
     document.querySelector("#nutritionProductUseStatus").textContent = `Produkt konnte nicht erfasst werden: ${error.message}`;
     setSaving(addButton, false);
   }
