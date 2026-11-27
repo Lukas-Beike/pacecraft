@@ -560,7 +560,7 @@ function recordedMaxHrNote(thresholds = state.data?.performance?.thresholds) {
 }
 
 function zoneEditButton(label, attributes) {
-  const button = messageActionButton("edit", label === "Anpassen" ? "Zonen anpassen" : "Zonen bearbeiten");
+  const button = messageActionButton("edit", `Zonen ${label.toLowerCase()}`);
   Object.assign(button.dataset, attributes);
   return button;
 }
