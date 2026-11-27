@@ -165,9 +165,10 @@ def _key_target(unit: dict[str, Any], lthr: float | None) -> str:
 def _step_amount(step: dict[str, Any]) -> str:
     if "distance" in step:
         meters = float(step["distance"])
+        # Mile and yard steps are stored in metres: round them for the line.
         if meters >= 1000:
-            return f"{meters / 1000:g} km".replace(".", ",")
-        return f"{meters:g} m"
+            return f"{round(meters / 1000, 1):g} km".replace(".", ",")
+        return f"{round(meters)} m"
     seconds = float(step["duration"])
     return f"{seconds / 60:g} min" if seconds % 60 == 0 else f"{seconds:g} s"
 

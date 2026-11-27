@@ -630,6 +630,24 @@ class PushChecksTests(unittest.TestCase):
                 "Intervalle 5×4 min · 60 min",
             ),
             "an interval unit": (INTERVALS, None, "Schwelle · 60 min · 5×4 min"),
+            "mile repeats": (
+                {
+                    "name": "Meilen",
+                    "sport": "run",
+                    "description": "4x\n- 1mi Z4\n- 400yd Z1",
+                },
+                None,
+                "Meilen · 4×1,6 km",
+            ),
+            "yard repeats": (
+                {
+                    "name": "Bahn",
+                    "sport": "run",
+                    "description": "6x\n- 400yd Z5\n- 1m Z1",
+                },
+                None,
+                "Bahn · 6×366 m",
+            ),
             "strength": (
                 {
                     "name": "Kraft Oberkörper",
