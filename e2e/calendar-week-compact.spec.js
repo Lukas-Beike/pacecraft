@@ -518,7 +518,9 @@ test("@responsive the phone calendar header is compact and the week's totals sta
   await page.waitForFunction(() => state.initialStateLoaded);
   const week = page.locator(".planned-week");
   await expect(week.locator(".planned-week-days .planned-day").first()).toBeVisible();
-  await expect(page.locator("#workoutsPanel > .section-heading")).toBeHidden();
+  // The heading row takes no room but stays the panel's heading for assistive technology.
+  expect((await page.locator("#workoutsPanel > .section-heading").boundingBox()).height).toBeLessThanOrEqual(1);
+  await expect(page.getByRole("heading", { name: "Kalender", exact: true })).toBeAttached();
   await expect(week.locator(".planned-view-row .planned-refresh-slot #planRefreshButton")).toBeVisible();
   // One row of chips, each a 44 px target, the chosen one in view.
   const chips = week.locator(".planned-sport-filter");

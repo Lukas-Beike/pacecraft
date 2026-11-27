@@ -2577,8 +2577,13 @@ function placePlanRefresh(home = false) {
   const refresh = document.querySelector("#workoutsPanel .view-refresh");
   const slot = document.querySelector("#plannedCalendar .planned-refresh-slot");
   const heading = document.querySelector("#workoutsPanel > .section-heading");
-  const target = !home && PLAN_PHONE?.matches && slot && state.route === "plan/overview" ? slot : heading;
-  if (refresh && target && refresh.parentElement !== target) target.append(refresh);
+  const overview = AppRouter.baseRoute(state.route) === "plan" && AppRouter.planSegmentFromRoute(state.route) === "overview";
+  const target = !home && PLAN_PHONE?.matches && slot && overview ? slot : heading;
+  if (!refresh || !target || refresh.parentElement === target) return;
+  // A move detaches the button: a focused one gets its focus back.
+  const focused = refresh.contains(document.activeElement) ? document.activeElement : null;
+  target.append(refresh);
+  focused?.focus({ preventScroll: true });
 }
 
 // The sport chips scroll in one row on a phone; the chosen one stays in view.
@@ -2590,7 +2595,12 @@ function keepCalendarSportVisible(week) {
 }
 
 PLAN_PHONE?.addEventListener?.("change", () => placePlanRefresh());
-globalThis.document?.addEventListener?.("app:route-rendered", () => placePlanRefresh());
+globalThis.document?.addEventListener?.("app:route-rendered", () => {
+  placePlanRefresh();
+  // A calendar rendered while hidden scrolls its chosen chip into view once it shows.
+  const week = document.querySelector("#plannedCalendar .planned-week");
+  if (week) keepCalendarSportVisible(week);
+});
 
 function plannedSportFilter() {
   const group = h("div", { className: "chip-group planned-sport-filter", "aria-label": "Sportart" });

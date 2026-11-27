@@ -986,11 +986,13 @@ a.message-retry { display: grid; place-items: center; text-decoration: none; }
 .planned-view-row > .planned-view-switch { flex: 1 1 auto; }
 .planned-refresh-slot:empty { display: none; }
 .planned-refresh-slot .view-refresh { justify-items: center; }
-.planned-refresh-slot #planRefreshStatus:empty { display: none; }
-/* The page heading gives way while its refresh button sits in the week's row (#4308). */
-#workoutsPanel > .section-heading:not(:has(.view-refresh)) { display: none; }
+/* The page heading gives way while its refresh button sits in the week's row (#4308); it stays the
+   panel's heading for assistive technology. The status line there stays a live region, out of sight
+   so it never covers the chips. */
+#workoutsPanel > .section-heading:not(:has(.view-refresh)), .planned-refresh-slot #planRefreshStatus { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
 .planned-week-figures { display: grid; gap: 6px; flex-basis: 100%; }
-.planned-week-end { display: grid; gap: 6px; padding: 10px 12px; }
+.planned-week-end { display: grid; gap: 6px; padding: 10px 12px; border-top: 1px solid var(--line); }
+.planned-week-end > .planned-week-totals { padding: 0; border-top: 0; }
 .planned-week-end:empty { display: none; }
 @media (max-width: 767px) {
   .planned-week-heading .planned-sport-filter { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; scroll-padding-inline: 8px; }
