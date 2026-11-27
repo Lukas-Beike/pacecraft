@@ -85,7 +85,7 @@ The server SHALL send each event key at most once, only to subscribed devices, o
 
 #### Scenario: Morning data
 - **WHEN** sleep, HRV or resting heart rate observations dated today are stored
-- **THEN** one "Morgenwerte" notification a day opens `#analysis/recovery`; with the automatic morning check-in on, its answer replaces it once a day as "Morgen-Check-in" with the answer's first sentence as plain text (at most 140 characters), opening `#coach`, under the same switch and key; a failed turn or one without an answer still sends "Morgenwerte"
+- **THEN** one "Morgenwerte" notification a day opens `#analysis/recovery`; with the automatic morning check-in on, its answer replaces it once a day as "Morgen-Check-in" with the answer's first sentence as plain text (at most 140 characters), opening `#coach`, under the same switch and key; it waits until 10:00 or, once today's automatic turn exists, for that turn; a failed turn, one without an answer or no turn by 10:00 still sends "Morgenwerte"
 
 #### Scenario: Check-in reminder
 - **WHEN** sleep observations dated today are stored and today has no check-in

@@ -76,6 +76,7 @@ def _database() -> sqlite3.Connection:
         "CREATE TABLE competitions (id TEXT PRIMARY KEY, event_date TEXT NOT NULL);"
         "CREATE TABLE athlete_checkins (checkin_date TEXT PRIMARY KEY);"
         "CREATE TABLE planned_units (local_id TEXT PRIMARY KEY, payload TEXT NOT NULL);"
+        "CREATE TABLE coach_commands (client_turn_id TEXT PRIMARY KEY, status TEXT);"
         "CREATE TABLE activity_sessions (activity_id TEXT PRIMARY KEY, "
         "primary_provider TEXT NOT NULL, state TEXT NOT NULL, "
         "started_at TEXT NOT NULL, created_at TEXT NOT NULL);"
@@ -712,17 +713,24 @@ class PushChecksTests(unittest.TestCase):
             "INSERT INTO observations (metric, observed_on, state) "
             "VALUES ('sleep_duration', '2026-11-22', 'active')"
         )
-        # The automatic morning check-in announces the night itself (#4274).
+        # The automatic morning check-in announces the night itself (#4274):
+        # until 10:00, or once its turn of today exists; later, without a turn
+        # (Coach not ready, check-in done by hand, sleep gate shut), the night
+        # push still comes.
         self.connection.execute(
             "INSERT OR REPLACE INTO kv VALUES ('coach_automatic_turns', ?, '')",
             ('{"morning": true}',),
         )
+        self._at(9)
         self.checks.check()
         self.assertEqual(self._titled("Morgenwerte"), [])
         self.connection.execute(
-            "INSERT OR REPLACE INTO kv VALUES ('coach_automatic_turns', ?, '')",
-            ('{"morning": false}',),
+            "INSERT INTO coach_commands VALUES ('auto:morning:2026-11-22', 'completed')"
         )
+        self._at(11)
+        self.checks.check()
+        self.assertEqual(self._titled("Morgenwerte"), [])
+        self.connection.execute("DELETE FROM coach_commands")
         self._announced(
             "Morgenwerte", "Die Werte der Nacht sind da.", "#analysis/recovery"
         )

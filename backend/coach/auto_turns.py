@@ -18,14 +18,14 @@ from contextlib import AbstractContextManager, nullcontext
 from datetime import date, datetime
 from typing import Any, Final
 
-from backend.coach.authorization import AUTOMATIC_TURN_PREFIX
 from backend.coach.job_submission import CoachJobSubmissionService
+from backend.db import coach_store
 from backend.db.manager import DatabaseManager
 from backend.db.repositories import KeyValueRepository
 from backend.push.service import Notification
 from backend.settings import SettingsService
 
-MORNING_TURN_PREFIX: Final = f"{AUTOMATIC_TURN_PREFIX}morning:"
+MORNING_TURN_PREFIX: Final = coach_store.AUTOMATIC_MORNING_PREFIX
 MORNING_MESSAGE: Final = (
     "Automatischer Morgen-Check-in: Die Werte der Nacht sind da. Bewerte Erholung, "
     "Belastung und die geplante Einheit und sag mir, was heute sinnvoll ist."

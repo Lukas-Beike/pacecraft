@@ -365,6 +365,10 @@ def draft_user_message_ids(db: Any) -> list[int]:
     ]
 
 
+# The turn id of a day's automatic morning check-in (#4274), read by the push checks.
+AUTOMATIC_MORNING_PREFIX = "auto:morning:"
+
+
 def automatic_message_ids(db: Any) -> list[int]:
     """The stored prompts of automatic turns (#4274), whose turn ids start ``auto:``."""
     return [
