@@ -393,6 +393,18 @@ test("@responsive the product list has sections, markers and the same four actio
   await expect(productSection(page, "all")).toHaveAttribute("open", "");
   await expect(productSection(page, "favorites")).not.toHaveAttribute("open", "");
   expect(requests.listed.at(-1)).toBe("all:4000000000017");
+  // A background state reload and the route render keep the search (#4272): checked once, right after each read.
+  const reads = requests.listed.length;
+  const reloaded = page.waitForResponse((response) => response.url().includes("/api/nutrition/products?scope=all"));
+  await page.evaluate(() => render(state.data));
+  await reloaded;
+  expect(requests.listed.slice(reads)).toEqual(["all:4000000000017"]);
+  await expect(cards).toHaveCount(1);
+  const rendered = page.waitForResponse((response) => response.url().includes("/api/nutrition/products?scope=all"));
+  await page.evaluate(() => renderActiveRoute("nutrition", "nutrition/products"));
+  await rendered;
+  expect(requests.listed.filter((item) => item.startsWith("all:")).at(-1)).toBe("all:4000000000017");
+  await expect(cards).toHaveCount(1);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
 });
 

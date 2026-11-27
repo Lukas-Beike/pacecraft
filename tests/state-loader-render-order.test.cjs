@@ -21,7 +21,7 @@ function loader(route) {
     localStorage: { getItem: () => null, setItem() {}, removeItem() {} },
     AppRouter: { baseRoute: () => route.split("/")[0] },
     loadNutrition: () => reloads.push(["day", state.data?.profile?.timezone]),
-    loadNutritionProducts: () => reloads.push(["products", state.data?.profile?.timezone]),
+    reloadNutritionProducts: () => reloads.push(["products", state.data?.profile?.timezone]),
   });
   return { context, reloads };
 }

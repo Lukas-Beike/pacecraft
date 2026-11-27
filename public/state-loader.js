@@ -3,7 +3,7 @@
 function render(data, { reloadRoute = true } = {}) {
   const firstRender = !state.data;
   state.data = data;
-  if (reloadRoute && AppRouter.baseRoute() === "nutrition") { if (state.route === "nutrition/products") void loadNutritionProducts("", { background: true }); else void loadNutrition(); }
+  if (reloadRoute && AppRouter.baseRoute() === "nutrition") { if (state.route === "nutrition/products") void reloadNutritionProducts({ background: true }); else void loadNutrition(); }
   renderAppVersion(data.app);
   renderCoachOverview(data);
   renderQuickMessageTemplates();
