@@ -6,6 +6,7 @@ const CHECKIN_TAGS = [["travel", "Reise"], ["late_meal", "Spätes Essen"], ["hig
 const CHECKIN_DAY_STATUS = [["unknown", "Offen"], ["rest", "Ruhetag"], ["pause", "Pause"]];
 const CHECKIN_SIDES = [["none", "ohne Seite"], ["left", "links"], ["right", "rechts"], ["both", "beidseitig"]];
 const CHECKIN_MAX_COMPLAINTS = 8;
+const CHECKIN_SLIDER_KEYS = new Set(["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", "Home", "End", "PageUp", "PageDown"]);
 const checkinReceipts = new Map();
 
 const checkinComplaintKey = (item) => `${item.area}|${item.side}`;
@@ -33,6 +34,35 @@ function checkinRow(dateKey, todayKey, checkin) {
 
 function checkinNumberField(name, label, value, max) {
   return h("label", null, label, h("input", { name, type: "number", min: 0, max, step: 1, inputMode: "numeric", value: checkinFilled(value) ? value : "" }));
+}
+
+// A 0–10 score as a slider (#4306): a stored value loads onto it; without one it reads "–" and is
+// sent only once touched, so an untouched score stays unanswered. A tap on its current value (the
+// resting middle) answers too, and the trash icon takes the answer back (#4279's row remove).
+function checkinSlider(name, label, value) {
+  const shown = h("output", { className: "checkin-slider-value" });
+  const input = h("input", { name, type: "range", min: 0, max: 10, step: 1, value: checkinFilled(value) ? value : 5, "aria-label": `${label} (0–10)` });
+  const clear = messageActionButton("trash", `${label} entfernen`);
+  const mark = (set) => {
+    input.dataset.set = set ? "1" : "";
+    shown.textContent = set ? input.value : "–";
+    input.setAttribute("aria-valuetext", set ? input.value : "nicht angegeben");
+    clear.hidden = !set;
+  };
+  // Moving it, a tap on it or a key that sets its value answers; Tab passing through and a touch
+  // scroll that starts on it do not (Gitar on #4327): a scroll gesture fires no click.
+  for (const type of ["input", "click"]) input.addEventListener(type, () => mark(true));
+  input.addEventListener("keydown", (event) => { if (CHECKIN_SLIDER_KEYS.has(event.key)) mark(true); });
+  clear.addEventListener("click", () => { input.value = 5; mark(false); input.focus(); });
+  mark(checkinFilled(value));
+  return h("div", "checkin-slider", h("span", null, h("span", { "aria-hidden": "true" }, label), h("span", null, h("span", { "aria-hidden": "true" }, shown), clear)), input);
+}
+
+// The collapsed row's chevron, turned by the details' open state.
+function checkinChevron() {
+  const icon = svgNode("svg", { viewBox: "0 0 24 24", "aria-hidden": "true" });
+  icon.append(svgNode("path", { d: "M6 9l6 6 6-6" }));
+  return icon;
 }
 
 function checkinSelect(name, label, options, value) {
@@ -65,7 +95,11 @@ function checkinSymptoms(stored) {
 
 // What the form shows now, as plain values.
 function checkinValues(form) {
-  const text = (name) => form.elements[name].value.trim();
+  // An unmoved slider without a stored value is no answer.
+  const text = (name) => {
+    const field = form.elements[name];
+    return field.type === "range" && !field.dataset.set ? "" : field.value.trim();
+  };
   return {
     texts: Object.fromEntries([...CHECKIN_SCORES.map(([name]) => name), "available_minutes", "illness", "notes"].map((name) => [name, text(name)])),
     day_status: form.elements.day_status.value,
@@ -117,14 +151,17 @@ function checkinFormNodes(stored) {
   refresh();
   const dayStatus = h("fieldset", "appearance-control", h("legend", null, "Tagesstatus"), h("div", "segmented-control", CHECKIN_DAY_STATUS.map(([key, label]) =>
     h("label", null, h("input", { type: "radio", name: "day_status", value: key, checked: key === (stored.day_status || "unknown") }), label))));
+  // Illness, symptoms and complaints are one collapsed row, open when the day has any (#4306).
+  const unwell = Boolean(stored.illness || stored.symptoms?.length || stored.complaints?.length);
   return [
     dayStatus,
-    ...CHECKIN_SCORES.map(([key, label]) => checkinNumberField(key, `${label} (0–10)`, stored[key], 10)),
+    ...CHECKIN_SCORES.map(([key, label]) => checkinSlider(key, label, stored[key])),
     checkinNumberField("available_minutes", "Verfügbare Zeit (min)", stored.available_minutes, 1440),
     checkinChips(stored),
-    checkinSymptoms(stored),
-    h("label", null, "Krank", h("textarea", { name: "illness", rows: 2, maxLength: 1000, value: stored.illness || "" })),
-    h("fieldset", "chip-field", h("legend", null, "Beschwerden"), complaints, add),
+    h("details", { className: "training-focus-details checkin-unwell", open: unwell }, h("summary", null, "Krank oder Beschwerden", checkinChevron()),
+      h("div", "checkin-fields", checkinSymptoms(stored),
+        h("label", null, "Krank", h("textarea", { name: "illness", rows: 2, maxLength: 1000, value: stored.illness || "" })),
+        h("fieldset", "chip-field", h("legend", null, "Beschwerden"), complaints, add))),
     h("label", null, "Notiz", h("textarea", { name: "notes", rows: 2, maxLength: 4000, value: stored.notes || "" })),
   ];
 }
@@ -175,6 +212,9 @@ async function openCheckinForm(dateKey) {
       if (read === reads) save.disabled = false;
     }
   });
+  // A field the browser refuses, or a refused save, is shown: the collapsed row opens for it.
+  const unwell = () => form.querySelector("details.checkin-unwell");
+  form.addEventListener("invalid", (event) => { const row = event.target.closest("details"); if (row) row.open = true; }, true);
   form.addEventListener("submit", async (event) => {
     event.preventDefault();
     const day = date.value;
@@ -186,6 +226,7 @@ async function openCheckinForm(dateKey) {
       result = await api("/api/checkins", { method: "POST", body: JSON.stringify(body) });
     } catch (error) {
       setSaving(save, false);
+      if (unwell()?.querySelector(".checkin-complaint")) unwell().open = true;
       if (!isSessionEndedError(error)) status.textContent = error.message;
       return;
     }

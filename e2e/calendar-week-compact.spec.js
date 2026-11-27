@@ -508,3 +508,48 @@ test("@responsive a done planned unit shows no focus field in its card", async (
   await expect(card.locator("select[name='session_focus']")).toHaveCount(0);
   await expect(card.getByLabel("Art der Einheit")).toHaveCount(0);
 });
+
+// #4308 (variant A): on a phone the page heading gives way and its refresh sits at the end of the Woche/Monat
+// row, the sport chips scroll in one row, and the week's count and Geplant/Absolviert totals stand under the week.
+test("@responsive the phone calendar header is compact and the week's totals stand under the week", async ({ page, request }, testInfo) => {
+  test.skip(testInfo.project.name !== "mobile", "the compact header is the phone layout (#4308)");
+  expect((await request.get("/api/fixture/demo")).ok()).toBeTruthy();
+  await page.goto("/#plan/overview");
+  await page.waitForFunction(() => state.initialStateLoaded);
+  const week = page.locator(".planned-week");
+  await expect(week.locator(".planned-week-days .planned-day").first()).toBeVisible();
+  // The heading row takes no room but stays the panel's heading for assistive technology.
+  expect((await page.locator("#workoutsPanel > .section-heading").boundingBox()).height).toBeLessThanOrEqual(1);
+  await expect(page.getByRole("heading", { name: "Kalender", exact: true })).toBeAttached();
+  await expect(week.locator(".planned-view-row .planned-refresh-slot #planRefreshButton")).toBeVisible();
+  // One row of chips, each a 44 px target, the chosen one in view.
+  const chips = week.locator(".planned-sport-filter");
+  expect((await chips.boundingBox()).height).toBeLessThan(60);
+  // Inside the row's scroll box; the page itself may have scrolled down to today.
+  const rowBox = await chips.boundingBox();
+  const chosenBox = await chips.locator("label:has(input:checked)").boundingBox();
+  expect(chosenBox.x).toBeGreaterThanOrEqual(rowBox.x - 1);
+  expect(chosenBox.x + chosenBox.width).toBeLessThanOrEqual(rowBox.x + rowBox.width + 1);
+  // The first day starts right under the week's header: about 190 px below the card's top (about 490 before
+  // #4308); the notices above the card vary by day.
+  const start = await page.evaluate(() => {
+    const top = (selector) => document.querySelector(selector).getBoundingClientRect().top;
+    return top(".planned-week-days .planned-day") - top(".planned-week");
+  });
+  expect(start).toBeLessThanOrEqual(220);
+  // The count and the totals left the heading for the week's end, the review when it has one.
+  await expect(week.locator(".planned-week-heading :is(.planned-week-summary, .planned-week-metrics)")).toHaveCount(0);
+  const end = week.locator(":is(.week-review, .planned-week-end)");
+  await expect(end.locator(".planned-week-summary")).toContainText(/abgeschlossen|geplant|Keine Einheiten/);
+  await expect(end.locator(".planned-week-metrics")).toContainText("Absolviert");
+  // The one-row chips never widen the page, in the week or the month view.
+  const pageWidth = () => page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+  expect(await pageWidth()).toBeLessThanOrEqual(0);
+  await page.locator('.planned-view-switch button[data-view="month"]').click();
+  await expect(page.locator(".planned-month .planned-sport-filter")).toBeVisible();
+  expect(await pageWidth()).toBeLessThanOrEqual(0);
+  await page.locator('.planned-view-switch button[data-view="week"]').click();
+  // Another calendar area keeps the heading with its refresh.
+  await page.goto("/#plan/library");
+  await expect(page.locator("#workoutsPanel > .section-heading #planRefreshButton")).toBeVisible();
+});

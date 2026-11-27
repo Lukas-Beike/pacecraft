@@ -261,12 +261,14 @@ function nutritionCard(item, template, sessions = []) {
   const volume = item.volume_ml > 0 ? ` · ${AppFormat.number(item.volume_ml, { digits: 0 })} ml` : "";
   const title = h("h3", null, template ? item.name : nutritionMealTitle(item), ...(template ? [] : nutritionEstimateChip(item)));
   const card = h("article", "nutrition-card",
-    template ? title : h("div", "nutrition-card-head", title, nutritionEditButton(item)),
+    template ? title : h("div", "nutrition-card-head", title, nutritionEditButton(item), nutritionDeleteButton(item)),
     template ? null : nutritionSessionBlock(item, sessions),
     h("p", null, item.description),
     h("p", "nutrition-macros", `${nutritionNumber(item.kcal)} kcal · Kohlenhydrate ${nutritionNumber(item.carbs_g, "g")} g · Protein ${nutritionNumber(item.protein_g, "g")} g · Fett ${nutritionNumber(item.fat_g, "g")} g${template ? " / Portion" : ""}${volume}`),
     sourceText ? h("small", null, sourceText) : null);
-  if (!template) card.append(...nutritionEntryActions(item));
+  // The meal's ingredients; its estimate mark and "Als Mahlzeit speichern" are in "Mahlzeit bearbeiten" (#4305).
+  const details = template ? null : nutritionComponentDetails(item);
+  if (details) card.append(details);
   return card;
 }
 
@@ -285,22 +287,15 @@ function nutritionEstimateChip(item) {
   return [" ", chip];
 }
 
-// A logged meal's ingredients, its estimate mark, "Als Mahlzeit speichern" and its removal.
-function nutritionEntryActions(item) {
-  const estimate = h("button", { type: "button", className: "secondary-button" }, item.estimate_uncertain ? "Markierung entfernen" : "Als geschätzt markieren");
-  estimate.addEventListener("click", async () => {
-    setSaving(estimate, true);
-    try { await markNutritionEstimate(item); } finally { setSaving(estimate, false); }
-  });
+// The trash icon in a meal card's head deletes the meal at once, with the receipt's undo.
+function nutritionDeleteButton(item) {
   const remove = messageActionButton("trash", `Mahlzeit löschen: ${item.description}`);
   remove.addEventListener("click", async () => {
     // One tap, one delete: the button waits for the request, as the removed dialog did.
-    setSaving(remove, true, "");
+    setSaving(remove, true);
     try { await deleteNutritionEntry(item); } finally { setSaving(remove, false); }
   });
-  const keep = h("button", { type: "button", className: "secondary-button" }, "Als Mahlzeit speichern");
-  keep.addEventListener("click", () => openNutritionTemplateFromEntry(item));
-  return [nutritionComponentDetails(item), estimate, keep, remove].filter(Boolean);
+  return remove;
 }
 
 function nutritionExpenditureDate(value) {

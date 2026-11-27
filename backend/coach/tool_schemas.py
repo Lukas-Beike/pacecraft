@@ -378,7 +378,7 @@ def build_structured_tool_schemas(
         ),
         _canonical_coach_tool(
             "read_coach_context",
-            "Read omitted local coaching context and enable remaining tools for this turn. Use when context or available tools do not cover the athlete's request. If projection.complete=false, request fewer sections; never treat a partial result as complete. Does not refresh providers or authorize writes.",
+            "Read omitted local coaching context for this turn; it enables no further tools. Use when the context does not cover the athlete's request. If projection.complete=false, request fewer sections; never treat a partial result as complete. Does not refresh providers or authorize writes.",
             {
                 "sections": {
                     "type": "array",
@@ -851,7 +851,7 @@ def build_structured_tool_schemas(
         ),
         _canonical_coach_tool(
             "apply_workout_library_plan",
-            "Schedule saved templates locally after conflict checks. Resolve the template ID from list_workout_library. Never writes remotely.",
+            "The cheap batch path: schedule up to 14 unchanged saved templates in one call, without workout text or revision. Resolve the template ID from list_workout_library; a changed variant goes through apply_training_patch. Conflict checks run first. Never writes remotely.",
             {
                 "entries": {
                     "type": "array",

@@ -38,7 +38,7 @@ const NAV_VIEWS = (() => {
   const sport = view(["/api/performance", "/api/analysis/power-profiles"], ANALYSIS_ACTIONS, ALL_STATES);
   const period = view(["/api/performance"], [...ANALYSIS_ACTIONS, ...PERIODS, "3 Monate anzeigen"], ALL_STATES);
   const overview = view([...PLAN_READS, "/api/activities?limit=100", "/api/analysis/week-review"], [...PLAN_ACTIONS, "Woche", "Monat", "Woche synchronisieren", "Verschieben", "Feedback", "Mit Coach besprechen", "Mit Coach besprechen"], ALL_STATES);
-  const diary = view(["/api/nutrition/day", "/api/body/energy"], ["Ernährung aktualisieren", "Vorheriger Tag", "Nächster Tag", "Heute", "Als geschätzt markieren", "Markierung entfernen", "Löschen", "Rückgängig", "Erneut laden"], ENTRIES);
+  const diary = view(["/api/nutrition/day", "/api/body/energy"], ["Ernährung aktualisieren", "Vorheriger Tag", "Nächster Tag", "Heute", "Mahlzeit bearbeiten", "Mahlzeit löschen", "Als geschätzt markieren", "Markierung entfernen", "Als Mahlzeit speichern", "Rückgängig", "Erneut laden"], ENTRIES);
   const profile = view([...MORE_READS, "/api/profile", "/api/zones"], ["Profil speichern", "Lokal speichern", "Übernehmen"], ["empty", "offline"]);
   const connections = view([...MORE_READS, "/api/providers/connections", "/api/nutrition/yazio/status"], ["Verbindung prüfen", "Mit Garmin anmelden", "Garmin trennen", "Wahoo verbinden", "Synchronisieren", "Speichern", "Entfernen"], ["loading", "error", "notConfigured", "offline"]);
   return Object.freeze({

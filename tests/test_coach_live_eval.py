@@ -10,6 +10,7 @@ import io
 import itertools
 import json
 import sys
+import tempfile
 import unittest
 import urllib.error
 from fnmatch import fnmatch
@@ -2062,6 +2063,107 @@ class CommandLineTests(unittest.TestCase):
             self.assertIn(f"needs a {label} key", text)
             self.assertNotIn(key, text)
             models.assert_not_called()
+
+    def test_the_key_comes_from_a_file_that_is_never_named_or_printed(self):
+        # #4329: --key-file reads the key; no output names the file or the key.
+        anthropic = (
+            "--provider",
+            "anthropic",
+            "--base-url",
+            "https://api.anthropic.com",
+            "--model",
+            "claude-sonnet",
+            "--price-input",
+            "3",
+            "--price-output",
+            "15",
+            "--cases",
+            "c10-advice-only",
+        )
+        key = "sk-ant-file-synthetic"
+        with tempfile.TemporaryDirectory() as folder:
+            keyed = Path(folder) / "key"
+            keyed.write_text(f"{key}\n", encoding="utf-8")
+            empty = Path(folder) / "empty"
+            empty.write_text("\n", encoding="utf-8")
+            with (
+                patch.object(
+                    live, "fetch_model_ids", return_value=["claude-sonnet-5-5"]
+                ) as models,
+                patch.object(live, "run_case") as run_case,
+                patch.dict(live.os.environ, {"COACH_EVAL_API_KEY": ""}),
+            ):
+                run_case.return_value = {
+                    "id": "c10-advice-only",
+                    "passed": True,
+                    "safety": [],
+                    "misses": [],
+                    "unnecessary_clarifications": 0,
+                    "turns": [{"tools": [], "text": "ok"}],
+                }
+                code, text = run_main(*anthropic, "--key-file", str(keyed))
+                self.assertEqual(code, 0)
+                models.assert_called_with(
+                    "https://api.anthropic.com", key, provider="anthropic"
+                )
+                self.assertEqual(run_case.call_args.args[2]["api_key"], key)
+                self.assertNotIn(key, text)
+                self.assertNotIn(str(keyed), text)
+                models.reset_mock()
+                # An empty file, a missing one, a relative one and one in the
+                # repository stop before any request and say nothing about the path.
+                for path in (
+                    empty,
+                    Path(folder) / "missing",
+                    Path("relative-secret"),
+                    Path(live.__file__),
+                ):
+                    code, text = run_main(*anthropic, "--key-file", str(path))
+                    with self.subTest(path=path.name):
+                        self.assertEqual(code, 2)
+                        self.assertIn("--key-file must be a non-empty file", text)
+                        self.assertNotIn(str(path), text)
+                models.assert_not_called()
+                # A file that holds another secret, not a provider key, is not sent
+                # to the OpenAI API; a byte order mark is no part of a real key.
+                other = Path(folder) / "other"
+                other.write_text("app-password-synthetic\n", encoding="utf-8")
+                openai = (
+                    "--provider",
+                    "openai",
+                    "--base-url",
+                    "https://api.openai.com/v1",
+                )
+                priced = ("--model", "m", "--price-input", "1", "--price-output", "1")
+                code, text = run_main(*openai, *priced, "--key-file", str(other))
+                self.assertEqual(code, 2)
+                self.assertIn("needs a OpenAI key", text)
+                self.assertNotIn("app-password-synthetic", text)
+                models.assert_not_called()
+                # A file PowerShell wrote starts with a byte order mark; it is no
+                # part of the key.
+                keyed.write_text(f"{key}\n", encoding="utf-8-sig")
+                code, text = run_main(*anthropic, "--key-file", str(keyed))
+                self.assertEqual(code, 0)
+                models.assert_called_with(
+                    "https://api.anthropic.com", key, provider="anthropic"
+                )
+                models.reset_mock()
+                # The file's key goes only to the provider's API, never to a
+                # loopback listener.
+                loopback = (
+                    "--provider",
+                    "openai",
+                    "--base-url",
+                    "http://127.0.0.1:8317/v1",
+                )
+                code, text = run_main(
+                    *loopback, "--model", "m", "--key-file", str(keyed)
+                )
+                self.assertEqual(code, 2)
+                self.assertIn("--key-file is sent only to the OpenAI API", text)
+                self.assertNotIn(key, text)
+                models.assert_not_called()
 
     def test_a_failed_call_is_priced_like_the_dearest_call_so_far(self):
         counter = live.CallCounter(10, prices=(1_000_000, 0))

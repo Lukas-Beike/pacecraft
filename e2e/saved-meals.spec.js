@@ -14,9 +14,12 @@ test("@responsive a diary meal is saved, logged again and deleted with a receipt
   await expect(page.locator("#appShell")).toBeVisible();
   await page.evaluate(() => api("/api/nutrition/entry", { method: "POST", body: JSON.stringify({ meal_date: todayIso(), description: "Haferflocken", kcal: 400, carbs_g: 60, protein_g: 15, fat_g: 8 }) }));
   await page.reload();
-  const meals = page.locator(".nutrition-card").filter({ has: page.getByRole("button", { name: "Als Mahlzeit speichern" }) });
+  const meals = page.locator("#nutritionEntries .nutrition-card").filter({ has: page.getByRole("button", { name: /^Mahlzeit bearbeiten: / }) });
   await expect(meals.first()).toBeVisible();
-  await meals.first().getByRole("button", { name: "Als Mahlzeit speichern" }).click();
+  // "Als Mahlzeit speichern" is in the meal's edit dialog, not on the card (#4305).
+  await expect(meals.first().getByRole("button", { name: "Als Mahlzeit speichern" })).toHaveCount(0);
+  await meals.first().getByRole("button", { name: /^Mahlzeit bearbeiten: / }).click();
+  await page.locator("#nutritionMealEditDialog").getByRole("button", { name: "Als Mahlzeit speichern" }).click();
   const dialog = page.locator("#nutritionTemplateDialog");
   await dialog.getByLabel("Name").fill("Fixture Mahlzeit");
   await dialog.getByRole("button", { name: "Speichern" }).click();

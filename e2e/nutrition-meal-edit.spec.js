@@ -1,4 +1,6 @@
 const { test, expect } = require("@playwright/test");
+const path = require("node:path");
+const { pathToFileURL } = require("node:url");
 
 const DAY = "2026-11-05";
 const component = (name, amount, unit, kcal, source) => ({ kind: "database", name, amount, unit, kcal, carbs_g: 10, protein_g: 5, fat_g: 1, nutrition_basis: { kind: "database", food: { id: `bls:${name}`, name, source } } });
@@ -50,9 +52,16 @@ test("@responsive the pencil edits a meal's components: remove, restore, resize 
   await expect(rows).toHaveCount(3);
   await expect(dialog.locator("#nutritionMealEditSave")).toBeDisabled();
   await expect(rows.nth(0)).toContainText("BLS 4.0 · 364 kcal");
+  // The estimate mark and "Als Mahlzeit speichern" (#4305) work on the saved meal only: unsaved edits would be lost.
+  const rare = dialog.locator("#nutritionMealEditEstimate, #nutritionMealEditKeep");
+  await expect(rare).toHaveText(["Als geschätzt markieren", "Als Mahlzeit speichern"]);
+  await expect(rare.first()).toBeEnabled();
+  await expect(rare.last()).toBeEnabled();
 
   // A removed component stays visible until save and comes back.
   await rows.nth(2).getByRole("button", { name: "Olivenöl entfernen" }).click();
+  await expect(rare.first()).toBeDisabled();
+  await expect(rare.first()).toHaveAttribute("title", "Erst speichern");
   await expect(rows.nth(2)).toContainText("Wird entfernt");
   await rows.nth(2).getByRole("button", { name: "Wiederherstellen" }).click();
   await expect(dialog.locator("#nutritionMealEditSave")).toBeDisabled();
@@ -234,4 +243,18 @@ test("@responsive an error that arrives after the dialog was closed shows as a t
   release();
   await expect(page.locator(".toast")).toContainText("Mahlzeit konnte nicht gespeichert werden");
   expect(errors).toEqual([]);
+});
+
+// #4342: the release walk's step finds a logged meal's pencil, and on a day without meals its skip says so.
+test("@responsive the release walk finds a logged meal's pencil and names a day without meals", async ({ page }) => {
+  const { STEPS, runStep } = await import(pathToFileURL(path.join(__dirname, "..", "scripts", "ui_walk.mjs")).href);
+  const step = STEPS.find((item) => item.name === "Ernährung: Mahlzeit bearbeiten");
+  await mockDiary(page);
+  await page.goto("/#nutrition/diary");
+  await expect(page.locator("#nutritionEntries .nutrition-card")).toHaveCount(1);
+  expect((await runStep(page, step, 3000)).status).toBe("ok");
+  await page.route("**/api/nutrition/day**", (route) => route.fulfill({ json: { ok: true, date: DAY, entry_count: 0, entries: [] } }));
+  await page.reload();
+  await expect(page.locator("#nutritionEmptyDay")).toBeVisible();
+  expect(await runStep(page, step, 3000)).toMatchObject({ status: "skip", why: "none of 1 has it (no meal logged today)" });
 });

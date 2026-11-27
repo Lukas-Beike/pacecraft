@@ -138,6 +138,8 @@ class ClaudeRequestPayloadTests(unittest.TestCase):
             ModelRequest(
                 model="claude-opus-5-5",
                 instructions="Stable rules\n\nContext",
+                # #4288: the shared rules are their own cached block.
+                cached_instructions=len("Stable rules\n\n"),
                 input='{"current_message":"Hallo"}',
                 tools=[
                     {
@@ -161,9 +163,10 @@ class ClaudeRequestPayloadTests(unittest.TestCase):
                 "system": [
                     {
                         "type": "text",
-                        "text": "Stable rules\n\nContext",
+                        "text": "Stable rules\n\n",
                         "cache_control": {"type": "ephemeral"},
-                    }
+                    },
+                    {"type": "text", "text": "Context"},
                 ],
                 "messages": [
                     {

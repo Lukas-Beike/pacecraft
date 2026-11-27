@@ -4,6 +4,9 @@ import unittest
 from pathlib import Path
 
 from backend.athlete.profile import DEFAULT_PROFILE
+from backend.coach.authorization import dialogue_tools
+from backend.coach.dialogue import INSTRUCTIONS
+from backend.coach.tool_registry import build_tool_contracts
 from backend.coach.tool_schemas import build_structured_tool_schemas
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -201,6 +204,37 @@ class CoachToolSchemaTests(unittest.TestCase):
             for phrase in old:
                 with self.subTest(path=path.name, phrase=phrase):
                     self.assertNotIn(phrase.lower(), text)
+
+    def test_plan_writes_name_the_revision_source_and_the_batch_path(self):
+        # #4288 C9/C10: the first patch call carries the revision read in this
+        # turn; unchanged templates go through the cheap batch tool.
+        _names, structured, _read_only, dialogue, _caps = build_tool_contracts(
+            default_profile={},
+            checkin_text_limits={},
+            checkin_score_fields=(),
+            training_change_limit=366,
+            library_bulk_max_entries=100,
+            training_plan_statuses=(),
+            dialogue_tools=dialogue_tools,
+        )
+        tools = {tool["name"]: tool for tool in structured + dialogue}
+        revision = tools["apply_training_patch"]["parameters"]["properties"][
+            "expected_revision"
+        ]
+        self.assertIn(
+            "planning_revision from read_training_state", revision["description"]
+        )
+        self.assertIn(
+            "cheap batch path", tools["apply_workout_library_plan"]["description"]
+        )
+        self.assertIn("apply_workout_library_plan", INSTRUCTIONS)
+
+    def test_read_coach_context_promises_no_further_tools(self):
+        # #4288 C5: the turn's tools are sent up front (all, or read-only in an
+        # advisory run); reading context unlocks none.
+        description = _tools()["read_coach_context"]["description"]
+        self.assertIn("it enables no further tools", description)
+        self.assertNotIn("enable remaining tools", description)
 
     def test_session_tools_name_the_total_time_as_a_strength_duration(self):
         # #2317: rest between sets is part of a strength session's work.

@@ -11,6 +11,7 @@ from backend.coach.context import (
     coach_context_json_size,
 )
 from backend.coach.context_selection import CoachContextSelection, select_coach_context
+from backend.coach.prompt import COACH_PROMPT
 from backend.coach.read_tools import CoachReadToolService
 from backend.errors import AppError
 from backend.observability import JsonLogFormatter, Redactor
@@ -394,6 +395,9 @@ class CoachContextReductionTests(unittest.TestCase):
             for i in range(100)
         ]
         structured = {"external_calendar": {"omitted_count": 5, "events": events}}
+        # About 1,000 characters past the fixed rules force the total clip; the
+        # room no longer shrinks when a rule grows (#4288 C7).
+        limit = len(COACH_PROMPT) + 1_000
         structured_service, library = Mock(), Mock()
         structured_service.build.return_value = structured
         library.list.return_value = []
@@ -404,13 +408,13 @@ class CoachContextReductionTests(unittest.TestCase):
             library_limit=12,
             library_description_limit=1500,
             section_limits={},
-            total_char_limit=15_000,
+            total_char_limit=limit,
             activity_limit_per_sport=5,
             planned_event_limit=50,
         )
         with self.assertLogs("intervals_coach", level="INFO"):
             result = service.build()
-        self.assertLessEqual(len(result), 15_000)
+        self.assertLessEqual(len(result), limit)
         marker = "LOCAL PLANNED WORKOUTS (compact projection, included once below):\n"
         start = result.index(marker) + len(marker)
         parsed = json.loads(
