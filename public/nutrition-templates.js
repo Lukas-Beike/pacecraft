@@ -235,12 +235,15 @@ function openNutritionCompose() {
 // through the outbox, whose edit knows products only); a saved meal is logged at once.
 const NUTRITION_ADD_TYPES = ["breakfast", "lunch", "dinner", "snack"];
 
+// Today the type the server gives a meal without one at this hour (backend/nutrition/models.py
+// meal_type_from_hour, in the profile's zone); another day starts as a snack, like "Neuer Snack" (#4271).
 function nutritionAddMealType() {
-  // The athlete's hour, in the zone the diary's day and times use.
-  const hour = Number(new Intl.DateTimeFormat("de-DE", { hour: "2-digit", hourCycle: "h23", timeZone: state.data?.profile?.timezone || undefined }).format(new Date()));
-  if (hour < 10) return "breakfast";
-  if (hour < 15) return "lunch";
-  return hour < 21 ? "dinner" : "snack";
+  if (nutritionSelectedDay() !== todayIso()) return "snack";
+  const parts = new Intl.DateTimeFormat("de-DE", { hour: "2-digit", hourCycle: "h23", timeZone: state.data?.profile?.timezone || undefined }).formatToParts(new Date());
+  const hour = Number(parts.find((part) => part.type === "hour")?.value);
+  if (hour >= 5 && hour < 11) return "breakfast";
+  if (hour >= 11 && hour < 15) return "lunch";
+  return hour >= 18 && hour < 23 ? "dinner" : "snack";
 }
 
 async function logNutritionAddedMeal(ui, row, log) {
