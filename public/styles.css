@@ -995,7 +995,8 @@ a.message-retry { display: grid; place-items: center; text-decoration: none; }
 .planned-week-end > .planned-week-totals { padding: 0; border-top: 0; }
 .planned-week-end:empty { display: none; }
 @media (max-width: 767px) {
-  .planned-week-heading .planned-sport-filter { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; scroll-padding-inline: 8px; }
+  /* The row's chips never widen the card: in the month view they pushed the page past the screen (#4308). */
+  .planned-week-heading .planned-sport-filter { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; scroll-padding-inline: 8px; contain: inline-size; }
   .planned-week-heading .planned-sport-filter > .chip { flex: 0 0 auto; }
 }
 .planned-week-summary { color: var(--muted); font-size: .75rem; line-height: 1.4; }

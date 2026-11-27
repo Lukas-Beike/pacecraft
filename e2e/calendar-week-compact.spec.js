@@ -542,6 +542,13 @@ test("@responsive the phone calendar header is compact and the week's totals sta
   const end = week.locator(":is(.week-review, .planned-week-end)");
   await expect(end.locator(".planned-week-summary")).toContainText(/abgeschlossen|geplant|Keine Einheiten/);
   await expect(end.locator(".planned-week-metrics")).toContainText("Absolviert");
+  // The one-row chips never widen the page, in the week or the month view.
+  const pageWidth = () => page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+  expect(await pageWidth()).toBeLessThanOrEqual(0);
+  await page.locator('.planned-view-switch button[data-view="month"]').click();
+  await expect(page.locator(".planned-month .planned-sport-filter")).toBeVisible();
+  expect(await pageWidth()).toBeLessThanOrEqual(0);
+  await page.locator('.planned-view-switch button[data-view="week"]').click();
   // Another calendar area keeps the heading with its refresh.
   await page.goto("/#plan/library");
   await expect(page.locator("#workoutsPanel > .section-heading #planRefreshButton")).toBeVisible();
