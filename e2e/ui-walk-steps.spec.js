@@ -15,10 +15,13 @@ const PAGE = `<main>
   <details class="c"><summary>Mo</summary><details class="m"><summary>Details</summary><p class="v"></p></details></details>
   <details class="c"><summary>Di</summary><details class="m"><summary>Details</summary><p class="v">7 km</p></details></details>
   <button id="delete" type="button">Löschen</button>
+  <p id="words">nullable, undefinedx und NaNa sind Wörter, kein Leck</p>
+  <details id="leaky"><summary>Leck</summary><p id="leak">Wert null</p></details>
+  <div id="messages"><p>Bilanz auf null gesetzt</p></div>
 </main>`;
 
 test("a step fails on an empty chart or panel and passes on a drawn one", async ({ page }) => {
-  const { runStep } = await import(pathToFileURL(path.join(__dirname, "..", "scripts", "ui_walk.mjs")).href);
+  const { runStep, leakedValues } = await import(pathToFileURL(path.join(__dirname, "..", "scripts", "ui_walk.mjs")).href);
   await page.setContent(PAGE);
   const run = (step) => runStep(page, { name: "x", covers: "test", ...step }, 300);
   expect((await run({ ready: "#good svg", kind: "chart" })).status).toBe("ok");
@@ -32,6 +35,12 @@ test("a step fails on an empty chart or panel and passes on a drawn one", async 
   const banned = await run({ ready: "#good svg", kind: "chart", never: "#banned" });
   expect([banned.status, banned.why]).toEqual(["fail", "shows #banned"]);
   expect((await run({ ready: "#good svg", kind: "chart", never: "#missing" })).status).toBe("ok");
+  // A step that opens text with a leaked value fails and names the word and the element, not the text (#4285).
+  const leaked = await run({ pre: ["#leaky > summary"], ready: "#leak", kind: "text" });
+  expect([leaked.status, leaked.why]).toEqual(["fail", "shows null in p"]);
+  expect(await leakedValues(page)).toBe("null in p");
+  expect(await leakedValues(page, "#more")).toBe("");
+  await page.evaluate(() => { document.querySelector("#leaky").open = false; });
   // An optional step without its data is skipped, not failed.
   expect((await run({ ready: "#missing", kind: "text", optional: true })).status).toBe("skip");
   // Each candidate is checked with its own controls: the second session passes although the first is empty.
