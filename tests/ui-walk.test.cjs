@@ -172,6 +172,19 @@ test("ui walk skips a step whose since is newer than the running release", async
   for (const item of walk.STEPS.filter((entry) => entry.since)) assert.match(item.since, /^\d+\.\d+\.\d+$/, item.name);
 });
 
+// #4263: a checkout that is not the deployed release stops the walk before its first step.
+test("ui walk stops when its checkout is not the deployed release", async () => {
+  const walk = await load();
+  assert.equal(walk.checkoutVersion('x = 1\nAPP_VERSION = "2.2.36"\n'), "2.2.36");
+  assert.equal(walk.checkoutVersion("no version"), null);
+  assert.equal(walk.checkoutVersion(fs.readFileSync(path.join(__dirname, "..", "server.py"), "utf8")), walk.checkoutVersion());
+  assert.equal(walk.versionMismatch("2.2.36", "2.2.36"), null);
+  assert.equal(walk.versionMismatch("2.2.36", "2.2.37"), "walk checkout 2.2.37 does not match deployed 2.2.36; run from the release commit");
+  // An unreadable version on either side does not stop the walk.
+  assert.equal(walk.versionMismatch(null, "2.2.37"), null);
+  assert.equal(walk.versionMismatch("2.2.36", null), null);
+});
+
 test("ui walk reports each step and flags one that passed before and is skipped now (#3009)", async () => {
   const walk = await load();
   const result = {
