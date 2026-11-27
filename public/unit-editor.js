@@ -213,7 +213,7 @@ function unitStepValue(row, onChange) {
 function unitStepRow(row, rows, redraw, onChange) {
   const minutes = h("input", { type: "number", min: 1, max: 600, inputmode: "numeric", value: row.minutes, "aria-label": "Minuten" });
   minutes.addEventListener("input", () => { row.minutes = Number(minutes.value) || 0; onChange(); });
-  const remove = h("button", { type: "button", className: "secondary-button", "aria-label": "Schritt entfernen" }, "✕");
+  const remove = messageActionButton("trash", "Schritt entfernen");
   remove.addEventListener("click", () => { rows.splice(rows.indexOf(row), 1); redraw(); });
   return h("li", "unit-row", minutes, unitStepValue(row, onChange), remove);
 }
@@ -224,7 +224,7 @@ function unitRowsList(rows, redraw, onChange) {
     if (row.kind === "step") { list.append(unitStepRow(row, rows, redraw, onChange)); continue; }
     const name = h("input", { type: "text", maxLength: 60, value: row.name, "aria-label": row.kind === "label" ? "Abschnitt" : "Name der Wiederholung" });
     name.addEventListener("input", () => { row.name = name.value; });
-    const remove = h("button", { type: "button", className: "secondary-button", "aria-label": "Abschnitt entfernen" }, "✕");
+    const remove = messageActionButton("trash", "Abschnitt entfernen");
     remove.addEventListener("click", () => { rows.splice(rows.indexOf(row), 1); redraw(); });
     if (row.kind === "label") { list.append(h("li", "unit-row is-label", name, remove)); continue; }
     const times = h("input", { type: "number", min: 2, max: 50, inputmode: "numeric", value: row.times, "aria-label": "Wiederholungen" });
@@ -250,7 +250,7 @@ function unitExerciseList(editor, redraw) {
     const amount = h("input", { type: "number", min: 0, step: "any", inputmode: "decimal", value: row.amount, disabled: !row.load, "aria-label": "Wert der Last" });
     load.addEventListener("change", () => { row.load = load.value; amount.disabled = !row.load; if (!row.load) { amount.value = ""; } row.amount = amount.value; });
     amount.addEventListener("input", () => { row.amount = amount.value; });
-    const remove = h("button", { type: "button", className: "secondary-button", "aria-label": "Übung entfernen" }, "✕");
+    const remove = messageActionButton("trash", "Übung entfernen");
     remove.addEventListener("click", () => { editor.exercises.splice(editor.exercises.indexOf(row), 1); redraw(); });
     list.append(h("li", "unit-exercise", name, h("div", "unit-row", ...numbers, remove), h("div", "unit-row", load, amount)));
   }
@@ -432,7 +432,7 @@ function openPlanReplace({ plan, onReplaced }) {
       return unitField(label, input);
     };
     const fresh = period.workouts.map((item, index) => {
-      const remove = h("button", { type: "button", className: "secondary-button", "aria-label": "Einheit entfernen" }, "✕");
+      const remove = messageActionButton("trash", "Einheit entfernen");
       remove.addEventListener("click", () => { period.workouts.splice(index, 1); render(); });
       return [item.name, dayText(item.date), remove];
     });

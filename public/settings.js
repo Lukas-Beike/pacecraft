@@ -559,8 +559,16 @@ function recordedMaxHrNote(thresholds = state.data?.performance?.thresholds) {
   return found ? `Brustgurt ${Math.round(found.value)} bpm am ${dateLabel(found.date)}` : null;
 }
 
+function zoneEditName(label, attributes) {
+  if (attributes.zoneEdit === "lt1") return "Schwelle (LT1) bearbeiten";
+  const kind = attributes.zoneEnvironment ? `${ZONE_KIND_TITLES[attributes.zoneEdit]} · Indoor` : ZONE_KIND_TITLES[attributes.zoneEdit];
+  return `Zonen ${label.toLowerCase()}: ${kind}`;
+}
+
 function zoneEditButton(label, attributes) {
-  return h("button", { type: "button", className: "zone-edit", dataset: attributes }, label);
+  const button = messageActionButton("edit", zoneEditName(label, attributes));
+  Object.assign(button.dataset, attributes);
+  return button;
 }
 
 // A small yellow "i" names the origin of a threshold row in a popover (athlete decision 2026-11-12, #2427).
@@ -687,7 +695,7 @@ function lt2SourceItem(sport, row) {
   const values = h("span", { className: "lt2-source-values", dataset: row.unknown ? { unknown: "" } : {} }, row.values);
   const item = h("li", { className: "lt2-source", dataset: { lt2Source: row.source } }, h("span", "lt2-source-name", row.name, ...chips), values, h("span", "lt2-source-basis", row.basis));
   if (row.adopt.length) {
-    const button = h("button", { type: "button", className: "secondary-button" }, "Übernehmen");
+    const button = h("button", { type: "button", className: "push-button" }, "Übernehmen");
     button.addEventListener("click", () => { void adoptLt2(sport, row, button); });
     item.append(button);
   }
@@ -764,8 +772,13 @@ const THRESHOLD_OFFER_DFA = { lt1: ["LT1", "DFA-α1 0,75", "Läufe"], lt2: ["LT2
 const THRESHOLD_OFFER_UNITS = { heart_rate: "bpm", power: "W" };
 const THRESHOLD_OFFER_WIDE = globalThis.matchMedia?.("(min-width: 1100px)");
 
+// Offers just dismissed stay hidden while a read taken before the dismissal answers later
+// (#4315), until the profile read queued after the dismissal has landed; every reader of the
+// offers goes through thresholdOffersFor.
+const dismissedThresholdOffers = new Set();
+
 function thresholdOffersFor(sport, offers = state.data?.threshold_offers) {
-  return (Array.isArray(offers) ? offers : []).filter((offer) => offer.sport === sport);
+  return (Array.isArray(offers) ? offers : []).filter((offer) => offer.sport === sport && !dismissedThresholdOffers.has(offer.key));
 }
 
 // A pace as m:ss, a heart rate or power as a whole number.
@@ -878,6 +891,7 @@ async function dismissThresholdOffers(offers, button) {
   try {
     for (const offer of offers) {
       const result = await api("/api/zones/threshold-offers/dismiss", { method: "POST", body: JSON.stringify({ key: offer.key }) });
+      dismissedThresholdOffers.add(offer.key);
       if (state.data) state.data.threshold_offers = result.threshold_offers;
     }
   } catch (error) {
@@ -886,6 +900,9 @@ async function dismissThresholdOffers(offers, button) {
     else toast(error.message, true);
   } finally { setSaving(button, false); }
   refreshThresholdOffers();
+  // Loads run one after another: this read lands after any older one, so the stored state (and
+  // the device snapshot) end without the dismissed offer, and the hiding ends.
+  if (dismissedThresholdOffers.size) void globalThis.load?.(undefined, ["profile"])?.finally(() => { dismissedThresholdOffers.clear(); refreshThresholdOffers(); });
 }
 
 function zoneKindBox(sport, metric, environment = null) {

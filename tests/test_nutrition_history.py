@@ -104,6 +104,26 @@ class NutritionHistoryTests(NutritionHistoryCase):
         self.assertEqual(restored["kcal"], 600)
         self.assertEqual(restored["carbs_g"], 80)
 
+    def test_undo_of_a_component_added_in_the_edit_restores_the_meal(self) -> None:
+        # #4270: one undo covers the dialog's save with its added component.
+        banana = self.library.product_catalog.save_product(
+            {"name": "Banane", "basis_amount": 100, "basis_unit": "g", "kcal": 90,
+             "carbs_g": 20, "protein_g": 1, "fat_g": 0.3, "source": "manual"}
+        )  # fmt: skip
+        entry = self.diary.log_meal(MEAL)
+        revision = self.diary.meal_components(entry["id"])["revision"]
+        add = {"add": {"product_id": banana["id"], "amount": 100, "unit": "g"}}
+        updated, changes = self.collected(
+            lambda: self.diary.edit_components(entry["id"], [add], revision)
+        )
+        self.assertEqual(
+            ([c["action"] for c in changes], updated["kcal"]), (["update"], 690)
+        )
+        self.undo(changes)
+        restored = self.diary.get_meal(entry["id"])
+        self.assertEqual((restored["kcal"], restored["nutrition_basis"]),
+                         (600, entry["nutrition_basis"]))  # fmt: skip
+
     def test_undo_of_an_added_product_restores_the_previous_meal(self) -> None:
         library = self.library
         banana = library.product_catalog.save_product(

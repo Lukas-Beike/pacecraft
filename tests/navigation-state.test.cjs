@@ -346,7 +346,7 @@ test("the scan finds the state helper calls with their text and the confirmation
   assert.deepEqual(plain(states.find((row) => row.helper === "createEmptyState" && row.fn === "analysisEmptyCard").texts), ["(computed) ` ANALYSIS_EMPTY_TITLES[segment] `", "(computed) ` cause `"]);
   // A confirmation has no default title or label: every call names both (#3934).
   assert.deepEqual([defaults.title, defaults.confirmLabel, defaults.text], [undefined, undefined, "nicht erfasst"]);
-  assert.deepEqual(plain(states.find((row) => row.fn === "nutritionTotalTile").texts), ["nicht erfasst"]);
+  assert.deepEqual(plain(states.find((row) => row.fn === "nutritionTotalValue").texts), ["nicht erfasst"]);
   const discard = confirmations.find((row) => row.fn === "confirmDiscardDraft");
   assert.deepEqual([discard.message, discard.options.title], ["Deine Eingaben auf dieser Seite gehen verloren.", "Änderungen verwerfen?"]);
   assert.ok(confirmations.some((row) => row.message.startsWith("(computed)")));

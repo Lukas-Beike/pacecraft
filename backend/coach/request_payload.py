@@ -244,6 +244,12 @@ class CoachRequestPayloadService:
                         "pending_request",
                     )
                 },
+                # The today marker's weekday (#4286), when the dialogue has it.
+                **{
+                    key: projected_dialogue[key]
+                    for key in ("local_weekday",)
+                    if key in projected_dialogue
+                },
             }
         # Local dialogue already supplies bounded continuity. Without a retained
         # attachment conversation nothing stays at the provider: the turn is

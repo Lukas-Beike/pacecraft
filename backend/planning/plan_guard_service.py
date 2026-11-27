@@ -36,6 +36,7 @@ from backend.planning.load_checks import (
     load_thresholds,
     plan_sessions,
 )
+from backend.planning.running_week import unit_date
 from backend.planning.running_week import unit_day as _unit_day
 from backend.planning.session_focus import session_focus
 from backend.planning.sport import planned_sport_environment
@@ -117,6 +118,17 @@ def read_completed(
     """Activity summaries of the check window (60 days), in the caller's transaction."""
     with database_manager.reader() as db:
         return activities.activity_summaries(db, start=today - timedelta(days=days))
+
+
+def _run_lthr(
+    thresholds: LoadThresholds | None, unit: Mapping[str, Any], today: date
+) -> float | None:
+    """The run threshold HR on the unit's date, as the calendar resolves its cap."""
+    if thresholds is None or thresholds.unavailable:
+        return None
+    environment = planned_sport_environment(unit)[1]
+    zones = thresholds.for_sport(Sport.RUN, environment, unit_date(unit) or today)
+    return None if zones is None else zones.lthr
 
 
 def read_load_thresholds(
@@ -747,6 +759,7 @@ class PlanGuardService:
             units,
             self._first_threshold_percent(),
             first_threshold_estimated(self._profile()),
+            lthr_for=lambda unit: _run_lthr(thresholds, unit, today),
         )
         if outdated:
             brief = brief_budget.fit_brief(

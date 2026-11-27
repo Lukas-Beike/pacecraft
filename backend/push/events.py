@@ -143,7 +143,7 @@ def unit_line(unit: dict[str, Any], lthr: float | None) -> str:
 
 
 def _key_target(unit: dict[str, Any], lthr: float | None) -> str:
-    """The stored cap of an easy or long unit, else the first repeat block of the
+    """The stored cap of a recovery, easy, endurance or long unit, else the first repeat block of the
     stored steps unless the title names it already; nothing for strength."""
     cap = stored_cap(unit)
     if cap is not None:

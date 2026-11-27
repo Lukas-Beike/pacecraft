@@ -74,6 +74,9 @@ def build_diagnostics(ctx: AppContext) -> DiagnosticsServices:
                 slowest_routes=ctx.route_timings.summary,
                 session_reports=ctx.session_report_counts.summary,
                 heavy_read_gate=ctx.heavy_read_gate.summary,
+                coach_performance_sizes=lambda: (
+                    ctx.coach_context.structured_context_service().performance_section_sizes()
+                ),
                 # Garmin's weight rows by origin join the counts (#3718).
                 energy_balance=lambda db: (
                     ctx.nutrition.energy_basis(db)

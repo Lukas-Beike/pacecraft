@@ -51,6 +51,14 @@ def _scalar(value: Any) -> bool:
     return isinstance(value, (str, int, float)) and not isinstance(value, bool)
 
 
+def weekday(value: Any) -> str:
+    """ "So" for an ISO day (or a value starting with one), or an empty text."""
+    try:
+        return _WEEKDAYS[date.fromisoformat(str(value)[:10]).weekday()]
+    except ValueError:
+        return ""
+
+
 def day_label(value: Any) -> str:
     """ "So 22.11." for an ISO day, or an empty text."""
     try:

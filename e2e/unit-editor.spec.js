@@ -46,21 +46,22 @@ test("@responsive the Bibliothek creates, edits, restores and deletes an entry",
   const renamed = page.locator("#library .library-card", { has: page.locator("h4", { hasText: "E2E Schwelle lang" }) });
   await expect(renamed.locator(":scope > .planned-move-status")).toContainText("Gespeichert: E2E Schwelle lang");
 
-  // Löschen archives it; "Archiviert" lists it with "Wiederherstellen", then "Endgültig löschen" removes it for good.
+  // Archivieren archives it; "Archiviert" lists it with "Wiederherstellen", then the red "Löschen" removes it for good (#4307).
   const entryCard = () => page.locator("#library .library-card", { has: page.locator("h4", { hasText: "E2E Schwelle lang" }) });
   const lead = page.locator("#library > .planned-move-status");
   const archiveAndShow = async () => {
-    await entryCard().getByRole("button", { name: "Löschen" }).click();
-    await expect(lead).toContainText("Gelöscht: E2E Schwelle lang");
+    await entryCard().getByRole("button", { name: "Archivieren" }).click();
+    await expect(lead).toContainText("Archiviert: E2E Schwelle lang");
     await page.locator("#library .chip", { hasText: "Archiviert" }).click();
     await expect(entryCard().getByRole("button", { name: "Wiederherstellen" })).toBeVisible();
   };
   await archiveAndShow();
-  await expect(entryCard().getByRole("button")).toHaveText(["Wiederherstellen", "Endgültig löschen"]);
+  await expect(entryCard().getByRole("button")).toHaveText(["Wiederherstellen", "Löschen"]);
+  await expect(entryCard().locator(".danger-button")).toHaveText("Löschen");
   await entryCard().getByRole("button", { name: "Wiederherstellen" }).click();
   await expect(entryCard().locator(":scope > .planned-move-status")).toContainText("Wiederhergestellt: E2E Schwelle lang");
   await archiveAndShow();
-  await entryCard().getByRole("button", { name: "Endgültig löschen" }).click();
+  await entryCard().getByRole("button", { name: "Löschen" }).click();
   await expect(lead).toContainText("Endgültig gelöscht: E2E Schwelle lang");
   expect(posts.at(-1)).toEqual([expect.stringMatching(/\/delete$/), { confirmed: true }]);
   await lead.getByRole("button", { name: "Rückgängig" }).click();
@@ -68,7 +69,7 @@ test("@responsive the Bibliothek creates, edits, restores and deletes an entry",
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBeTruthy();
 });
 
-test("@responsive the calendar edits and archives a unit", async ({ page, request }) => {
+test("@responsive the calendar edits and deletes a unit", async ({ page, request }) => {
   test.setTimeout(180_000);
   const posts = [];
   page.on("request", (item) => {
@@ -102,13 +103,14 @@ test("@responsive the calendar edits and archives a unit", async ({ page, reques
   const edited = page.locator(".planned-entry", { hasText: "E2E Ausdauer neu" });
   await expect(edited.locator(".planned-move-status")).toContainText("Gespeichert: E2E Ausdauer neu");
 
-  // Archivieren acts at once and the day's receipt takes it back.
-  await edited.getByRole("button", { name: "Archivieren" }).click();
+  // A dated unit has only the trash icon, no "Archivieren" (#4307); it acts at once and the day's receipt takes it back.
+  await expect(edited.getByRole("button", { name: "Archivieren" })).toHaveCount(0);
+  await edited.getByRole("button", { name: "Einheit löschen: E2E Ausdauer neu" }).click();
   // The unit sits on the first free day of next week; the receipt shows on its day.
   const day = page.locator(".planned-day", { has: page.locator(".planned-day-content > .planned-move-status") });
-  await expect(day.locator(".planned-day-content > .planned-move-status")).toContainText("Archiviert: E2E Ausdauer neu");
+  await expect(day.locator(".planned-day-content > .planned-move-status")).toContainText("Gelöscht: E2E Ausdauer neu");
   await expect(page.locator(".planned-entry", { hasText: "E2E Ausdauer neu" })).toHaveCount(0);
-  expect(posts.at(-1)).toEqual([expect.stringMatching(/\/archive$/), { confirmed: true, expected_payload_hash: expect.stringMatching(/^[0-9a-f]{64}$/) }]);
+  expect(posts.at(-1)).toEqual([expect.stringMatching(/\/delete$/), { confirmed: true, expected_payload_hash: expect.stringMatching(/^[0-9a-f]{64}$/) }]);
   await day.locator(".planned-day-content > .planned-move-status").getByRole("button", { name: "Rückgängig" }).click();
   await expect(page.locator(".planned-entry", { hasText: "E2E Ausdauer neu" })).toHaveCount(1);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBeTruthy();
@@ -141,7 +143,8 @@ test("@responsive the Pläne tab creates, archives, restores and deletes a train
   await expect(card().locator(":scope > .planned-move-status")).toContainText("Angelegt: E2E Aufbau");
   // The walk finds an active plan by this attribute (#4222).
   await expect(card()).toHaveAttribute("data-plan-status", "planned");
-  await expect(card().locator(":scope > .planned-activity-actions").getByRole("button")).toHaveText(["Bearbeiten", "Zeitraum ersetzen", "Archivieren", "Löschen"]);
+  await expect(card().locator(":scope > .planned-activity-actions").getByRole("button")).toHaveText(["", "Zeitraum ersetzen", "Archivieren", ""]);
+  await expect(card().locator(":scope > .planned-activity-actions").getByRole("button", { name: /^Plan (bearbeiten|löschen): / })).toHaveCount(2);
   // The plan never shows in the Bibliothek.
   await expect(page.locator("#library .library-card h4", { hasText: "E2E Aufbau" })).toHaveCount(0);
 
@@ -149,7 +152,8 @@ test("@responsive the Pläne tab creates, archives, restores and deletes a train
   await expect(lead).toContainText("Archiviert: E2E Aufbau");
   expect(posts.at(-1)).toEqual([expect.stringMatching(/\/update$/), { status: "archived", confirmed: true }]);
   await page.locator("#plans .chip", { hasText: "Archiviert" }).click();
-  await expect(card().locator(":scope > .planned-activity-actions").getByRole("button")).toHaveText(["Wiederherstellen", "Löschen"]);
+  await expect(card().locator(":scope > .planned-activity-actions").getByRole("button")).toHaveText(["Wiederherstellen", ""]);
+  await expect(card().locator(":scope > .planned-activity-actions").getByRole("button", { name: /^Plan löschen: / })).toHaveCount(1);
   await card().getByRole("button", { name: "Wiederherstellen" }).click();
   await expect(lead).toContainText("Wiederhergestellt: E2E Aufbau");
   await page.locator("#plans .chip", { hasText: "Aktiv" }).click();

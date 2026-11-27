@@ -89,10 +89,14 @@ The system SHALL let the athlete in Ernährung › Produkte list the saved meals
 - **WHEN** the athlete composes a meal from foods and amounts
 - **THEN** it is logged with `POST /api/nutrition/entry` (`components`) or kept with `POST /api/nutrition/templates` (`components`), calculated by the server
 
+#### Scenario: A meal added from the diary
+- **WHEN** the athlete presses "+ Mahlzeit" under a diary day that is not in the future
+- **THEN** a sheet offers the meal types Frühstück, Mittagessen, Abendessen and Snack, the product and food search and the saved meals; a picked product or food asks for its amount in its own unit and is logged on the shown day through the meal create path (a product also through its offline outbox), and a saved meal is logged with `POST /api/nutrition/templates/log` (#4304)
+
 Evidence: `backend/http_api/nutrition.py::NutritionPostRoutes._save_template`, `backend/nutrition/meal_library.py::NutritionMealLibraryService.save_template_from_meal`, `public/nutrition-templates.js`; `tests/test_nutrition_composition.py::NutritionCompositionTests::test_saved_meal_routes_keep_log_and_delete_with_the_server_values`.
 
 ### Requirement: A logged meal's components are edited directly
-The system SHALL let the athlete remove a component of a logged meal, change its amount, or swap it for another database food or saved product, addressed by position. The server SHALL scale the stored snapshot or calculate from the food or product ID and the amount; a client SHALL send no nutrient values. The meal keeps its name and source, becomes a composite, gets a change-history record and has its date marked pending; templates stay unchanged.
+The system SHALL let the athlete remove a component of a logged meal, change its amount, or swap it for another database food or saved product, addressed by position, or add one as a new component (#4270). The server SHALL scale the stored snapshot or calculate from the food or product ID and the amount; a client SHALL send no nutrient values. The meal keeps its name and source, becomes a composite, gets a change-history record and has its date marked pending; templates stay unchanged.
 
 #### Scenario: Change an amount
 - **WHEN** the athlete sets a component to a new amount
@@ -101,6 +105,10 @@ The system SHALL let the athlete remove a component of a logged meal, change its
 #### Scenario: Swap a component
 - **WHEN** the athlete swaps a component for another food or product
 - **THEN** its amount and unit stay and its nutrients and origin come from the new food; a food counted in another unit fails with `food_unit_mismatch` and nothing changes.
+
+#### Scenario: Add a component
+- **WHEN** the athlete adds a database food or saved product with its amount in its own unit
+- **THEN** it is appended with its calculated nutrients on the save of the other edits, at most 20 components in all, and a unit mismatch or a missing energy value fails as for a saved product added to a meal.
 
 #### Scenario: The meal changed meanwhile
 - **WHEN** an edit carries a `revision` that no longer matches the meal's components
@@ -114,7 +122,7 @@ The system SHALL let the athlete remove a component of a logged meal, change its
 - **WHEN** the same request carries `meal` with `meal_date`, `meal_type`, `meal_time` or `logged_time_known: false`, with or without component edits
 - **THEN** both are saved as one change with one undo reference; a new type moves a default time to the type's default but never a named one, a new day moves the meal, an unknown time keeps only the type, and a `meal` without edits leaves the components and origin as stored; any other key, `logged_time_known: true`, or a time together with an unknown time fails with 400 and nothing changes.
 
-Evidence: `backend/nutrition/meal_components.py::validated_meal_changes`, `tests/test_nutrition_meal_components.py::MealComponentEditTests.test_the_meal_change_and_the_component_edits_are_one_write`, `tests/test_nutrition_meal_components.py::MealComponentEditTests.test_a_new_day_moves_the_meal`, `tests/test_nutrition_meal_components.py::MealComponentEditTests.test_a_bad_meal_change_changes_nothing`, `backend/nutrition/meal_components.py::edited_components`, `backend/nutrition/meal_components.py::entry_components`, `backend/nutrition/diary.py::NutritionDiaryService.edit_components`, `backend/http_api/nutrition.py::NutritionPostRoutes._edit_components`; `tests/test_nutrition_meal_components.py::MealComponentEditTests.test_a_changed_amount_is_recalculated_and_the_others_stay_as_stored`, `tests/test_nutrition_meal_components.py::MealComponentEditTests.test_a_swap_keeps_the_amount_and_takes_the_new_origin`, `tests/test_nutrition_meal_components.py::MealComponentEditTests.test_a_removed_component_leaves_the_rest_and_the_last_one_stays`, `tests/test_nutrition_meal_components.py::MealComponentEditTests.test_a_swap_to_another_unit_is_refused_and_changes_nothing`, `tests/test_nutrition_meal_components.py::MealComponentEditTests.test_an_edit_of_a_meal_that_changed_meanwhile_is_refused`; `e2e/nutrition-meal-edit.spec.js`.
+Evidence: `backend/nutrition/meal_components.py::validated_meal_changes`, `tests/test_nutrition_meal_components.py::MealComponentEditTests.test_the_meal_change_and_the_component_edits_are_one_write`, `tests/test_nutrition_meal_components.py::MealComponentEditTests.test_a_new_day_moves_the_meal`, `tests/test_nutrition_meal_components.py::MealComponentEditTests.test_a_bad_meal_change_changes_nothing`, `backend/nutrition/meal_components.py::edited_components`, `backend/nutrition/meal_components.py::entry_components`, `backend/nutrition/diary.py::NutritionDiaryService.edit_components`, `backend/http_api/nutrition.py::NutritionPostRoutes._edit_components`; `tests/test_nutrition_meal_components.py::MealComponentEditTests.test_a_changed_amount_is_recalculated_and_the_others_stay_as_stored`, `tests/test_nutrition_meal_components.py::MealComponentEditTests.test_a_swap_keeps_the_amount_and_takes_the_new_origin`, `tests/test_nutrition_meal_components.py::MealComponentEditTests.test_a_removed_component_leaves_the_rest_and_the_last_one_stays`, `tests/test_nutrition_meal_components.py::MealComponentEditTests.test_a_swap_to_another_unit_is_refused_and_changes_nothing`, `tests/test_nutrition_meal_components.py::MealComponentEditTests.test_an_edit_of_a_meal_that_changed_meanwhile_is_refused`, `tests/test_nutrition_meal_components.py::MealComponentEditTests.test_an_added_food_and_product_are_appended_with_their_values`, `tests/test_nutrition_meal_components.py::MealComponentEditTests.test_an_add_is_refused_like_the_add_of_a_saved_product`, `tests/test_nutrition_meal_components.py::MealComponentEditTests.test_the_coach_adds_a_product_and_a_food_with_the_meal_s_components`, `tests/test_nutrition_history.py::NutritionHistoryTests.test_undo_of_a_component_added_in_the_edit_restores_the_meal`; `e2e/nutrition-meal-edit.spec.js`.
 
 ### Requirement: Diary changes are recorded and undoable
 The system SHALL record every diary create, correction, added product and deletion as a `nutrition_entry` change in change history, with the audit-projected fields of the entry, and SHALL let the shared undo restore the recorded state only while the entry still matches the state the change produced. A Coach turn whose applied writes are all diary tools SHALL be undoable as a whole.
@@ -186,7 +194,7 @@ The system SHALL compute displayed sugar and salt from the quantity and nutrient
 - **WHEN** at least one component has no sugar or salt value
 - **THEN** that complete total remains null, available values appear only as a known subtotal, and the UI marks incompleteness.
 
-Evidence: `backend/nutrition/intake_totals.py::_snapshot_values`, `backend/nutrition/intake_totals.py::add_intake_totals`, `public/nutrition.js::nutritionTotalTile`; `tests/test_nutrition_composition.py::NutritionCompositionTests.test_sugar_and_salt_follow_consumption_snapshots_and_unknowns`, `tests/test_nutrition_composition.py::NutritionCompositionTests.test_composite_salt_sugar_scale_with_template_portions_and_week_coverage`.
+Evidence: `backend/nutrition/intake_totals.py::_snapshot_values`, `backend/nutrition/intake_totals.py::add_intake_totals`, `public/nutrition.js::nutritionTotalTile`, `public/nutrition.js::nutritionMinorLine`; `tests/test_nutrition_composition.py::NutritionCompositionTests.test_sugar_and_salt_follow_consumption_snapshots_and_unknowns`, `tests/test_nutrition_composition.py::NutritionCompositionTests.test_composite_salt_sugar_scale_with_template_portions_and_week_coverage`.
 
 ### Requirement: Closed-day history preserves independent coverage
 The system SHALL return 7, 14, or 84 closed days ending yesterday, keep absent intake and expenditure unknown, and calculate balances only for dates with both values. Each day's expenditure SHALL be its own "Aus deinen Daten" day total from the energy table, named by `expenditure_source` "own", with the wearable's day kept beside it (#3600). Each average SHALL report its own observed-day count.
@@ -456,11 +464,15 @@ The client SHALL show the nutrition area as Tagebuch, Verlauf, Körper and Produ
 
 #### Scenario: Empty day
 - **WHEN** a day has no entries
-- **THEN** no total tiles show and "Noch keine Mahlzeiten erfasst." reads below the energy cards, where the meal list would be, with no button
+- **THEN** no total tiles show and "Noch keine Mahlzeiten erfasst." reads below the energy cards, where the meal list would be, with "+ Mahlzeit" under it as under a day's meals (#4304)
 
 #### Scenario: Future day
 - **WHEN** the diary shows a day after today that has no entries
 - **THEN** no total tiles show and "Dieser Tag liegt in der Zukunft." reads below the energy cards, with no button
+
+#### Scenario: Sugar and salt line
+- **WHEN** a day with entries shows its totals
+- **THEN** Zucker and Salz read as one full-width line under the calorie and macro tiles ("Zucker 37,5 g · Salz 2,0 g"), each value keeps its own "nicht erfasst", and "unvollständig" shows on the right when either value is a partial sum; the date toolbar's buttons end at the date field's bottom edge, or share one row below the day name on a narrow screen
 
 #### Scenario: Failed load
 - **WHEN** a day cannot be loaded and no cached copy exists

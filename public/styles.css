@@ -250,7 +250,7 @@ button { cursor: pointer; }
 main:focus { outline: none; }
 .nav-icon { width: 21px; height: 21px; fill: none; stroke: currentColor; stroke-linecap: round; stroke-linejoin: round; stroke-width: 1.8; }
 /* One surface-card family (#2434); view rules add only layout. */
-.card, .analysis-chart-card, .settings-section, .connection-card, .nutrition-total, .nutrition-card, .nutrition-tools, .planned-week, .planned-month, .coach-action-review, .status-strip { border: 1px solid var(--line); border-radius: var(--radius-lg); background: var(--surface); box-shadow: var(--shadow-soft); }
+.card, .analysis-chart-card, .settings-section, .connection-card, .nutrition-total, .nutrition-minor-line, .nutrition-card, .nutrition-tools, .planned-week, .planned-month, .coach-action-review, .status-strip { border: 1px solid var(--line); border-radius: var(--radius-lg); background: var(--surface); box-shadow: var(--shadow-soft); }
 .status-chip { display: inline-flex; min-height: 24px; align-items: center; gap: 6px; padding: 4px 9px; border-radius: 999px; color: var(--muted); background: var(--surface-raised); font-size: 12px; font-weight: 700; }
 .status-chip[data-status="ready"], .status-chip.success { color: var(--ink); background: var(--success-surface); }
 .status-chip[data-status="loading"], .status-chip.warning { color: var(--ink); background: var(--warning-surface); }
@@ -551,12 +551,13 @@ h2 {
 .message.pending { border: 1px dashed var(--accent-border-strong); box-shadow: none; }
 .message.pending .pending-label { display: block; margin-top: 5px; color: var(--muted); font-size: .72rem; font-weight: 650; }
 .message.pending .pending-actions { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 2px; }
-.message.pending .pending-action { box-sizing: border-box; width: auto; min-height: 44px; margin: 0; padding: 0 12px; border: 1px solid var(--accent-border-strong); border-radius: 999px; color: var(--ink); background: var(--transparent); white-space: nowrap; }
 /* Icon-only actions: each button has a 44px hit area, a 28px visible disc
    (content-box background clip) and -8px vertical margins so the row stays 28px tall. */
 .message-actions { display: flex; align-items: center; justify-content: flex-end; margin: 4px -8px 0 0; }
 .message.assistant > .message-actions { justify-content: flex-start; margin: 4px 0 0 -8px; }
 .message-action { display: inline-flex; flex: 0 0 auto; align-items: center; justify-content: center; box-sizing: border-box; width: 44px; height: 44px; margin: -8px 0; padding: 8px; border: 0; border-radius: 50%; color: var(--muted); background-color: var(--transparent); background-clip: content-box; }
+/* In an action row of a card or a form (#4279) the icon needs no pull-up. */
+.planned-activity-actions > .message-action, .nutrition-actions > .message-action, .connection-actions > .message-action, .nutrition-template-actions > .message-action, .pending-actions > .message-action, .checkin-complaint > .message-action, .unit-row > .message-action, .edit-controls .message-action, .outbox-list .message-action, .zone-source > .message-action, .planned-day-checkin > .message-action, .composer .chat-attachment-remove { margin: 0; }
 .message-action:hover { color: var(--ink); background-color: var(--surface-raised); }
 .message-action:focus-visible { outline: 2px solid var(--accent-bright); outline-offset: 2px; }
 .message-action svg { display: block; width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
@@ -966,7 +967,6 @@ a.message-retry { display: grid; place-items: center; text-decoration: none; }
 .zone-list li[data-zone="Z4"] { --zone-color: var(--training-zone-4); }
 .zone-list li[data-zone="Z5"] { --zone-color: var(--training-zone-5); }
 .zone-source { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 8px; margin: 8px 0 0; }
-.zone-edit { min-height: 44px; padding: 0 4px; border: 0; background: none; color: var(--link); font-weight: 700; }
 .zone-editor { margin-top: 4px; }
 #zoneSummary.is-warning { color: var(--orange); }
 .remote-delete-notice { display: grid; gap: 6px; margin: 0 0 16px; padding: 12px 14px; border: 1px solid var(--danger-border-strong); border-radius: 14px; color: var(--ink); background: var(--danger-surface); font-size: .74rem; line-height: 1.4; }
@@ -1032,6 +1032,8 @@ a.message-retry { display: grid; place-items: center; text-decoration: none; }
 .planned-entry-details { display: grid; gap: 10px; padding: 12px; border-top: 1px solid var(--line); overflow-wrap: anywhere; }
 .planned-activity-actions { display: flex; flex-wrap: wrap; gap: 8px; }
 .planned-activity-actions > button { flex: 1 1 auto; }
+.planned-activity-actions > .message-action { flex: 0 0 44px; }
+.nutrition-actions > .message-action, .connection-actions > .message-action { justify-self: center; }
 .planned-move-group { display: grid; flex: 1 1 auto; gap: 8px; }
 .planned-actual-facts { display: flex; flex-wrap: wrap; gap: 7px 13px; color: var(--muted); font-size: .75rem; }
 .planned-actual-facts strong { color: var(--subtle); font-size: inherit; font-weight: 500; }
@@ -1479,6 +1481,7 @@ output.planned-move-status { display: block; }
 .backup-actions label { flex: 1; }
 .backup-actions input[type="file"] { padding: 8px; font-size: .72rem; }
 .dialog-actions { display: flex; justify-content: flex-end; gap: 8px; }
+.dialog-actions .icon-button { width: 44px; padding: 0; }
 .confirmation-dialog { max-width: 560px; }
 .confirmation-dialog p { white-space: pre-wrap; max-height: 45vh; overflow: auto; }
 .confirmation-dialog input { width: 100%; }
@@ -1490,6 +1493,7 @@ output.planned-move-status { display: block; }
 .checkin-fields { display: grid; gap: 15px; }
 .checkin-complaint { display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr) 4rem auto; gap: 8px; align-items: center; }
 .checkin-complaints { display: grid; gap: 8px; }
+.nutrition-add-meal { width: 100%; min-height: 44px; margin-top: 12px; }
 .change-history-list { display: grid; margin: 0; padding: 0; list-style: none; }
 .change-history-item { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 0; border-top: 1px solid var(--line); }
 .change-history-item > div { display: grid; min-width: 0; overflow-wrap: anywhere; }
@@ -1809,7 +1813,7 @@ button:focus-visible, a:focus-visible, summary:focus-visible {
 .composer .chat-attachment-remove:hover { color: var(--ink); background: var(--transparent); filter: none; }
 
 
-.nutrition-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 20px 0; container-type: inline-size; }
+.nutrition-toolbar { display: flex; flex-wrap: wrap; align-items: end; gap: 8px; margin: 20px 0; container-type: inline-size; }
 .nutrition-toolbar label { flex: 1; min-width: 0; }
 .nutrition-date-name { display: block; margin-bottom: 2px; color: var(--muted); font-size: .72rem; text-align: center; }
 /* rem follows the text size: a bigger text puts the day on its own row. */
@@ -1831,8 +1835,11 @@ button:focus-visible, a:focus-visible, summary:focus-visible {
 #nutritionTotals .nutrition-total > span, #nutritionExpenditureTotals .nutrition-total > span { font-size: .78rem; }
 #nutritionTotals .nutrition-total.is-hero { grid-column: 1 / -1; padding: 16px; }
 #nutritionTotals .nutrition-total.is-hero strong { font-size: 2.4rem; letter-spacing: -.02em; white-space: nowrap; }
-#nutritionTotals .nutrition-total.is-minor { grid-column: span 3; }
-#nutritionTotals .nutrition-total.is-minor strong { font-size: 1.1rem; }
+/* Zucker and Salz are one slim line under the macro tiles, not tiles (#4300). */
+#nutritionTotals .nutrition-minor-line { grid-column: 1 / -1; display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 8px; padding: 10px 12px; font-size: .9rem; }
+.nutrition-minor-line strong { font-size: 1rem; }
+.nutrition-minor-line strong.value-missing { font-size: .9rem; }
+.nutrition-minor-line .nutrition-minor-partial { margin-left: auto; color: var(--muted); font-size: .78rem; }
 .nutrition-list { display: grid; gap: 12px; margin: 18px 0; }
 .nutrition-card h3 { margin: 0 0 8px; overflow-wrap: anywhere; }
 .nutrition-card p { overflow-wrap: anywhere; white-space: pre-wrap; }

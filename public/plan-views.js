@@ -1635,16 +1635,15 @@ function plannedUnitActions(entry, dateKey, todayKey) {
   const receipt = plannedMoveReceipts.get(key);
   if (receipt) status.append(receipt.text, ...(receipt.change?.id ? plannedMoveUndo(key, receipt, status) : []));
   const [remove, confirm] = plannedDeleteControls(entry, dateKey, key);
-  const edit = h("button", { type: "button", className: "secondary-button" }, "Bearbeiten");
+  const edit = messageActionButton("edit", `Einheit bearbeiten: ${entry.name || "Trainingseinheit"}`);
   edit.addEventListener("click", () => openUnitEditor({ kind: "unit", entry, onSaved: plannedUnitSaved }));
-  const [archive, archiveNote] = plannedArchiveControls(entry, dateKey);
   // The day strip opens right under "Verschieben", not below "Löschen" (#3932 K-11).
   const [garminOpen, garminAsk, garminStatus] = plannedGarminRemoval(entry) || [null, null, null];
   // Without a Garmin copy the removal parts are null, and `append(null)` would write the text "null" (#4285).
-  return [h("div", "planned-activity-actions", edit, h("div", "planned-move-group", toggle, days), coach, garminOpen, archive, remove), confirm, archiveNote, garminAsk, garminStatus, status].filter(Boolean);
+  return [h("div", "planned-activity-actions", edit, h("div", "planned-move-group", toggle, days), coach, garminOpen, remove), confirm, garminAsk, garminStatus, status].filter(Boolean);
 }
 
-// "Bearbeiten" and "Archivieren" (#3950): the unit editor over the Coach's change batch; the card shows the receipt
+// The pencil (#3950): the unit editor over the Coach's change batch; the card shows the receipt
 // with "Rückgängig" and the calendar jumps to the unit's day. A new unit is planned from the Bibliothek ("Einplanen").
 async function plannedUnitSaved(result, editor) {
   const key = `local:${result.local_id}`;
@@ -1654,30 +1653,6 @@ async function plannedUnitSaved(result, editor) {
   showPlannedDay(editor.date);
   await globalThis.load?.();
   announcePlanChange(text);
-}
-
-// "Archivieren" takes the unit out of the calendar at once; the day's receipt offers "Rückgängig".
-function plannedArchiveControls(entry, dateKey) {
-  const name = entry.name || "Trainingseinheit";
-  const [archive, note] = inCardDelete(async () => {
-    let result;
-    try {
-      result = await api(`/api/planned-units/${encodeURIComponent(entry.local_id)}/archive`, { method: "POST", body: JSON.stringify({ confirmed: true, expected_payload_hash: entry.payload_hash }) });
-    } catch (error) {
-      // A changed unit reloads, so the card names the reason and the next try sends the current hash.
-      if (error.status === 409) {
-        plannedMoveReceipts.set(plannedEntryKey(entry, dateKey), { text: error.message });
-        await globalThis.load?.();
-      }
-      throw error;
-    }
-    plannedDeleteReceipts.set(String(entry.local_id), { day: dateKey, text: `Archiviert: ${name}`, change: result.change, from: dateKey });
-    await globalThis.load?.();
-    announcePlanChange(`Archiviert: ${name}`);
-  });
-  archive.textContent = "Archivieren";
-  archive.classList.remove("danger-button");
-  return [archive, note];
 }
 
 // The strip asks the server which of its days a move would be refused for and marks them with what is in the
@@ -1733,11 +1708,16 @@ function plannedDayStrip(todayKey, skip, label, pick) {
 
 // "Löschen" acts at once (athlete decision, #3934 G-03): the card's undo line at its place takes the
 // question's place. `remove` runs on the tap and its error shows beside the button.
-function inCardDelete(remove) {
-  const button = h("button", { type: "button", className: "secondary-button danger-button" }, "Löschen");
+function inCardDelete(remove, label) {
+  return inCardAction(messageActionButton("trash", label), remove, true);
+}
+
+// The button of an in-card action that waits for its request and names a failure under it; an icon button
+// shows the spinner alone.
+function inCardAction(button, remove, icon = false) {
   const failure = h("p", { className: "planned-delete-note", role: "status" });
   button.addEventListener("click", async () => {
-    setSaving(button, true);
+    setSaving(button, true, icon ? "" : undefined);
     failure.textContent = "";
     try {
       await remove();
@@ -1768,7 +1748,7 @@ function plannedDeleteControls(entry, dateKey, key) {
     }
     await globalThis.load?.();
     announcePlanChange(`Gelöscht: ${name}`);
-  });
+  }, `Einheit löschen: ${name}`);
 }
 
 // "Mit Coach besprechen" (#2193) opens the Coach with the unit named by date, sport, start, duration and
@@ -1856,7 +1836,7 @@ async function appendPlannedStepTest(details, activityId, entry) {
   const rows = view.rows.map((row) => {
     const action = h("td");
     if (row.adopt) {
-      const button = h("button", { type: "button", className: "secondary-button" }, "Übernehmen");
+      const button = h("button", { type: "button", className: "push-button" }, "Übernehmen");
       button.addEventListener("click", () => { void adoptStepTestValue(activityId, row, button); });
       action.append(button);
     }
@@ -2116,7 +2096,7 @@ async function appendPlannedEquipment(details, head, entry, actual, receipt = nu
   const suffix = tag ? ` · ${tag}` : "";
   chip.textContent = `${icon} ${shown}${suffix} ▾`;
   chip.setAttribute("aria-label", [`${label}: ${shown}`, tag].filter(Boolean).join(", "));
-  const apply = h("button", { type: "button", className: "secondary-button", hidden: true }, "Übernehmen");
+  const apply = h("button", { type: "button", className: "push-button", hidden: true }, "Übernehmen");
   const status = h("p", { className: "planned-equipment-status", role: "status" });
   const sync = () => { apply.hidden = select.value === "-" || select.value === current; };
   select.addEventListener("change", sync);
@@ -3234,8 +3214,8 @@ function libraryWahooRow(workout) {
   return row;
 }
 
-// "Einplanen" and "Löschen" without the Coach (#3028): the calendar's day strip plans a local unit from the
-// entry; "Löschen" archives the entry and units planned from it stay. Each receipt offers "Rückgängig".
+// "Einplanen" and "Archivieren" without the Coach (#3028, #4307): the calendar's day strip plans a local unit from
+// the entry; "Archivieren" archives it and units planned from it stay. Each receipt offers "Rückgängig".
 const libraryReceipts = new Map();
 // Entries whose day strip is open, so a background reload's redraw keeps it open (#3980).
 const libraryOpenStrips = new Set();
@@ -3288,16 +3268,16 @@ function libraryActions(workout) {
   };
   toggle.addEventListener("click", () => showDays(days.hidden));
   if (libraryOpenStrips.has(id)) showDays(true);
-  const [remove, confirm] = inCardDelete(async () => {
+  const [remove, confirm] = inCardAction(h("button", { type: "button", className: "secondary-button", "aria-label": `Archivieren: ${name}` }, "Archivieren"), async () => {
     const result = await api(`/api/library/${encodeURIComponent(id)}/archive`, { method: "POST", body: JSON.stringify({ confirmed: true }) });
     libraryReceipts.clear();
-    libraryReceipts.set(id, { text: `Gelöscht: ${name}`, change: result.change });
+    libraryReceipts.set(id, { text: `Archiviert: ${name}`, change: result.change });
     await globalThis.load?.();
-    announcePlanChange(`Gelöscht: ${name}`);
+    announcePlanChange(`Archiviert: ${name}`);
   });
   const receipt = libraryReceipts.get(id);
   if (receipt) libraryReceiptLine(status, id, receipt);
-  const edit = h("button", { type: "button", className: "secondary-button" }, "Bearbeiten");
+  const edit = messageActionButton("edit", `Bibliothekseintrag bearbeiten: ${name}`);
   edit.addEventListener("click", () => openLibraryEditor(workout));
   return [h("div", "planned-activity-actions", edit, toggle, remove), confirm, days, planField, again, status];
 }
@@ -3371,7 +3351,7 @@ function planCard(plan) {
   const status = h("p", { className: "planned-move-status", role: "status" });
   const receipt = planReceipts.get(id);
   if (receipt) planReceiptLine(status, id, receipt);
-  const [remove, removeNote] = inCardDelete(planPost(plan, "delete", { confirmed: true }, `Gelöscht: ${plan.name}`));
+  const [remove, removeNote] = inCardDelete(planPost(plan, "delete", { confirmed: true }, `Gelöscht: ${plan.name}`), `Plan löschen: ${plan.name}`);
   const buttons = [];
   const notes = [removeNote];
   if (plan.status === "archived") {
@@ -3382,13 +3362,11 @@ function planCard(plan) {
     });
     buttons.push(restore);
   } else {
-    const edit = h("button", { type: "button", className: "secondary-button" }, "Bearbeiten");
+    const edit = messageActionButton("edit", `Plan bearbeiten: ${plan.name}`);
     edit.addEventListener("click", () => openPlanForm(plan));
     const replace = h("button", { type: "button", className: "secondary-button" }, "Zeitraum ersetzen");
     replace.addEventListener("click", () => openPlanReplace({ plan, onReplaced: (result, counts) => planChanged(`Ersetzt: ${counts.replaced} → ${counts.created} Einheiten`, { ...result, plan_id: plan.id }) }));
-    const [archive, archiveNote] = inCardDelete(planPost(plan, "update", { status: "archived", confirmed: true }, `Archiviert: ${plan.name}`));
-    archive.textContent = "Archivieren";
-    archive.classList.remove("danger-button");
+    const [archive, archiveNote] = inCardAction(h("button", { type: "button", className: "secondary-button" }, "Archivieren"), planPost(plan, "update", { status: "archived", confirmed: true }, `Archiviert: ${plan.name}`));
     buttons.push(edit, replace, archive);
     notes.push(archiveNote);
   }
@@ -3447,7 +3425,7 @@ function libraryToolbar() {
   return h("div", "library-toolbar", group, add);
 }
 
-// An archived entry: "Wiederherstellen", and "Endgültig löschen" for one no provider holds. Both act at once and
+// An archived entry: "Wiederherstellen", and the final "Löschen" for one no provider holds. Both act at once and
 // leave a receipt with "Rückgängig" (#3951); the 30-day clean-up of #3141 is unchanged.
 function archivedLibraryCard(workout) {
   const id = String(workout.id);
@@ -3472,14 +3450,13 @@ function archivedLibraryCard(workout) {
   const buttons = [restore];
   const notes = [status];
   if (!workout.external_id) {
-    const [remove, failure] = inCardDelete(async () => {
+    const [remove, failure] = inCardAction(h("button", { type: "button", className: "secondary-button danger-button", "aria-label": `Endgültig löschen: ${name}` }, "Löschen"), async () => {
       const result = await api(`/api/library/${encodeURIComponent(id)}/delete`, { method: "POST", body: JSON.stringify({ confirmed: true }) });
       libraryReceipts.clear();
       libraryReceipts.set(id, { text: `Endgültig gelöscht: ${name}`, change: result.change });
       await loadArchivedLibrary();
       announcePlanChange(`Endgültig gelöscht: ${name}`);
     });
-    remove.textContent = "Endgültig löschen";
     buttons.push(remove);
     notes.push(failure);
   }

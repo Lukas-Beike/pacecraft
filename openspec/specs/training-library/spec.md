@@ -38,9 +38,9 @@ The system SHALL support authorized template update, archive, restore and deleti
 - **WHEN** an authorized delete targets a reusable template with a stored external_id
 - **THEN** deletion fails with HTTP 409 and directs the athlete to archive it instead; supported archival retains its identity/link, marks it archived and locally pending, and performs no immediate provider write or scheduled-copy mutation.
 
-#### Scenario: Athlete deletes from the library card
-- **WHEN** the athlete taps the red "Löschen" in an opened library card and no question follows
-- **THEN** `POST /api/library/{id}/archive` with `{"confirmed": true}` archives the entry through the template `archive` (409 `confirmation_required` without the flag), so the entry leaves the library while units planned from it stay; the library leads with "Gelöscht: <Name>" and "Rückgängig" restores the entry (#3028).
+#### Scenario: Athlete archives from the library card
+- **WHEN** the athlete taps "Archivieren" in an opened library card and no question follows
+- **THEN** `POST /api/library/{id}/archive` with `{"confirmed": true}` archives the entry through the template `archive` (409 `confirmation_required` without the flag), so the entry leaves the library while units planned from it stay; the library leads with "Archiviert: <Name>" and "Rückgängig" restores the entry (#3028, #4307). In the "Archiviert" filter "Wiederherstellen" and the red "Löschen" (final, for an entry no provider holds) follow; a dated planned unit offers only the trash icon "Löschen" with "Rückgängig", no "Archivieren".
 
 #### Scenario: Archived templates no provider holds are deleted after 30 days
 - **WHEN** an archived template has no external id, no provider link and no date, and its archive time (`archived_at`, set at the first archive and removed by restore and undo; for an entry archived before it was stored, the row's last change) is 30 days or more ago
@@ -728,7 +728,7 @@ A run unit whose focus has a cap in `HR_CAP_PERCENT` (`backend/activities/hr_cap
 
 #### Scenario: Measured first threshold
 - **WHEN** the athlete enters a measured first-threshold heart rate in bpm (profile form or API, never by the Coach)
-- **THEN** it is stored in bpm (`first_threshold_hr`, #3915), so a later change of the threshold HR never moves it; the easy and long cap becomes its percent of today's run threshold HR itself, without a margin (#4254), and the recovery cap the lower of its default and the easy cap minus a fixed gap (constants in `backend/activities/hr_cap.py`), the cap source is `measured`, and a cap with another source than the current one is rejected like a wrong value.
+- **THEN** it is stored in bpm (`first_threshold_hr`, #3915), so a later change of the threshold HR never moves it; the easy, endurance and long cap becomes its percent of today's run threshold HR itself, without a margin (#4254), and the recovery cap the lower of its default and the easy cap minus a fixed gap (constants in `backend/activities/hr_cap.py`), the cap source is `measured`, and a cap with another source than the current one is rejected like a wrong value.
 
 #### Scenario: First threshold stored before the bpm field
 - **WHEN** a stored profile still holds only the percent of LTHR (`first_threshold_pct`, before #3915)
@@ -740,7 +740,11 @@ A run unit whose focus has a cap in `HR_CAP_PERCENT` (`backend/activities/hr_cap
 
 #### Scenario: Units with a cap of an older rule
 - **WHEN** future planned run units store a default cap above today's default (planned before the default was lowered, #3915), or a measured or estimated cap below today's effective cap of the same source (planned before the margin was dropped, #4254)
-- **THEN** the planning brief lists them as `outdated_hr_caps` with a note that the Coach offers the update in a turn the athlete starts; nothing is rewritten and an untouched unit never blocks a write
+- **THEN** the planning brief lists them as `outdated_hr_caps`, each with the stored and the current cap in percent and, with a known run threshold HR on the unit's date, in bpm (`stored_bpm`, `current_bpm`), and a note without issue numbers that the Coach offers the update in a turn the athlete starts; nothing is rewritten and an untouched unit never blocks a write
+
+#### Scenario: Planned rows carry their cap (#4286)
+- **WHEN** the Coach context lists a planned unit
+- **THEN** its compact row carries `session_focus` and, for a stored cap, `hr_cap` with the stored `percent_lthr` and the `bpm` resolved with the run threshold HR on the unit's date, as the calendar card shows it
 
 #### Scenario: The Coach explains a cap from its rule (#4255)
 - **WHEN** the Coach context is built with a run threshold HR
@@ -748,7 +752,7 @@ A run unit whose focus has a cap in `HR_CAP_PERCENT` (`backend/activities/hr_cap
 
 #### Scenario: Cap values
 - **WHEN** a cap is derived
-- **THEN** the default is 80 % of the run threshold HR for recovery units and 84 % for easy and long units (below the 85 % LT1 stand-in, #3915); from a measured or adopted first threshold the easy and long cap is that percent itself (#4254) and the recovery cap the lower of 80 and the easy cap minus 7.0 points, each rounded down to one decimal, and the defaults apply (source `default`) when the easy cap would exceed 100 or a cap or its exported lower bound would fall below 20; the exported lower bound `low_percent_lthr` is the lower of 65 and the cap minus 15 points, rounded down to one decimal.
+- **THEN** the default is 80 % of the run threshold HR for recovery units and 84 % for easy, endurance ("Grundlage", #4292) and long units (below the 85 % LT1 stand-in, #3915); from a measured or adopted first threshold the easy, endurance and long cap is that percent itself (#4254) and the recovery cap the lower of 80 and the easy cap minus 7.0 points, each rounded down to one decimal, and the defaults apply (source `default`) when the easy cap would exceed 100 or a cap or its exported lower bound would fall below 20; the exported lower bound `low_percent_lthr` is the lower of 65 and the cap minus 15 points, rounded down to one decimal.
 
 #### Scenario: Stored cap
 - **WHEN** a cap is validated or resolved
@@ -875,7 +879,7 @@ The Bibliothek SHALL list the undated, non-archived workouts grouped by sport in
 
 #### Scenario: Create, edit, restore and delete in the view
 - **WHEN** the athlete saves the editor of the Bibliothek, restores an archived entry or deletes a never-synced one
-- **THEN** the view offers "+ Einheit", "Bearbeiten", "Einplanen", "Löschen" (archive) and an "Archiviert" filter with "Wiederherstellen" and, for an entry no provider holds, "Endgültig löschen"; each runs the Coach's `manage_training_templates` use case locally with a receipt and "Rückgängig"; the entry is created (source `manual`), changed, brought back or removed; the steps must add up to the duration; a synced entry is refused with "Archiviere sie stattdessen"; nothing is sent to a provider; the 30-day clean-up of archived never-synced entries is unchanged.
+- **THEN** the view offers "+ Einheit", "Bearbeiten", "Einplanen", "Archivieren" and an "Archiviert" filter with "Wiederherstellen" and, for an entry no provider holds, the red "Löschen"; each runs the Coach's `manage_training_templates` use case locally with a receipt and "Rückgängig"; the entry is created (source `manual`), changed, brought back or removed; the steps must add up to the duration; a synced entry is refused with "Archiviere sie stattdessen"; nothing is sent to a provider; the 30-day clean-up of archived never-synced entries is unchanged.
 
 Evidence: `public/plan-views.js:renderLibrary`, `public/unit-editor.js`; `public/coach.js:appendHistoryPageButton`; `backend/http_api/library_post.py`; `tests/test_http_library_post.py`; `backend/http_api/training_plan_post.py`; `backend/planning/planned_unit_edit_service.py:PlannedUnitEditService.replace_period`; `tests/test_http_training_plan_post.py`; `tests/test_planned_unit_edit_service.py:test_replace_period_swaps_the_listed_units_for_new_ones`; `e2e/unit-editor.spec.js`; `e2e/ux-polish.spec.js:the calendar has a refresh button and the library rows show a count and a chevron @responsive`.
 

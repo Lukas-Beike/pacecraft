@@ -103,7 +103,7 @@ class CaseDefinitionTests(unittest.TestCase):
         known = {
             "pending", "activity", "draft", "second_strength", "monday",
             "products", "entries", "web", "no_blocker", "stale_revision",
-            "long_run", "first_threshold",
+            "long_run", "first_threshold", "endurance", "calendar", "history",
         }  # fmt: skip
         for case in live.load_cases():
             with self.subTest(case=case["id"]):
@@ -111,7 +111,7 @@ class CaseDefinitionTests(unittest.TestCase):
 
     def test_catalogue_and_incident_cases_are_covered(self):
         kinds = [c["kind"] for c in live.load_cases()]
-        self.assertEqual(kinds.count("catalogue"), 40)
+        self.assertEqual(kinds.count("catalogue"), 48)
         incident = {
             c["id"]: c["expect"]["workout"]
             for c in CASES.values()

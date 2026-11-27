@@ -172,8 +172,8 @@ test("@responsive a weight typed right after the dialog opens is kept on a slow 
   await dialog.getByRole("button", { name: "Abbrechen" }).click();
 });
 
-// #4037: the body dialogs share one title form, focus the value and order their actions Abbrechen, Speichern, Löschen.
-test("@responsive the weight and body fat dialogs name their action, focus the value and end on the removal", async ({ page }) => {
+// #4037: the body dialogs share one title form, focus the value and order their actions Löschen, Abbrechen, Speichern (#4279, which replaces the former order).
+test("@responsive the weight and body fat dialogs name their action, focus the value and start with the removal", async ({ page }) => {
   await page.goto("/#nutrition/body");
   for (const [metric, button, dialogId, title, field] of [
     ["weight_kg", "Gewicht eintragen", "#weightDialog", "Gewicht eintragen", "#weightDialogKg"],
@@ -184,7 +184,7 @@ test("@responsive the weight and body fat dialogs name their action, focus the v
     await expect(dialog).toBeVisible();
     await expect(dialog.getByRole("heading", { level: 2 })).toHaveText(title);
     await expect(page.locator(field)).toBeFocused();
-    expect(await dialog.locator(".dialog-actions button").evaluateAll((buttons) => buttons.map((item) => item.textContent))).toEqual(["Abbrechen", "Speichern", "Löschen"]);
+    expect(await dialog.locator(".dialog-actions button").evaluateAll((buttons) => buttons.map((item) => item.textContent))).toEqual(["Löschen", "Abbrechen", "Speichern"]);
     await dialog.getByRole("button", { name: "Abbrechen" }).click();
   }
 });

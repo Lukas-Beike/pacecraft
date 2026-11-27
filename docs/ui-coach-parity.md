@@ -43,7 +43,7 @@ added a row conflicted on it (#4092).
 | Planning | Change a planned unit's content | Kalender card "Bearbeiten" `POST /api/planned-units/{id}/update` | `apply_training_patch` (`update`) | receipt, undo, plan checks | both | |
 | Planning | Move a planned unit to another day | Kalender card `POST /api/planned-units/{id}/date` | `apply_training_patch` (`update` with `date`) | receipt, undo | both | |
 | Planning | Delete a planned unit | Kalender card `POST /api/planned-units/{id}/delete` | `apply_training_patch` (`delete`) | delete confirmation | both | |
-| Planning | Archive or restore a planned unit | Kalender card "Archivieren" `POST /api/planned-units/{id}/archive`, receipt "Rückgängig" `POST /api/change-history/undo` | `apply_training_patch` (`archive`, `restore`) | confirmed request, undo | both | |
+| Planning | Archive or restore a planned unit (`POST /api/planned-units/{id}/archive` stays for the Coach on purpose: the athlete chose "only Löschen with Rückgängig" for dated units on 2026-11-27, and archived planned units have no UI list) | — | `apply_training_patch` (`archive`, `restore`) | confirmed request, undo | Coach only | #4307 |
 | Planning | Set a planned unit's focus | Kalender card `POST /api/planned-units/{id}/focus` | `apply_training_patch` (`session_focus`, `strength_intensity`) | receipt | both | |
 | Planning | Choose a strength exercise's Garmin exercise | Kalender card `POST /api/planned-units/{id}/garmin-exercise` | `apply_training_patch` (`garmin_exercise`) | receipt | both | |
 | Planning | Read multi-week training plans | Kalender › Pläne `GET /api/plan` | `list_training_plans` | — | both | |
@@ -58,9 +58,9 @@ added a row conflicted on it (#4092).
 | Library | Create a library workout | Bibliothek "+ Einheit" `POST /api/library` | `manage_training_templates` (`create`) | receipt, undo | both | |
 | Library | Edit a library workout | Bibliothek "Bearbeiten" `POST /api/library/{id}/update` | `manage_training_templates` (`update`) | receipt, undo | both | |
 | Library | Schedule a library workout on a day | Bibliothek "Einplanen" with the optional plan `POST /api/library/{id}/schedule` | `apply_workout_library_plan` | plan checks, receipt, undo | both | |
-| Library | Archive a library workout | Bibliothek `POST /api/library/{id}/archive` | `manage_training_templates` (`archive`) | confirmation | both | |
+| Library | Archive a library workout | Bibliothek "Archivieren" `POST /api/library/{id}/archive` | `manage_training_templates` (`archive`) | confirmation | both | |
 | Library | Restore an archived library workout | Bibliothek › Archiviert `GET /api/library` (`archived=1`), "Wiederherstellen" `POST /api/library/{id}/restore` | `manage_training_templates` (`restore`) | receipt, undo | both | |
-| Library | Delete a library workout | Bibliothek › Archiviert "Endgültig löschen" `POST /api/library/{id}/delete` | `manage_training_templates` (`delete`) | confirmed request, undo | both | |
+| Library | Delete a library workout | Bibliothek › Archiviert "Löschen" (red, final) `POST /api/library/{id}/delete` | `manage_training_templates` (`delete`) | confirmed request, undo | both | |
 | Activities | Read sessions and session details | Kalender `GET /api/activities`, `GET /api/activities/{id}` | `list_recent_activities`, `get_activity_details` | — | both | |
 | Activities | Read analyses, trends and records | Analyse `GET /api/analysis/trends`, `GET /api/analysis/training-records` | `read_training_records` | — | both | |
 | Activities | Save or edit activity feedback and purpose | Session details `POST /api/activities/{id}/feedback` | `save_activity_feedback` | receipt, undo | both | `feel` (#4199): route and Coach; its session-details control follows |
@@ -78,7 +78,7 @@ added a row conflicted on it (#4092).
 | Nutrition | Log a saved product as a meal | Produkt dialog `POST /api/nutrition/entry` | `save_nutrition_entry` | receipt, undo | both | |
 | Nutrition | Log a composed meal from several foods | Produkte "Mahlzeit zusammenstellen" `POST /api/nutrition/entry` | `save_nutrition_entry` | receipt, undo | both | |
 | Nutrition | Add a saved product to a meal | Tagebuch card `POST /api/nutrition/entry/add-product` | `update_nutrition_entry` (`components`) | receipt, undo | both | |
-| Nutrition | Remove, resize or swap a meal component | Tagebuch card pencil `GET /api/nutrition/entry/components`, `POST /api/nutrition/entry/components` | `update_nutrition_entry` (`components`) | receipt, undo | both | |
+| Nutrition | Remove, resize, swap or add a meal component | Tagebuch card pencil `GET /api/nutrition/entry/components`, `POST /api/nutrition/entry/components` (`add`, #4270) | `update_nutrition_entry` (`components`, all of the meal's components with the new one) | receipt, undo | both | |
 | Nutrition | Change a meal's date, time or type | Tagebuch card pencil `POST /api/nutrition/entry/components` (`meal`) | `update_nutrition_entry` | receipt, undo | both | |
 | Nutrition | Mark a meal as estimated | Tagebuch card `POST /api/nutrition/entry/estimate` | `update_nutrition_entry` (`estimate_uncertain`) | receipt, undo | both | |
 | Nutrition | Attach a session meal to its session | Tagebuch card `POST /api/nutrition/entry/session` | `update_nutrition_entry` (`session_id`) | receipt | both | |

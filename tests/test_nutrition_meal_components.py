@@ -6,11 +6,13 @@ import json
 import unittest
 from datetime import UTC, datetime
 from typing import Any
+from unittest.mock import Mock
 
 from nutrition_service_support import build_nutrition_services
 from support import temp_database
 
 from backend import change_history
+from backend.coach.athlete_record_tools import CoachAthleteRecordToolService
 from backend.errors import AppError
 
 TOFU = "bls:H861000"
@@ -135,6 +137,130 @@ class MealComponentEditTests(unittest.TestCase):
             [{"index": 1, "product_id": self.skyr["id"], "amount": 100}],
         )
         self.assertEqual(self.components(again)[1]["kcal"], 60)
+
+    def test_an_added_food_and_product_are_appended_with_their_values(self) -> None:
+        # #4270: "+ Hinzufügen" in the edit dialog, stored with the other edits.
+        updated = self.edit(
+            self.meal["id"],
+            [
+                {"index": 2, "remove": True},
+                {"add": {"food_id": BAKED_TOFU, "amount": 100, "unit": "g"}},
+                {"add": {"product_id": self.drink["id"], "amount": 200, "unit": "ml"}},
+            ],
+        )
+        names = [(c["name"], c["amount"], c["kcal"]) for c in self.components(updated)]
+        self.assertEqual(
+            names,
+            [
+                ("Tofu", 150, 172.5),
+                ("Skyr", 200, 120),
+                ("Tofu gebacken", 100, 160),
+                ("Saft", 200, 90),
+            ],
+        )
+        self.assertEqual(updated["kcal"], round(172.5 + 120 + 160 + 90))
+        self.assertEqual(
+            self.components(updated)[2]["nutrition_basis"]["food"]["id"], BAKED_TOFU
+        )
+
+    def test_an_add_is_refused_like_the_add_of_a_saved_product(self) -> None:
+        before = self.diary.get_meal(self.meal["id"])
+        empty = self.library.product_catalog.save_product(
+            {
+                "name": "Ohne Kalorien",
+                "basis_amount": 100,
+                "basis_unit": "g",
+                "source": "manual",
+            }
+        )
+        cases = {
+            "food_unit_mismatch": {
+                "product_id": self.drink["id"],
+                "amount": 100,
+                "unit": "g",
+            },
+            "food_energy_missing": {
+                "product_id": empty["id"],
+                "amount": 100,
+                "unit": "g",
+            },
+        }
+        for reason, add in cases.items():
+            with self.subTest(reason=reason), self.assertRaises(AppError) as refused:
+                self.edit(self.meal["id"], [{"add": add}])
+            self.assertEqual(refused.exception.reason, reason)
+        many = [
+            {"add": {"product_id": self.skyr["id"], "amount": 10, "unit": "g"}}
+        ] * 18
+        with self.assertRaises(AppError) as limit:
+            self.edit(self.meal["id"], many)
+        self.assertIn("höchstens 20", limit.exception.message)
+        # Too many foods to add are refused before any is looked up (review on #4270).
+        foods = [{"add": {"food_id": "off:4000000000000", "amount": 10, "unit": "g"}}]
+        with self.assertRaises(AppError) as over:
+            self.edit(self.meal["id"], foods * 21)
+        self.assertIn("höchstens 20", over.exception.message)
+        for malformed in (
+            {"add": {"amount": 10, "unit": "g"}},
+            {
+                "add": {
+                    "food_id": TOFU,
+                    "product_id": self.skyr["id"],
+                    "amount": 10,
+                    "unit": "g",
+                }
+            },
+            {"add": {"food_id": TOFU, "amount": 10}},
+            {"add": {"food_id": TOFU, "amount": 10, "unit": "g", "kcal": 5}},
+            {"add": {"food_id": TOFU, "amount": 10, "unit": "g"}, "index": 0},
+            {"add": "Tofu"},
+        ):
+            with self.subTest(edit=malformed), self.assertRaises(AppError):
+                self.edit(self.meal["id"], [malformed])
+        stale = self.diary.meal_components(self.meal["id"])["revision"]
+        self.edit(self.meal["id"], [{"index": 2, "remove": True}])
+        with self.assertRaises(AppError) as changed:
+            self.diary.edit_components(
+                self.meal["id"],
+                [{"add": {"food_id": TOFU, "amount": 10, "unit": "g"}}],
+                stale,
+            )
+        self.assertEqual(changed.exception.reason, "meal_changed")
+        self.assertNotEqual(self.diary.get_meal(self.meal["id"]), before)
+        self.assertEqual(len(self.components(self.diary.get_meal(self.meal["id"]))), 2)
+
+    def test_the_coach_adds_a_product_and_a_food_with_the_meal_s_components(
+        self,
+    ) -> None:
+        # Parity (#4270): the Coach's meal edit tool, update_nutrition_entry, adds a
+        # saved product and a database food by naming all of the meal's components.
+        coach = CoachAthleteRecordToolService(
+            Mock(), Mock(), Mock(), self.diary, self.library
+        )
+        components = [
+            {"kind": "database", "food_id": TOFU, "amount": 150, "unit": "g"},
+            {"kind": "local_product", "product_id": self.skyr["id"], "amount": 200, "unit": "g"},
+            {"kind": "manual", "name": "Creatine", "amount": 5, "unit": "g",
+             "kcal": 0, "carbs_g": 0, "protein_g": 0, "fat_g": 0},
+            {"kind": "local_product", "product_id": self.drink["id"], "amount": 200, "unit": "ml"},
+            {"kind": "database", "food_id": BAKED_TOFU, "amount": 100, "unit": "g"},
+        ]  # fmt: skip
+        result = coach.execute(
+            "update_nutrition_entry",
+            {"id": self.meal["id"], "changes": {"components": components}},
+            {
+                "operation": "update_nutrition_entry",
+                "authorization_scope": ["local_nutrition"],
+            },
+        )
+        entry = self.diary.get_meal(self.meal["id"])
+        assert result is not None
+        self.assertEqual(result["entry"], entry)
+        names = [c["name"] for c in self.components(entry)]
+        self.assertEqual(names, ["Tofu", "Skyr", "Creatine", "Saft", "Tofu gebacken"])
+        self.assertEqual(entry["kcal"], self.meal["kcal"] + 90 + 160)
+        added = self.components(entry)[4]["nutrition_basis"]["food"]["id"]
+        self.assertEqual(added, BAKED_TOFU)
 
     def test_a_swap_to_another_unit_is_refused_and_changes_nothing(self) -> None:
         before = self.diary.get_meal(self.meal["id"])

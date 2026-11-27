@@ -272,7 +272,7 @@ function toast(message, error = false) {
     close.type = "button";
     close.className = "toast-close";
     close.setAttribute("aria-label", "Meldung schließen");
-    close.textContent = "×";
+    close.textContent = "✕";
     close.addEventListener("click", hideToast);
     node.append(close);
   }

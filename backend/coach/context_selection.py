@@ -10,6 +10,9 @@ from typing import Any, cast
 
 from backend.athlete.local_date import iso_date_prefix
 
+# current_performance blocks only the analysis and review kinds carry.
+ANALYSIS_ONLY_PERFORMANCE = frozenset({"comparisons", "activity_validation"})
+
 CONTEXT_SECTIONS = frozenset(
     {
         "durable_profile",
@@ -282,6 +285,7 @@ class CoachContextSelection:
             for key, value in context.items()
             if key in self.sections or key == "canonical_data_status"
         }
+        _present_policy(result)
         _dedupe_appointments(result, local_date)
         if self.horizon_days is None:
             return result
@@ -306,7 +310,7 @@ class CoachContextSelection:
             result["current_performance"] = {
                 key: value
                 for key, value in performance.items()
-                if key not in {"comparisons", "activity_validation"}
+                if key not in ANALYSIS_ONLY_PERFORMANCE
             }
         return result
 
@@ -344,6 +348,20 @@ class CoachContextSelection:
             )
             or first <= value <= last
         ]
+
+
+def _present_policy(result: dict[str, Any]) -> None:
+    """The source policy explains only the sections this turn carries (#4292);
+    ``read_coach_context`` loads the whole policy with an omitted section."""
+    policy = result.get("source_policy")
+    if not isinstance(policy, dict):
+        return
+    present = {key for key, value in result.items() if value is not None}
+    if "local_planned_workouts" in present:
+        present.add("planned_rows")
+    result["source_policy"] = {
+        key: text for key, text in policy.items() if key in present
+    }
 
 
 def _dedupe_appointments(result: dict[str, Any], local_date: str) -> None:

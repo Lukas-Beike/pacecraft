@@ -292,10 +292,10 @@ function nutritionEntryActions(item) {
     setSaving(estimate, true);
     try { await markNutritionEstimate(item); } finally { setSaving(estimate, false); }
   });
-  const remove = h("button", { type: "button", className: "secondary-button danger-button", "aria-label": `Mahlzeit löschen: ${item.description}` }, "Löschen");
+  const remove = messageActionButton("trash", `Mahlzeit löschen: ${item.description}`);
   remove.addEventListener("click", async () => {
     // One tap, one delete: the button waits for the request, as the removed dialog did.
-    setSaving(remove, true);
+    setSaving(remove, true, "");
     try { await deleteNutritionEntry(item); } finally { setSaving(remove, false); }
   });
   const keep = h("button", { type: "button", className: "secondary-button" }, "Als Mahlzeit speichern");
@@ -313,28 +313,48 @@ function nutritionExpenditureDate(value) {
 function appendNutritionTotals(totals, day) {
   // Empty days report zero totals, which are unknown, so the tiles stay "nicht erfasst".
   const hasEntries = Number(day.entry_count) > 0;
-  for (const [label, key, unit] of [["Kalorien", "kcal", "kcal"], ["Kohlenhydrate", "carbs_g", "g"], ["Protein", "protein_g", "g"], ["Fett", "fat_g", "g"], ["Zucker", "sugar_g", "g"], ["Salz", "salt_g", "g"]]) {
+  for (const [label, key, unit] of [["Kalorien", "kcal", "kcal"], ["Kohlenhydrate", "carbs_g", "g"], ["Protein", "protein_g", "g"], ["Fett", "fat_g", "g"]]) {
     const tile = nutritionTotalTile(label, key, unit, day, hasEntries);
     if (key === "kcal") tile.classList.add("is-hero");
-    if (key === "sugar_g" || key === "salt_g") tile.classList.add("is-minor");
     totals.append(tile);
   }
+  totals.append(nutritionMinorLine(day, hasEntries));
+}
+
+// Zucker and Salz as one slim line (#4300); each value keeps its own "nicht erfasst", and "unvollständig" stands
+// once on the right when either value is only a partial sum.
+function nutritionMinorLine(day, hasEntries) {
+  const line = h("div", "nutrition-minor-line");
+  let partial = false;
+  for (const [label, key] of [["Zucker", "sugar_g"], ["Salz", "salt_g"]]) {
+    const read = nutritionTotalValue(key, "g", day, hasEntries);
+    partial ||= read.partial;
+    line.append(h("span", null, `${key === "salt_g" ? " · " : ""}${label} `, read.value));
+  }
+  if (partial) line.append(h("span", "nutrition-minor-partial", "unvollständig"));
+  return line;
+}
+
+// A day total with its value element: the complete sum, else a known partial sum, else "nicht erfasst".
+function nutritionTotalValue(key, unit, day, hasEntries) {
+  const value = h("strong");
+  const complete = hasEntries ? day[`total_${key}`] : null;
+  const total = hasEntries ? (complete ?? day.known_macro_totals?.[key] ?? day.known_intake_totals?.[key]) : null;
+  if (total == null) markValueMissing(value);
+  else setValueWithUnit(value, `${nutritionNumber(total, unit)} ${unit}`);
+  return { value, complete, partial: complete == null && total != null };
 }
 
 function nutritionTotalTile(label, key, unit, day, hasEntries) {
   const tile = h("div", "nutrition-total");
-  const value = h("strong");
-  const complete = hasEntries ? day[`total_${key}`] : null;
+  const { value, complete, partial } = nutritionTotalValue(key, unit, day, hasEntries);
   const range = day.macro_ranges?.[key];
   if (complete != null && Array.isArray(range) && range.length === 2) {
     if (complete < range[0] && day.date < todayIso()) tile.classList.add("nutrition-below-range");
     else if (complete > range[1]) tile.classList.add("nutrition-above-range");
   }
   // A partial sum of known values is shown only with an explicit incompleteness label.
-  const total = hasEntries ? (complete ?? day.known_macro_totals?.[key] ?? day.known_intake_totals?.[key]) : null;
-  if (total == null) markValueMissing(value);
-  else setValueWithUnit(value, `${nutritionNumber(total, unit)} ${unit}`);
-  tile.append(value, h("span", null, label + (complete == null && total != null ? " · unvollständig" : "")));
+  tile.append(value, h("span", null, label + (partial ? " · unvollständig" : "")));
   return tile;
 }
 
@@ -642,6 +662,8 @@ function renderNutritionDay(day) {
   const empty = document.querySelector("#nutritionEmptyDay");
   empty.textContent = day.date > todayIso() ? "Dieser Tag liegt in der Zukunft." : "Noch keine Mahlzeiten erfasst.";
   empty.hidden = Boolean(day.entry_count);
+  // "+ Mahlzeit" under the day's meals or its status sentence (#4304); a future day takes none.
+  document.querySelector("#nutritionAddMeal").hidden = day.date > todayIso();
   // An empty day shows no row of "nicht erfasst" tiles (athlete decision, #3936 G-13).
   const totals = document.querySelector("#nutritionTotals");
   totals.replaceChildren();
@@ -658,6 +680,7 @@ function showNutritionDayLoadError(status, cached, error, dateInput, requestedDa
   }
   // The requested day stays in the date field so ← and → still have a day to move from.
   document.querySelector("#nutritionEmptyDay").hidden = true;
+  document.querySelector("#nutritionAddMeal").hidden = true;
   dateInput.value = requestedDate;
   syncNutritionDateName();
   const retry = h("button", { type: "button", className: "secondary-button" }, "Erneut laden");
@@ -682,6 +705,7 @@ async function loadNutrition({ preserve = false, expectedRoute = null, expectedD
   if (!cached && !preserve) {
     status.textContent = "Ernährung wird geladen…";
     document.querySelector("#nutritionEmptyDay").hidden = true;
+    document.querySelector("#nutritionAddMeal").hidden = true;
     document.querySelector("#nutritionEntries").replaceChildren();
     document.querySelector("#nutritionTotals").replaceChildren();
   }
@@ -767,6 +791,7 @@ function resetNutritionView() {
   nutritionWeekShown = null;
   for (const id of ["nutritionWeekBalance", "nutritionWeekStatus", "nutritionWeekMacros", "nutritionWeekDays", "nutritionWeekChart", "nutritionEntries", "nutritionTotals", "nutritionEnergy", "nutritionStatus", "nutritionEmptyDay", "nutritionProducts", "nutritionLookupResult", "nutritionProductStatus"]) document.getElementById(id)?.replaceChildren();
   document.querySelector("#nutritionEmptyDay").hidden = true;
+  document.querySelector("#nutritionAddMeal").hidden = true;
   document.querySelector("#nutritionLookupResult").hidden = true;
   document.querySelector("#nutritionWeekChartSection").hidden = true;
   const editor = document.querySelector("#nutritionExtraction"); if (editor) { editor.replaceChildren(); editor.hidden = true; }
@@ -1091,25 +1116,30 @@ async function deleteNutritionProduct(product) {
   } catch (error) { if (generation === state.sessionGeneration) showNutritionProductError(database ? "Eintrag konnte nicht entfernt werden" : "Produkt konnte nicht gelöscht werden", error); }
 }
 
+// Edit and delete are the pencil and the trash icon of the card, the other actions words (#4279).
+function nutritionProductActionButton(kind, label, product) {
+  if (kind === "edit") return messageActionButton("edit", `Produkt bearbeiten: ${product.name}`);
+  if (kind === "trash") return messageActionButton("trash", `Produkt löschen: ${product.name}`);
+  return h("button", { type: "button", className: kind === "primary" ? "push-button" : "secondary-button" }, label);
+}
+
 function appendNutritionProductActions(card, product, local) {
   if (!local || product.local === false) {
-    const button = h("button", { type: "button", className: "secondary-button" }, "Lokal speichern");
+    const button = h("button", { type: "button", className: "push-button" }, "Lokal speichern");
     button.addEventListener("click", () => saveNutritionProduct(product)); card.append(button);
   } else if (product.id) {
     const actions = h("div", "nutrition-actions");
-    for (const [label, primary, run] of [
-      ["Verwenden", true, () => useNutritionProduct(product)],
-      ["Bearbeiten", false, () => saveNutritionProduct(product)],
-      ["Aktualisieren", false, (button) => refreshNutritionProduct(product, button)],
-      ["Löschen", false, () => deleteNutritionProduct(product)],
+    for (const [label, kind, run] of [
+      ["Verwenden", "primary", () => useNutritionProduct(product)],
+      ["Bearbeiten", "edit", () => saveNutritionProduct(product)],
+      ["Aktualisieren", "plain", (button) => refreshNutritionProduct(product, button)],
+      ["Löschen", "trash", () => deleteNutritionProduct(product)],
     ]) {
-      let buttonClass = primary ? "push-button" : "secondary-button";
-      if (label === "Löschen") buttonClass += " danger-button";
-      const button = h("button", { type: "button", className: buttonClass }, label);
+      const button = nutritionProductActionButton(kind, label, product);
       button.addEventListener("click", async () => {
-        if (label !== "Löschen") { run(button); return; }
+        if (kind !== "trash") { run(button); return; }
         // One tap, one delete: the button waits for the request, as the removed dialog did.
-        setSaving(button, true);
+        setSaving(button, true, "");
         try { await run(button); } finally { setSaving(button, false); }
       });
       actions.append(button);

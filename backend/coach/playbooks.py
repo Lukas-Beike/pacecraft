@@ -42,7 +42,7 @@ _PLAN_STRUCTURE = """Planning science:
 - Alternate hard and easy days, never back-to-back hard days; distribute intensity per training_model.
 - Plan no single run much longer than the longest of the last 30 days (Frandsen 2025).
 - HRV: interpret the 7-day mean against the own range, not one night (Plews 2012/2014).
-- Every run, ride and strength unit you write needs session_focus (named in the Typ column); strength also strength_structure (with garmin_exercise) and strength_intensity; recovery, easy, long runs hr_cap. Progress load or reps weekly, deload in the lighter week; strength_progress top sets at planned reps: progress, else hold.
+- Every run, ride and strength unit you write needs session_focus (named in the Typ column); strength also strength_structure (with garmin_exercise) and strength_intensity; recovery, easy, endurance, long runs hr_cap. Progress load or reps weekly, deload in the lighter week; strength_progress top sets at planned reps: progress, else hold.
 - Local units only; no Intervals.icu write."""
 
 _STRENGTH_LEGS = """- Heavy strength 2 times per week in base and build, 1 (maintenance) in peak and taper (Ronnestad & Mujika 2014; Blagrove 2018), 6 h or more from hard endurance (Robineau 2016). Leg strength (legs, full_body, plyometrics): same counts, at most 3; after or on hard days, or heavy 48 h, moderate 24 h or more before hard or long sessions. Name deviations."""

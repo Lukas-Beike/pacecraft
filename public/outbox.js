@@ -252,7 +252,7 @@ function outboxRow(entry) {
   resend.addEventListener("click", () => void outboxResend(entry.key));
   const discard = h("button", { type: "button", className: "secondary-button" }, "Verwerfen");
   discard.addEventListener("click", () => void outboxDiscard(entry.key));
-  const edit = h("button", { type: "button", className: "secondary-button" }, "Bearbeiten");
+  const edit = messageActionButton("edit", `Eintrag bearbeiten: ${entry.label}`);
   edit.addEventListener("click", () => outboxEdit(entry.key));
   return h("li", { dataset: { outboxKey: entry.key, state: entry.state } }, h("span", "outbox-text", h("strong", null, entry.label), ` ${text}`), ...(entry.state === "rejected" ? [edit] : []), resend, discard);
 }

@@ -19,6 +19,7 @@ from backend.athlete.checkins import (
 )
 from backend.athlete.equipment import RULE_KINDS
 from backend.athlete.profile import BODY_FIELDS, COACH_READ_ONLY_FIELDS
+from backend.canonical.planning_fields import FOCUS_LABELS_DE
 from backend.canonical.vocabulary import ProviderId, Sport
 from backend.db.repositories import NUTRIENT_COLUMNS
 from backend.nutrition.catalog import (
@@ -103,6 +104,8 @@ _FOCUS_DESCRIPTION = (
     + ", ".join(RIDE_FOCI)
     + ". Strength: "
     + ", ".join(STRENGTH_FOCI)
+    + ". German labels the athlete uses: "
+    + ", ".join(f"{key} = {label}" for key, label in FOCUS_LABELS_DE.items())
     + ". Null only for sports without a focus (e.g. swim)."
 )
 SESSION_FOCUS_SCHEMA: dict[str, Any] = {

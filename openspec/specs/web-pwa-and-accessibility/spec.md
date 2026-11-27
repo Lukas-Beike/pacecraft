@@ -370,12 +370,12 @@ The client SHALL present domain-provided planning, performance, activity, and eq
 - **WHEN** the athlete opens a planned unit that is not a completed session and taps "Verschieben"
 - **THEN** a strip of the next seven days from today (the unit's own day disabled, and a day the calendar rules refuse marked "belegt" with the blocking entry's name from `GET /api/planned-units/{id}/blocked-days`) and "…" for the system date picker appear, both ending with the last day the calendar shows; one tap moves the local unit, the opened card follows it to its new week with "Verschoben auf <Tag, Datum>" and "Rückgängig", and undo puts it back with "Zurückgenommen."; a unit already sent shows its pending sync and nothing is written remotely.
 #### Scenario: Delete a planned unit
-- **WHEN** the athlete taps the red "Löschen" at the end of an opened planned unit's actions
+- **WHEN** the athlete taps the trash icon "Einheit löschen: <Name>" at the end of an opened planned unit's actions (a dated unit has no "Archivieren", #4307)
 - **THEN** the unit is deleted at once, no question (the receipt adds "<provider names>: weg beim nächsten Sync" when an upcoming unit has a copy there); the tap posts `confirmed` with the unit's content hash to `POST /api/planned-units/{id}/delete`, which refuses an unconfirmed delete with 409, deletes the local unit as one Coach change batch and writes nothing remotely; an outdated hash answers 409, the calendar reloads and the card names the reason; the day shows "Gelöscht: <Name>" with "Rückgängig" while its week is shown, and undo restores the unit's content unchanged, waiting for the next sync like any local edit (#3027).
 
-#### Scenario: Edit and archive a planned unit
-- **WHEN** the athlete taps "Bearbeiten" or "Archivieren" on an opened planned unit (a new unit is planned from the Bibliothek with "Einplanen"; the calendar has no add button)
-- **THEN** "Bearbeiten" opens the unit editor (a dialog: sport, name, day and time, "Art der Einheit", target, the steps of an endurance unit as rows of minutes and zone or percent with "+ Schritt" and "+ Wiederholung" and the computed duration, or the exercises of a strength unit) and saves through the Coach's change batch with `POST /api/planned-units/{id}/update` (with the unit's content hash); the card shows "Gespeichert: <Name>" with "Rückgängig"; an illness check offers "Trotzdem speichern" (`accept_plan_findings`); "Archivieren" posts `confirmed` to `.../{id}/archive` at once and the day shows "Archiviert: <Name>" with "Rückgängig"; a workout text the rows cannot show opens as text; nothing is written remotely.
+#### Scenario: Edit a planned unit
+- **WHEN** the athlete taps the pencil "Einheit bearbeiten: <Name>" on an opened planned unit (a new unit is planned from the Bibliothek with "Einplanen"; the calendar has no add button)
+- **THEN** the pencil opens the unit editor (a dialog: sport, name, day and time, "Art der Einheit", target, the steps of an endurance unit as rows of minutes and zone or percent with "+ Schritt" and "+ Wiederholung" and the computed duration, or the exercises of a strength unit) and saves through the Coach's change batch with `POST /api/planned-units/{id}/update` (with the unit's content hash); the card shows "Gespeichert: <Name>" with "Rückgängig"; an illness check offers "Trotzdem speichern" (`accept_plan_findings`); a workout text the rows cannot show opens as text; nothing is written remotely.
 
 #### Scenario: Apply a shown replan preview
 - **WHEN** a stored adaptive preview with changes exists
@@ -734,6 +734,24 @@ Destructive or discarding actions SHALL use one modal confirmation with a title 
 - **THEN** the cancel button receives the initial focus
 
 Evidence: `public/auth.js::requestConfirmation`; `public/auth.js::runConfirmationSecondaryAction`; `public/auth.js::settleConfirmation`. Tests: `e2e/privacy-delete.spec.js::local data deletion requires the exact confirmation text`; `tests/test_server_frontend.py::test_frontend_uses_accessible_confirmation_dialogs`.
+
+### Requirement: One button concept
+
+The client SHALL use words in dialogs and icons on rows and cards. In a dialog "Löschen" or "Entfernen" is the red-outlined `danger-button`, leftmost, then "Abbrechen", then the primary action. Every save and accept is the `push-button`, adding reads "+ {Objekt}", an undo is `message-undo` and a close glyph is one `icon-button`. Only deleting or removing data is outlined red.
+
+#### Scenario: Dialog actions
+- **WHEN** a dialog offers a delete, a cancel and a save
+- **THEN** they read "Löschen" (red outline), "Abbrechen" and the green "Speichern" from the left
+
+#### Scenario: Rows and cards
+- **WHEN** a list row, card or editor row offers an edit or a delete
+- **THEN** it is the pencil or the trash icon (`message-action`) with an accessible name that names the object ("Einheit löschen: …"), never a word or a ×/✕ glyph
+
+#### Scenario: Guarded by a scan
+- **WHEN** a button in `public/*.js` or `index.html` breaks one of these rules
+- **THEN** `tests/button-concept.test.cjs` fails
+
+Evidence: `tests/button-concept.test.cjs`; `e2e/competition-editor.spec.js`; `e2e/training-feature-panels.spec.js`.
 
 ### Requirement: Write buttons show their saving state
 

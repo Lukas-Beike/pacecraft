@@ -18,6 +18,7 @@ const PAGE = `<main>
   <p id="words">nullable, undefinedx und NaNa sind Wörter, kein Leck</p>
   <details id="leaky"><summary>Leck</summary><p id="leak">Wert null</p></details>
   <div id="messages"><p>Bilanz auf null gesetzt</p></div>
+  <details class="release-changelog" open><summary>2.2.38</summary><ul><li>fix(ui): opened planned units no longer show "null"; "undefined" and "NaN" quoted too</li></ul></details>
 </main>`;
 
 test("a step fails on an empty chart or panel and passes on a drawn one", async ({ page }) => {
@@ -40,6 +41,10 @@ test("a step fails on an empty chart or panel and passes on a drawn one", async 
   expect([leaked.status, leaked.why]).toEqual(["fail", "shows null in p"]);
   expect(await leakedValues(page)).toBe("null in p");
   expect(await leakedValues(page, "#more")).toBe("");
+  // The release notes' commit titles may quote a word, their own headings may not (#4313).
+  await page.evaluate(() => { document.querySelector(".release-changelog summary").textContent = "Seit undefined"; });
+  expect(await leakedValues(page)).toMatch(/^null in p, undefined in summary$/);
+  await page.evaluate(() => { document.querySelector(".release-changelog summary").textContent = "2.2.38"; });
   await page.evaluate(() => { document.querySelector("#leaky").open = false; });
   // An optional step without its data is skipped, not failed.
   expect((await run({ ready: "#missing", kind: "text", optional: true })).status).toBe("skip");

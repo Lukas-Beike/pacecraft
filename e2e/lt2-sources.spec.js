@@ -163,6 +163,55 @@ test("Übernehmen posts the offer's adopt body, Verwerfen removes its card (#413
   expect(dismissed).toEqual([{ key: "lt2:run:heart_rate:dfa_alpha1:172" }]);
 });
 
+// #4315: the adopt's reload reads the profile before Verwerfen and answers after it; the
+// dismissed card stays gone.
+test("a profile read taken before Verwerfen does not bring the dismissed offer back (#4315)", async ({ page }) => {
+  const served = await openRunThresholds(page, { offers: [OFFER_LT1, OFFER_LT2] });
+  let holding = false;
+  await page.route("**/api/zones/lt2/adopt", (route) => {
+    // The adopt's own reload is the next profile read.
+    holding = true;
+    return route.fulfill({ json: { configuration: { threshold: 172 }, change: { id: "change-1", entity_type: "zone_configuration", action: "create", after_hash: "x" } } });
+  });
+  await page.route("**/api/zones/threshold-offers/dismiss", (route) => {
+    served.offers = [OFFER_LT1];
+    return route.fulfill({ json: { threshold_offers: served.offers } });
+  });
+  // That read is held until after Verwerfen; it still names LT2.
+  let release;
+  const held = new Promise((resolve) => { release = resolve; });
+  let caught;
+  const caughtRead = new Promise((resolve) => { caught = resolve; });
+  let landed;
+  const heldLanded = new Promise((resolve) => { landed = resolve; });
+  await page.route("**/api/profile", async (route) => {
+    if (route.request().method() !== "GET" || !holding) return route.fallback();
+    holding = false;
+    const offers = served.offers;
+    caught();
+    const response = await route.fetch();
+    const json = await response.json().catch(() => null);
+    await held;
+    if (json) await route.fulfill({ response, json: { ...json, threshold_offers: offers } });
+    landed();
+  });
+  const offer = page.locator('#zoneOverview [data-threshold-offer="lt2:run:heart_rate:dfa_alpha1:172"]');
+  await offer.getByRole("button", { name: "Übernehmen" }).click();
+  await caughtRead;
+  await offer.getByRole("button", { name: "Verwerfen" }).click();
+  await expect(offer).toHaveCount(0);
+  release();
+  await heldLanded;
+  // The old read and the zones read after it render nothing back, and the read after the
+  // dismissal leaves the stored state without it.
+  await expect(page.locator("#zoneOverview [data-threshold-offer]")).toHaveCount(1);
+  await page.waitForTimeout(1000);
+  await expect(page.locator('#zoneOverview [data-threshold-offer="lt1:run:heart_rate:dfa_alpha1:151"]')).toBeVisible();
+  await expect(offer).toHaveCount(0);
+  await page.waitForFunction(() => !state.data.threshold_offers.some((item) => item.key.startsWith("lt2:")));
+  await expect(offer).toHaveCount(0);
+});
+
 test("@responsive Analyse shows Neue Schwelle above Aktuelle Werte for its sport only, and Verwerfen hides it (#4135)", async ({ page }) => {
   const served = await routeOffers(page, [OFFER_LT2, OFFER_LT1]);
   const dismissed = [];
