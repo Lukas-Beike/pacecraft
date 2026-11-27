@@ -49,8 +49,9 @@ function checkinSlider(name, label, value) {
     input.setAttribute("aria-valuetext", set ? input.value : "nicht angegeben");
     clear.hidden = !set;
   };
-  // Moving it, pressing it or a key that sets its value answers; Tab passing through does not (Gitar on #4327).
-  for (const type of ["input", "pointerdown"]) input.addEventListener(type, () => mark(true));
+  // Moving it, a tap on it or a key that sets its value answers; Tab passing through and a touch
+  // scroll that starts on it do not (Gitar on #4327): a scroll gesture fires no click.
+  for (const type of ["input", "click"]) input.addEventListener(type, () => mark(true));
   input.addEventListener("keydown", (event) => { if (CHECKIN_SLIDER_KEYS.has(event.key)) mark(true); });
   clear.addEventListener("click", () => { input.value = 5; mark(false); input.focus(); });
   mark(checkinFilled(value));
