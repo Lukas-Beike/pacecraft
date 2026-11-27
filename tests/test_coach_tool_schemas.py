@@ -229,6 +229,12 @@ class CoachToolSchemaTests(unittest.TestCase):
         )
         self.assertIn("apply_workout_library_plan", INSTRUCTIONS)
 
+    def test_read_coach_context_promises_no_further_tools(self):
+        # #4288 C5: every tool is sent on each turn; reading context unlocks none.
+        description = _tools()["read_coach_context"]["description"]
+        self.assertIn("every tool is already enabled", description)
+        self.assertNotIn("enable remaining tools", description)
+
     def test_session_tools_name_the_total_time_as_a_strength_duration(self):
         # #2317: rest between sets is part of a strength session's work.
         for name in ("list_recent_activities", "get_activity_details"):
