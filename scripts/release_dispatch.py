@@ -17,8 +17,11 @@ release contains (merged after the previous version PR); with `--wait` it
 follows by itself and prints only changed links, until done or the time limit.
 Exit 0 published, 1 a link failed or was closed unmerged, 2 bad input or a
 failed gh call, 3 still in progress. A transient GitHub error (HTTP 5xx, a
-timeout) is retried, then reported as pending (#3345). It never merges,
-approves or reruns.
+timeout) is retried, then reported as pending (#3345). When the promotion PR
+merged but no release exists and the Daily release run for its commit failed,
+the release link is `failed` and names the run, its failed step and the
+`gh run rerun <id> --failed` command (#4264). It never merges, approves or
+reruns.
 """
 
 from __future__ import annotations
@@ -284,7 +287,7 @@ def _follow_round(version: str | None, since: str | None) -> int:
 def pull(title: str, base: str) -> dict | None:
     found = gh_json(
         "pr", "list", "--base", base, "--state", "all", "--search", f'"{title}" in:title',
-        "--limit", "5", "--json", "number,title,state,mergedAt,createdAt,url",
+        "--limit", "5", "--json", "number,title,state,mergedAt,createdAt,url,mergeCommit",
     )  # fmt: skip
     exact = [p for p in found if p["title"] == title]
     return exact[0] if exact else None
@@ -311,12 +314,43 @@ def pr_state(pr: dict | None) -> str:
     return "failed" if pr["state"] == "CLOSED" else "pending"
 
 
-def release_state(version: str) -> tuple[str, str]:
+def failed_release_run(promotion: dict | None) -> str | None:
+    """The failed Daily release run for the merged promotion commit, naming its
+    failed step and the rerun command (#4264); None when there is none."""
+    sha = ((promotion or {}).get("mergeCommit") or {}).get("oid")
+    if not sha:
+        return None
+    try:
+        runs = gh_json(
+            "run", "list", "--workflow", WORKFLOW, "--event", "workflow_run",
+            "--limit", "10", "--json", "databaseId,status,conclusion,headSha",
+        )  # fmt: skip
+        mine = [r for r in runs if r.get("headSha") == sha]
+        if (
+            not mine
+            or mine[0]["status"] != "completed"
+            or mine[0]["conclusion"] != "failure"
+        ):
+            return None
+        run_id = mine[0]["databaseId"]
+        jobs = gh_json("run", "view", str(run_id), "--json", "jobs")["jobs"]
+    except CliError:
+        return None
+    step = next(
+        (s["name"] for j in jobs for s in j.get("steps", []) if s.get("conclusion") == "failure"),
+        "unknown",
+    )  # fmt: skip
+    return f"run {run_id} failed at step {step}; rerun: gh run rerun {run_id} --failed"
+
+
+def release_state(version: str, promotion: dict | None = None) -> tuple[str, str]:
     try:
         data = gh_json(
             "release", "view", version, "--json", "tagName,isDraft,targetCommitish"
         )
     except CliError:
+        if pr_state(promotion) == "ok" and (failed := failed_release_run(promotion)):
+            return "failed", failed
         return "pending", "not published yet"
     if data.get("isDraft"):
         return "pending", "draft"
@@ -344,6 +378,7 @@ def follow(version: str | None, since: str | None) -> int:
         print("pending version PR: none found yet")
         return 3
     links: list[tuple[str, str]] = []
+    pr = None
     for name, title, base in (
         (
             "version PR",
@@ -355,7 +390,7 @@ def follow(version: str | None, since: str | None) -> int:
         pr = pull(title, base)
         detail = f"#{pr['number']} {pr['state']}" if pr else "not created yet"
         links.append((pr_state(pr), f"{name} {detail}"))
-    state, detail = release_state(version)
+    state, detail = release_state(version, pr)  # pr: the promotion PR
     links.append((state, f"release {version} {detail}"))
     state, detail = publish_state(version)
     links.append((state, f"publish {detail}"))
