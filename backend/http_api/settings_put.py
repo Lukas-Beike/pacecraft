@@ -40,10 +40,14 @@ class SettingsPutRoutes:
     def _automatic_turns(self, handler: Any, _request: RouteRequest) -> None:
         """Switch the automatic Coach turns on or off.
 
-        Request: JSON body `{"morning": bool}`: the morning check-in that runs
-        once the night's sleep is stored. The turn only reads and proposes.
+        Request: JSON body with any of `{"morning": bool, "sessions": bool,
+        "sports": {"run"|"ride"|"strength"|"other": bool}}`: the morning
+        check-in once the night's sleep is stored, and the analysis of each new
+        session of a checked sport group (running and cycling preselected). The
+        turns only read and propose.
 
-        Response: 200 `{"morning": bool}`, every switch.
+        Response: 200 `{"morning": bool, "sessions": bool, "sports": {...}}`,
+        every switch.
 
         Errors: 400 "Unbekannte automatische Coach-Einstellung.".
         """

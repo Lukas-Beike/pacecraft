@@ -82,6 +82,8 @@ def _database() -> sqlite3.Connection:
         "started_at TEXT NOT NULL, created_at TEXT NOT NULL);"
         "CREATE TABLE observations (id INTEGER PRIMARY KEY, metric TEXT NOT NULL, "
         "observed_on TEXT NOT NULL, state TEXT NOT NULL);"
+        "CREATE TABLE activity_records (provider TEXT NOT NULL, "
+        "activity_id TEXT, sport TEXT NOT NULL);"
     )
     return connection
 
@@ -584,11 +586,16 @@ class PushChecksTests(unittest.TestCase):
             "INSERT INTO planned_units VALUES (?, ?)", (local_id, json.dumps(payload))
         )
 
-    def _session(self, ident, created_minutes, started="2026-11-22T08:00:00+00:00"):
+    def _session(
+        self, ident, created_minutes, started="2026-11-22T08:00:00+00:00", sport="run"
+    ):
         created = (NOW + timedelta(minutes=created_minutes)).isoformat()
         self.connection.execute(
             "INSERT INTO activity_sessions VALUES (?, 'garmin', 'active', ?, ?)",
             (ident, started, created),
+        )
+        self.connection.execute(
+            "INSERT INTO activity_records VALUES ('garmin', ?, ?)", (ident, sport)
         )
 
     def test_the_morning_plan_names_todays_units_once_a_day(self):
@@ -702,6 +709,18 @@ class PushChecksTests(unittest.TestCase):
         self._session("act_3", 90)
         self.checks.check()
         self.assertEqual(len(self._titled("Neue Einheit")), 2)
+        # #4275: a session of an analysed sport group is announced by its
+        # analysis; one of an unchecked group keeps "Neue Einheit".
+        self.connection.execute(
+            "INSERT OR REPLACE INTO kv VALUES ('coach_automatic_turns', ?, '')",
+            ('{"sessions": true, "sports": {"ride": false}}',),
+        )
+        self._session("act_run", 100)
+        self.checks.check()
+        self.assertEqual(len(self._titled("Neue Einheit")), 2)
+        self._session("act_hike", 110, sport="hike")
+        self.checks.check()
+        self.assertEqual(len(self._titled("Neue Einheit")), 3)
 
     def test_the_night_values_are_announced_once_when_they_are_dated_today(self):
         self.connection.executemany(

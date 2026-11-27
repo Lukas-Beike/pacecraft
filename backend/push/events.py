@@ -220,6 +220,26 @@ def new_sessions(db: Any, since: datetime, today: date) -> list[str]:
     return found
 
 
+def session_groups(db: Any, session_ids: list[str]) -> dict[str, str]:
+    """The sport group of each session (#4275), from its primary record's
+    canonical sport: ``run``, ``ride``, ``strength`` or ``other``."""
+    if not session_ids:
+        return {}
+    marks = ", ".join("?" for _ in session_ids)
+    rows = db.execute(
+        "SELECT s.activity_id, r.sport FROM activity_sessions s "
+        "JOIN activity_records r ON r.activity_id = s.activity_id "
+        "AND r.provider = s.primary_provider "
+        f"WHERE s.activity_id IN ({marks})",
+        tuple(session_ids),
+    ).fetchall()
+    groups = {Sport.RUN.value: "run", Sport.RIDE.value: "ride"}
+    groups[Sport.STRENGTH.value] = "strength"
+    return {
+        str(row["activity_id"]): groups.get(str(row["sport"]), "other") for row in rows
+    }
+
+
 def new_activity_event(session_ids: list[str]) -> Notification | None:
     """One notification for the newest of the new sessions; the others are covered."""
     if not session_ids:

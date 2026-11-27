@@ -32,11 +32,16 @@ from backend.push.events import (
     personal_best_event,
     planned_units,
     server_event,
+    session_groups,
     threshold_offer_events,
     weather_event,
 )
 from backend.push.service import Notification, PushService
-from backend.settings import AUTOMATIC_TURNS_KEY, automatic_turns_from
+from backend.settings import (
+    AUTOMATIC_TURNS_KEY,
+    analysed_session_sports,
+    automatic_turns_from,
+)
 from backend.sync.retry_hold import ATHLETE_ACTION_ERROR_CODES
 
 _LOGGER = logging.getLogger("intervals_coach")
@@ -128,14 +133,19 @@ class PushChecks:
                 self._push.stored(db, AUTOMATIC_TURNS_KEY, {})
             )
             automatic_night = automatic["morning"] and _automatic_morning_due(db, local)
+            # A session of an analysed sport group is announced by its analysis (#4275).
+            analysed = analysed_session_sports(automatic)
             recent = new_sessions(db, since, today)
+            groups = session_groups(db, recent) if analysed else {}
             units = planned_units(db, today, today + timedelta(days=1))
             found = [
                 *provider_problems(db, since),
                 *upcoming_competitions(db, today),
                 None if automatic_night else morning_data_event(db, today),
                 checkin_event(db, today),
-                new_activity_event(recent),
+                new_activity_event(
+                    [item for item in recent if groups.get(item) not in analysed]
+                ),
             ]
         if self._source(self._infection_hint):
             found.append(infection_hint_event(today))

@@ -14,15 +14,34 @@ from backend.config import DEFAULT_OPENAI_BASE_URL, Config
 from backend.errors import AppError
 from backend.providers.claude_models import FAMILIES, SETTING_FAMILIES, setting_family
 
-# The athlete's opt-in automatic Coach turns (#4274): the morning check-in.
+# The athlete's opt-in automatic Coach turns: the morning check-in (#4274) and
+# the analysis of each new session (#4275), per sport group; running and
+# cycling are preselected (athlete, 2026-11-27).
 AUTOMATIC_TURNS_KEY = "coach_automatic_turns"
-AUTOMATIC_TURNS = ("morning",)
+AUTOMATIC_TURNS = ("morning", "sessions")
+SESSION_SPORTS = {"run": True, "ride": True, "strength": False, "other": False}
 
 
-def automatic_turns_from(stored: Any) -> dict[str, bool]:
-    """The automatic turn switches of a decoded stored value, off unless true."""
+def automatic_turns_from(stored: Any) -> dict[str, Any]:
+    """The automatic turn switches of a decoded stored value, off unless true,
+    and the analysed sport groups, running and cycling unless set (#4275)."""
     stored = stored if isinstance(stored, dict) else {}
-    return {name: stored.get(name) is True for name in AUTOMATIC_TURNS}
+    sports = stored.get("sports")
+    sports = sports if isinstance(sports, dict) else {}
+    return {
+        **{name: stored.get(name) is True for name in AUTOMATIC_TURNS},
+        "sports": {
+            sport: sports[sport] if isinstance(sports.get(sport), bool) else default
+            for sport, default in SESSION_SPORTS.items()
+        },
+    }
+
+
+def analysed_session_sports(turns: dict[str, Any]) -> frozenset[str]:
+    """The sport groups whose new sessions are analysed; none while switched off."""
+    if not turns["sessions"]:
+        return frozenset()
+    return frozenset(sport for sport, on in turns["sports"].items() if on)
 
 
 MODEL_OPTIONS = (
@@ -290,21 +309,40 @@ class SettingsService:
         self._set_value("selected_service_tier", tier_id)
         return {"service_tier": tier_id}
 
-    def automatic_turns(self) -> dict[str, bool]:
-        """The athlete's opt-in automatic Coach turns (#4274), all off by default."""
+    def automatic_turns(self) -> dict[str, Any]:
+        """The athlete's opt-in automatic Coach turns (#4274), all off by default,
+        and the sports whose new sessions are analysed (#4275)."""
         try:
             stored = json.loads(self._get_value(AUTOMATIC_TURNS_KEY) or "{}")
         except ValueError:
             stored = {}
         return automatic_turns_from(stored)
 
-    def save_automatic_turns(self, values: Any) -> dict[str, bool]:
-        """Switch automatic turns on or off; only known switches with true/false."""
+    def save_automatic_turns(self, values: Any) -> dict[str, Any]:
+        """Switch automatic turns or analysed sports on or off; only known names
+        with true/false."""
         if not isinstance(values, dict) or not values:
             raise AppError(400, "Unbekannte automatische Coach-Einstellung.")
-        for name, value in values.items():
-            if name not in AUTOMATIC_TURNS or not isinstance(value, bool):
-                raise AppError(400, "Unbekannte automatische Coach-Einstellung.")
-        updated = self.automatic_turns() | values
+        sports = values.get("sports", {})
+        if (
+            any(name not in (*AUTOMATIC_TURNS, "sports") for name in values)
+            or any(
+                not isinstance(values[name], bool)
+                for name in AUTOMATIC_TURNS
+                if name in values
+            )
+            or not isinstance(sports, dict)
+            or any(
+                sport not in SESSION_SPORTS or not isinstance(value, bool)
+                for sport, value in sports.items()
+            )
+        ):
+            raise AppError(400, "Unbekannte automatische Coach-Einstellung.")
+        current = self.automatic_turns()
+        updated = current | values | {"sports": current["sports"] | sports}
         self._set_value(AUTOMATIC_TURNS_KEY, json.dumps(updated, sort_keys=True))
         return updated
+
+    def automatic_session_sports(self) -> frozenset[str]:
+        """The sport groups whose new sessions are analysed; none while switched off."""
+        return analysed_session_sports(self.automatic_turns())
