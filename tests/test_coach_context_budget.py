@@ -13,11 +13,12 @@ import os
 import unittest
 from datetime import date, timedelta
 from typing import Any, ClassVar
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 
 from activity_row_support import FixedActivityRows, ReadOnlyManager, StoredCoverage
 from server_test_support import server
 
+from backend.coach import context as coach_context
 from backend.coach.context import (
     COACH_CONTEXT_SECTION_LIMITS,
     CoachPerformanceContextReader,
@@ -248,6 +249,9 @@ def measure() -> dict[str, dict[str, Any]]:
             "sections": sorted(sizes),
             "sizes": sizes,
             "total": len(text),
+            # The fixed rules and headers before the context JSON (#4287).
+            "static": start,
+            "dynamic": len(text) - start,
             "context": context,
         }
     return result
@@ -280,6 +284,11 @@ FITNESS_RULE = 300
 STRENGTH_LOAD_RULE = 200
 # Rule 2b on the infection hint (M14, #3762).
 INFECTION_HINT_RULE = 300
+# The fixed Coach rules and context headers, the same for every kind (#4287).
+# Each kind's dynamic part (context JSON, library, closing note) is measured
+# against its ceiling minus this one, so a rule edit never moves a kind's
+# measurement and the two parts together keep the old ceiling.
+STATIC_PROMPT_CEILING = 14_400
 # Exact present sections and a character ceiling (whole prompt context) per case.
 EXPECTED: dict[str, tuple[set[str], int]] = {
     "session_analysis": (
@@ -346,21 +355,41 @@ class CoachContextBudgetTests(unittest.TestCase):
 
     def test_sections_and_budget_per_kind(self) -> None:
         self.assertEqual(set(CASES), set(EXPECTED))
+        static = {row["static"] for row in self.measured.values()}
+        self.assertEqual(len(static), 1)  # one fixed prompt for every kind
+        self.assertLessEqual(static.pop(), STATIC_PROMPT_CEILING)
         for label, (sections, ceiling) in EXPECTED.items():
             with self.subTest(case=label):
                 row = self.measured[label]
                 self.assertEqual(sections, present(row))
+                self.assertLessEqual(row["dynamic"], ceiling - STATIC_PROMPT_CEILING)
+                # The parts sum to the whole: the old total ceiling still holds.
+                self.assertEqual(row["static"] + row["dynamic"], row["total"])
                 self.assertLessEqual(row["total"], ceiling)
 
     def test_every_kind_keeps_one_percent_headroom(self) -> None:
         # #4100: two PRs that each fit can together exceed a ceiling on
         # develop; a PR that eats the last 1 % fails in its own CI instead.
         # Make room by trimming context text, never by raising the ceiling.
+        # The fixed prompt and each kind's dynamic part keep it each (#4287).
+        static = STATIC_PROMPT_CEILING
         for label, (_sections, ceiling) in EXPECTED.items():
             with self.subTest(case=label):
-                self.assertLessEqual(
-                    self.measured[label]["total"], ceiling - ceiling // 100
-                )
+                row = self.measured[label]
+                self.assertLessEqual(row["static"], static - static // 100)
+                dynamic = ceiling - static
+                self.assertLessEqual(row["dynamic"], dynamic - dynamic // 100)
+
+    def test_a_rule_edit_leaves_every_dynamic_measurement(self) -> None:
+        # #4287: the fixed prompt grows on its own budget, never a kind's.
+        with patch.object(
+            coach_context, "COACH_PROMPT", coach_context.COACH_PROMPT + "x" * 500
+        ):
+            grown = measure()
+        for label, row in grown.items():
+            with self.subTest(case=label):
+                self.assertEqual(row["dynamic"], self.measured[label]["dynamic"])
+                self.assertEqual(row["static"], self.measured[label]["static"] + 500)
 
     def test_a_given_structured_build_gives_the_identical_text(self) -> None:
         """The preview's one build yields the same text as the text's own build (#2966)."""
