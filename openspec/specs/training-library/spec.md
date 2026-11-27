@@ -38,9 +38,9 @@ The system SHALL support authorized template update, archive, restore and deleti
 - **WHEN** an authorized delete targets a reusable template with a stored external_id
 - **THEN** deletion fails with HTTP 409 and directs the athlete to archive it instead; supported archival retains its identity/link, marks it archived and locally pending, and performs no immediate provider write or scheduled-copy mutation.
 
-#### Scenario: Athlete deletes from the library card
-- **WHEN** the athlete taps the red "Löschen" in an opened library card and no question follows
-- **THEN** `POST /api/library/{id}/archive` with `{"confirmed": true}` archives the entry through the template `archive` (409 `confirmation_required` without the flag), so the entry leaves the library while units planned from it stay; the library leads with "Gelöscht: <Name>" and "Rückgängig" restores the entry (#3028).
+#### Scenario: Athlete archives from the library card
+- **WHEN** the athlete taps "Archivieren" in an opened library card and no question follows
+- **THEN** `POST /api/library/{id}/archive` with `{"confirmed": true}` archives the entry through the template `archive` (409 `confirmation_required` without the flag), so the entry leaves the library while units planned from it stay; the library leads with "Archiviert: <Name>" and "Rückgängig" restores the entry (#3028, #4307). In the "Archiviert" filter "Wiederherstellen" and the red "Löschen" (final, for an entry no provider holds) follow; a dated planned unit offers only the trash icon "Löschen" with "Rückgängig", no "Archivieren".
 
 #### Scenario: Archived templates no provider holds are deleted after 30 days
 - **WHEN** an archived template has no external id, no provider link and no date, and its archive time (`archived_at`, set at the first archive and removed by restore and undo; for an entry archived before it was stored, the row's last change) is 30 days or more ago
@@ -879,7 +879,7 @@ The Bibliothek SHALL list the undated, non-archived workouts grouped by sport in
 
 #### Scenario: Create, edit, restore and delete in the view
 - **WHEN** the athlete saves the editor of the Bibliothek, restores an archived entry or deletes a never-synced one
-- **THEN** the view offers "+ Einheit", "Bearbeiten", "Einplanen", "Löschen" (archive) and an "Archiviert" filter with "Wiederherstellen" and, for an entry no provider holds, "Endgültig löschen"; each runs the Coach's `manage_training_templates` use case locally with a receipt and "Rückgängig"; the entry is created (source `manual`), changed, brought back or removed; the steps must add up to the duration; a synced entry is refused with "Archiviere sie stattdessen"; nothing is sent to a provider; the 30-day clean-up of archived never-synced entries is unchanged.
+- **THEN** the view offers "+ Einheit", "Bearbeiten", "Einplanen", "Archivieren" and an "Archiviert" filter with "Wiederherstellen" and, for an entry no provider holds, the red "Löschen"; each runs the Coach's `manage_training_templates` use case locally with a receipt and "Rückgängig"; the entry is created (source `manual`), changed, brought back or removed; the steps must add up to the duration; a synced entry is refused with "Archiviere sie stattdessen"; nothing is sent to a provider; the 30-day clean-up of archived never-synced entries is unchanged.
 
 Evidence: `public/plan-views.js:renderLibrary`, `public/unit-editor.js`; `public/coach.js:appendHistoryPageButton`; `backend/http_api/library_post.py`; `tests/test_http_library_post.py`; `backend/http_api/training_plan_post.py`; `backend/planning/planned_unit_edit_service.py:PlannedUnitEditService.replace_period`; `tests/test_http_training_plan_post.py`; `tests/test_planned_unit_edit_service.py:test_replace_period_swaps_the_listed_units_for_new_ones`; `e2e/unit-editor.spec.js`; `e2e/ux-polish.spec.js:the calendar has a refresh button and the library rows show a count and a chevron @responsive`.
 
