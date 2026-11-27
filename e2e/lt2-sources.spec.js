@@ -163,6 +163,39 @@ test("Übernehmen posts the offer's adopt body, Verwerfen removes its card (#413
   expect(dismissed).toEqual([{ key: "lt2:run:heart_rate:dfa_alpha1:172" }]);
 });
 
+// #4315: the adopt's reload reads the profile before Verwerfen and answers after it; the
+// dismissed card stays gone.
+test("a profile read taken before Verwerfen does not bring the dismissed offer back (#4315)", async ({ page }) => {
+  const served = await openRunThresholds(page, { offers: [OFFER_LT1, OFFER_LT2] });
+  await page.route("**/api/zones/lt2/adopt", (route) => route.fulfill({ json: { configuration: { threshold: 172 }, change: { id: "change-1", entity_type: "zone_configuration", action: "create", after_hash: "x" } } }));
+  await page.route("**/api/zones/threshold-offers/dismiss", (route) => {
+    served.offers = [OFFER_LT1];
+    return route.fulfill({ json: { threshold_offers: served.offers } });
+  });
+  let release;
+  const held = new Promise((resolve) => { release = resolve; });
+  let holding = true;
+  await page.route("**/api/profile", async (route) => {
+    if (route.request().method() !== "GET" || !holding) return route.fallback();
+    const offers = served.offers;
+    const response = await route.fetch();
+    const json = await response.json().catch(() => null);
+    await held;
+    if (json) await route.fulfill({ response, json: { ...json, threshold_offers: offers } });
+  });
+  const offer = page.locator('#zoneOverview [data-threshold-offer="lt2:run:heart_rate:dfa_alpha1:172"]');
+  await offer.getByRole("button", { name: "Übernehmen" }).click();
+  await expect(page.locator("#zoneReceipt")).toContainText("übernommen");
+  holding = false;
+  await offer.getByRole("button", { name: "Verwerfen" }).click();
+  await expect(offer).toHaveCount(0);
+  release();
+  // The held read lands and the view renders again: the dismissed offer stays away, the other one stays.
+  await expect(page.locator('#zoneOverview [data-threshold-offer="lt1:run:heart_rate:dfa_alpha1:151"]')).toBeVisible();
+  await page.waitForFunction(() => state.data.threshold_offers.some((item) => item.key.startsWith("lt2:")));
+  await expect(offer).toHaveCount(0);
+});
+
 test("@responsive Analyse shows Neue Schwelle above Aktuelle Werte for its sport only, and Verwerfen hides it (#4135)", async ({ page }) => {
   const served = await routeOffers(page, [OFFER_LT2, OFFER_LT1]);
   const dismissed = [];
