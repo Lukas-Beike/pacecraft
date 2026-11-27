@@ -2,7 +2,8 @@
 
 Never part of the test suite, CI or pre-push (the name does not start with
 ``test_``). It runs by hand with a dedicated evaluation key in
-``COACH_EVAL_API_KEY`` (or against a loopback endpoint), the whole catalogue
+``COACH_EVAL_API_KEY`` or in the file ``--key-file`` names (or against a loopback
+endpoint), the whole catalogue
 once, one phrasing per case, at most 300 model calls (the write gate's
 classifier included) and an estimated 5 USD per run. ``--provider`` names the
 model API explicitly, OpenAI Responses or the Anthropic Messages API; there is
@@ -48,6 +49,8 @@ from urllib.parse import urlsplit
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+from scripts.prod_client import ProdError, read_secret
 
 CASES_PATH = Path(__file__).with_name("coach_eval_cases.json")
 MAX_CALLS = 300
@@ -1865,12 +1868,13 @@ def _preflight(args: argparse.Namespace) -> str | None:
     # An Anthropic key has its own prefix: a key never goes to the other provider.
     if host == api_host and not (
         args.api_key
+        and args.api_key.startswith("sk-ant-" if anthropic else "sk-")
         and args.api_key.startswith("sk-ant-") == anthropic
         and args.price_input > 0
         and args.price_output > 0
     ):
         return (
-            f"The {label} API needs a {label} key in COACH_EVAL_API_KEY and both "
+            f"The {label} API needs a {label} key in COACH_EVAL_API_KEY or --key-file and both "
             "--price-input and --price-output; nothing was run."
         )
     try:
@@ -2015,6 +2019,29 @@ def print_reports(case_ids: list[str]) -> int:
     return 0
 
 
+def _load_key(args: argparse.Namespace) -> str | None:
+    """Set args.api_key from the file --key-file names, else COACH_EVAL_API_KEY;
+    None, or one line why not (#4329). A file's key goes only to the provider's own
+    API, never to a loopback listener, and a byte order mark, which PowerShell
+    writes, is no part of it. Neither the path nor the key is named."""
+    args.api_key = os.environ.get("COACH_EVAL_API_KEY", "")
+    if not args.key_file:
+        return None
+    api_host, label, _, _ = PROVIDERS[args.provider]
+    if urlsplit(args.base_url).hostname != api_host:
+        return f"--key-file is sent only to the {label} API; nothing was run."
+    try:
+        args.api_key = read_secret(args.key_file).lstrip(
+            "\N{ZERO WIDTH NO-BREAK SPACE}"
+        )
+    except ProdError:
+        return (
+            "--key-file must be a non-empty file in the system temp directory "
+            "or the T3 secret folder; nothing was run."
+        )
+    return None
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Live Coach dialogue evaluation.")
     # Named explicitly: no default and no fallback to the other provider.
@@ -2028,8 +2055,13 @@ def main(argv: list[str] | None = None) -> int:
     # USD per million tokens, from the provider's price list for --model.
     parser.add_argument("--price-input", type=float, default=0.0)
     parser.add_argument("--price-output", type=float, default=0.0)
+    # The key from a file in the system temp directory or T3's secret folder (#4329).
+    parser.add_argument("--key-file", default="")
     args = parser.parse_args(argv)
-    args.api_key = os.environ.get("COACH_EVAL_API_KEY", "")
+    problem = _load_key(args)
+    if problem:
+        print(problem)
+        return 2
     cases = load_cases()
     chosen = [c for c in args.cases.split(",") if c]
     unknown = sorted(set(chosen) - {c["id"] for c in cases})

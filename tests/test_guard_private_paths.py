@@ -135,6 +135,31 @@ class GuardPrivatePathsTests(unittest.TestCase):
             f"cd ~/.t*/user{'data'} && cat secrets/*",
             "cd ~/.t*; cat user*/secrets/abc",
             "Get-ChildItem C:\\Users\\x\\.t3 -Recurse",
+            # #4329: the live eval takes its key as one literal --key-file value, and
+            # no other script, flag or form reaches the folder.
+            f'python tests/coach_live_eval.py --password-file "{secret}"',
+            f'python scripts/prod_guards.py --url u --key-file "{secret}"',
+            f'node scripts/ui_walk.mjs --url u --key-file "{secret}"',
+            f'python tests/coach_live_eval.py --key-file "$(cat {posix})"',
+            f"python tests/coach_live_eval.py --key-file `cat {posix}`",
+            f"python tests/coach_live_eval.py --key-file {posix} --key-file {posix}",
+            f"python tests/coach_live_eval.py --key-file {posix} --cases {posix}",
+            f"python tests/coach_live_eval.py --key-file {posix} < {posix}",
+            f"python tests/coach_live_eval.py --key-file={posix}x`whoami`",
+            f'python tests/coach_live_eval.py --key-file "{secret}"; cat "{secret}"',
+            f'python tests/coach_live_eval.py --key-file "{secret}" && cat "{secret}"',
+            f'python tests/coach_live_eval.py --key-file "{secret}" (Get-Content "{secret}")',
+            f"python tests/coach_live_eval.py --key-fil {posix}",
+            f"python tests/coach_live_eval.pyx --key-file {posix}",
+            f"python tests/coach_live_eval.py2 --key-file {posix}",
+            f"python tests/test_coach_live_eval.py --key-file {posix}",
+            f"python scripts/coach_live_eval.py --key-file {posix}",
+            f"python other/tests/coach_live_eval.py --key-file {posix}",
+            f'python -c "print(1)" tests/coach_live_eval.py --key-file {posix}',
+            f"node tests/coach_live_eval.py --key-file {posix}",
+            f"export COACH_EVAL_API_KEY=$(cat {posix}); python tests/coach_live_eval.py",
+            f'$env:COACH_EVAL_API_KEY = (Get-Content "{secret}")',
+            f'cd ../x; python tests/coach_live_eval.py --key-file "{secret}"',
         ):
             with self.subTest(command=command):
                 self.assertEqual(run_hook(command), 2)
@@ -145,6 +170,7 @@ class GuardPrivatePathsTests(unittest.TestCase):
             "python scripts/prod_diagnostics.py", "python scripts/prod_guards.py",
             "python scripts/prod_logs.py", "node scripts/ui_walk.mjs",
             "node scripts/ui_explore.mjs", "node scripts/post_release_actions.mjs",
+            "python tests/coach_live_eval.py",
         ]  # fmt: skip
         before = [
             "cd ../other", "Set-Location C:\\x", "pushd x", "sl x",
@@ -180,13 +206,15 @@ class GuardPrivatePathsTests(unittest.TestCase):
             with self.subTest(command=command):
                 self.assertEqual(run_hook(command), 2)
         for run in runs:
+            flag = "--key-file" if "coach_live_eval" in run else "--password-file"
             for last in after:
-                command = f'{run} --url u --password-file "{secret}" {last}'
+                command = f'{run} --url u {flag} "{secret}" {last}'
                 with self.subTest(command=command):
                     self.assertEqual(run_hook(command), 2)
         for run in runs:
+            flag = "--key-file" if "coach_live_eval" in run else "--password-file"
             for first in before:
-                command = f'{first}; {run} --url u --password-file "{secret}"'
+                command = f'{first}; {run} --url u {flag} "{secret}"'
                 with self.subTest(command=command):
                     self.assertEqual(run_hook(command), 2)
         for command in (
@@ -211,6 +239,13 @@ class GuardPrivatePathsTests(unittest.TestCase):
             f'python3.14.exe -I scripts/prod_logs.py --password-file "{secret}"',
             f'python scripts/prod_diagnostics.py --url u \\\n  --password-file "{secret}"',
             f'node scripts/ui_walk.mjs --url u `\n  --password-file "{secret}" --out-dir t',
+            # #4329: the live eval's key as one literal --key-file value.
+            f'python tests/coach_live_eval.py --provider anthropic --base-url https://api.anthropic.com --model claude-sonnet --key-file "{secret}" --price-input 3',
+            f"python tests/coach_live_eval.py --key-file={posix} --provider openai",
+            f"py -3 .\\tests\\coach_live_eval.py --key-file '{secret}'",
+            f'python tests/coach_live_eval.py --key-file "{secret}" 2>&1 | Select-Object -Last 5',
+            f'git status && python tests/coach_live_eval.py --key-file "{secret}" --cases a1',
+            "python tests/coach_live_eval.py --report a03-long-run-analysis",
             "grep -n T3_SECRETS scripts/prod_client.py",
             f"ls ~/.t3/user{'data'}/attachments",
             f'grep -c -i "user{"data"}\\|post_release" x',
