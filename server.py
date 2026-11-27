@@ -240,7 +240,7 @@ DATA_DIR = Path(os.environ.get("DATA_DIR", ROOT / "data"))
 DB_PATH = DATA_DIR / "intervals-coach.db"
 LOG_PATH = DATA_DIR / "intervals-coach.log"
 APP_NAME = "Pacecraft · AI Coach"
-APP_VERSION = "2.2.36"
+APP_VERSION = "2.2.37"
 MAX_BODY_BYTES = 1_000_000
 COACH_CONVERSATION_GATE = CoachConversationGate()
 
@@ -1011,6 +1011,7 @@ APP.push_checks = PushChecks(
     unrated_sessions=lambda day: APP.activity_reads.activity_read().unrated_sessions(
         day
     ),
+    lthr_for=lambda: APP.run_lthr.resolver(),
     operation=lambda: APP.maintenance.operation(),
 )
 HTTP_API = build_http_api(

@@ -43,7 +43,7 @@ async function undoChangeHistoryEntry(change, button) {
     title: "Änderung zurücknehmen?", confirmLabel: "Zurücknehmen",
   });
   if (!confirmed) return;
-  button.disabled = true;
+  setSaving(button, true);
   try {
     await api("/api/change-history/undo", { method: "POST", body: JSON.stringify({ change_id: change.id, expected_current_hash: change.after_hash }) });
     toast("Änderung zurückgenommen");
@@ -51,6 +51,7 @@ async function undoChangeHistoryEntry(change, button) {
     await globalThis.load?.();
   } catch (error) {
     toast(error.message, true);
+    setSaving(button, false);
     // The entry may no longer be its record's newest: read the list again.
     await loadChangeHistory();
   }
@@ -104,7 +105,7 @@ async function deleteServerLogs() {
   });
   if (!confirmed) return;
   const button = $("#logsDeleteButton");
-  if (button) button.disabled = true;
+  setSaving(button, true);
   try {
     await api("/api/logs/delete", { method: "POST" });
     const output = $("#logsOutput");
@@ -113,7 +114,7 @@ async function deleteServerLogs() {
   } catch (error) {
     toast(error.message, true);
   } finally {
-    if (button) button.disabled = false;
+    setSaving(button, false);
   }
 }
 
@@ -145,7 +146,7 @@ async function deleteDiagnostics() {
   });
   if (!confirmed) return;
   const button = $("#diagnosticsDeleteButton");
-  if (button) button.disabled = true;
+  setSaving(button, true);
   try {
     await api("/api/diagnostics/delete", { method: "POST" });
     if (state.data?.diagnostic_capture) {
@@ -156,7 +157,7 @@ async function deleteDiagnostics() {
   } catch (error) {
     toast(error.message, true);
   } finally {
-    if (button) button.disabled = false;
+    setSaving(button, false);
   }
 }
 

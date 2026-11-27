@@ -68,6 +68,7 @@ class PushChecks:
         weather_days: Callable[[], Any] = lambda: None,
         server_state: Callable[[], Any] = lambda: None,
         unrated_sessions: Callable[[date], Any] = lambda day: (),
+        lthr_for: Callable[[], Any] = lambda: None,
         operation: Callable[[], AbstractContextManager[Any]] = nullcontext,
     ) -> None:
         self._push = push
@@ -81,6 +82,7 @@ class PushChecks:
         self._weather_days = weather_days
         self._server_state = server_state
         self._unrated_sessions = unrated_sessions
+        self._lthr_for = lthr_for
         self._operation = operation
 
     def check(self) -> int:
@@ -148,8 +150,14 @@ class PushChecks:
     ) -> list[Notification | None]:
         """The events of the other owners; one failing source skips only itself."""
         today = local.date()
+        # The threshold HR lookup; without one a cap is left out of the line.
+        lthr_for = self._source(self._lthr_for)
         found = [
-            morning_plan_event(units, today),
+            morning_plan_event(
+                units,
+                today,
+                lambda unit: self._source(lthr_for, unit) if lthr_for else None,
+            ),
             weather_event(units, self._source(self._weather_days), local),
             maintenance_event(self._source(self._equipment)),
             server_event(self._source(self._server_state), today),

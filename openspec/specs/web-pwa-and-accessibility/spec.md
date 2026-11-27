@@ -735,6 +735,16 @@ Destructive or discarding actions SHALL use one modal confirmation with a title 
 
 Evidence: `public/auth.js::requestConfirmation`; `public/auth.js::runConfirmationSecondaryAction`; `public/auth.js::settleConfirmation`. Tests: `e2e/privacy-delete.spec.js::local data deletion requires the exact confirmation text`; `tests/test_server_frontend.py::test_frontend_uses_accessible_confirmation_dialogs`.
 
+### Requirement: Write buttons show their saving state
+
+A button that sends a write SHALL show a spinner and the label "Speichert…", be `aria-busy` and disabled from the press until the answer arrives, and then return to its own label. The login button, the provider connection save and the chat send keep their own progress.
+
+#### Scenario: Second press during a save
+- **WHEN** the athlete presses a save button again while its write runs
+- **THEN** no second request is sent, and after the answer the button shows its label and any error text as before
+
+Evidence: `public/components.js::setSaving`. Tests: `e2e/save-spinner.spec.js`.
+
 ### Requirement: Toast timing and roles
 
 A status toast SHALL be a polite `status` shown for 3 seconds. An error toast SHALL be an assertive `alert` shown for 8 seconds with a close button named "Meldung schließen". The session-ended message SHALL never be shown as a toast, because the login dialog already states it.

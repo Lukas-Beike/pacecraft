@@ -172,6 +172,28 @@ test("ui walk skips a step whose since is newer than the running release", async
   for (const item of walk.STEPS.filter((entry) => entry.since)) assert.match(item.since, /^\d+\.\d+\.\d+$/, item.name);
 });
 
+// #4263: a checkout that is not the deployed release stops the walk before its first step.
+test("ui walk stops when its checkout is not the deployed release", async () => {
+  const walk = await load();
+  assert.equal(walk.checkoutVersion('x = 1\nAPP_VERSION = "2.2.36"\n'), "2.2.36");
+  assert.equal(walk.checkoutVersion("no version"), null);
+  assert.match(walk.checkoutVersion(), /^\d+\.\d+\.\d+$/);
+  assert.equal(walk.versionMismatch("2.2.36", "2.2.36"), null);
+  assert.equal(walk.versionMismatch("2.2.36", "2.2.37"), "walk checkout 2.2.37 does not match deployed 2.2.36; run from the release commit");
+  // An unreadable version on either side does not stop the walk.
+  assert.equal(walk.versionMismatch(null, "2.2.37"), null);
+  assert.equal(walk.versionMismatch("2.2.36", null), null);
+  // The walk's guard logs out and stops with the text main prints; a matching checkout passes untouched.
+  let loggedOut = 0;
+  const page = { evaluate: async () => { loggedOut += 1; return 200; } };
+  const checkout = walk.checkoutVersion();
+  await walk.requireDeployedCheckout(page, checkout);
+  await walk.requireDeployedCheckout(page, null);
+  assert.equal(loggedOut, 0);
+  await assert.rejects(walk.requireDeployedCheckout(page, "0.0.1"), { stopText: `walk checkout ${checkout} does not match deployed 0.0.1; run from the release commit` });
+  assert.equal(loggedOut, 1);
+});
+
 test("ui walk reports each step and flags one that passed before and is skipped now (#3009)", async () => {
   const walk = await load();
   const result = {

@@ -87,11 +87,12 @@
   function undoButton(api, change, activityId, status, begin, restored) {
     const undo = h("button", { className: "message-undo", type: "button" }, "Rückgängig");
     undo.addEventListener("click", async () => {
-      undo.disabled = true; const token = begin();
+      setSaving(undo, true); const token = begin();
       try {
         const response = await api("/api/change-history/undo", { method: "POST", body: JSON.stringify({ change_id: change.id, expected_current_hash: change.after_hash, activity_id: activityId }) });
+        setSaving(undo, false); undo.disabled = true;
         restored(response, token); status.textContent = "Zurückgenommen.";
-      } catch (error) { undo.disabled = false; status.textContent = error.message; }
+      } catch (error) { setSaving(undo, false); status.textContent = error.message; }
     });
     return undo;
   }
@@ -174,7 +175,10 @@
     reason.addEventListener("change", () => { current.deviation_reason = reason.value; void queueSave(); });
     purpose.addEventListener("change", () => { current.purpose = purpose.value; void queueSave(); });
     const explicit = edit ? h("button", { type: "button", className: "push-button" }, "Speichern") : null;
-    explicit?.addEventListener("click", () => void queueSave());
+    explicit?.addEventListener("click", async () => {
+      setSaving(explicit, true);
+      try { await queueSave(); } finally { setSaving(explicit, false); }
+    });
     // Text typed when the sheet closes is saved with it: Escape and Back remove the field without leaving it.
     content.flushFeedback = () => {
       const changed = notes.value !== current.notes || reason.value !== current.deviation_reason;

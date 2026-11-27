@@ -71,8 +71,6 @@ function renderNutritionSegments(route) {
   document.querySelector("#nutritionDiary").hidden = week || products || body;
   document.querySelector("#bodyAnalysisCharts").hidden = !body;
   document.querySelector("#nutritionStatus").hidden = week || products || body;
-  // The diary's message to the Coach belongs to the diary alone.
-  if (week || products || body) document.querySelector("#nutritionTellCoach").hidden = true;
   document.querySelector("#nutritionWeek").hidden = !week;
   document.querySelector("#nutritionProductsPanel").hidden = !products;
   document.querySelectorAll("[data-nutrition-segment]").forEach((link) => {
@@ -100,13 +98,13 @@ function showNutritionReceipt(status, message, change, afterUndo) {
   if (!change?.id) return;
   const undo = h("button", { type: "button", className: "message-undo" }, "Rückgängig");
   undo.addEventListener("click", async () => {
-    undo.disabled = true;
+    setSaving(undo, true);
     try {
       await api("/api/change-history/undo", { method: "POST", body: JSON.stringify({ change_id: change.id, expected_current_hash: change.after_hash }) });
       await afterUndo?.();
       status.textContent = "Zurückgenommen.";
     } catch (error) {
-      undo.disabled = false;
+      setSaving(undo, false);
       text.textContent = `${error.message} `;
     }
   });
@@ -236,7 +234,10 @@ function nutritionSessionBlock(item, sessions) {
   if (sessions.length) {
     block.append(h("p", null, "Zu welcher Einheit gehört das?"), h("div", "nutrition-session-choices", sessions.map((session) => {
       const choice = h("button", { type: "button", className: "secondary-button" }, nutritionSessionLabel(session));
-      choice.addEventListener("click", () => void chooseNutritionSession(item, session));
+      choice.addEventListener("click", async () => {
+        setSaving(choice, true);
+        try { await chooseNutritionSession(item, session); } finally { setSaving(choice, false); }
+      });
       return choice;
     })));
   }
@@ -287,12 +288,15 @@ function nutritionEstimateChip(item) {
 // A logged meal's ingredients, its estimate mark, "Als Mahlzeit speichern" and its removal.
 function nutritionEntryActions(item) {
   const estimate = h("button", { type: "button", className: "secondary-button" }, item.estimate_uncertain ? "Markierung entfernen" : "Als geschätzt markieren");
-  estimate.addEventListener("click", () => void markNutritionEstimate(item));
+  estimate.addEventListener("click", async () => {
+    setSaving(estimate, true);
+    try { await markNutritionEstimate(item); } finally { setSaving(estimate, false); }
+  });
   const remove = h("button", { type: "button", className: "secondary-button danger-button", "aria-label": `Mahlzeit löschen: ${item.description}` }, "Löschen");
   remove.addEventListener("click", async () => {
     // One tap, one delete: the button waits for the request, as the removed dialog did.
-    remove.disabled = true;
-    try { await deleteNutritionEntry(item); } finally { remove.disabled = false; }
+    setSaving(remove, true);
+    try { await deleteNutritionEntry(item); } finally { setSaving(remove, false); }
   });
   const keep = h("button", { type: "button", className: "secondary-button" }, "Als Mahlzeit speichern");
   keep.addEventListener("click", () => openNutritionTemplateFromEntry(item));
@@ -611,12 +615,6 @@ function nutritionIntakeKey(day) {
   return JSON.stringify([day.date, day.total_kcal, day.entries || []]);
 }
 
-// The message the empty diary hands to the Coach: only written into the composer, never sent.
-function nutritionCoachDraft(date, today) {
-  const when = date === today ? "heute" : `am ${dateLabel(date)}`;
-  return `Ich habe ${when} gegessen: `;
-}
-
 // "Heute · Montag" or "Montag": the diary's date names its weekday (#4037).
 function nutritionDayName(date, today) {
   const weekday = new Intl.DateTimeFormat("de-DE", { weekday: "long", timeZone: "UTC" }).format(new Date(`${date}T12:00:00Z`));
@@ -638,16 +636,13 @@ function renderNutritionDay(day) {
   if (energyIntakeKey !== null && energyIntakeKey !== intake && JSON.parse(energyIntakeKey)[0] === day.date) resetEnergy();
   energyIntakeKey = intake;
   renderDiaryEnergy();
-  // A day that has not come yet is not eaten: it says so and offers no message to the Coach (#4037).
-  const future = day.date > todayIso();
-  let statusText = "";
-  if (!day.entry_count) statusText = future ? "Dieser Tag liegt in der Zukunft." : "Noch keine Mahlzeiten erfasst.";
-  document.querySelector("#nutritionStatus").textContent = statusText;
-  // An empty day shows no row of "nicht erfasst" tiles; meals are entered through the Coach, so the empty
-  // view says that and offers the message (athlete decisions, #3936 G-13, G-14).
-  const tellCoach = document.querySelector("#nutritionTellCoach");
-  tellCoach.hidden = Boolean(day.entry_count) || future;
-  tellCoach.dataset.date = day.date;
+  // Load and sync messages stay in the status line on top; an empty or future day says so below the
+  // energy cards, where the meal list would be, and offers no button (athlete, #4265, #4037).
+  document.querySelector("#nutritionStatus").textContent = "";
+  const empty = document.querySelector("#nutritionEmptyDay");
+  empty.textContent = day.date > todayIso() ? "Dieser Tag liegt in der Zukunft." : "Noch keine Mahlzeiten erfasst.";
+  empty.hidden = Boolean(day.entry_count);
+  // An empty day shows no row of "nicht erfasst" tiles (athlete decision, #3936 G-13).
   const totals = document.querySelector("#nutritionTotals");
   totals.replaceChildren();
   totals.hidden = !day.entry_count;
@@ -662,6 +657,7 @@ function showNutritionDayLoadError(status, cached, error, dateInput, requestedDa
     return;
   }
   // The requested day stays in the date field so ← and → still have a day to move from.
+  document.querySelector("#nutritionEmptyDay").hidden = true;
   dateInput.value = requestedDate;
   syncNutritionDateName();
   const retry = h("button", { type: "button", className: "secondary-button" }, "Erneut laden");
@@ -685,6 +681,7 @@ async function loadNutrition({ preserve = false, expectedRoute = null, expectedD
   const cached = showCachedNutritionView(cacheKey, renderNutritionDay);
   if (!cached && !preserve) {
     status.textContent = "Ernährung wird geladen…";
+    document.querySelector("#nutritionEmptyDay").hidden = true;
     document.querySelector("#nutritionEntries").replaceChildren();
     document.querySelector("#nutritionTotals").replaceChildren();
   }
@@ -702,7 +699,6 @@ async function loadNutrition({ preserve = false, expectedRoute = null, expectedD
 }
 
 document.querySelector("#nutritionDate").addEventListener("change", () => { syncNutritionDateName(); void loadNutrition(); });
-document.querySelector("#nutritionTellCoach").addEventListener("click", (event) => void globalThis.askCoach?.(nutritionCoachDraft(event.currentTarget.dataset.date, todayIso())));
 for (const [id, offset] of [["nutritionPrevious", -1], ["nutritionNext", 1]]) {
   document.getElementById(id).addEventListener("click", () => {
     const input = document.querySelector("#nutritionDate");
@@ -769,7 +765,8 @@ function resetNutritionView() {
   document.querySelector("#nutritionDate").value = "";
   syncNutritionDateName();
   nutritionWeekShown = null;
-  for (const id of ["nutritionWeekBalance", "nutritionWeekStatus", "nutritionWeekMacros", "nutritionWeekDays", "nutritionWeekChart", "nutritionEntries", "nutritionTotals", "nutritionEnergy", "nutritionStatus", "nutritionProducts", "nutritionLookupResult", "nutritionProductStatus"]) document.getElementById(id)?.replaceChildren();
+  for (const id of ["nutritionWeekBalance", "nutritionWeekStatus", "nutritionWeekMacros", "nutritionWeekDays", "nutritionWeekChart", "nutritionEntries", "nutritionTotals", "nutritionEnergy", "nutritionStatus", "nutritionEmptyDay", "nutritionProducts", "nutritionLookupResult", "nutritionProductStatus"]) document.getElementById(id)?.replaceChildren();
+  document.querySelector("#nutritionEmptyDay").hidden = true;
   document.querySelector("#nutritionLookupResult").hidden = true;
   document.querySelector("#nutritionWeekChartSection").hidden = true;
   const editor = document.querySelector("#nutritionExtraction"); if (editor) { editor.replaceChildren(); editor.hidden = true; }
@@ -973,7 +970,7 @@ function showNutritionProductError(prefix, error) {
 }
 
 async function refreshNutritionProduct(product, button) {
-  button.disabled = true;
+  setSaving(button, true);
   const status = document.querySelector("#nutritionProductStatus");
   const generation = state.sessionGeneration;
   try {
@@ -990,7 +987,7 @@ async function refreshNutritionProduct(product, button) {
       ? "Für Aktualisieren wird eine EAN gebraucht. Unter Bearbeiten eintragen."
       : `Eintrag konnte nicht aktualisiert werden: ${error.message}`;
   }
-  button.disabled = false;
+  setSaving(button, false);
 }
 
 // #3299: one background run re-checks every product with the single "Aktualisieren" rule; the
@@ -1012,7 +1009,7 @@ async function loadNutritionCleanup() {
   const list = document.querySelector("#nutritionCleanupList");
   const confirm = document.querySelector("#nutritionCleanupConfirm");
   const status = document.querySelector("#nutritionCleanupStatus");
-  confirm.disabled = true; status.textContent = ""; count.textContent = "Wird gezählt…";
+  setSaving(confirm, false); confirm.disabled = true; status.textContent = ""; count.textContent = "Wird gezählt…";
   try {
     const preview = await api(`/api/nutrition/products/cleanup?days=${encodeURIComponent(days)}`);
     if (sequence !== nutritionCleanupSequence) return;
@@ -1033,7 +1030,7 @@ async function loadNutritionCleanup() {
 async function runNutritionCleanup() {
   const confirm = document.querySelector("#nutritionCleanupConfirm");
   const days = Number(document.querySelector("#nutritionCleanupDays").value);
-  confirm.disabled = true;
+  setSaving(confirm, true);
   try {
     const result = await api("/api/nutrition/products/cleanup", { method: "POST", body: JSON.stringify({ days, confirmed: true }) });
     document.querySelector("#nutritionCleanupDialog").close();
@@ -1041,7 +1038,7 @@ async function runNutritionCleanup() {
     showNutritionReceipt(document.querySelector("#nutritionProductStatus"), `${result.count} ${result.count === 1 ? "Produkt" : "Produkte"} gelöscht.`, result.change, () => reloadNutritionProducts());
   } catch (error) {
     document.querySelector("#nutritionCleanupStatus").textContent = error.message;
-    confirm.disabled = false;
+    setSaving(confirm, false);
   }
 }
 
@@ -1112,8 +1109,8 @@ function appendNutritionProductActions(card, product, local) {
       button.addEventListener("click", async () => {
         if (label !== "Löschen") { run(button); return; }
         // One tap, one delete: the button waits for the request, as the removed dialog did.
-        button.disabled = true;
-        try { await run(button); } finally { button.disabled = false; }
+        setSaving(button, true);
+        try { await run(button); } finally { setSaving(button, false); }
       });
       actions.append(button);
       // Without a known unit an amount cannot be counted against the values.
@@ -1127,13 +1124,13 @@ function nutritionFavoriteButton(product) {
   const favorite = Boolean(product.favorite);
   const button = h("button", { type: "button", className: "nutrition-favorite", "aria-pressed": String(favorite), "aria-label": `${favorite ? "Favorit entfernen" : "Als Favorit markieren"}: ${product.name}` }, favorite ? "★" : "☆");
   button.addEventListener("click", async () => {
-    button.disabled = true;
+    setSaving(button, true, "");
     try {
       await api("/api/nutrition/products/favorite", { method: "POST", body: JSON.stringify({ id: product.id, favorite: !favorite }) });
       await reloadNutritionProducts({ refresh: true });
     } catch (error) {
       showNutritionProductError("Favorit konnte nicht geändert werden", error);
-      button.disabled = false;
+      setSaving(button, false);
     }
   });
   return button;
@@ -1254,6 +1251,8 @@ async function useNutritionProduct(product, edit = null) {
   const select = document.querySelector("#nutritionProductUseMeal");
   const addButton = document.querySelector("#nutritionProductUseAdd");
   const status = document.querySelector("#nutritionProductUseStatus");
+  // A save still running from an earlier open keeps no spinner on the reopened dialog (#4268).
+  setSaving(addButton, false);
   select.replaceChildren(h("option", { value: "" }, "Neuer Snack")); addButton.disabled = true; status.textContent = "";
   // A queued meal stays a new snack: no choice of an existing meal, no Coach draft.
   select.closest("label").hidden = Boolean(edit);
@@ -1359,7 +1358,7 @@ async function addNutritionProductToMeal() {
   if (!use) return;
   const generation = state.sessionGeneration;
   const addButton = document.querySelector("#nutritionProductUseAdd");
-  addButton.disabled = true;
+  setSaving(addButton, true);
   try {
     const body = mealId
       ? { id: mealId, product_id: use.product.id, amount: Number(use.amount), unit: use.unit }
@@ -1386,7 +1385,7 @@ async function addNutritionProductToMeal() {
     // The queued entry is gone meanwhile: the next save goes out as a new snack (Gitar on #3830).
     if (error?.reason === "outbox_entry_gone") nutritionOutboxEdit = null;
     document.querySelector("#nutritionProductUseStatus").textContent = `Produkt konnte nicht erfasst werden: ${error.message}`;
-    addButton.disabled = false;
+    setSaving(addButton, false);
   }
 }
 
@@ -1433,6 +1432,8 @@ async function submitNutritionProductForm(form) {
   const generation = state.sessionGeneration;
   const editor = document.querySelector("#nutritionExtraction");
   const status = document.querySelector("#nutritionProductStatus");
+  const submit = form.querySelector('button[type="submit"]');
+  setSaving(submit, true);
   try {
     const payload = nutritionProductPayload(form);
     const saved = await api("/api/nutrition/products", { method: payload.id ? "PUT" : "POST", body: JSON.stringify({ ...payload, confirmed: true }) });
@@ -1445,7 +1446,11 @@ async function submitNutritionProductForm(form) {
     showNutritionReceipt(status, message, saved.change, () => reloadNutritionProducts());
     // A new product is selected for a meal at once, no search needed (#3435).
     if (!payload.id && saved.product?.id && saved.product.basis_unit) void useNutritionProduct(normalizeNutritionProduct(saved.product));
-  } catch (error) { if (generation === state.sessionGeneration) status.textContent = `Produkt konnte nicht gespeichert werden: ${error.message}`; }
+  } catch (error) {
+    if (generation === state.sessionGeneration) status.textContent = `Produkt konnte nicht gespeichert werden: ${error.message}`;
+  } finally {
+    setSaving(submit, false);
+  }
 }
 
 async function saveNutritionProduct(product) {

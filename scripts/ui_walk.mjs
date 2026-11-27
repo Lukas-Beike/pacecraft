@@ -76,7 +76,7 @@ export function previousWalkPath(compare) {
 // any entry already at the name (a file, a link or a hard link) stops the walk
 // instead of being followed. Each walk needs a fresh --out-dir.
 export const FRESH_OUT_DIR = "the out-dir already holds walk files; use a fresh --out-dir";
-const stopLine = (error, fallback) => `FAIL ${error.code === "EEXIST" ? FRESH_OUT_DIR : fallback}`;
+const stopLine = (error, fallback) => `FAIL ${error.stopText ?? (error.code === "EEXIST" ? FRESH_OUT_DIR : fallback)}`;
 export function writeFresh(outDir, name, data) {
   const file = path.join(scratchPath(outDir), name);
   fs.writeFileSync(scratchPath(file), data, { flag: "wx" });
@@ -522,8 +522,9 @@ export async function runStep(page, { pre = [], post = [], unseek, ...step }, ca
   }
 }
 
-// A step newer than the running release is not checked (#3886): the walk runs from develop, where a
-// feature merged after the release already has its step. Without a readable version every step runs.
+// A step newer than the running release is not checked (#3886): a checkout at the deployed APP_VERSION
+// (see requireDeployedCheckout) may be ahead of the release by features whose steps already exist.
+// Without a readable version every step runs.
 // The skip outcome for such a step, else null (the step runs).
 export function releaseSkip(step, running) {
   if (!step.since || !running) return null;
@@ -540,6 +541,26 @@ export function releaseSkip(step, running) {
 async function runningVersion(page) {
   const version = await page.request.get("/api/diagnostics").then((response) => (response.ok() ? response.json() : null)).then((report) => report?.app?.version).catch(() => null);
   return typeof version === "string" && /^\d+(\.\d+){1,3}$/.test(version) ? version : null;
+}
+
+// The walk's steps match the checkout it runs from, so a checkout that is not the deployed release would
+// report FAILs for UI production does not have yet (#4263). APP_VERSION of the checkout's server.py.
+export function checkoutVersion(source = fs.readFileSync(path.join(ROOT, "server.py"), "utf8")) {
+  return /^APP_VERSION = "(\d+(?:\.\d+){1,3})"/m.exec(source)?.[1] ?? null;
+}
+
+// The stop text when both versions are known and differ, else null (an unreadable version does not stop the walk).
+export function versionMismatch(deployed, checkout) {
+  if (!deployed || !checkout || deployed === checkout) return null;
+  return `walk checkout ${checkout} does not match deployed ${deployed}; run from the release commit`;
+}
+
+// Logs out and stops the walk before its first step when the checkout is not the deployed release.
+export async function requireDeployedCheckout(page, deployed) {
+  const mismatch = versionMismatch(deployed, checkoutVersion());
+  if (!mismatch) return;
+  await logout(page);
+  throw Object.assign(new Error(mismatch), { stopText: mismatch });
 }
 
 // A step that passed in the previous walk and skips now runs once more after RETRY_WAIT_MS: right after a
@@ -611,8 +632,9 @@ async function walk({ chromium, url, password, outDir, earlier = {} }) {
       await login(page, password);
       // Every error counts against a step: login, a view (with its calendar walk), or the rest.
       result.errors[`${name} login`] = errors.length;
-      result.curves ??= await waitForCurves(page);
       result.version ??= await runningVersion(page);
+      await requireDeployedCheckout(page, result.version);
+      result.curves ??= await waitForCurves(page);
       let counted = errors.length;
       const shot = async (label) => writeFresh(outDir, `${name}-${label}.png`, await page.screenshot({ fullPage: false }));
       for (const route of VIEWS) {
