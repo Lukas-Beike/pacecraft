@@ -49,6 +49,10 @@ async function expectSavingButton(button, writes, label) {
 
 test("@responsive adding a product to a meal shows the saving state", async ({ page }) => {
   const productName = `Spinnerprodukt ${Date.now()}`;
+  // The product save is answered here, so no product stays in the fixture.
+  await page.route(/\/api\/nutrition\/products$/, (route) => (route.request().method() === "POST"
+    ? route.fulfill({ json: { product: { id: "spinner-product", name: productName, kcal: 86, basis_amount: 100, basis_unit: "g", origin: "own" } } })
+    : route.fallback()));
   await page.goto("/#nutrition/products");
   await page.locator("#nutritionProductManual").click();
   const editor = page.locator("#nutritionExtraction");

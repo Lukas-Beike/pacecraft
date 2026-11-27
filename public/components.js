@@ -24,7 +24,7 @@ function setSaving(button, busy, label = "Speichert…") {
   if (!button) return;
   if (busy && !savingButtonContent.has(button)) {
     savingButtonContent.set(button, [...button.childNodes]);
-    button.replaceChildren(h("span", { className: "button-spinner", "aria-hidden": "true" }), label);
+    button.replaceChildren(h("span", { className: "button-spinner", "aria-hidden": "true" }), ...(label ? [h("span", null, label)] : []));
   } else if (!busy && savingButtonContent.has(button)) {
     button.replaceChildren(...savingButtonContent.get(button));
     savingButtonContent.delete(button);

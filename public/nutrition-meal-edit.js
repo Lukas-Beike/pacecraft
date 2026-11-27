@@ -44,6 +44,8 @@ async function openNutritionMealEdit(item) {
   const nodes = nutritionMealEditNodes();
   nodes.subtitle.textContent = [nutritionMealTitle(item), item.description].filter(Boolean).join(" · ");
   nodes.status.textContent = "";
+  // A save still running from an earlier open keeps no spinner on the reopened dialog (#4268).
+  setSaving(nodes.save, false);
   nodes.type.replaceChildren(...Object.entries(NUTRITION_MEAL_LABELS).map(([value, label]) => h("option", { value }, label)));
   renderNutritionMealEdit();
   showAccessibleDialog(nodes.root);
@@ -116,6 +118,8 @@ function renderNutritionMealEdit() {
 function updateNutritionMealEditSave() {
   const nodes = nutritionMealEditNodes();
   const offline = !navigator.onLine;
+  // A running save keeps its button locked (#4268).
+  if (nodes.save.getAttribute("aria-busy") === "true") return;
   nodes.save.disabled = offline || nutritionMealEditChanges().length === 0 && !nutritionMealFieldChanges();
   if (offline) nodes.status.textContent = "Offline: Speichern erst mit Verbindung möglich.";
   else if (nodes.status.textContent.startsWith("Offline")) nodes.status.textContent = "";

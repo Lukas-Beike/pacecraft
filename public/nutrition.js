@@ -1018,7 +1018,7 @@ async function loadNutritionCleanup() {
   const list = document.querySelector("#nutritionCleanupList");
   const confirm = document.querySelector("#nutritionCleanupConfirm");
   const status = document.querySelector("#nutritionCleanupStatus");
-  confirm.disabled = true; status.textContent = ""; count.textContent = "Wird gezählt…";
+  setSaving(confirm, false); confirm.disabled = true; status.textContent = ""; count.textContent = "Wird gezählt…";
   try {
     const preview = await api(`/api/nutrition/products/cleanup?days=${encodeURIComponent(days)}`);
     if (sequence !== nutritionCleanupSequence) return;
@@ -1047,7 +1047,6 @@ async function runNutritionCleanup() {
     showNutritionReceipt(document.querySelector("#nutritionProductStatus"), `${result.count} ${result.count === 1 ? "Produkt" : "Produkte"} gelöscht.`, result.change, () => reloadNutritionProducts());
   } catch (error) {
     document.querySelector("#nutritionCleanupStatus").textContent = error.message;
-  } finally {
     setSaving(confirm, false);
   }
 }
@@ -1261,6 +1260,8 @@ async function useNutritionProduct(product, edit = null) {
   const select = document.querySelector("#nutritionProductUseMeal");
   const addButton = document.querySelector("#nutritionProductUseAdd");
   const status = document.querySelector("#nutritionProductUseStatus");
+  // A save still running from an earlier open keeps no spinner on the reopened dialog (#4268).
+  setSaving(addButton, false);
   select.replaceChildren(h("option", { value: "" }, "Neuer Snack")); addButton.disabled = true; status.textContent = "";
   // A queued meal stays a new snack: no choice of an existing meal, no Coach draft.
   select.closest("label").hidden = Boolean(edit);
@@ -1393,7 +1394,6 @@ async function addNutritionProductToMeal() {
     // The queued entry is gone meanwhile: the next save goes out as a new snack (Gitar on #3830).
     if (error?.reason === "outbox_entry_gone") nutritionOutboxEdit = null;
     document.querySelector("#nutritionProductUseStatus").textContent = `Produkt konnte nicht erfasst werden: ${error.message}`;
-  } finally {
     setSaving(addButton, false);
   }
 }
