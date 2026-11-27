@@ -33,6 +33,7 @@ from backend.sync.executor import GarminJobAdapter
 from backend.sync.garmin_body_push import (
     UPLOAD_TIME,
     GarminBodyPushService,
+    push_state,
     summarize_body_push,
 )
 
@@ -142,6 +143,7 @@ class GarminBodyPushTests(unittest.TestCase):
         def session():
             yield self.sdk
 
+        # A save's push runs in place here, so its outcome is the receipt's.
         self.push = GarminBodyPushService(
             self.manager,
             session,
@@ -149,6 +151,7 @@ class GarminBodyPushTests(unittest.TestCase):
             lambda db, day: None,
             lambda: self.ready,
             lambda: self.now,
+            start=lambda run: run(),
         )
         clock = {"now": lambda: "2026-11-16T10:00:00+00:00", "today": lambda: DAY}
         self.weights = BodyEntryService(self.manager, **clock, on_change=self.push.push)
@@ -165,6 +168,17 @@ class GarminBodyPushTests(unittest.TestCase):
     def counts(self):
         with self.manager.reader() as db:
             return summarize_body_push(db)
+
+    def push_state(self):
+        with self.manager.reader() as db:
+            return push_state(db, DAY)
+
+    def wait_for(self, done):
+        for _ in range(250):
+            if done():
+                return
+            time.sleep(0.02)
+        self.fail("the push did not finish")
 
     def store_garmin_weight(self, kg, day=DAY):
         with self.manager.unit_of_work() as db:
@@ -360,9 +374,8 @@ class GarminBodyPushTests(unittest.TestCase):
         self.assertEqual([], self.sdk.days["2026-11-15"])
         self.assertIsNone(self.link())
 
-    def test_a_slow_garmin_never_holds_the_save_past_its_deadline(self):
-        # Gitar (#3415): a running Garmin refresh holds its lock; the save answers
-        # "pending" in time and the push finishes on its own thread.
+    def hold_garmin(self):
+        """A Garmin that answers only after the returned event is set, on a real thread."""
         release = threading.Event()
 
         @contextlib.contextmanager
@@ -371,19 +384,48 @@ class GarminBodyPushTests(unittest.TestCase):
             yield self.sdk
 
         self.push._sdk_session = busy
-        with unittest.mock.patch.object(garmin_body_push, "REQUEST_DEADLINE_S", 0.05):
-            read = self.weights.save({"date": "2026-11-15", "kg": 80})
-        self.assertEqual("pending", read["remote"])
+        self.push._start = lambda run: threading.Thread(target=run, daemon=True).start()
+        return release
+
+    def test_a_save_answers_at_once_while_garmin_is_slow(self):
+        # #4267 (option B): the save returns while the push blocks; the sync
+        # status shows the day running, then neither running nor pending.
+        release = self.hold_garmin()
+        started = time.monotonic()
+        read = self.weights.save({"date": "2026-11-15", "kg": 80})
+        self.assertLess(time.monotonic() - started, 1.0)
+        self.assertEqual("running", read["remote"])
         self.assertEqual({"date": "2026-11-15", "kg": 80.0}, read["entries"][0])
+        self.assertEqual(["2026-11-15"], self.push_state()["running"])
         release.set()
-        for _ in range(100):
-            link = self.link()
-            if link is not None and link.sync_state is RemoteLinkState.SYNCED:
-                break
-            time.sleep(0.02)
+        self.wait_for(lambda: not self.push_state()["running"])
+        self.assertEqual({"running": [], "pending": []}, self.push_state())
+        link = self.link()
         self.assertEqual(
             ("101", RemoteLinkState.SYNCED), (link.remote_id, link.sync_state)
         )
+
+    def test_a_slow_push_that_fails_reads_as_pending_afterwards(self):
+        release = self.hold_garmin()
+        self.sdk.fail = _HttpError(500)
+        with self.assertLogs("intervals_coach", logging.WARNING):
+            self.assertEqual(
+                "running", self.weights.save({"date": "2026-11-15", "kg": 80})["remote"]
+            )
+            release.set()
+            self.wait_for(lambda: not self.push_state()["running"])
+        self.assertEqual({"running": [], "pending": ["2026-11-15"]}, self.push_state())
+
+    def test_a_restart_during_a_push_reads_as_pending(self):
+        # The upload went out but its answer never came: the link is pending with
+        # what was sent. After a restart no push runs, so the day reads pending.
+        self.sdk.fail_after_upload = TimeoutError()
+        with self.assertLogs("intervals_coach", logging.WARNING):
+            self.weights.save({"date": "2026-11-15", "kg": 80})
+        self.assertEqual({"running": [], "pending": ["2026-11-15"]}, self.push_state())
+        # Pending days older than the retry window are not reported.
+        with self.manager.reader() as db:
+            self.assertEqual([], push_state(db, DAY + timedelta(days=31))["pending"])
 
     def test_two_matching_entries_link_the_newest_and_leave_the_other(self):
         twin = {

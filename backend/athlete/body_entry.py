@@ -79,14 +79,14 @@ class BodyEntryService:
         now: Callable[[], str],
         today: Callable[[], date],
         entry: BodyEntryKind = WEIGHT_ENTRY,
-        on_change: Callable[[date], str] | None = None,
+        on_change: Callable[[date], str | Mapping[str, str]] | None = None,
     ) -> None:
         self._database_manager = database_manager
         self._now = now
         self._today = today
         self._entry = entry
         # Mirrors the changed day to Garmin Connect after the commit (#3403);
-        # its outcome is the receipt's ``remote``.
+        # its outcome is the receipt's ``remote`` (a weight's also ``remote_wahoo``, #4267).
         self._on_change = on_change
 
     def read(self) -> dict[str, Any]:
@@ -142,7 +142,10 @@ class BodyEntryService:
     def _changed(self, day: date) -> dict[str, Any]:
         read = self.read()
         if self._on_change is not None:
-            read["remote"] = self._on_change(day)
+            outcome = self._on_change(day)
+            read.update(
+                outcome if isinstance(outcome, Mapping) else {"remote": outcome}
+            )
         return read
 
     def _day(self, value: Any) -> date:

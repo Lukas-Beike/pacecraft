@@ -1034,21 +1034,61 @@ test("a diary render with the shown energy read keeps the card and its open popo
   assert.equal(slot.children[0], table, "the table node stays, so an open popover stays open");
 });
 
-test("a body receipt names the Garmin outcome and puts the day back on undo (#3403)", () => {
+test("a body receipt puts the day back on undo and names each push's state (#3403, #4267)", () => {
   let weightRead = { entries: [{ date: "2026-11-15", kg: 80 }] };
-  const { weightReceipt } = extractFunctions("analysis.js", ["bodyReceipt", "weightReceipt"], {
+  const { weightReceipt, bodyPushTargets, bodyPushText } = extractFunctions("analysis.js", ["bodyReceipt", "weightReceipt", "BODY_PUSH_NAMES", "bodyPushTargets", "bodyPushText"], {
     get weightRead() { return weightRead; },
   });
-  const saved = weightReceipt("2026-11-15", "gespeichert");
-  assert.equal(saved("sent").text, "Gewicht gespeichert und an Garmin Connect gesendet.");
-  assert.equal(saved("pending").text, "Gewicht lokal gespeichert, Garmin-Sync fehlgeschlagen – wird erneut versucht.");
-  assert.equal(saved("pending").error, true);
-  assert.equal(saved("needs_weight").text, "Gewicht lokal gespeichert, Garmin braucht ein Gewicht am selben Tag.");
-  assert.equal(saved("off").text, "Gewicht gespeichert.");
   // Undo restores the day's earlier entry, or removes a day that had none.
-  assert.equal(JSON.stringify(saved("sent").undo), JSON.stringify(["/api/body/weight", { date: "2026-11-15", kg: 80 }]));
-  assert.equal(JSON.stringify(weightReceipt("2026-11-14", "gespeichert")("sent").undo), JSON.stringify(["/api/body/weight/remove", { date: "2026-11-14", confirmed: true }]));
-  assert.equal(weightReceipt("2026-11-15", "gelöscht")("removed").text, "Gewicht gelöscht und in Garmin Connect entfernt.");
+  assert.equal(JSON.stringify(weightReceipt("2026-11-15", "gespeichert").undo), JSON.stringify(["/api/body/weight", { date: "2026-11-15", kg: 80 }]));
+  assert.equal(JSON.stringify(weightReceipt("2026-11-14", "gespeichert").undo), JSON.stringify(["/api/body/weight/remove", { date: "2026-11-14", confirmed: true }]));
+  const line = (garmin, wahoo, done = "gespeichert") => bodyPushText(bodyPushTargets(garmin, wahoo), done);
+  assert.equal(line("running", "running"), "An Garmin und Wahoo senden…");
+  assert.equal(line("running", "off"), "An Garmin senden…");
+  assert.equal(line("sent", undefined), "✓ In Garmin gespeichert");
+  assert.equal(line("removed", undefined, "gelöscht"), "✓ In Garmin aktualisiert");
+  assert.equal(line("pending", undefined), "Garmin-Sync fehlgeschlagen – wird erneut versucht.");
+  assert.equal(line("needs_weight", undefined), "Garmin braucht ein Gewicht am selben Tag.");
+  assert.equal(line("off", "pending"), "Wahoo-Sync fehlgeschlagen – wird erneut versucht.");
+  // Without a connected push there is no line.
+  assert.equal(JSON.stringify(bodyPushTargets("off", "off")), "{}");
+  assert.equal(bodyPushText({ garmin: "done", wahoo: "done" }, "gespeichert"), "✓ In Garmin und Wahoo gespeichert");
+  assert.equal(bodyPushText({ garmin: "done", wahoo: "failed" }, "gespeichert"), "✓ In Garmin gespeichert · Wahoo-Sync fehlgeschlagen – wird erneut versucht.");
+});
+
+test("a followed body push ends done, failed or neutral after two minutes (#4267)", () => {
+  const toasts = [];
+  const shown = { classList: { contains: () => true } };
+  const context = {
+    toasts, document: { querySelector: () => shown },
+    toast: (text, error) => toasts.push([text, error]),
+    h: () => ({}),
+    now: 1000,
+  };
+  const fns = extractFunctions("analysis.js", ["BODY_PUSH_NAMES", "bodyPushText", "renderBodyPushLine", "followBodyPush", "bodyPushFollow"], {
+    ...context, Date: { now: () => context.now },
+  });
+  const line = () => ({ isConnected: true, classList: { toggle() {}, remove() {} }, text: "", replaceChildren(...nodes) { this.text = nodes.filter((node) => typeof node === "string").join(""); } });
+  const follow = (targets, until = 2000) => ({ day: "2026-11-15", targets, done: "gespeichert", line: line(), until });
+  // The script's own binding, set as showBodyReceipt does.
+  const set = (value) => { fns.nextFollow = value; require("node:vm").runInContext("bodyPushFollow = nextFollow;", fns); };
+  let current = follow({ garmin: "running", wahoo: "running" });
+  set(current);
+  assert.equal(fns.followBodyPush({ garmin: { running: ["2026-11-15"], pending: ["2026-11-15"] }, wahoo: { running: true, pending: true } }), true);
+  assert.equal(fns.followBodyPush({ garmin: { running: [], pending: [] }, wahoo: { running: false, pending: true } }), false);
+  assert.equal(current.line.text, "✓ In Garmin gespeichert · Wahoo-Sync fehlgeschlagen – wird erneut versucht.");
+  assert.equal(fns.followBodyPush({}), false, "nothing followed any more");
+  // Still running after two minutes: neutral, never failed, and the poll slows down again.
+  current = follow({ garmin: "running" }, 500);
+  set(current);
+  assert.equal(fns.followBodyPush({ garmin: { running: ["2026-11-15"], pending: [] } }), false);
+  assert.equal(current.line.text, "Wird im Hintergrund weiter übertragen.");
+  // A closed toast gets the end in a second one.
+  current = follow({ garmin: "running" });
+  current.line.isConnected = false;
+  set(current);
+  assert.equal(fns.followBodyPush({ garmin: { running: [], pending: ["2026-11-15"] } }), false);
+  assert.deepEqual(toasts.at(-1), ["Garmin-Sync fehlgeschlagen – wird erneut versucht.", true]);
 });
 
 const FIT_FUNCTIONS = ["ANALYSIS_PERIODS", "analysisPeriod", "verlaufPeriod", "verlaufHead", "FIT_SOURCE_NAMES", "FIT_COLORS", "deficitDay", "energyKcalRange", "energyKcalSpan", "energyFitSources", "energyFitSigned", "energyFitSpan", "energyFitVerdict", "energyFitDomain", "energyFitMark", "energyFitLane", "energyFitAxis", "energyFitOwnRow", "energyFitLabel", "energyFitSourceRow", "energyFitLegend", "energyFitNoteText", "energyFitScale"];

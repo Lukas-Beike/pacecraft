@@ -8,7 +8,7 @@ nothing else is written to Wahoo. The model is the Garmin body push (#3403),
 reduced to one value: Wahoo keeps one profile weight, not one entry per day.
 
 The push runs on its own thread after the local commit, so a save never waits
-for Wahoo. It needs the ``user_write`` scope: without it nothing is written and
+for Wahoo; the browser follows it through ``push_state`` in the sync status (#4267). It needs the ``user_write`` scope: without it nothing is written and
 the change waits (``pending``) until the athlete reconnects Wahoo with that
 scope. A failed or unanswered write also stays pending; the next Wahoo refresh
 retries it once with the then-newest weight. The write overwrites one value, so
@@ -34,6 +34,8 @@ STATE_KEY: Final = "wahoo_weight_push"
 # Outcomes: written, nothing to write, waiting for a retry or for the scope,
 # Wahoo not connected.
 SENT, UNCHANGED, PENDING, OFF = "sent", "unchanged", "pending", "off"
+# A started push the browser follows (#4267).
+RUNNING: Final = "running"
 # Why the last push ended as it did (#3677), an enum for the diagnostics: the
 # grant lacks user_write, Wahoo refused (4xx, final) or failed (5xx), the
 # request failed otherwise, or a local fault stopped the push.
@@ -46,6 +48,9 @@ _LOGGER = logging.getLogger("intervals_coach")
 # One push at a time; each reads the newest weight inside the lock, so the last
 # push always sends the latest value.
 _PUSH_LOCK = threading.Lock()
+# Started pushes not yet finished; a restart forgets them with their threads.
+_RUNNING = [0]
+_RUNNING_LOCK = threading.Lock()
 _NEWEST_SQL: Final = (
     "SELECT value FROM observations WHERE metric = ? AND provider IS NULL "
     "AND source_kind = ? AND state = 'active' "
@@ -69,17 +74,36 @@ class WahooWeightPushService:
         self._status = status
         self._key_values = KeyValueRepository(now)
 
-    def start(self) -> None:
-        """Push after a weight change without holding up the save; never raises."""
+    def start(self) -> str:
+        """Push after a weight change without holding up the save; never raises.
+
+        Returns ``running`` for a started push, ``off`` without a connection.
+        """
         try:
-            threading.Thread(
-                target=self.push, name="wahoo-weight-push", daemon=True
-            ).start()
+            if not self._status().get("connected"):
+                return OFF
+            _count_running(1)
+
+            def run() -> None:
+                try:
+                    self.push()
+                finally:
+                    _count_running(-1)
+
+            try:
+                threading.Thread(
+                    target=run, name="wahoo-weight-push", daemon=True
+                ).start()
+            except Exception:
+                _count_running(-1)
+                raise
+            return RUNNING
         except Exception as error:  # noqa: BLE001 - the save has been committed
             _LOGGER.warning(
                 "Wahoo weight push not started",
                 extra={"event": "wahoo_weight_push_error", "context": {"error_type": type(error).__name__}},
             )  # fmt: skip
+            return PENDING
 
     def mark_restored(self) -> None:
         """An undo put an entered weight back (#3640): leave it pending, so the
@@ -191,6 +215,19 @@ class WahooWeightPushService:
             with self._database_manager.unit_of_work() as db:
                 self._key_values.set(db, STATE_KEY, json.dumps(changed, sort_keys=True))
         return changed
+
+
+def _count_running(step: int) -> None:
+    with _RUNNING_LOCK:
+        _RUNNING[0] += step
+
+
+def push_state(db: Any) -> dict[str, bool]:
+    """Whether a started push runs now and whether a change still waits (#4267)."""
+    with _RUNNING_LOCK:
+        running = _RUNNING[0] > 0
+    state = read_state(KeyValueRepository(lambda: "").get(db, STATE_KEY))
+    return {"running": running, "pending": bool(state.get("pending"))}
 
 
 def read_state(raw: str | None) -> dict[str, Any]:

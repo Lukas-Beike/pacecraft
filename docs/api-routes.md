@@ -622,7 +622,9 @@ Request: JSON body `{"date": "YYYY-MM-DD", "kg": number}`, 30 to 300 kg
 `Idempotency-Key` header (UUID) answers the stored result and writes
 nothing; the same key on another path answers 409.
 
-Response: 200 as `GET /api/body/weight`.
+Response: 200 as `GET /api/body/weight`, plus `remote` (the Garmin
+Connect outcome, `running` while its push runs) and `remote_wahoo`
+(`running`, `off` or `pending`); the sync status follows a running push.
 
 Errors: 400 "Das Datum fehlt oder ist ungültig."; 400 "Das Datum darf
 nicht in der Zukunft liegen."; 400 "Das Gewicht braucht einen Wert in
@@ -2633,7 +2635,9 @@ Request: no body.
 Response: 200 with `status`, `phase`, `progress` (0 to 100),
 `operation_id`, `running`, `message`, `started_at`, `finished_at`,
 `last_error`, `state_versions`, `provider_freshness`, `maintenance`
-(`active`, `running_operations`) and `jobs` (the recent sync jobs).
+(`active`, `running_operations`), `jobs` (the recent sync jobs) and
+`body_push`: `garmin` (`running` and `pending` ISO days) and `wahoo`
+(`running`, `pending` booleans) of the body value pushes.
 
 Errors: none beyond the common ones.
 

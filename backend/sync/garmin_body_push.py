@@ -23,6 +23,10 @@ outcome is unknown is therefore searched for, deleted or linked later, never
 sent twice. A change deletes the linked entry and uploads the new one; a removal
 deletes it. One push runs at a time.
 
+A save does not wait for Garmin (#4267): its push runs on its own thread and
+the save answers ``running`` unless the outcome is known locally at once; the
+browser follows the day through ``push_state`` in the sync status.
+
 A failed write leaves the local save standing and the link ``pending``; the
 next Garmin refresh retries pending days (``retry_pending``), at most
 ``RETRY_BATCH`` per refresh, and not while Garmin's rate-limit pause holds.
@@ -36,6 +40,7 @@ import json
 import logging
 import queue
 import threading
+from collections import Counter
 from collections.abc import Callable, Mapping
 from contextlib import AbstractContextManager
 from dataclasses import dataclass
@@ -67,14 +72,15 @@ RETRY_DAYS: Final = 30
 FAT_NEEDS_ENTERED_WEIGHT: Final = False
 COUNTS_KEY: Final = "garmin_body_push_counts"
 # Receipt outcomes: written, removed, nothing to do, retried later, not sendable,
-# Garmin not connected for writes.
-SENT, REMOVED, UNCHANGED, PENDING, NEEDS_WEIGHT, OFF = (
+# Garmin not connected for writes, still on its way (#4267).
+SENT, REMOVED, UNCHANGED, PENDING, NEEDS_WEIGHT, OFF, RUNNING = (
     "sent",
     "removed",
     "unchanged",
     "pending",
     "needs_weight",
     "off",
+    "running",
 )
 # Marks a sent fingerprint Garmin accepted: it is only searched for, never sent again.
 ACCEPTED: Final = "accepted:"
@@ -82,9 +88,13 @@ _LOGGER = logging.getLogger("intervals_coach")
 # One push at a time, so two saves of one day never upload twice.
 _PUSH_LOCK = threading.Lock()
 _LOCK_WAIT_S: Final = 60.0
-# A save waits at most this long for Garmin; the push then finishes in the
-# background and the receipt says pending (the browser gives up after 25 s).
-REQUEST_DEADLINE_S: Final = 15.0
+# A save waits this long for an outcome known without Garmin (off, unchanged, a
+# missing weight, the rate-limit pause); a push that calls Garmin answers running (#4267).
+LOCAL_ANSWER_S: Final = 0.5
+# The running save pushes per day; a restart forgets them with their threads,
+# so the day then reads as its link's pending state.
+_RUNNING_DAYS: Counter[str] = Counter()
+_RUNNING_LOCK = threading.Lock()
 _WEIGHT_TOLERANCE_KG: Final = 0.05
 _FAT_TOLERANCE_PCT: Final = 0.05
 _ENTERED_SQL: Final = (
@@ -169,8 +179,15 @@ class GarminBodyPushService:
         skinfold_fat: Callable[[Any, date], float | None],
         write_ready: Callable[[], bool],
         now: Callable[[], datetime],
+        start: Callable[[Callable[[], None]], None] | None = None,
     ) -> None:
         self._database_manager = database_manager
+        # Runs a save's push; a thread unless a test runs it in place.
+        self._start = start or (
+            lambda run: threading.Thread(
+                target=run, name="garmin-body-push", daemon=True
+            ).start()
+        )
         self._sdk_session = sdk_session
         # ``GarminSyncStateService``: the rate-limit pause and capability counts.
         self._sync_state = sync_state
@@ -184,21 +201,31 @@ class GarminBodyPushService:
         """Bring Garmin's entry of ``day`` in line with the local values.
 
         Never raises: the local save has already been committed. A save's push
-        runs on its own thread and answers within ``REQUEST_DEADLINE_S``; a busy
-        or slow Garmin keeps going there and the receipt says pending.
+        runs on its own thread; an outcome known within ``LOCAL_ANSWER_S`` is
+        returned, else ``running`` while the day is in ``push_state``.
         """
         if retry:
             return self._guarded(day, retry=True)
         answers: queue.SimpleQueue[str] = queue.SimpleQueue()
-        threading.Thread(
-            target=lambda: answers.put(self._guarded(day, retry=False)),
-            name="garmin-body-push",
-            daemon=True,
-        ).start()
+        key = day.isoformat()
+
+        def run() -> None:
+            try:
+                answers.put(self._guarded(day, retry=False))
+            finally:
+                _finish(key)
+
+        with _RUNNING_LOCK:
+            _RUNNING_DAYS[key] += 1
         try:
-            return answers.get(timeout=REQUEST_DEADLINE_S)
+            self._start(run)
+        except Exception:
+            _finish(key)
+            raise
+        try:
+            return answers.get(timeout=LOCAL_ANSWER_S)
         except queue.Empty:
-            return PENDING
+            return RUNNING
 
     def _guarded(self, day: date, *, retry: bool) -> str:
         try:
@@ -441,6 +468,13 @@ class GarminBodyPushService:
         self._key_values.set(db, COUNTS_KEY, json.dumps(counts, sort_keys=True))
 
 
+def _finish(key: str) -> None:
+    with _RUNNING_LOCK:
+        _RUNNING_DAYS[key] -= 1
+        if _RUNNING_DAYS[key] <= 0:
+            del _RUNNING_DAYS[key]
+
+
 def _value(db: Any, kind: MetricKind, day: date) -> float | None:
     """The athlete's entered value of ``kind`` on ``day``."""
     row = db.execute(
@@ -515,6 +549,19 @@ def _rejected(response: Any) -> bool:
         return False
     failures, successes = result.get("failures"), result.get("successes")
     return bool(failures) and not successes
+
+
+def push_state(db: Any, today: date) -> dict[str, list[str]]:
+    """The days whose save push runs now and the days still pending (#4267)."""
+    with _RUNNING_LOCK:
+        running = sorted(+_RUNNING_DAYS)
+    oldest = (today - timedelta(days=RETRY_DAYS)).isoformat()
+    pending = sorted(
+        link.local_id
+        for link in RemoteLinkRepository().list_for_provider(db, GARMIN, KIND)
+        if link.sync_state is RemoteLinkState.PENDING and link.local_id >= oldest
+    )
+    return {"running": running, "pending": pending}
 
 
 def summarize_body_push(db: Any) -> dict[str, Any]:
