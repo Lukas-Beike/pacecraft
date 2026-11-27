@@ -7,6 +7,7 @@ from backend.coach.context import (
     CoachPlanningContextReader,
     CoachTrainingContextService,
     coach_daily_rows,
+    coach_daily_unit_refs,
     compact_coach_local_planned_workout,
 )
 from backend.coach.prompt import COACH_PROMPT
@@ -168,6 +169,7 @@ class CoachTrainingContextServiceTests(unittest.TestCase):
         capped = {
             "id": "u1",
             "date": "2026-12-01",
+            "type": "Run",
             "session_focus": "long",
             "hr_cap": {
                 "percent_lthr": 76.1,
@@ -191,6 +193,56 @@ class CoachTrainingContextServiceTests(unittest.TestCase):
         first, second = reader.planned()
         self.assertEqual(first[PLANNED_CAP_BPM], 124)  # 76.1 % of 163
         self.assertNotIn(PLANNED_CAP_BPM, second)
+        # Only a run unit's cap resolves with the run threshold HR.
+        ride = {**capped, "id": "u3", "type": "Ride"}
+        planned.list.return_value = [ride]
+        self.assertNotIn(PLANNED_CAP_BPM, reader.planned()[0])
+        self.assertNotIn(
+            "hr_cap",
+            compact_coach_local_planned_workout(ride, select=planning_context.selected),
+        )
+
+        # A failing threshold read keeps the percent and leaves only the bpm out.
+        def broken():
+            raise RuntimeError("thresholds down")
+
+        failing = CoachPlanningContextReader(
+            planned, Mock(), Mock(), Mock(), Mock(), Mock(), Mock(), lthr_for=broken
+        )
+        planned.list.return_value = [capped]
+        with self.assertLogs("intervals_coach", "WARNING") as logs:
+            (unit,) = failing.planned()
+        self.assertNotIn("thresholds down", "".join(logs.output))
+        self.assertEqual(
+            compact_coach_local_planned_workout(unit, select=planning_context.selected)[
+                "hr_cap"
+            ],
+            {"percent_lthr": 76.1},
+        )
+
+    def test_a_day_names_a_listed_unit_only_by_id_and_start(self):
+        # #4286 (R12 C12): local_planned_workouts names the unit once.
+        days = [
+            {
+                "date": "2026-12-01",
+                "planned": [
+                    {
+                        "id": "u1",
+                        "name": "Dauerlauf",
+                        "type": "Run",
+                        "starts_at_local": "2026-12-01T07:00:00",
+                    },
+                    {"id": "u9", "name": "Nicht gelistet", "type": "Ride"},
+                ],
+            }
+        ]
+        self.assertEqual(
+            coach_daily_unit_refs(days, {"u1"})[0]["planned"],
+            [
+                {"id": "u1", "starts_at_local": "2026-12-01T07:00:00"},
+                {"id": "u9", "name": "Nicht gelistet", "type": "Ride"},
+            ],
+        )
 
     def test_day_rows_carry_their_weekday_and_no_repeated_check_in_date(self):
         rows = coach_daily_rows(

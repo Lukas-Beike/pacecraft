@@ -77,7 +77,7 @@ The system SHALL bound per-section and total Coach context, retain valid structu
 
 #### Scenario: Weekdays on dated rows (#4286)
 - **WHEN** the Coach context holds planned units and day rows
-- **THEN** each planned row and each `daily_planning_context` day carries its German weekday abbreviation (`weekday`, Mo to So), the dialogue's `local_date` comes with `local_weekday`, a planned row leaves out the defaults `status` planned and `sync_status` local (named once in `source_policy.planned_rows`), and a day's check-in does not repeat the day's date
+- **THEN** each planned row and each `daily_planning_context` day carries its German weekday abbreviation (`weekday`, Mo to So), the dialogue's `local_date` comes with `local_weekday`, a planned row leaves out the defaults `status` planned and `sync_status` local (named once in `source_policy.planned_rows`), a day's check-in does not repeat the day's date, and a day names a unit that `local_planned_workouts` lists only by `id` and `starts_at_local`
 
 #### Scenario: Canonical data is not yet available
 - **WHEN** the first canonical backfill is pending or failed and a scoped Coach context is built

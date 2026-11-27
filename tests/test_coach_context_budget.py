@@ -74,6 +74,19 @@ def _planned_units() -> list[dict[str, Any]]:
                     "target": "Synthetic target description. " * 6,
                     "status": "planned",
                     "sync_status": "local",
+                    # Every easy run stores its cap (#4286).
+                    **(
+                        {}
+                        if slot
+                        else {
+                            "session_focus": "easy",
+                            "hr_cap": {
+                                "percent_lthr": 84.0,
+                                "low_percent_lthr": 69.0,
+                                "source": "default",
+                            },
+                        }
+                    ),
                 }
             )
     return units
@@ -199,6 +212,8 @@ def _build_service() -> CoachTrainingContextService:
             plans,
             previews,
             lambda: TODAY,
+            # The easy runs' caps resolve to bpm, as in production (#4286).
+            lthr_for=lambda: lambda unit: 168.0,
         ),
         CoachPerformanceContextReader(
             profile,
