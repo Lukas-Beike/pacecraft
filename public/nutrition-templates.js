@@ -231,12 +231,13 @@ function openNutritionCompose() {
 }
 
 // "+ Mahlzeit" under the diary day (#4304): a meal type, the search over products and foods, and the
-// saved meals. A picked food asks for its amount and becomes a new meal of the shown day (through the
-// outbox like every new meal); a saved meal is logged at once.
+// saved meals. A picked food asks for its amount and becomes a new meal of the shown day (a product
+// through the outbox, whose edit knows products only); a saved meal is logged at once.
 const NUTRITION_ADD_TYPES = ["breakfast", "lunch", "dinner", "snack"];
 
 function nutritionAddMealType() {
-  const hour = new Date().getHours();
+  // The athlete's hour, in the zone the diary's day and times use.
+  const hour = Number(new Intl.DateTimeFormat("de-DE", { hour: "2-digit", hourCycle: "h23", timeZone: state.data?.profile?.timezone || undefined }).format(new Date()));
   if (hour < 10) return "breakfast";
   if (hour < 15) return "lunch";
   return hour < 21 ? "dinner" : "snack";
@@ -249,13 +250,21 @@ async function logNutritionAddedMeal(ui, row, log) {
   const payload = row.key === "product_id"
     ? { product_id: row.id, ...base }
     : { description: row.name, components: [{ kind: "database", food_id: row.id, amount: base.amount, unit: base.unit }], meal_type: mealType, meal_date: base.meal_date, source: "manual" };
+  // One write at a time: every button of the dialog waits.
+  const buttons = [...ui.form.querySelectorAll("button")];
+  for (const button of buttons) button.disabled = true;
   setSaving(log, true);
+  const generation = state.sessionGeneration;
   try {
-    const result = await saveOwnEntry({ kind: "meal", method: "POST", path: "/api/nutrition/entry", payload, queuedPayload: queuedMealPayload(payload), label: `„${row.name}“ als ${label}` });
+    const result = row.key === "product_id"
+      ? await saveOwnEntry({ kind: "meal", method: "POST", path: "/api/nutrition/entry", payload, queuedPayload: queuedMealPayload(payload), label: `„${row.name}“ als ${label}` })
+      : await api("/api/nutrition/entry", { method: "POST", body: JSON.stringify(payload) });
+    if (generation !== state.sessionGeneration) return;
     ui.dialog.close();
     if (result.outboxEntry) { nutritionTemplateStatus().textContent = `„${row.name}“ wartet, noch nicht gesendet.`; return; }
     await nutritionTemplateChanged(`„${row.name}“ als ${label} erfasst.`, result.change);
   } catch (error) {
+    for (const button of buttons) button.disabled = false;
     setSaving(log, false);
     if (!isSessionEndedError(error)) ui.status.textContent = error.message;
   }
@@ -273,7 +282,7 @@ async function openNutritionAddMeal() {
     h("label", "chip", h("input", { type: "radio", name: "meal_type", value: type, checked: type === chosen }), h("span", null, NUTRITION_MEAL_LABELS[type])))));
   const fields = [
     types,
-    h("label", null, "Produkt oder Lebensmittel", h("input", { name: "query", type: "search", autocomplete: "off", placeholder: "Name, Marke oder EAN" })),
+    h("label", null, "Produkt oder Lebensmittel", h("input", { name: "query", type: "search", autocomplete: "off" })),
     search, results, list, saved,
   ];
   const ui = nutritionTemplateDialog("Mahlzeit hinzufügen", fields, log);

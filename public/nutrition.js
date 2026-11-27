@@ -791,6 +791,7 @@ function resetNutritionView() {
   nutritionWeekShown = null;
   for (const id of ["nutritionWeekBalance", "nutritionWeekStatus", "nutritionWeekMacros", "nutritionWeekDays", "nutritionWeekChart", "nutritionEntries", "nutritionTotals", "nutritionEnergy", "nutritionStatus", "nutritionEmptyDay", "nutritionProducts", "nutritionLookupResult", "nutritionProductStatus"]) document.getElementById(id)?.replaceChildren();
   document.querySelector("#nutritionEmptyDay").hidden = true;
+  document.querySelector("#nutritionAddMeal").hidden = true;
   document.querySelector("#nutritionLookupResult").hidden = true;
   document.querySelector("#nutritionWeekChartSection").hidden = true;
   const editor = document.querySelector("#nutritionExtraction"); if (editor) { editor.replaceChildren(); editor.hidden = true; }

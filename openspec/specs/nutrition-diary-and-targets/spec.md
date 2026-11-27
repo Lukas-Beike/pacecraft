@@ -91,7 +91,7 @@ The system SHALL let the athlete in Ernährung › Produkte list the saved meals
 
 #### Scenario: A meal added from the diary
 - **WHEN** the athlete presses "+ Mahlzeit" under a diary day that is not in the future
-- **THEN** a sheet offers the meal types Frühstück, Mittagessen, Abendessen and Snack, the product and food search and the saved meals; a picked product or food asks for its amount in its own unit and is logged on the shown day through the meal create path and its offline outbox, and a saved meal is logged with `POST /api/nutrition/templates/log` (#4304)
+- **THEN** a sheet offers the meal types Frühstück, Mittagessen, Abendessen and Snack, the product and food search and the saved meals; a picked product or food asks for its amount in its own unit and is logged on the shown day through the meal create path (a product also through its offline outbox), and a saved meal is logged with `POST /api/nutrition/templates/log` (#4304)
 
 Evidence: `backend/http_api/nutrition.py::NutritionPostRoutes._save_template`, `backend/nutrition/meal_library.py::NutritionMealLibraryService.save_template_from_meal`, `public/nutrition-templates.js`; `tests/test_nutrition_composition.py::NutritionCompositionTests::test_saved_meal_routes_keep_log_and_delete_with_the_server_values`.
 
