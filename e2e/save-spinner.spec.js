@@ -2,19 +2,6 @@ const { test, expect } = require("@playwright/test");
 
 // The held writes are answered with a refusal, so the fixture keeps its state; routes need the worker blocked (#3842).
 test.use({ serviceWorkers: "block" });
-test.beforeEach(async ({ page }) => {
-  // The calendar's check-in row needs a connected source (#3936 G-13).
-  await page.route(/\/api\/(bootstrap|performance)(\?|$)/, async (route) => {
-    try {
-      const response = await route.fetch();
-      const body = await response.json();
-      if (body.garmin) body.garmin = { ...body.garmin, configured: true };
-      await route.fulfill({ response, json: body });
-    } catch {
-      // The test ended with a request still in flight.
-    }
-  });
-});
 
 // Holds every matching write until release(), then refuses it with a known error text.
 async function holdWrites(page, pattern, method) {
@@ -81,9 +68,8 @@ test("@responsive saving a weight shows the saving state", async ({ page }) => {
 });
 
 test("@responsive saving a check-in shows the saving state", async ({ page }) => {
-  await page.goto("/#plan");
-  const row = page.locator(".planned-day.is-today [data-checkin]");
-  await row.getByRole("button").click();
+  // The reminder's link opens today's form.
+  await page.goto("/#plan/checkin");
   const dialog = page.locator("#checkinDialog");
   await expect(dialog).toBeVisible();
   await dialog.getByLabel("Stress (0–10)").fill("6");
