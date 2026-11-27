@@ -75,6 +75,10 @@ The server SHALL send each event key at most once, only to subscribed devices, o
 - **WHEN** a Coach turn started by the athlete's own stored message finishes with an answer
 - **THEN** "Coach" / "Deine Antwort ist da." opens `#coach` right away at any hour, after the turn's operation; it is sent on its own thread, once and without a retry; a failed delivery never fails or holds the turn and no unfinished turn sends one
 
+#### Scenario: Coach answer while the Coach is open
+- **WHEN** a Coach answer push arrives while an app window is visible, focused and on the Coach route
+- **THEN** the service worker shows no notification; on another route, with a hidden or unfocused window, without an answer from the window's route request, or with no window the notification shows as before, and no other push kind is held back (the payload carries its `kind`)
+
 #### Scenario: Morning plan
 - **WHEN** today has a planned unit
 - **THEN** from 07:00 one "Heute" notification a day lists each non-rest unit of today as "{title} · {duration} · {key target}", a part the unit does not store left out: the key target is the stored heart-rate cap in bpm of an easy or long unit, the first repeat block of an interval unit unless its title names it, and none for strength; it opens `#plan/overview`
