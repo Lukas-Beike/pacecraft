@@ -145,6 +145,8 @@ class DiagnosticReportDependencies:
     heavy_read_gate: Callable[[], dict[str, Any]] | None = None
     # The adaptive expenditure's basis in the read snapshot, counts only (#3100).
     energy_balance: Callable[[Any], dict[str, Any]] | None = None
+    # The characters of each current_performance block a Coach turn carries (#4323).
+    coach_performance_sizes: Callable[[], dict[str, int]] | None = None
     # Why closed days lack a Verlauf expenditure, counts only (#3157).
     expenditure_gaps: Callable[[Any], dict[str, Any]] | None = None
     # The all-time curve build: state word, count and last duration (#2852).
@@ -412,6 +414,11 @@ class DiagnosticReportService:
                     else {},
                 },
                 "recovery_copies": section("recovery_copies", self._recovery_copies),
+                # Counts only: the Coach's current_performance blocks by size, to
+                # check the budget fixture against production (#4323, #4325).
+                "coach_current_performance": section(
+                    "coach_current_performance", deps.coach_performance_sizes or dict
+                ),
                 # The newest backup the app made, before a schema release (#2996).
                 "backup": section(
                     "backup",

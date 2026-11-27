@@ -543,6 +543,31 @@ class ProdChecksTests(unittest.TestCase):
             ],
         )
 
+    def test_the_coach_performance_sizes_print_as_counts(self):
+        # #4323: each current_performance block's characters, to compare the
+        # budget fixture with production.
+        report = {
+            "coach_current_performance": {
+                "thresholds": 1200,
+                "lt2_estimates": 300,
+                "total": 5200,
+            }
+        }
+        lines = [
+            text
+            for _, text in prod_diagnostics.section_lines(
+                report, "coach_current_performance"
+            )
+        ]
+        self.assertEqual(
+            sorted(lines),
+            [
+                "coach_current_performance.lt2_estimates 300",
+                "coach_current_performance.thresholds 1200",
+                "coach_current_performance.total 5200",
+            ],
+        )
+
     def test_automatic_coach_turns_print_counts_only(self):
         # #4274: the started, completed and failed counts are readable on prod.
         report = {

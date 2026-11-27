@@ -216,6 +216,7 @@ class DiagnosticReportServiceTests(unittest.TestCase):
                 "wahoo",
                 "push_notifications",
                 "coach_automatic_turns",
+                "coach_current_performance",
                 "plan_sync",
                 "garmin_past_workout_removal",
                 "garmin_daily_calories",

@@ -10,6 +10,9 @@ from typing import Any, cast
 
 from backend.athlete.local_date import iso_date_prefix
 
+# current_performance blocks only the analysis and review kinds carry.
+ANALYSIS_ONLY_PERFORMANCE = frozenset({"comparisons", "activity_validation"})
+
 CONTEXT_SECTIONS = frozenset(
     {
         "durable_profile",
@@ -307,7 +310,7 @@ class CoachContextSelection:
             result["current_performance"] = {
                 key: value
                 for key, value in performance.items()
-                if key not in {"comparisons", "activity_validation"}
+                if key not in ANALYSIS_ONLY_PERFORMANCE
             }
         return result
 

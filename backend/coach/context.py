@@ -37,6 +37,7 @@ from backend.canonical.vocabulary import (
     ZoneConfigurationMetric,
 )
 from backend.coach.context_selection import (
+    ANALYSIS_ONLY_PERFORMANCE,
     CONTEXT_SECTIONS,
     FULL_SECTIONS,
     CoachContextSelection,
@@ -920,6 +921,26 @@ class CoachStructuredContextService:
         if selection and selection.name in {"plan_week", "plan_block", "adjust_week"}:
             return self._planning_reader.external_calendar(selection.horizon_days)
         return self._planning_reader.external_calendar()
+
+    def performance_section_sizes(self) -> dict[str, int]:
+        """Counts only: the characters of each current_performance block a Coach
+        turn carries, as sent; "total" is the analysis and review shape and
+        "total_other_kinds" the shape every other kind sends (#4323, #4325)."""
+        performance_inputs, _activity_rows = self._performance_reader.read_sources()
+        current = self._current_performance(performance_inputs)
+        if not isinstance(current, dict):
+            return {}
+        sizes = {key: coach_context_json_size(value) for key, value in current.items()}
+        other_kinds = {
+            key: value
+            for key, value in current.items()
+            if key not in ANALYSIS_ONLY_PERFORMANCE
+        }
+        return {
+            **sizes,
+            "total": coach_context_json_size(current),
+            "total_other_kinds": coach_context_json_size(other_kinds),
+        }
 
     def _current_performance(
         self, performance_inputs: CanonicalPerformanceInputs | None

@@ -32,6 +32,7 @@ from backend.coach.context import (
 )
 from backend.coach.context_selection import (
     CONTEXT_SECTIONS,
+    CoachContextSelection,
     select_coach_context,
 )
 from backend.coach.playbooks import playbook_for
@@ -480,6 +481,22 @@ class CoachContextBudgetTests(unittest.TestCase):
             with self.subTest(case=label):
                 self.assertEqual(row["dynamic"], self.measured[label]["dynamic"])
                 self.assertEqual(row["static"], self.measured[label]["static"] + 500)
+
+    def test_the_performance_sizes_count_each_block_as_sent(self) -> None:
+        # #4323: the diagnostics count what the Coach's current_performance holds.
+        structured = _build_service()._structured_context_service
+        sizes = structured.performance_section_sizes()
+        current = structured.build()["current_performance"]
+        self.assertEqual(sizes["total"], coach_context.coach_context_json_size(current))
+        self.assertEqual(set(sizes) - {"total", "total_other_kinds"}, set(current))
+        self.assertTrue(all(type(value) is int for value in sizes.values()))
+        planning = CoachContextSelection("plan_week", horizon_days=7).project(
+            structured.build(), "2026-11-27"
+        )["current_performance"]
+        self.assertEqual(
+            sizes["total_other_kinds"], coach_context.coach_context_json_size(planning)
+        )
+        self.assertLess(sizes["total_other_kinds"], sizes["total"])
 
     def test_a_given_structured_build_gives_the_identical_text(self) -> None:
         """The preview's one build yields the same text as the text's own build (#2966)."""
