@@ -1493,6 +1493,7 @@ output.planned-move-status { display: block; }
 .checkin-fields { display: grid; gap: 15px; }
 .checkin-complaint { display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr) 4rem auto; gap: 8px; align-items: center; }
 .checkin-complaints { display: grid; gap: 8px; }
+.nutrition-add-meal { width: 100%; min-height: 44px; margin-top: 12px; }
 .change-history-list { display: grid; margin: 0; padding: 0; list-style: none; }
 .change-history-item { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 0; border-top: 1px solid var(--line); }
 .change-history-item > div { display: grid; min-width: 0; overflow-wrap: anywhere; }
