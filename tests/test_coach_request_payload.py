@@ -12,6 +12,9 @@ from backend.coach.request_payload import (
     RESUMED_STEPS_NOTICE,
     CoachRequestPayloadService,
 )
+from backend.providers.claude_messages_adapter import (
+    request_payload as claude_request_payload,
+)
 from backend.providers.openai_responses_adapter import request_payload
 
 PNG = (
@@ -235,6 +238,40 @@ class CoachRequestPayloadTests(unittest.TestCase):
         self.assertEqual(
             monday["instructions"][:prefix], tuesday["instructions"][:prefix]
         )
+
+    def test_claude_caches_the_shared_rules_as_their_own_system_block(self) -> None:
+        # #4288: the rules up to </coaching_rules> are the same for every turn
+        # and kind; only that block carries the cache marker.
+        rules = "<coaching_rules>\nRules.\n</coaching_rules>\n\n"
+        blocks = []
+        for message, day in (
+            ("Analysiere meine letzte Einheit", "Monday"),
+            ("Plane meine nächste Woche", "Tuesday, longer"),
+        ):
+            self.training_context.build.return_value = (
+                rules + f"<athlete_context>{day}</athlete_context>"
+            )
+            _, request = self.service.build(
+                message=message,
+                context=self.context,
+                command_receipts=[],
+                tools=[],
+                allow_mutations=True,
+                model="claude-sonnet-5-5",
+                thinking_level="low",
+                conversation_id="conversation-1",
+                attachments=[],
+                retain_openai_attachment_context=False,
+                has_prior_openai_attachments=False,
+            )
+            system = claude_request_payload(request)["system"]
+            self.assertEqual(len(system), 2)
+            self.assertEqual(system[0]["cache_control"], {"type": "ephemeral"})
+            self.assertNotIn("cache_control", system[1])
+            self.assertTrue(system[0]["text"].endswith(rules))
+            self.assertIn(day, system[1]["text"])
+            blocks.append(system[0]["text"])
+        self.assertEqual(blocks[0], blocks[1])
 
     def test_tool_round_instructions_keep_the_attachment_policy(self) -> None:
         model_instructions, _ = self.build()
