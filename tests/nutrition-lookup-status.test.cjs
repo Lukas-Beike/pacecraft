@@ -52,7 +52,8 @@ test("adding a product to a meal shows its receipt without waiting for the produ
   };
   const requests = [];
   const receipts = [];
-  const context = extractFunctions("nutrition.js", ["nutritionOutboxEdit", "addNutritionProductToMeal"], {
+  const context = extractFunctions("nutrition.js", ["nutritionOutboxEdit", "nutritionProductUseChoice", "addNutritionProductToMeal"], {
+    NUTRITION_MEAL_LABELS: {},
     state: { sessionGeneration: 1 },
     document: { querySelector: (selector) => nodes[selector] || null },
     nutritionProductUseAmount: () => ({ product: { id: "p1", name: "Skyr" }, amount: "50", unit: "g" }),
