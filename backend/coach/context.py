@@ -1554,13 +1554,13 @@ class CoachTrainingContextService:
             select=planning_context.selected,
         )
         prompt_context["local_planned_workouts"] = local_planned_workouts
+        prompt_context, truncations = bounded_coach_context_sections(
+            prompt_context, section_limits=self._section_limits
+        )
+        # The section-bounded day rows, which the total clip starts from (#4286).
         full_days = prompt_context.get("daily_planning_context")
         coach_daily_unit_refs(
             prompt_context, {row.get("id") for row in local_planned_workouts}
-        )
-
-        prompt_context, truncations = bounded_coach_context_sections(
-            prompt_context, section_limits=self._section_limits
         )
         library = []
         if selection is None or selection.include_library:
