@@ -261,7 +261,9 @@ class AthletePutRoutes:
         `Idempotency-Key` header (UUID) answers the stored result and writes
         nothing; the same key on another path answers 409.
 
-        Response: 200 as `GET /api/body/weight`.
+        Response: 200 as `GET /api/body/weight`, plus `remote` (the Garmin
+        Connect outcome, `running` while its push runs) and `remote_wahoo`
+        (`running`, `off` or `pending`); the sync status follows a running push.
 
         Errors: 400 "Das Datum fehlt oder ist ungültig."; 400 "Das Datum darf
         nicht in der Zukunft liegen."; 400 "Das Gewicht braucht einen Wert in

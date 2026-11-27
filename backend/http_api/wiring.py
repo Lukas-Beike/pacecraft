@@ -14,6 +14,7 @@ from backend.athlete.body_records import read_current_body
 from backend.backup.database import MAX_BACKUP_BYTES
 from backend.calendar import local as calendar_local
 from backend.canonical.records import Observation
+from backend.canonical.vocabulary import ProviderId
 from backend.coach import attachments as coach_attachments
 from backend.coach import streams as coach_streams
 from backend.coach.turn_undo import CoachTurnUndoService
@@ -175,6 +176,17 @@ def build_public_state(
             ctx.database(), key_value_service(), ctx.athlete.profile()
         )
 
+    def body_push_state() -> dict[str, Any]:
+        """The running and pending Garmin body and Wahoo weight pushes (#4267)."""
+        from backend.sync.garmin_body_push import push_state as garmin_push_state
+        from backend.sync.wahoo_weight_push import push_state as wahoo_push_state
+
+        with ctx.database().reader() as db:
+            return {
+                ProviderId.GARMIN.value: garmin_push_state(db, ctx.clock.now().date()),
+                ProviderId.WAHOO.value: wahoo_push_state(db),
+            }
+
     def sync_public_state_service() -> SyncPublicStateService:
         return SyncPublicStateService(
             ctx.config(),
@@ -187,6 +199,7 @@ def build_public_state(
             ctx.sync_job_queue.service(),
             state_version_service(),
             running_probes=running_probes,
+            body_push=body_push_state,
         )
 
     def performance_state_service() -> PublicPerformanceStateService:
@@ -552,10 +565,11 @@ def _athlete_write_routes(
         """Mirror an entered body day to Garmin Connect (#3403)."""
         return str(ctx.garmin.body_push_service().push(day))
 
-    def weight_changed(day: date) -> str:
-        """Also set the Wahoo profile weight, in the background (#3559)."""
-        ctx.wahoo.weight_push_service().start()
-        return body_changed(day)
+    def weight_changed(day: date) -> dict[str, str]:
+        """Also set the Wahoo profile weight, in the background (#3559); the
+        receipt names both outcomes (#4267)."""
+        wahoo = ctx.wahoo.weight_push_service().start()
+        return {"remote": body_changed(day), "remote_wahoo": wahoo}
 
     return (
         SettingsPutRoutes(ctx.settings),

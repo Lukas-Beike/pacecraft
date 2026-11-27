@@ -375,14 +375,24 @@ The system SHALL write, update or delete the Garmin Connect body-composition ent
 
 #### Scenario: Failure, pause and retry
 - **WHEN** Garmin fails, answers with a rate limit, or the rate-limit pause holds
-- **THEN** the local value stays, the day is pending and the receipt says "lokal gespeichert, Garmin-Sync fehlgeschlagen – wird erneut versucht", a later Garmin refresh retries at most five pending days of the last 30, and an upload whose answer was lost is searched for before any new upload.
+- **THEN** the local value stays, the day is pending and the receipt's push line says "Garmin-Sync fehlgeschlagen – wird erneut versucht.", a later Garmin refresh retries at most five pending days of the last 30, and an upload whose answer was lost is searched for before any new upload.
 
 #### Scenario: Body fat without a weight
 - **WHEN** a body fat is entered on a day without an entered weight
 - **THEN** it goes with that day's Garmin-measured weight that is not the echo of the app's own upload, and without one nothing is sent and the receipt says Garmin needs a weight on the same day.
 
+#### Scenario: The save does not wait for the push
+- **WHEN** a body value is saved, changed, removed or put back by the receipt's undo while Garmin or Wahoo is written
+- **THEN** the save answers at once with the push `running`, the sync status lists the running and pending days, and the receipt shows "An Garmin und Wahoo senden…" (only the connected targets) until it reads "✓ In Garmin und Wahoo gespeichert" or the pending text; a push still running two minutes later reads "Wird im Hintergrund weiter übertragen.", and a result after the toast closed shows in a second toast.
+
 Evidence:
 - `backend/sync/garmin_body_push.py:GarminBodyPushService.push`
+- `backend/sync/garmin_body_push.py:push_state`
+- `backend/sync/wahoo_weight_push.py:push_state`
+- `public/analysis.js:followBodyPush`
+- `tests/test_garmin_body_push.py:test_a_save_answers_at_once_while_garmin_is_slow`
+- `tests/test_garmin_body_push.py:test_a_restart_during_a_push_reads_as_pending`
+- `e2e/body-push-receipt.spec.js`
 - `backend/sync/garmin_body_push.py:GarminBodyPushService.retry_pending`
 - `backend/sync/executor.py:GarminJobAdapter.execute`
 - `tests/test_garmin_body_push.py:test_save_writes_one_entry_and_links_it`

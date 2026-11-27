@@ -77,7 +77,7 @@ when its marker changes. Each marker is built from local durable state
 | `provider_status` | object | `anthropic`, `openai` |
 | `service_tier` | object | `options`, `selected` |
 | `state_versions` | object | `activities`, `activity_feedback`, `chat`, `checkins`, `garmin`, `library`, `performance`, `plan`, `profile` |
-| `sync` | object | `finished_at`, `jobs`, `last_error`, `message`, `operation_id`, `phase`, `progress`, `running`, `started_at`, `status` |
+| `sync` | object | `body_push`, `finished_at`, `jobs`, `last_error`, `message`, `operation_id`, `phase`, `progress`, `running`, `started_at`, `status` |
 | `sync_settings` | object | `garmin_days`, `wahoo_days` |
 | `thinking_level` | object | `options`, `selected` |
 | `threshold_warnings` | null |  |

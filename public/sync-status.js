@@ -188,11 +188,14 @@ async function pollSyncStatus() {
   const controller = new AbortController();
   state.syncPoll.controller = controller;
   try {
+    const requestedAt = Date.now();
     const status = await api("/api/sync/status", { signal: controller.signal });
     handleSyncStatus(status);
     // The server answered with a valid session: entries that waited offline go out.
     void replayOutbox();
-    scheduleSyncPoll(status.running ? SYNC_POLL_ACTIVE_MS : SYNC_POLL_IDLE_MS);
+    // A body save's Garmin and Wahoo pushes keep the poll fast while it follows them (#4267).
+    const followed = typeof followBodyPush === "function" && followBodyPush(status.body_push, requestedAt);
+    scheduleSyncPoll(status.running || followed ? SYNC_POLL_ACTIVE_MS : SYNC_POLL_IDLE_MS);
   } catch (error) {
     if (error.name !== "AbortError") scheduleSyncPoll(SYNC_POLL_RETRY_MS);
   } finally {
