@@ -292,10 +292,10 @@ function nutritionEntryActions(item) {
     setSaving(estimate, true);
     try { await markNutritionEstimate(item); } finally { setSaving(estimate, false); }
   });
-  const remove = h("button", { type: "button", className: "secondary-button danger-button", "aria-label": `Mahlzeit löschen: ${item.description}` }, "Löschen");
+  const remove = messageActionButton("trash", `Mahlzeit löschen: ${item.description}`);
   remove.addEventListener("click", async () => {
     // One tap, one delete: the button waits for the request, as the removed dialog did.
-    setSaving(remove, true);
+    setSaving(remove, true, "");
     try { await deleteNutritionEntry(item); } finally { setSaving(remove, false); }
   });
   const keep = h("button", { type: "button", className: "secondary-button" }, "Als Mahlzeit speichern");
@@ -1111,25 +1111,30 @@ async function deleteNutritionProduct(product) {
   } catch (error) { if (generation === state.sessionGeneration) showNutritionProductError(database ? "Eintrag konnte nicht entfernt werden" : "Produkt konnte nicht gelöscht werden", error); }
 }
 
+// Edit and delete are the pencil and the trash icon of the card, the other actions words (#4279).
+function nutritionProductActionButton(kind, label, product) {
+  if (kind === "edit") return messageActionButton("edit", `Produkt bearbeiten: ${product.name}`);
+  if (kind === "trash") return messageActionButton("trash", `Produkt löschen: ${product.name}`);
+  return h("button", { type: "button", className: kind === "primary" ? "push-button" : "secondary-button" }, label);
+}
+
 function appendNutritionProductActions(card, product, local) {
   if (!local || product.local === false) {
     const button = h("button", { type: "button", className: "push-button" }, "Lokal speichern");
     button.addEventListener("click", () => saveNutritionProduct(product)); card.append(button);
   } else if (product.id) {
     const actions = h("div", "nutrition-actions");
-    for (const [label, primary, run] of [
-      ["Verwenden", true, () => useNutritionProduct(product)],
-      ["Bearbeiten", false, () => saveNutritionProduct(product)],
-      ["Aktualisieren", false, (button) => refreshNutritionProduct(product, button)],
-      ["Löschen", false, () => deleteNutritionProduct(product)],
+    for (const [label, kind, run] of [
+      ["Verwenden", "primary", () => useNutritionProduct(product)],
+      ["Bearbeiten", "edit", () => saveNutritionProduct(product)],
+      ["Aktualisieren", "plain", (button) => refreshNutritionProduct(product, button)],
+      ["Löschen", "trash", () => deleteNutritionProduct(product)],
     ]) {
-      let buttonClass = primary ? "push-button" : "secondary-button";
-      if (label === "Löschen") buttonClass += " danger-button";
-      const button = h("button", { type: "button", className: buttonClass }, label);
+      const button = nutritionProductActionButton(kind, label, product);
       button.addEventListener("click", async () => {
-        if (label !== "Löschen") { run(button); return; }
+        if (kind !== "trash") { run(button); return; }
         // One tap, one delete: the button waits for the request, as the removed dialog did.
-        setSaving(button, true);
+        setSaving(button, true, "");
         try { await run(button); } finally { setSaving(button, false); }
       });
       actions.append(button);

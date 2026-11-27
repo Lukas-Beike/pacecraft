@@ -41,9 +41,9 @@ function renderNutritionTemplates() {
 function nutritionTemplateCard(template) {
   const log = h("button", { type: "button" }, "Eintragen");
   log.addEventListener("click", () => openNutritionTemplateLog(template));
-  const edit = h("button", { type: "button", className: "secondary-button" }, "Bearbeiten");
+  const edit = messageActionButton("edit", `Gespeicherte Mahlzeit bearbeiten: ${template.name}`);
   edit.addEventListener("click", () => openNutritionTemplateEdit(template));
-  const remove = h("button", { type: "button", className: "secondary-button danger-button", "aria-label": `Gespeicherte Mahlzeit löschen: ${template.name}` }, "Löschen");
+  const remove = messageActionButton("trash", `Gespeicherte Mahlzeit löschen: ${template.name}`);
   remove.addEventListener("click", () => void deleteNutritionTemplate(template, remove));
   return h("article", { className: "nutrition-card", dataset: { templateId: template.id } },
     h("h3", null, template.name),
@@ -161,7 +161,7 @@ function nutritionComposeComponents(rows) {
 function nutritionComposeRow(rows, row, redraw) {
   const amount = h("input", { type: "number", value: row.amount, min: 0, max: 10000, step: "any", required: true, inputMode: "decimal", "aria-label": `Menge ${row.name}` });
   amount.addEventListener("input", () => { row.amount = amount.value; });
-  const remove = h("button", { type: "button", className: "secondary-button", "aria-label": `${row.name} entfernen` }, "×");
+  const remove = messageActionButton("trash", `${row.name} entfernen`);
   remove.addEventListener("click", () => { rows.splice(rows.indexOf(row), 1); redraw(); });
   return h("li", "edit-row", h("div", null, h("strong", null, row.name)), h("div", "edit-controls", h("label", "edit-amount", amount, h("span", null, row.unit)), h("div", "push", remove)));
 }

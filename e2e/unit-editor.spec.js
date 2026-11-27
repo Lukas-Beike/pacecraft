@@ -56,7 +56,8 @@ test("@responsive the Bibliothek creates, edits, restores and deletes an entry",
     await expect(entryCard().getByRole("button", { name: "Wiederherstellen" })).toBeVisible();
   };
   await archiveAndShow();
-  await expect(entryCard().getByRole("button")).toHaveText(["Wiederherstellen", "Endgültig löschen"]);
+  await expect(entryCard().getByRole("button")).toHaveText(["Wiederherstellen", ""]);
+  await expect(entryCard().getByRole("button", { name: /^Endgültig löschen: / })).toHaveCount(1);
   await entryCard().getByRole("button", { name: "Wiederherstellen" }).click();
   await expect(entryCard().locator(":scope > .planned-move-status")).toContainText("Wiederhergestellt: E2E Schwelle lang");
   await archiveAndShow();
@@ -141,7 +142,8 @@ test("@responsive the Pläne tab creates, archives, restores and deletes a train
   await expect(card().locator(":scope > .planned-move-status")).toContainText("Angelegt: E2E Aufbau");
   // The walk finds an active plan by this attribute (#4222).
   await expect(card()).toHaveAttribute("data-plan-status", "planned");
-  await expect(card().locator(":scope > .planned-activity-actions").getByRole("button")).toHaveText(["Bearbeiten", "Zeitraum ersetzen", "Archivieren", "Löschen"]);
+  await expect(card().locator(":scope > .planned-activity-actions").getByRole("button")).toHaveText(["", "Zeitraum ersetzen", "Archivieren", ""]);
+  await expect(card().locator(":scope > .planned-activity-actions").getByRole("button", { name: /^Plan (bearbeiten|löschen): / })).toHaveCount(2);
   // The plan never shows in the Bibliothek.
   await expect(page.locator("#library .library-card h4", { hasText: "E2E Aufbau" })).toHaveCount(0);
 
@@ -149,7 +151,8 @@ test("@responsive the Pläne tab creates, archives, restores and deletes a train
   await expect(lead).toContainText("Archiviert: E2E Aufbau");
   expect(posts.at(-1)).toEqual([expect.stringMatching(/\/update$/), { status: "archived", confirmed: true }]);
   await page.locator("#plans .chip", { hasText: "Archiviert" }).click();
-  await expect(card().locator(":scope > .planned-activity-actions").getByRole("button")).toHaveText(["Wiederherstellen", "Löschen"]);
+  await expect(card().locator(":scope > .planned-activity-actions").getByRole("button")).toHaveText(["Wiederherstellen", ""]);
+  await expect(card().locator(":scope > .planned-activity-actions").getByRole("button", { name: /^Plan löschen: / })).toHaveCount(1);
   await card().getByRole("button", { name: "Wiederherstellen" }).click();
   await expect(lead).toContainText("Wiederhergestellt: E2E Aufbau");
   await page.locator("#plans .chip", { hasText: "Aktiv" }).click();

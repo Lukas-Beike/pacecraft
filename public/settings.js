@@ -560,7 +560,9 @@ function recordedMaxHrNote(thresholds = state.data?.performance?.thresholds) {
 }
 
 function zoneEditButton(label, attributes) {
-  return h("button", { type: "button", className: "zone-edit", dataset: attributes }, label);
+  const button = messageActionButton("edit", label === "Anpassen" ? "Zonen anpassen" : "Zonen bearbeiten");
+  Object.assign(button.dataset, attributes);
+  return button;
 }
 
 // A small yellow "i" names the origin of a threshold row in a popover (athlete decision 2026-11-12, #2427).

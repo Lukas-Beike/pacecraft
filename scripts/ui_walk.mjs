@@ -230,7 +230,7 @@ async function walkCalendar(page, shot) {
 // skipped now as a FAIL. A new user-visible function adds its step here, with `since`: the first
 // release that carries it, so a walk of an older release skips it instead of failing (#3886).
 // Controls are limited to opening, expanding and paging ones (isOpener); the label guard stops the rest.
-export const STEP_KINDS = ["chart", "numbers", "options", "text"];
+export const STEP_KINDS = ["chart", "numbers", "options", "text", "labelled"];
 const OPENERS = [
   /(^|\s)summary$/,
   /^a\[data-(analysis|more|nutrition|plan)-segment="[a-z]+"\]$/,
@@ -291,12 +291,12 @@ export const STEPS = [
   // come with the two answers, "Mir geht's gut" (neutral) and "Ich bin krank" (filled); they are never pressed.
   { view: "plan", name: "Kalender: Infekt-Hinweis", covers: "#3762 infection hint, #3821 answers", pre: ['.planned-view-switch button[data-view="week"]'], ready: ".planned-day.is-today [data-infection-hint]:has(.infection-hint-actions > button.secondary-button + button:not(.secondary-button))", kind: "numbers", optional: true },
   // Read-only: the walk checks that today's day offers the check-in form, it opens none and saves nothing (#3953).
-  { view: "plan", name: "Kalender: Check-in", covers: "#3953 daily check-in", pre: ['.planned-view-switch button[data-view="week"]'], ready: ".planned-day.is-today [data-checkin] > button", kind: "text" },
+  { view: "plan", name: "Kalender: Check-in", covers: "#3953 daily check-in", pre: ['.planned-view-switch button[data-view="week"]'], ready: ".planned-day.is-today [data-checkin] > button", kind: "labelled" },
   // A planned unit with equipment, with "Löschen" or with fuelling advice may lie in a later week (2.1.26).
   { view: "plan", name: "Kalender: Schuh/Rad geplant", covers: "#3011 planned equipment chip", each: PLANNED, ...LATER, ready: '.planned-entry[open] .planned-equipment-chip[aria-label*=": "]', kind: "text", optional: true },
   { view: "plan", name: "Kalender: geplante Einheit", covers: "#2189 planned session", pre: ['button[aria-label="Nächste Woche"]'], each: PLANNED, ready: ".planned-entry[open] .planned-entry-details", kind: "text", optional: true, post: ['button[aria-label="Vorherige Woche"]'] },
   // Read-only: the walk checks that "Löschen" is there, it never presses it (#3027).
-  { view: "plan", name: "Kalender: Löschen", covers: "#3027 calendar delete", each: PLANNED, ...LATER, ready: ".planned-entry[open] .planned-activity-actions .danger-button", kind: "text", optional: true },
+  { view: "plan", name: "Kalender: Löschen", covers: "#3027 calendar delete", each: PLANNED, ...LATER, ready: '.planned-entry[open] .planned-activity-actions .message-action[aria-label^="Einheit löschen"]', kind: "labelled", optional: true },
   { view: "plan", name: "Kalender: Verpflegung", covers: "#2921 fuelling", each: PLANNED, ...LATER, ready: ".planned-entry[open] .planned-fuelling", kind: "numbers", optional: true },
   // Only a planned running step test carries its precondition note, so the step is optional (#3833).
   { view: "plan", name: "Kalender: Stufentest geplant", covers: "#3833 running step test", each: ".planned-entry:is(.is-planned, .is-today)[data-sport='Laufen'] > summary", ...LATER, ready: ".planned-entry[open] [data-step-test-note]", kind: "text", optional: true },
@@ -305,10 +305,10 @@ export const STEPS = [
   { view: "plan", name: "Monat: absolvierte Einheit", covers: "#2189 month", pre: [MONTH], each: ".planned-month-day:not([disabled]):has(.planned-month-mark.is-completed)", ...EARLIER_MONTH, opens: [DONE], ready: ".planned-entry[open] .planned-entry-details", kind: "text" },
   { view: "plan", name: "Kalender: Wochenansicht", covers: "#2189 week and month switch", pre: ['.planned-view-switch button[data-view="week"]'], ready: ".planned-week .planned-day", kind: "text" },
   // Read-only as well: the library card offers "Einplanen" and "Löschen"; the walk presses neither (#3028).
-  { view: "plan", name: "Bibliothek: Einplanen, Löschen", covers: "#3028 library actions", pre: [tab("plan", "library")], opens: ["#library details.library-sport > summary"], ready: "#library .library-card .planned-activity-actions .danger-button", kind: "text", optional: true, post: [tab("plan", "overview")] },
+  { view: "plan", name: "Bibliothek: Einplanen, Löschen", covers: "#3028 library actions", pre: [tab("plan", "library")], opens: ["#library details.library-sport > summary"], ready: '#library .library-card .planned-activity-actions .message-action[aria-label^="Bibliothekseintrag löschen"]', kind: "labelled", optional: true, post: [tab("plan", "overview")] },
   // Read-only: the walk checks that "+ Einheit" and "Bearbeiten" are there, it opens no editor and saves nothing (#3951).
   { view: "plan", name: "Bibliothek: Einheit anlegen, bearbeiten", covers: "#3951 library editor", pre: [tab("plan", "library")], opens: ["#library details.library-sport > summary"], ready: "#library .library-toolbar .secondary-button", kind: "text", post: [tab("plan", "overview")] },
-  { view: "plan", name: "Bibliothek: Bearbeiten", covers: "#4081 library card edit", pre: [tab("plan", "library")], opens: ["#library details.library-sport > summary"], ready: '#library .library-card .planned-activity-actions > .secondary-button:first-child', kind: "text", optional: true, post: [tab("plan", "overview")] },
+  { view: "plan", name: "Bibliothek: Bearbeiten", covers: "#4081 library card edit", pre: [tab("plan", "library")], opens: ["#library details.library-sport > summary"], ready: '#library .library-card .planned-activity-actions > .message-action[aria-label^="Bibliothekseintrag bearbeiten"]', kind: "labelled", optional: true, post: [tab("plan", "overview")] },
   // A unit is planned from the Bibliothek (#4053): "Einplanen" only opens its day strip, no day is pressed (#4081).
   { view: "plan", name: "Bibliothek: Einplanen, Tagesauswahl", covers: "#4081 library Einplanen strip", pre: [tab("plan", "library")], opens: ["#library details.library-sport > summary", '#library .library-card .planned-activity-actions .secondary-button[aria-expanded="false"]'], ready: "#library .library-card .planned-move-days:not([hidden])", kind: "text", optional: true, post: ['#library .library-card .planned-activity-actions .secondary-button[aria-expanded="true"]', tab("plan", "overview")] },
   // The plan choice shows only with an active training plan (#4054).
@@ -393,6 +393,8 @@ function probe([selector, kind, absent, never]) {
     numbers: (el) => /\d/.test(el.textContent),
     options: (el) => (el.matches("select") ? el : el.querySelector("select"))?.options.length >= 2,
     text: (el) => el.textContent.trim().length > 0,
+    // An icon button carries its name in aria-label (#4279).
+    labelled: (el) => (el.getAttribute("aria-label") || el.textContent).trim().length > 0,
   }[kind];
   const shown = (query) => [...document.querySelectorAll(query)].filter((el) => el.checkVisibility());
   if (shown(selector).some((el) => filled(el))) return never && shown(never).length ? "shown" : "ready";

@@ -24,7 +24,7 @@ function checkinRow(dateKey, todayKey, checkin) {
   if (receipt) status.append(receipt.text, ...(receipt.change?.id ? plannedMoveUndo(dateKey, receipt, status, checkinReceipts) : []));
   let open = null;
   if (dateKey === todayKey) {
-    open = h("button", { type: "button", className: "secondary-button" }, stored ? "Ändern" : "Check-in");
+    open = stored ? messageActionButton("edit", "Check-in ändern") : h("button", { type: "button", className: "secondary-button" }, "Check-in");
     open.addEventListener("click", () => void openCheckinForm(dateKey));
   }
   return h("div", { className: "planned-day-context planned-day-checkin", dataset: { checkin: dateKey } },
@@ -41,7 +41,7 @@ function checkinSelect(name, label, options, value) {
 
 // One complaint row; `onRemove` runs after the row is gone.
 function checkinComplaintRow({ area = "other", side = "none", severity = "" }, onRemove) {
-  const remove = h("button", { type: "button", className: "secondary-button", "aria-label": "Beschwerde entfernen" }, "×");
+  const remove = messageActionButton("trash", "Beschwerde entfernen");
   remove.addEventListener("click", () => { remove.closest(".checkin-complaint").remove(); onRemove(); });
   return h("div", "checkin-complaint",
     checkinSelect("area", "Bereich", Object.entries(COMPLAINT_AREA_LABELS), area),
