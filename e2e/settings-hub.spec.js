@@ -210,3 +210,27 @@ test("@responsive a stored equipment text shows read-only under Ausrüstung und 
   await page.evaluate(() => renderProfileEquipmentNote(""));
   await expect(note).toBeHidden();
 });
+
+test("@responsive the automatic morning check-in is an opt-in switch under App that the server keeps (#4274)", async ({ page }) => {
+  await openMore(page, "app");
+  const toggle = page.getByRole("checkbox", { name: "Morgen-Check-in automatisch" });
+  await expect(toggle).toBeVisible();
+  await expect(toggle).not.toBeChecked();
+  const saved = page.waitForResponse((response) => response.url().endsWith("/api/settings/automatic-turns") && response.request().method() === "PUT");
+  await toggle.check();
+  expect(await (await saved).json()).toEqual({ morning: true });
+  await page.reload();
+  await page.waitForFunction(() => state.initialStateLoaded);
+  await expect(toggle).toBeChecked();
+  // A refused save puts the switch back.
+  await page.route("**/api/settings/automatic-turns", (route) => route.fulfill({ status: 400, contentType: "application/json", body: JSON.stringify({ error: "Unbekannte automatische Coach-Einstellung." }) }));
+  await toggle.click();
+  await expect(toggle).toBeChecked();
+  await expect(toggle).toBeEnabled();
+  await page.unroute("**/api/settings/automatic-turns");
+  // The fixture is shared: switch it off again.
+  const reset = page.waitForResponse((response) => response.url().endsWith("/api/settings/automatic-turns") && response.request().method() === "PUT");
+  await toggle.uncheck();
+  expect(await (await reset).json()).toEqual({ morning: false });
+  await expect(toggle).not.toBeChecked();
+});

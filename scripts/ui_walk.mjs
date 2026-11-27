@@ -370,6 +370,8 @@ export const STEPS = [
   { view: "more", name: "Mehr: Wettkämpfe senden", covers: "#3838 competition send button", since: "2.2.12", pre: [tab("more", "connections")], opens: ["#connection-intervals > summary"], ready: "#competitionSendButton", kind: "text", optional: true },
   // The App tab: colour scheme and the push row (#3914); the walk never presses "Benachrichtigungen aktivieren".
   { view: "more", name: "Mehr: App", covers: "#3914 App tab and push notifications", since: "2.2.15", pre: [tab("more", "app")], ready: "#notificationSettings #notificationStatus", kind: "text" },
+  // Read-only: the walk checks that the switch is there, it never toggles it (#4274).
+  { view: "more", name: "Mehr: Morgen-Check-in automatisch", covers: "#4274 automatic morning check-in", since: "2.2.37", pre: [tab("more", "app")], ready: "#coachAutomaticTurns label.chip > span", kind: "text" },
   // Read-only: the walk checks that the history section is there, it opens none and undoes nothing (#3954).
   { view: "more", name: "Mehr: Verlauf der Änderungen", covers: "#3954 change history", pre: [tab("more", "operations")], ready: "#changeHistorySection > summary", kind: "text" },
   { view: "more", name: "Mehr: Betrieb, Änderungen", covers: "#2908 changelog", pre: [tab("more", "operations")], ready: ".release-changelog > ul > li, .release-changelog > .release-technical > summary", kind: "text", optional: true },

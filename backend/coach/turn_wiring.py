@@ -19,6 +19,7 @@ from backend.app.context import AppContext
 from backend.coach import attachments as coach_attachments
 from backend.coach import limits as coach_limits
 from backend.coach import streams as coach_streams
+from backend.coach.auto_turns import AutomaticCoachTurns
 from backend.coach.background_job import CoachBackgroundJobRunner
 from backend.coach.cancellation import CoachCancellationService
 from backend.coach.chat_turn import CoachChatTurnService
@@ -55,6 +56,7 @@ class CoachBackgroundJobServices:
     job_submission_service: Callable[[], CoachJobSubmissionService]
     cancellation_service: Callable[[], CoachCancellationService]
     background_job_runner: Callable[[], CoachBackgroundJobRunner]
+    automatic_turns: Callable[[], AutomaticCoachTurns]
 
 
 @dataclass(frozen=True)
@@ -140,6 +142,33 @@ def build_coach_background_jobs(
                 daemon=True,
             ).start()
 
+    def automatic_turns() -> AutomaticCoachTurns:
+        return AutomaticCoachTurns(
+            ctx.settings,
+            job_submission_service,
+            lambda: job_store().busy(),
+            lambda: ctx.coach_local.morning_checkin_state_service().state()[
+                "current_for_today"
+            ],
+            lambda day: ctx.coach_local.manual_morning_checkin_service().sleep_ready(
+                day
+            ),
+            ctx.clock.now,
+            ctx.database,
+            ctx.key_values,
+        )
+
+    def record_automatic(job: dict[str, Any], outcome: str, answer: str) -> None:
+        # The outcome is counted; an answer's push replaces "Morgenwerte" (#4274).
+        event = automatic_turns().record(job, outcome, answer)
+        if event is not None and ctx.push_checks is not None:
+            threading.Thread(
+                target=ctx.push_checks.notify,
+                args=(event,),
+                name="coach-automatic-push",
+                daemon=True,
+            ).start()
+
     def background_job_runner() -> CoachBackgroundJobRunner:
         return CoachBackgroundJobRunner(
             job_store(),
@@ -153,6 +182,7 @@ def build_coach_background_jobs(
             ctx.redactor,
             ctx.logger,
             on_answer=announce_answer,
+            on_automatic=record_automatic,
         )
 
     return CoachBackgroundJobServices(
@@ -161,6 +191,7 @@ def build_coach_background_jobs(
         job_submission_service,
         cancellation_service,
         background_job_runner,
+        automatic_turns,
     )
 
 

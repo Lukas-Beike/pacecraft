@@ -6,12 +6,24 @@ storage are supplied by the application composition root.
 
 from __future__ import annotations
 
+import json
 from collections.abc import Callable
 from typing import Any
 
 from backend.config import DEFAULT_OPENAI_BASE_URL, Config
 from backend.errors import AppError
 from backend.providers.claude_models import FAMILIES, SETTING_FAMILIES, setting_family
+
+# The athlete's opt-in automatic Coach turns (#4274): the morning check-in.
+AUTOMATIC_TURNS_KEY = "coach_automatic_turns"
+AUTOMATIC_TURNS = ("morning",)
+
+
+def automatic_turns_from(stored: Any) -> dict[str, bool]:
+    """The automatic turn switches of a decoded stored value, off unless true."""
+    stored = stored if isinstance(stored, dict) else {}
+    return {name: stored.get(name) is True for name in AUTOMATIC_TURNS}
+
 
 MODEL_OPTIONS = (
     {
@@ -277,3 +289,22 @@ class SettingsService:
             )
         self._set_value("selected_service_tier", tier_id)
         return {"service_tier": tier_id}
+
+    def automatic_turns(self) -> dict[str, bool]:
+        """The athlete's opt-in automatic Coach turns (#4274), all off by default."""
+        try:
+            stored = json.loads(self._get_value(AUTOMATIC_TURNS_KEY) or "{}")
+        except ValueError:
+            stored = {}
+        return automatic_turns_from(stored)
+
+    def save_automatic_turns(self, values: Any) -> dict[str, bool]:
+        """Switch automatic turns on or off; only known switches with true/false."""
+        if not isinstance(values, dict) or not values:
+            raise AppError(400, "Unbekannte automatische Coach-Einstellung.")
+        for name, value in values.items():
+            if name not in AUTOMATIC_TURNS or not isinstance(value, bool):
+                raise AppError(400, "Unbekannte automatische Coach-Einstellung.")
+        updated = self.automatic_turns() | values
+        self._set_value(AUTOMATIC_TURNS_KEY, json.dumps(updated, sort_keys=True))
+        return updated

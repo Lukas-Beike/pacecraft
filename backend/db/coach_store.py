@@ -365,6 +365,17 @@ def draft_user_message_ids(db: Any) -> list[int]:
     ]
 
 
+def automatic_message_ids(db: Any) -> list[int]:
+    """The stored prompts of automatic turns (#4274), whose turn ids start ``auto:``."""
+    return [
+        row["id"]
+        for row in db.execute(
+            "SELECT id FROM messages WHERE role='user' "
+            "AND substr(client_turn_id, 1, 5)='auto:'"
+        ).fetchall()
+    ]
+
+
 def draft_artifact_refs(db: Any) -> list[Any]:
     """Drafts whose turn has a local message, with the user message that started it."""
     return db.execute(

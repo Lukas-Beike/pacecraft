@@ -56,6 +56,7 @@ from backend.planning.library_service import archive_purge_counts
 from backend.provider_credentials import garmin_tokens_connected
 from backend.providers.garmin import GarminClientFactory
 from backend.providers.state import ProviderStateService
+from backend.coach.auto_turns import diagnostics as automatic_turn_diagnostics
 from backend.push.service import diagnostics as push_diagnostics
 from backend.runtime.memory import process_memory, process_settings
 from backend.runtime.ports import ProviderCoverageReader
@@ -447,6 +448,11 @@ class DiagnosticReportService:
                 "push_notifications": section(
                     "push_notifications",
                     lambda: push_diagnostics(key_values, db),
+                ),
+                # Automatic Coach turns, counts only (#4274).
+                "coach_automatic_turns": section(
+                    "coach_automatic_turns",
+                    lambda: automatic_turn_diagnostics(key_values, db),
                 ),
                 "plan_sync": section(
                     "plan_sync",

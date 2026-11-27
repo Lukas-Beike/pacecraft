@@ -712,6 +712,17 @@ class PushChecksTests(unittest.TestCase):
             "INSERT INTO observations (metric, observed_on, state) "
             "VALUES ('sleep_duration', '2026-11-22', 'active')"
         )
+        # The automatic morning check-in announces the night itself (#4274).
+        self.connection.execute(
+            "INSERT OR REPLACE INTO kv VALUES ('coach_automatic_turns', ?, '')",
+            ('{"morning": true}',),
+        )
+        self.checks.check()
+        self.assertEqual(self._titled("Morgenwerte"), [])
+        self.connection.execute(
+            "INSERT OR REPLACE INTO kv VALUES ('coach_automatic_turns', ?, '')",
+            ('{"morning": false}',),
+        )
         self._announced(
             "Morgenwerte", "Die Werte der Nacht sind da.", "#analysis/recovery"
         )

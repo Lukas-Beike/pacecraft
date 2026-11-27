@@ -27,15 +27,18 @@ from backend.coach import dialogue as coach_dialogue
 from backend.coach import service as coach_service
 from backend.coach import streams as coach_streams
 from backend.coach import structured_tool_round
+from backend.coach.auto_turns import MORNING_MESSAGE
 from backend.coach.chat_turn import CoachChatTurnService
 from backend.coach.dialogue import validate_request
 from backend.coach.dialogue_action import CoachDialogueActionService
+from backend.coach.morning import ManualMorningCheckinService
 from backend.coach.outcomes import unresolved_coach_steps
 from backend.coach.receipt_compaction import compact_receipt
 from backend.coach.tool_dispatch import CoachToolDispatchService
 from backend.db.repositories import FoodDatabaseEntryRepository
 from backend.db.schema import initialize_schema
 from backend.errors import AppError
+from backend.settings import SettingsService
 from backend.sync import queue as sync_queue
 from backend.sync.adaptive import IllnessPauseSyncService
 
@@ -226,7 +229,7 @@ class DialogueHarness:
             receipt = server.COACH_TURNS.chat_turn_service().run(
                 message,
                 client_turn_id=turn or f"turn-{self.counter}",
-                session_csrf_hash="synthetic-session",
+                session_csrf_hash=kwargs.pop("session_csrf_hash", "synthetic-session"),
                 **kwargs,
             )
         if self.auto_approve_remote_proposals:
@@ -1642,6 +1645,81 @@ class CoachDialogueTests(DialogueHarness, unittest.TestCase):
                 for tool in model.call_args_list[0].args[0]["tools"]
             )
         )
+
+    def test_an_automatic_morning_turn_only_reads_and_authorizes_nothing_later(self):
+        automatic = server.COACH_BACKGROUND_JOBS.automatic_turns
+        with (
+            patch.object(SettingsService, "coach_ready", return_value=True),
+            patch.object(ManualMorningCheckinService, "sleep_ready", return_value=True),
+        ):
+            self.assertFalse(automatic().check())  # switched off by default
+            server.APP.settings.save_automatic_turns({"morning": True})
+            self.assertTrue(automatic().check())
+            self.assertFalse(automatic().check())  # one attempt a day
+        turn_id = "auto:morning:2026-09-07"
+        with server.database_manager().unit_of_work() as db:
+            rows = db.execute(
+                "SELECT client_turn_id, intent, receipt FROM coach_commands"
+            ).fetchall()
+            prompt = db.execute(
+                "SELECT id FROM messages WHERE client_turn_id=?", (turn_id,)
+            ).fetchone()
+        self.assertEqual([row["client_turn_id"] for row in rows], [turn_id])
+        self.assertEqual(json.loads(rows[0]["intent"]), {"allow_mutations": False})
+        receipt = json.loads(rows[0]["receipt"])
+        self.assertIs(receipt["automatic"], True)
+        self.assertEqual(receipt["request_kind"], "morning_checkin")
+        # Layer one: the model is offered only read tools. Layer two: a write
+        # tool it calls anyway is refused by the server; nothing is stored.
+        result, model = self.turn(
+            MORNING_MESSAGE,
+            [
+                lambda _: self.call(
+                    "save_checkin", {"payload": {"notes": "x"}}, ["local_checkin"]
+                ),
+                {"output_text": "Beratung."},
+            ],
+            turn=turn_id,
+            background_job=True,
+            session_csrf_hash="",
+        )
+        self.assertTrue(
+            all(
+                tool["name"] in server.STRUCTURED_READ_ONLY_TOOLS
+                for tool in model.call_args_list[0].args[0]["tools"]
+            )
+        )
+        self.assertEqual(result["status"], "failed")
+        with server.database_manager().unit_of_work() as db:
+            self.assertIsNone(db.execute("SELECT 1 FROM athlete_checkins").fetchone())
+        # A later athlete turn can never cite the automatic prompt as its request.
+        with server.database_manager().unit_of_work() as db:
+            server.CHAT_REPOSITORY.add(
+                db, "user", "Synthetic athlete request", client_turn_id="later"
+            )
+        context = server.APP.coach_conversation.dialogue_read_service().context("later")
+        request = self.request(["local_checkin"]) | {
+            "source_message_ids": [prompt["id"]]
+        }
+        with self.assertRaises(AppError) as cited:
+            server.COACH_LOCAL.dialogue_action_service().classify(
+                "save_checkin", {"_request": request}, context, allow_mutations=True
+            )
+        self.assertEqual(cited.exception.reason, "request_invalid")
+        # Neither an athlete request nor a streamed turn may use an automatic id.
+        for submit in (
+            lambda: server.COACH_BACKGROUND_JOBS.job_submission_service().enqueue(
+                "Synthetic", "auto:morning:2026-09-08", "synthetic-session"
+            ),
+            lambda: server.COACH_TURNS.chat_turn_service().run(
+                "Synthetic",
+                client_turn_id="auto:morning:2026-09-08",
+                session_csrf_hash="synthetic-session",
+            ),
+        ):
+            with self.assertRaises(AppError) as refused:
+                submit()
+            self.assertEqual(refused.exception.reason, "invalid_client_turn")
 
     def test_invalid_arguments_can_be_repaired_in_same_dialogue(self):
         result, model = self.turn(

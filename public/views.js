@@ -845,6 +845,7 @@ function renderSettings(data) {
   renderSettingsUsage(data);
   renderUsageMonth(data);
   void renderNotificationStatus();
+  renderAutomaticTurns(data);
   renderProviderAttention(data);
   renderConnectionsSyncProgress(data);
   renderProviderFreshness(data);

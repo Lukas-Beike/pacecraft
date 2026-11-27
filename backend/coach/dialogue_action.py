@@ -106,6 +106,8 @@ class CoachDialogueActionService:
         # A referenced draft may predate the bounded recent dialogue.
         with self._database_manager.unit_of_work() as db:
             user_ids.update(coach_store.draft_user_message_ids(db))
+            # The prompt of an automatic turn is no athlete request (#4274).
+            user_ids.difference_update(coach_store.automatic_message_ids(db))
         try:
             request = validate_request(
                 arguments.pop("_request", None),

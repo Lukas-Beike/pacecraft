@@ -8,6 +8,7 @@ from collections.abc import Callable
 from datetime import date
 from typing import Any, Protocol
 
+from backend.coach.authorization import automatic_read_only
 from backend.coach.chat_turn import CoachChatTurnService
 from backend.coach.job_store import MAX_FAILED_ATTEMPTS, CoachJobStore
 from backend.coach.morning import ManualMorningCheckinService
@@ -23,6 +24,11 @@ from backend.sync.observation import operation_error_code
 # A morning check-in waits up to two hours, in quarter-hour steps, for the night.
 MORNING_SLEEP_WAIT_SECONDS = 15 * 60
 MORNING_SLEEP_MAX_WAITS = 8
+
+
+def _automatic(job: dict[str, Any]) -> bool:
+    """The job is an automatic read-only turn the server queued (#4274)."""
+    return automatic_read_only(job.get("receipt"), job.get("intent"))
 
 
 class CoachSessionBinding(Protocol):
@@ -47,8 +53,10 @@ class CoachBackgroundJobRunner:
         redactor: Redactor,
         logger: logging.Logger,
         on_answer: Callable[[str], None] | None = None,
+        on_automatic: Callable[[dict[str, Any], str, str], None] | None = None,
     ) -> None:
         self._on_answer = on_answer
+        self._on_automatic = on_automatic
         self._jobs = jobs
         self._chat_turn = chat_turn
         self._sessions = sessions
@@ -64,7 +72,7 @@ class CoachBackgroundJobRunner:
         """Discard generations invalidated by restore without failure writes."""
         try:
             with self._maintenance.operation(job["_maintenance_generation"]):
-                answered = self._run_claimed(job)
+                outcome, answer = self._run_claimed(job)
         except AppError as exc:
             if exc.reason not in {"operation_invalidated", "maintenance"}:
                 self._end_exhausted_job(job)
@@ -73,19 +81,21 @@ class CoachBackgroundJobRunner:
             self._end_exhausted_job(job)
             raise
         else:
-            if answered:
-                self._announce(job)
+            self._announce(job, outcome, answer)
 
-    def _announce(self, job: dict[str, Any]) -> None:
-        """Tell the athlete's phone the answer is there (#3914).
+    def _announce(self, job: dict[str, Any], outcome: str, answer: str) -> None:
+        """Tell the athlete's phone the answer is there (#3914); an automatic
+        turn (#4274) reports its outcome instead, also a failed one.
 
-        Every job here is the athlete's own stored message; it runs after the
-        turn's operation, so a failing delivery never fails or holds the turn.
+        It runs after the turn's operation, so a failing delivery never fails or
+        holds the turn.
         """
-        if self._on_answer is None:
-            return
+        automatic = _automatic(job)
         try:
-            self._on_answer(str(job.get("client_turn_id") or ""))
+            if automatic and self._on_automatic and outcome in {"completed", "failed"}:
+                self._on_automatic(job, outcome, answer)
+            elif not automatic and self._on_answer and answer:
+                self._on_answer(str(job.get("client_turn_id") or ""))
         except Exception:  # noqa: BLE001 - the answer is stored; the push is a courtesy
             self._logger.warning(
                 "Coach answer notification failed",
@@ -117,19 +127,26 @@ class CoachBackgroundJobRunner:
             )
             if failed and operation_id:
                 self._publish_receipt(str(operation_id), failed)
+            self._announce(job, "failed", "")
         except Exception:  # the original failure is re-raised to the worker
             self._logger.exception(
                 "Coach background job could not be ended after repeated failures",
                 extra={"event": "coach_background_job_exhaustion_failed"},
             )
 
-    def _run_claimed(self, job: dict[str, Any]) -> bool:
-        """Run the job; whether the turn finished with an answer."""
+    def _run_claimed(self, job: dict[str, Any]) -> tuple[str, str]:
+        """Run the job: ``completed`` with the answer text (empty without one),
+        ``failed`` or ``queued`` (waits for a slot or the night's data)."""
         receipt = job.get("receipt") if isinstance(job.get("receipt"), dict) else {}
         operation_id = str(receipt.get("operation_id") or "")
         client_turn_id = str(job.get("client_turn_id") or "")
-        session_csrf_hash = self._sessions().restore_coach_session_csrf_hash(
-            receipt.get("session_key")
+        # An automatic read-only turn belongs to no login session (#4274).
+        session_csrf_hash = (
+            ""
+            if _automatic(job)
+            else self._sessions().restore_coach_session_csrf_hash(
+                receipt.get("session_key")
+            )
         )
         cancel_event = self._streams.get_or_create_background_event(operation_id)
         if self._jobs.cancel_requested(client_turn_id):
@@ -148,14 +165,20 @@ class CoachBackgroundJobRunner:
                 stream_attached,
             )
             self._publish_receipt(operation_id, result)
-            return result.get("status") == "completed" and bool(result.get("message"))
+            if result.get("status") != "completed":
+                return "failed", ""
+            message = result.get("message")
+            if isinstance(message, dict):
+                message = message.get("content")
+            return "completed", str(message or "")
         except AppError as exc:
-            self._handle_app_error(client_turn_id, operation_id, exc)
+            if self._handle_app_error(client_turn_id, operation_id, exc):
+                return "queued", ""
         except Exception as exc:  # noqa: BLE001 - terminal worker boundary must persist unexpected failures
             self._handle_exception(client_turn_id, operation_id, exc)
         finally:
             self._streams.remove_background_event(operation_id)
-        return False
+        return "failed", ""
 
     def _delta_callback(
         self,
@@ -189,7 +212,7 @@ class CoachBackgroundJobRunner:
         cancel_event: threading.Event,
         stream_attached: bool,
     ) -> dict[str, Any]:
-        if not session_csrf_hash:
+        if not session_csrf_hash and not _automatic(job):
             raise AppError(
                 401,
                 "Die Sitzung des Coach-Auftrags ist abgelaufen.",
@@ -233,7 +256,8 @@ class CoachBackgroundJobRunner:
 
     def _handle_app_error(
         self, client_turn_id: str, operation_id: str, exc: AppError
-    ) -> None:
+    ) -> bool:
+        """Requeue or end the job after ``exc``; True when it waits in the queue."""
         requeued = False
         if exc.reason in {"chat_queue_full", "chat_request_timeout"}:
             self._jobs.requeue(client_turn_id, exc.reason)
@@ -262,11 +286,11 @@ class CoachBackgroundJobRunner:
                     "operation_id": operation_id,
                 },
             )
-            return
+            return True
         failed = self._failures().persist(client_turn_id, {}, exc)
         if failed:
             self._publish_receipt(operation_id, failed)
-            return
+            return False
         self._streams.publish(
             operation_id,
             "error",
@@ -275,6 +299,7 @@ class CoachBackgroundJobRunner:
                 "message": self._redactor.redact_text(exc.message)[:1000],
             },
         )
+        return False
 
     def _handle_exception(
         self, client_turn_id: str, operation_id: str, exc: Exception

@@ -35,6 +35,7 @@ from backend.push.events import (
     weather_event,
 )
 from backend.push.service import Notification, PushService
+from backend.settings import AUTOMATIC_TURNS_KEY, automatic_turns_from
 from backend.sync.retry_hold import ATHLETE_ACTION_ERROR_CODES
 
 _LOGGER = logging.getLogger("intervals_coach")
@@ -120,12 +121,16 @@ class PushChecks:
             return []
         today = local.date()
         with self._database().reader() as db:
+            # The automatic morning check-in announces the night itself (#4274).
+            automatic = automatic_turns_from(
+                self._push.stored(db, AUTOMATIC_TURNS_KEY, {})
+            )
             recent = new_sessions(db, since, today)
             units = planned_units(db, today, today + timedelta(days=1))
             found = [
                 *provider_problems(db, since),
                 *upcoming_competitions(db, today),
-                morning_data_event(db, today),
+                None if automatic["morning"] else morning_data_event(db, today),
                 checkin_event(db, today),
                 new_activity_event(recent),
             ]

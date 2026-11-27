@@ -135,7 +135,8 @@ def build_sync_schedulers(
     def housekeeping() -> None:
         """Write the nightly backup when it is due (#3760), first so a failing
         later step never skips it; then prune finished jobs and purge archived
-        library templates (#3141); last, send the new push notifications (#3914)."""
+        library templates (#3141); then send the new push notifications (#3914);
+        last, queue a due automatic Coach turn (#4274)."""
         if ctx.backup is not None:
             with ctx.maintenance.operation():
                 ctx.backup.run_nightly()
@@ -147,6 +148,10 @@ def build_sync_schedulers(
             # database steps only, never around a push service call.
             with background_writer():
                 ctx.push_checks.check()
+        if ctx.coach_background_jobs is not None:
+            # Only queues the job; the Coach worker runs it.
+            with ctx.maintenance.operation(), background_writer():
+                ctx.coach_background_jobs.automatic_turns().check()
 
     def daily_loop() -> scheduler.DailySyncLoop:
         """The unstarted periodic loop and its stop event."""
