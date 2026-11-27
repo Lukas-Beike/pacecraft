@@ -25,8 +25,11 @@ async function mockDiary(page) {
   await page.route("**/api/nutrition/entry/components?**", (route) => route.fulfill({ json: { ok: true, id: MEAL.id, revision: "rev-1", components: COMPONENTS } }));
   await page.route("**/api/nutrition/products/lookup", (route) => route.fulfill({ json: { ok: true, foods: FOODS, local: false } }));
   await page.route("**/api/nutrition/entry/components", (route) => {
-    posts.push(route.request().postDataJSON());
-    entry = { ...MEAL, kcal: 100 };
+    const body = route.request().postDataJSON();
+    posts.push(body);
+    // An added component (#4270) joins the stored ones, so the card lists it.
+    const added = (body.edits || []).filter((edit) => edit.add).map(({ add }) => component("Tofu gebacken", add.amount, add.unit, 192, "BLS 4.0"));
+    entry = { ...MEAL, kcal: 100, nutrition_basis: { kind: "composite", components: [...COMPONENTS, ...added] } };
     return route.fulfill({ json: { ok: true, entry, change: { id: "change-edit", entity_type: "nutrition_entry", action: "update", after_hash: "hash" } } });
   });
   await page.route("**/api/change-history/undo", (route) => { entry = MEAL; return route.fulfill({ json: { ok: true } }); });
@@ -77,6 +80,40 @@ test("@responsive the pencil edits a meal's components: remove, restore, resize 
   await expect(card).toContainText("100 kcal");
   await page.locator("#nutritionStatus").getByRole("button", { name: "Rückgängig" }).click();
   await expect(card).toContainText("669 kcal");
+});
+
+// #4270: "+ Hinzufügen" under the rows reuses the swap search; the new row is stored with "Speichern" only.
+test("@responsive the dialog adds a component from the search, and Abbrechen stores nothing", async ({ page }) => {
+  const posts = await mockDiary(page);
+  await page.goto("/#nutrition/diary");
+  const card = page.locator("#nutritionEntries .nutrition-card");
+  const dialog = page.locator("#nutritionMealEditDialog");
+  const rows = dialog.locator(".edit-row");
+  const addTofu = async () => {
+    await card.getByRole("button", { name: "Mahlzeit bearbeiten: Reis mit Tofu" }).click();
+    await dialog.getByRole("button", { name: "+ Hinzufügen" }).click();
+    await expect(dialog.locator("#nutritionMealEditTitle")).toHaveText("Zutat hinzufügen");
+    await dialog.getByLabel("Datenbank durchsuchen").fill("Tofu");
+    await dialog.getByRole("button", { name: "Suchen" }).click();
+    // Any unit: the new row asks for its amount in the food's own unit.
+    await expect(dialog.locator(".swap-result")).toHaveCount(2);
+    await dialog.locator(".swap-result", { hasText: "Tofu gebacken" }).click();
+    await expect(rows).toHaveCount(4);
+    await expect(rows.nth(3)).toContainText("BLS 4.0 · neu");
+    await expect(rows.nth(3).getByRole("spinbutton")).toBeFocused();
+  };
+  await addTofu();
+  await dialog.getByRole("button", { name: "Abbrechen" }).click();
+  await expect(dialog).toBeHidden();
+  expect(posts).toEqual([]);
+
+  await addTofu();
+  await rows.nth(3).getByRole("spinbutton").fill("120");
+  await dialog.locator("#nutritionMealEditSave").click();
+  await expect(dialog).toBeHidden();
+  expect(posts).toEqual([{ id: MEAL.id, revision: "rev-1", edits: [{ add: { food_id: "bls:tofu-gebacken", amount: 120, unit: "g" } }] }]);
+  await expect(page.locator("#nutritionStatus")).toContainText("Mahlzeit geändert.");
+  await expect(card).toContainText("Tofu gebacken");
 });
 
 test("@responsive the dialog changes a meal's day, type and time with its components, then undoes them", async ({ page }) => {

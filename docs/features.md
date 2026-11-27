@@ -279,7 +279,7 @@
   The rating reads every stored run in the background build and appears once it finished.
 - **Race Prediction Engine**: Garmin Connect race predictions for 5K, 10K, half marathon and marathon, shown in the running section.
 - **Sport-Specific Intensity Distributions**: Heart rate, power and run pace zone distribution analysis across running, outdoor cycling, and indoor/virtual cycling activities; the Analysis load tab draws them as HF-, Power- and Pace-Zonen below the training focus. Reports count each session's seconds from its streams with the local zones in effect on the session day (stored with the session analysis); a session without streams shows its Garmin watch zones in a separate "(Gerät)" distribution, never added to local zone seconds. Intervals.icu zone times are not read.
-- **Nutritional Intake Logging**: Integrated tracking of daily caloric intake and macronutrient splits (protein, carbohydrates, fats) stored alongside training load.
+- **Nutritional Intake Logging**: Integrated tracking of daily caloric intake and macronutrient splits (protein, carbohydrates, fats) stored alongside training load. A logged meal's components can be removed, resized, swapped or added ("+ Hinzufügen", #4270) in "Mahlzeit bearbeiten", stored together with one undo.
 - **Explicit Metric Freshness**: Clear differentiation between observation timestamps and synchronization retrieval times to prevent outdated metrics appearing fresh.
 
 ## Multimodal Inputs & File Attachments

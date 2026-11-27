@@ -638,8 +638,8 @@ class NutritionPostRoutes:
         handler.send_json(200, {"ok": True, "entry": entry, **_change(changes)})
 
     def _edit_components(self, handler: Any, _request: RouteRequest) -> None:
-        """Remove, resize or swap components of a logged meal, and change its day, type
-        or time (#3948, #3985).
+        """Remove, resize, swap or add components of a logged meal, and change its day,
+        type or time (#3948, #3985, #4270).
 
         Request: JSON body `{"id": string, "revision": string, "edits": [...], "meal": {...}}`;
         `edits` and `meal` are each optional, one is required. `meal` changes the meal
@@ -652,7 +652,9 @@ class NutritionPostRoutes:
         `GET /api/nutrition/entry/components`) and is one of `{"index", "remove": true}`,
         `{"index", "amount"}` (above 0 up to 10000, the same unit) or a swap
         `{"index", "food_id"}` / `{"index", "product_id"}` with optional `amount` and
-        `unit` (default: the component's own, so the amount stays). Every index at
+        `unit` (default: the component's own, so the amount stays). An add
+        `{"add": {"food_id" | "product_id", "amount", "unit"}}` names no index and
+        appends one component, at most 20 in all. Every index at
         most once, other components stay as stored. The server scales the nutrients from
         the stored snapshot or calculates them from the food or product and the amount;
         the client sends none. The meal becomes a composite and keeps its description;
@@ -665,10 +667,11 @@ class NutritionPostRoutes:
         409 `meal_changed` "Die Mahlzeit hat sich geändert. Bitte erneut öffnen." when the
         components differ from the `revision`; 400 "Ungültige Änderung der
         Mahlzeitenkomponenten." for a malformed edit; 400
-        `last_component` when nothing would remain; 400 "Ungültige Komponentenmenge." or
+        `last_component` when nothing would remain; 400 "Eine Mahlzeit kann höchstens 20
+        Komponenten enthalten."; 400 "Ungültige Komponentenmenge." or
         "Komponentenmenge muss größer als 0 sein."; 404 `food_not_found`, 404
         `nutrition_product_not_found`, 409 `nutrition_product_archived`, 400
-        `food_unit_mismatch` and 400 `food_energy_missing` for a swap target.
+        `food_unit_mismatch` and 400 `food_energy_missing` for a swap or add target.
         """
         payload = _read_object(handler)
         with change_history.collect_changes() as changes:
