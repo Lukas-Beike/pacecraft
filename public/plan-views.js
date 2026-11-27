@@ -1637,11 +1637,10 @@ function plannedUnitActions(entry, dateKey, todayKey) {
   const [remove, confirm] = plannedDeleteControls(entry, dateKey, key);
   const edit = messageActionButton("edit", `Einheit bearbeiten: ${entry.name || "Trainingseinheit"}`);
   edit.addEventListener("click", () => openUnitEditor({ kind: "unit", entry, onSaved: plannedUnitSaved }));
-  const [archive, archiveNote] = plannedArchiveControls(entry, dateKey);
   // The day strip opens right under "Verschieben", not below "Löschen" (#3932 K-11).
   const [garminOpen, garminAsk, garminStatus] = plannedGarminRemoval(entry) || [null, null, null];
   // Without a Garmin copy the removal parts are null, and `append(null)` would write the text "null" (#4285).
-  return [h("div", "planned-activity-actions", edit, h("div", "planned-move-group", toggle, days), coach, garminOpen, archive, remove), confirm, archiveNote, garminAsk, garminStatus, status].filter(Boolean);
+  return [h("div", "planned-activity-actions", edit, h("div", "planned-move-group", toggle, days), coach, garminOpen, remove), confirm, garminAsk, garminStatus, status].filter(Boolean);
 }
 
 // "Bearbeiten" and "Archivieren" (#3950): the unit editor over the Coach's change batch; the card shows the receipt
@@ -1654,28 +1653,6 @@ async function plannedUnitSaved(result, editor) {
   showPlannedDay(editor.date);
   await globalThis.load?.();
   announcePlanChange(text);
-}
-
-// "Archivieren" takes the unit out of the calendar at once; the day's receipt offers "Rückgängig".
-function plannedArchiveControls(entry, dateKey) {
-  const name = entry.name || "Trainingseinheit";
-  const [archive, note] = inCardAction(h("button", { type: "button", className: "secondary-button" }, "Archivieren"), async () => {
-    let result;
-    try {
-      result = await api(`/api/planned-units/${encodeURIComponent(entry.local_id)}/archive`, { method: "POST", body: JSON.stringify({ confirmed: true, expected_payload_hash: entry.payload_hash }) });
-    } catch (error) {
-      // A changed unit reloads, so the card names the reason and the next try sends the current hash.
-      if (error.status === 409) {
-        plannedMoveReceipts.set(plannedEntryKey(entry, dateKey), { text: error.message });
-        await globalThis.load?.();
-      }
-      throw error;
-    }
-    plannedDeleteReceipts.set(String(entry.local_id), { day: dateKey, text: `Archiviert: ${name}`, change: result.change, from: dateKey });
-    await globalThis.load?.();
-    announcePlanChange(`Archiviert: ${name}`);
-  });
-  return [archive, note];
 }
 
 // The strip asks the server which of its days a move would be refused for and marks them with what is in the
@@ -3237,8 +3214,8 @@ function libraryWahooRow(workout) {
   return row;
 }
 
-// "Einplanen" and "Löschen" without the Coach (#3028): the calendar's day strip plans a local unit from the
-// entry; "Löschen" archives the entry and units planned from it stay. Each receipt offers "Rückgängig".
+// "Einplanen" and "Archivieren" without the Coach (#3028, #4307): the calendar's day strip plans a local unit from
+// the entry; "Archivieren" archives it and units planned from it stay. Each receipt offers "Rückgängig".
 const libraryReceipts = new Map();
 // Entries whose day strip is open, so a background reload's redraw keeps it open (#3980).
 const libraryOpenStrips = new Set();
@@ -3291,13 +3268,13 @@ function libraryActions(workout) {
   };
   toggle.addEventListener("click", () => showDays(days.hidden));
   if (libraryOpenStrips.has(id)) showDays(true);
-  const [remove, confirm] = inCardDelete(async () => {
+  const [remove, confirm] = inCardAction(h("button", { type: "button", className: "secondary-button" }, "Archivieren"), async () => {
     const result = await api(`/api/library/${encodeURIComponent(id)}/archive`, { method: "POST", body: JSON.stringify({ confirmed: true }) });
     libraryReceipts.clear();
-    libraryReceipts.set(id, { text: `Gelöscht: ${name}`, change: result.change });
+    libraryReceipts.set(id, { text: `Archiviert: ${name}`, change: result.change });
     await globalThis.load?.();
-    announcePlanChange(`Gelöscht: ${name}`);
-  }, `Bibliothekseintrag löschen: ${name}`);
+    announcePlanChange(`Archiviert: ${name}`);
+  });
   const receipt = libraryReceipts.get(id);
   if (receipt) libraryReceiptLine(status, id, receipt);
   const edit = messageActionButton("edit", `Bibliothekseintrag bearbeiten: ${name}`);
@@ -3448,7 +3425,7 @@ function libraryToolbar() {
   return h("div", "library-toolbar", group, add);
 }
 
-// An archived entry: "Wiederherstellen", and "Endgültig löschen" for one no provider holds. Both act at once and
+// An archived entry: "Wiederherstellen", and the final "Löschen" for one no provider holds. Both act at once and
 // leave a receipt with "Rückgängig" (#3951); the 30-day clean-up of #3141 is unchanged.
 function archivedLibraryCard(workout) {
   const id = String(workout.id);
@@ -3473,13 +3450,13 @@ function archivedLibraryCard(workout) {
   const buttons = [restore];
   const notes = [status];
   if (!workout.external_id) {
-    const [remove, failure] = inCardDelete(async () => {
+    const [remove, failure] = inCardAction(h("button", { type: "button", className: "secondary-button danger-button" }, "Löschen"), async () => {
       const result = await api(`/api/library/${encodeURIComponent(id)}/delete`, { method: "POST", body: JSON.stringify({ confirmed: true }) });
       libraryReceipts.clear();
       libraryReceipts.set(id, { text: `Endgültig gelöscht: ${name}`, change: result.change });
       await loadArchivedLibrary();
       announcePlanChange(`Endgültig gelöscht: ${name}`);
-    }, `Endgültig löschen: ${name}`);
+    });
     buttons.push(remove);
     notes.push(failure);
   }

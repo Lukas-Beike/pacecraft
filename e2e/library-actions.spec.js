@@ -5,7 +5,7 @@ const { test, expect } = require("./helpers/today");
 test.use({ serviceWorkers: "block" });
 
 // #3028: a library entry is planned and deleted without the Coach, each with a receipt and "Rückgängig".
-test("@responsive Einplanen and Löschen work in the library card and Rückgängig takes each back", async ({ page, request }) => {
+test("@responsive Einplanen and Archivieren work in the library card and Rückgängig takes each back", async ({ page, request }) => {
   test.setTimeout(180_000);
   expect((await request.get("/api/fixture/demo")).ok()).toBeTruthy();
   const posts = [];
@@ -20,9 +20,8 @@ test("@responsive Einplanen and Löschen work in the library card and Rückgäng
   const card = page.locator("#library .library-card", { has: page.locator("h4", { hasText: name }) }).first();
   const actions = card.locator(":scope > .planned-activity-actions");
   // Edit and delete are the pencil and the trash icon, named by their label (#4279).
-  await expect(actions.getByRole("button")).toHaveText(["", "Einplanen", ""]);
+  await expect(actions.getByRole("button")).toHaveText(["", "Einplanen", "Archivieren"]);
   await expect(actions.getByRole("button", { name: /^Bibliothekseintrag bearbeiten: / })).toHaveCount(1);
-  await expect(actions.getByRole("button", { name: /^Bibliothekseintrag löschen: / })).toHaveCount(1);
 
   // Einplanen opens the calendar's day strip, which marks a day an entry blocks (#4060); one tap plans the entry locally.
   const blockedDay = await page.evaluate(() => addDateKey(timezoneDateKey(state.data?.profile?.timezone, new Date()), 3));
@@ -46,10 +45,10 @@ test("@responsive Einplanen and Löschen work in the library card and Rückgäng
   await status.getByRole("button", { name: "Rückgängig" }).click();
   await expect(status).toContainText("Zurückgenommen.");
 
-  // Löschen acts at once (G-03); the server archives the entry and "Rückgängig" brings it back.
-  await actions.getByRole("button", { name: "Löschen" }).click();
+  // Archivieren acts at once (G-03, #4307); "Rückgängig" brings the entry back.
+  await actions.getByRole("button", { name: "Archivieren" }).click();
   const receipt = page.locator("#library > .planned-move-status");
-  await expect(receipt).toContainText(`Gelöscht: ${name}`);
+  await expect(receipt).toContainText(`Archiviert: ${name}`);
   await expect(card).toHaveCount(0);
   expect(posts.at(-1)).toEqual([expect.stringMatching(/\/archive$/), { confirmed: true }]);
   await receipt.getByRole("button", { name: "Rückgängig" }).click();
