@@ -44,6 +44,8 @@ async function openNutritionMealEdit(item) {
   const nodes = nutritionMealEditNodes();
   nodes.subtitle.textContent = [nutritionMealTitle(item), item.description].filter(Boolean).join(" · ");
   nodes.status.textContent = "";
+  // A save still running from an earlier open keeps no spinner on the reopened dialog (#4268).
+  setSaving(nodes.save, false);
   nodes.type.replaceChildren(...Object.entries(NUTRITION_MEAL_LABELS).map(([value, label]) => h("option", { value }, label)));
   renderNutritionMealEdit();
   showAccessibleDialog(nodes.root);
@@ -116,6 +118,8 @@ function renderNutritionMealEdit() {
 function updateNutritionMealEditSave() {
   const nodes = nutritionMealEditNodes();
   const offline = !navigator.onLine;
+  // A running save keeps its button locked (#4268).
+  if (nodes.save.getAttribute("aria-busy") === "true") return;
   nodes.save.disabled = offline || nutritionMealEditChanges().length === 0 && !nutritionMealFieldChanges();
   if (offline) nodes.status.textContent = "Offline: Speichern erst mit Verbindung möglich.";
   else if (nodes.status.textContent.startsWith("Offline")) nodes.status.textContent = "";
@@ -209,7 +213,7 @@ async function saveNutritionMealEdit() {
     if (confirmed && await deleteNutritionEntry(item)) nodes.root.close();
     return;
   }
-  nodes.save.disabled = true;
+  setSaving(nodes.save, true);
   nodes.status.textContent = "";
   let result;
   const edits = nutritionMealEditChanges();
@@ -217,6 +221,7 @@ async function saveNutritionMealEdit() {
   try {
     result = await api("/api/nutrition/entry/components", { method: "POST", body: JSON.stringify({ id: item.id, revision, ...(edits.length ? { edits } : {}), ...(meal ? { meal } : {}) }) });
   } catch (error) {
+    setSaving(nodes.save, false);
     if (generation !== state.sessionGeneration) return;
     const message = `Mahlzeit konnte nicht gespeichert werden: ${error.message}`;
     // The dialog was closed while the request ran: a toast carries the error.
@@ -225,6 +230,7 @@ async function saveNutritionMealEdit() {
     updateNutritionMealEditSave();
     return;
   }
+  setSaving(nodes.save, false);
   if (generation !== state.sessionGeneration) return;
   nodes.root.close();
   // The change is saved; a failed reload still shows its receipt, and the diary reads again on the next refresh.

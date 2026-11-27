@@ -1747,7 +1747,7 @@ async function openBodyFatDialog(edit = null) {
     h("span", "skinfold-readings", Array.from({ length: SKINFOLD_READINGS }, (_, index) => reading(site, index))))));
   form.elements.date.value = edit?.payload.date || timezoneDateKey(state.data?.profile?.timezone, new Date());
   document.querySelector("#bodyFatDialogStatus").textContent = "";
-  for (const button of form.querySelectorAll("button")) button.disabled = false;
+  for (const button of form.querySelectorAll("button")) setSaving(button, false);
   // Read before opening, so a late answer never overwrites what the athlete typed.
   try { bodyFatEntries = (await api("/api/body/body-fat")).entries; } catch { bodyFatEntries = []; }
   setBodyFatMode("pct");
@@ -1811,7 +1811,7 @@ async function openWeightDialog(edit = null) {
   const form = document.querySelector("#weightDialogForm");
   form.elements.date.value = edit?.payload.date || timezoneDateKey(state.data?.profile?.timezone, new Date());
   document.querySelector("#weightDialogStatus").textContent = "";
-  for (const button of form.querySelectorAll("button")) button.disabled = false;
+  for (const button of form.querySelectorAll("button")) setSaving(button, false);
   // Read before opening, so a late answer never overwrites what the athlete typed (#3829).
   try { weightRead = await api("/api/body/weight"); } catch { weightRead = { entries: [] }; }
   fillWeightDialog();
@@ -1859,14 +1859,14 @@ function showBodyReceipt(receipt) {
   if (!receipt.undo) return;
   const undo = h("button", { type: "button", className: "message-undo" }, "Rückgängig");
   undo.addEventListener("click", async () => {
-    undo.disabled = true;
+    setSaving(undo, true);
     const [path, payload] = receipt.undo;
     try {
       const read = await api(path, { method: "PUT", body: JSON.stringify(payload) });
       await bodyEntryChanged();
       toast(read?.remote === "pending" ? "Zurückgenommen. Garmin-Sync fehlgeschlagen – wird erneut versucht." : "Zurückgenommen.", read?.remote === "pending");
     } catch (error) {
-      undo.disabled = false;
+      setSaving(undo, false);
       toast(error.message, true);
     }
   });
@@ -1898,7 +1898,7 @@ const OUTBOX_BODY_ENTRIES = {
 
 async function sendBodyEntry(dialog, path, payload, button, receipt, replaces = null) {
   const status = document.querySelector(`#${dialog}Status`);
-  button.disabled = true;
+  setSaving(button, true);
   let read;
   try {
     const own = OUTBOX_BODY_ENTRIES[path];
@@ -1912,10 +1912,11 @@ async function sendBodyEntry(dialog, path, payload, button, receipt, replaces = 
       if (dialog === "bodyFatDialog") bodyFatOutboxEdit = null;
     }
     status.textContent = error.message;
-    button.disabled = false;
+    setSaving(button, false);
     return false;
   }
   document.querySelector(`#${dialog}`).close();
+  setSaving(button, false);
   if (read?.outboxEntry) {
     toast(`${read.outboxEntry.label} wartet, noch nicht gesendet.`);
     return true;
@@ -2008,14 +2009,14 @@ function openEnergyGoalDialog() {
   form.elements.kcal.value = profile.energy_goal_kcal || "500";
   document.querySelector("#energyGoalDialogRemove").hidden = !ENERGY_GOAL_NAMES[profile.energy_goal];
   document.querySelector("#energyGoalDialogStatus").textContent = "";
-  for (const button of form.querySelectorAll("button")) button.disabled = false;
+  for (const button of form.querySelectorAll("button")) setSaving(button, false);
   updateEnergyGoalDialog();
   document.querySelector("#energyGoalDialog").showModal();
 }
 
 // The goal is a profile patch; the diary's energy read is priced again with it.
 async function saveEnergyGoal(patch, button) {
-  button.disabled = true;
+  setSaving(button, true);
   try {
     const saved = await api("/api/profile", { method: "PUT", body: JSON.stringify(patch) });
     if (state.data) state.data.profile = saved;
@@ -2026,7 +2027,7 @@ async function saveEnergyGoal(patch, button) {
     renderDiaryEnergy();
   } catch (error) {
     document.querySelector("#energyGoalDialogStatus").textContent = error.message;
-    button.disabled = false;
+    setSaving(button, false);
   }
 }
 
@@ -2223,7 +2224,7 @@ function energyLearnedLine(read) {
 
 // The check is a profile patch with a receipt and undo; the diary's energy read is priced again with it.
 async function saveLearnedCheck(day, button) {
-  if (button) button.disabled = true;
+  setSaving(button, true);
   try {
     const saved = await api("/api/profile", { method: "PUT", body: JSON.stringify({ learned_everyday_checked: day }) });
     if (state.data) state.data.profile = saved;
@@ -2237,7 +2238,7 @@ async function saveLearnedCheck(day, button) {
     clearTimeout(toast.timer);
     toast.timer = setTimeout(hideToast, 10000);
   } catch (error) {
-    if (button) button.disabled = false;
+    setSaving(button, false);
     toast(error.message, true);
   }
 }
@@ -3402,13 +3403,13 @@ function equipmentRulePreview(status, kind, count) {
   const skip = h("button", { type: "button", className: "secondary-button" }, "Nur künftig");
   skip.addEventListener("click", () => status.replaceChildren("Gespeichert."));
   apply.addEventListener("click", async () => {
-    apply.disabled = true;
+    setSaving(apply, true);
     try {
       const result = await api("/api/equipment/rules/apply", { method: "POST", body: JSON.stringify({ kind, confirmed: true }) });
       equipmentRuleChanged();
       status.replaceChildren(...equipmentRuleReceipt(status, result));
     } catch (error) {
-      apply.disabled = false;
+      setSaving(apply, false);
       if (!isSessionEndedError(error)) status.replaceChildren(error.message);
     }
   });
@@ -3420,13 +3421,13 @@ function equipmentRuleReceipt(status, result) {
   if (!result.change?.id) return [text];
   const undo = h("button", { className: "message-undo", type: "button" }, "Rückgängig");
   undo.addEventListener("click", async () => {
-    undo.disabled = true;
+    setSaving(undo, true);
     try {
       await api("/api/change-history/undo", { method: "POST", body: JSON.stringify({ change_id: result.change.id, expected_current_hash: result.change.after_hash }) });
       equipmentRuleChanged();
       status.replaceChildren("Zurückgenommen.");
     } catch (error) {
-      undo.disabled = false;
+      setSaving(undo, false);
       if (!isSessionEndedError(error)) status.replaceChildren(error.message);
     }
   });
@@ -3489,7 +3490,7 @@ function equipmentForm(tab, item) {
     const component = text("kind") === "component";
     error.textContent = "";
     // One tap, one save: a second tap while the first runs would create the item twice.
-    submit.disabled = true;
+    setSaving(submit, true);
     const saved = await saveEquipment({
       ...(item ? { id: item.id, expected_revision: item.revision } : {}),
       name: text("name").trim(), sport, environment, kind: text("kind"),
@@ -3500,17 +3501,17 @@ function equipmentForm(tab, item) {
       initial_distance_km: Number(text("initial_distance_km") || 0), initial_hours: Number(text("initial_hours") || 0),
       lifetime_target_km: optional("lifetime_target_km"), maintenance_km: optional("maintenance_km"), maintenance_hours: optional("maintenance_hours"),
     }, "Ausrüstung gespeichert. ", error);
-    if (!saved) submit.disabled = false;
+    if (!saved) setSaving(submit, false);
   });
   return form;
 }
 
 // Retiring acts at once and the receipt line offers "Rückgängig" (athlete decision, #3934 G-03).
 async function retireEquipment(item, button) {
-  button.disabled = true;
+  setSaving(button, true);
   const saved = Object.fromEntries(EQUIPMENT_SAVED_FIELDS.filter((key) => key in item).map((key) => [key, item[key]]));
   const ok = await saveEquipment({ ...saved, initial_distance_km: item.initial_distance_km ?? 0, initial_hours: item.initial_hours ?? 0, id: item.id, expected_revision: item.revision, status: "archived", confirmed: true }, "Ausgemustert. ");
-  if (!ok) button.disabled = false;
+  if (!ok) setSaving(button, false);
 }
 
 async function saveEquipment(payload, message, errorNode = null) {
@@ -3531,7 +3532,7 @@ async function saveEquipment(payload, message, errorNode = null) {
 function maintenanceButton(item) {
   const button = h("button", { className: "secondary-button", type: "button" }, "Wartung erledigt");
   button.addEventListener("click", async () => {
-    button.disabled = true;
+    setSaving(button, true);
     try {
       const result = await api("/api/equipment/maintenance", { method: "POST", body: JSON.stringify({ equipment_id: item.id, date: timezoneDateKey(state.data?.profile?.timezone, new Date()) }) });
       // Maintenance does not advance state_versions, so drop the cached response even if the athlete has left the route.
@@ -3539,7 +3540,7 @@ function maintenanceButton(item) {
       await renderTrainingRecords();
       showMaintenanceReceipt(result?.change);
     } catch (error) {
-      button.disabled = false;
+      setSaving(button, false);
       if (!isSessionEndedError(error)) button.textContent = error.message || "Wartung fehlgeschlagen";
     }
   });
@@ -3555,14 +3556,14 @@ function showMaintenanceReceipt(change, message = "Wartung erfasst. ") {
   if (!change?.id) return;
   const undo = h("button", { className: "message-undo", type: "button" }, "Rückgängig");
   undo.addEventListener("click", async () => {
-    undo.disabled = true;
+    setSaving(undo, true);
     try {
       await api("/api/change-history/undo", { method: "POST", body: JSON.stringify({ change_id: change.id, expected_current_hash: change.after_hash }) });
       invalidateAnalysisReport("/api/analysis/training-records");
       await renderTrainingRecords();
       showMaintenanceReceipt(null, "Zurückgenommen.");
     } catch (error) {
-      undo.disabled = false;
+      setSaving(undo, false);
       status.firstChild.textContent = `${error.message} `;
     }
   });

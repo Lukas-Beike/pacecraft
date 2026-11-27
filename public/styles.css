@@ -838,11 +838,12 @@ a.message-retry { display: grid; place-items: center; text-decoration: none; }
 .calendar-workout-profile [data-zone="5"], .planned-zone-legend [data-zone="5"] { color: var(--training-zone-5); }
 .calendar-workout-profile [data-zone="6"], .planned-zone-legend [data-zone="6"] { color: var(--training-zone-6); }
 .calendar-workout-profile [data-zone="7"], .planned-zone-legend [data-zone="7"] { color: var(--training-zone-7); }
-.login-button { display: inline-flex; width: 100%; align-items: center; justify-content: center; gap: 9px; }
+.login-button { display: inline-flex; width: 100%; align-items: center; justify-content: center; }
 .auth-loading { position: fixed; z-index: 20; inset: 0; min-height: 100dvh; display: grid; place-items: center; padding: 24px; color: var(--subtle); background: var(--bg); font-size: .9rem; }
+button.is-loading .button-spinner:not(:last-child) { margin-inline-end: .5em; }
 #appShell.is-loading .composer, #appShell.is-loading .bottom-nav { visibility: hidden; }
 .button-spinner { display: none; width: 15px; height: 15px; border: 2px solid color-mix(in srgb, currentColor 35%, var(--transparent)); border-top-color: currentColor; border-radius: 50%; }
-.login-button.is-loading .button-spinner { display: inline-block; animation: spin .7s linear infinite; }
+button.is-loading .button-spinner { display: inline-block; vertical-align: -.15em; animation: spin .7s linear infinite; }
 .fine-print { margin: 10px 4px 0; color: var(--muted); text-align: left; font-size: .75rem; }
 #chatPanel > .fine-print { margin-top: 4px; text-align: center; }
 #chatPanel .fine-print { scroll-margin-bottom: 96px; }

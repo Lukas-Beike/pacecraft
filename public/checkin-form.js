@@ -180,12 +180,12 @@ async function openCheckinForm(dateKey) {
     const day = date.value;
     const body = checkinChanges(checkinValues(form), stored, day);
     if (!body) return close();
-    save.disabled = true;
+    setSaving(save, true);
     let result;
     try {
       result = await api("/api/checkins", { method: "POST", body: JSON.stringify(body) });
     } catch (error) {
-      save.disabled = false;
+      setSaving(save, false);
       if (!isSessionEndedError(error)) status.textContent = error.message;
       return;
     }

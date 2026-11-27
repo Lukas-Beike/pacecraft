@@ -102,7 +102,7 @@ class ServerAthleteTests(ServerTestCase):
             )
         ]
         self.assertIn(
-            'button.removeAttribute("aria-busy");\n      button.textContent = buttonLabel;\n    }\n    await load();',
+            'toast("Profil gespeichert");\n    setSaving(button, false);\n    await load();',
             save_profile,
         )
 

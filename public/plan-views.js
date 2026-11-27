@@ -650,21 +650,25 @@ function infectionHintNote(hint, dateKey, ill) {
   const inputs = INFECTION_SYMPTOMS.map(([id]) => h("input", { type: "checkbox", value: id }));
   const buttons = [well, sick, confirm, ...inputs];
   const busy = (value) => { for (const button of buttons) button.disabled = value; };
-  const answer = async (path, done, extra = {}) => {
+  const answer = async (pressed, path, done, extra = {}) => {
     busy(true);
+    setSaving(pressed, true);
     try {
       await done(await api(path, { method: "POST", body: JSON.stringify({ date: dateKey, ...extra }) }));
+      setSaving(pressed, false);
+      pressed.disabled = true;
     } catch (error) {
       busy(false);
+      setSaving(pressed, false);
       if (!isSessionEndedError(error)) status.replaceChildren(error.message);
     }
   };
-  well.addEventListener("click", () => answer("/api/infection-hint/well", () => {
+  well.addEventListener("click", () => answer(well, "/api/infection-hint/well", () => {
     infectionHintDismissed.add(dateKey);
     note.remove();
     announcePlanChange("Infekt-Hinweis für heute ausgeblendet");
   }));
-  confirm.addEventListener("click", () => answer("/api/infection-hint/ill", async (result) => {
+  confirm.addEventListener("click", () => answer(confirm, "/api/infection-hint/ill", async (result) => {
     const receipt = { text: "Krankheit für heute gespeichert.", change: result.change };
     infectionHintReceipts.set(dateKey, receipt);
     showReceipt(receipt);
@@ -986,7 +990,7 @@ function replanRow(change) {
 }
 
 async function applyReplan(preview, button, status, accept = false) {
-  button.disabled = true;
+  setSaving(button, true);
   status.textContent = "";
   try {
     const body = { adjustment_id: preview.id, confirmed: true, ...(accept ? { accept_plan_findings: ["illness_hard"] } : {}) };
@@ -998,7 +1002,7 @@ async function applyReplan(preview, button, status, accept = false) {
     announcePlanChange(replanReceipt.text);
   } catch (error) {
     status.textContent = error.message;
-    button.disabled = false;
+    setSaving(button, false);
     if (error.reason === "illness_hard") { button.textContent = "Trotzdem übernehmen"; button.dataset.accept = "1"; }
   }
 }
@@ -1007,13 +1011,13 @@ async function applyReplan(preview, button, status, accept = false) {
 function batchUndoButton(changes, status, undone) {
   const undo = h("button", { type: "button", className: "message-undo" }, "Rückgängig");
   undo.addEventListener("click", async () => {
-    undo.disabled = true;
+    setSaving(undo, true);
     try {
       await api("/api/change-history/undo-batch", { method: "POST", body: JSON.stringify({ changes }) });
       undone();
       await globalThis.load?.();
     } catch (error) {
-      undo.disabled = false;
+      setSaving(undo, false);
       status.firstChild.textContent = `${error.message} `;
     }
   });
@@ -1571,16 +1575,20 @@ function plannedGarminRemoval(entry) {
   open.addEventListener("click", () => { ask.hidden = false; confirm.focus(); });
   cancel.addEventListener("click", () => { ask.hidden = true; open.focus(); });
   confirm.addEventListener("click", async () => {
-    [confirm, cancel].forEach((button) => { button.disabled = true; });
+    cancel.disabled = true;
+    setSaving(confirm, true);
     status.textContent = "";
     try {
       const done = await runPlanPush(garmin, [{ library_workout_id: String(entry.local_id), remove: true }]);
       if (done.status !== "completed") throw new Error(globalThis.providerJobErrorDetail?.(done) || "Entfernen fehlgeschlagen");
     } catch (error) {
-      [confirm, cancel].forEach((button) => { button.disabled = false; });
+      cancel.disabled = false;
+      setSaving(confirm, false);
       status.textContent = error.message;
       return;
     }
+    setSaving(confirm, false);
+    confirm.disabled = true;
     // The copy is gone: a failed reload must not re-arm "Entfernen" or blame the removal.
     globalThis.toast?.("Aus Garmin entfernt");
     await globalThis.load?.().catch(() => {});
@@ -1607,7 +1615,9 @@ function plannedUnitActions(entry, dateKey, todayKey) {
   const move = async (target) => {
     if (!target || target === dateKey || (plannedLastDateKey && target > plannedLastDateKey)) return;
     const buttons = [...days.querySelectorAll("button, input")];
+    const pressed = days.querySelector(`button[data-day="${target}"]`);
     buttons.forEach((item) => { item.disabled = true; });
+    setSaving(pressed, true, "");
     status.replaceChildren();
     try {
       const result = await api(`/api/planned-units/${encodeURIComponent(entry.local_id)}/date`, { method: "POST", body: JSON.stringify({ date: target, expected_payload_hash: entry.payload_hash }) });
@@ -1616,6 +1626,7 @@ function plannedUnitActions(entry, dateKey, todayKey) {
       await globalThis.load?.();
       announcePlanChange(`Verschoben auf ${MOVE_DAY_FORMAT.format(dateFromKey(target))}`);
     } catch (error) {
+      setSaving(pressed, false);
       buttons.forEach((item) => { item.disabled = item.dataset.day === dateKey || item.classList.contains("is-blocked"); });
       const classify = plannedClassifyAction(error, target);
       status.replaceChildren(error.message, ...(classify ? [" ", classify] : []));
@@ -1725,12 +1736,12 @@ function inCardDelete(remove) {
   const button = h("button", { type: "button", className: "secondary-button danger-button" }, "Löschen");
   const failure = h("p", { className: "planned-delete-note", role: "status" });
   button.addEventListener("click", async () => {
-    button.disabled = true;
+    setSaving(button, true);
     failure.textContent = "";
     try {
       await remove();
     } catch (error) {
-      button.disabled = false;
+      setSaving(button, false);
       failure.textContent = error.message;
     }
   });
@@ -1778,14 +1789,14 @@ function plannedDiscussButton(entry, dateKey) {
 function plannedMoveUndo(key, receipt, status, receipts = plannedMoveReceipts) {
   const undo = h("button", { type: "button", className: "message-undo" }, "Rückgängig");
   undo.addEventListener("click", async () => {
-    undo.disabled = true;
+    setSaving(undo, true);
     try {
       await api("/api/change-history/undo", { method: "POST", body: JSON.stringify({ change_id: receipt.change.id, expected_current_hash: receipt.change.after_hash }) });
       receipts.set(key, { day: receipt.day, text: "Zurückgenommen." });
       if (receipt.from) showPlannedDay(receipt.from);
       await globalThis.load?.();
     } catch (error) {
-      undo.disabled = false;
+      setSaving(undo, false);
       status.firstChild.textContent = `${error.message} `;
     }
   });
@@ -1866,7 +1877,7 @@ async function adoptStepTestValue(activityId, row, button) {
   const profile = state.data?.profile || {};
   const replacesMeasured = Boolean(profile.first_threshold_hr) && profile.first_threshold_origin === "measured";
   if (replacesMeasured && !(await requestConfirmation("Der gemessene Wert wird durch den Wert aus dem Stufentest ersetzt.", { title: "Gemessenen Wert ersetzen?", confirmLabel: "Ersetzen" }))) return;
-  button.disabled = true;
+  setSaving(button, true);
   try {
     const result = await api("/api/profile/first-threshold/adopt", { method: "POST", body: JSON.stringify({ step_test: activityId, heart_rate_bpm: row.adopt.heart_rate_bpm, ...(replacesMeasured ? { replace_measured: true } : {}) }) });
     applyAdoptedFirstThreshold(result);
@@ -1874,7 +1885,7 @@ async function adoptStepTestValue(activityId, row, button) {
     toast(result.adopted === false ? "Wert aus dem Stufentest ist bereits übernommen" : "Erste Schwelle übernommen");
     await load();
   } catch (error) { toast(error.message, true); }
-  finally { button.disabled = false; }
+  finally { setSaving(button, false); }
 }
 
 async function appendPlannedZoneTime(details, activityId, ride) {
@@ -2114,13 +2125,13 @@ async function appendPlannedEquipment(details, head, entry, actual, receipt = nu
     if (!row.hidden) select.focus();
   });
   apply.addEventListener("click", async () => {
-    apply.disabled = true;
+    setSaving(apply, true);
     try {
       const result = await api("/api/equipment/assignment", { method: "POST", body: JSON.stringify({ ...target.body, equipment_id: select.value || null }) });
       plannedEquipmentChanged(target);
       plannedEquipmentRedraw(details, head, entry, actual, { change: result?.change, message: "Gespeichert. " });
     } catch (error) {
-      apply.disabled = false;
+      setSaving(apply, false);
       if (!isSessionEndedError(error)) status.textContent = error.message;
     }
   });
@@ -2149,13 +2160,13 @@ function plannedEquipmentReceipt(details, head, entry, actual, { change, message
   if (!change?.id) return;
   const undo = h("button", { className: "message-undo", type: "button" }, "Rückgängig");
   undo.addEventListener("click", async () => {
-    undo.disabled = true;
+    setSaving(undo, true);
     try {
       await api("/api/change-history/undo", { method: "POST", body: JSON.stringify({ change_id: change.id, expected_current_hash: change.after_hash }) });
       plannedEquipmentChanged(plannedEquipmentTarget(entry, actual));
       plannedEquipmentRedraw(details, head, entry, actual, { change: null, message: "Zurückgenommen." });
     } catch (error) {
-      undo.disabled = false;
+      setSaving(undo, false);
       if (!isSessionEndedError(error)) status.firstChild.textContent = `${error.message} `;
     }
   });
@@ -2427,6 +2438,8 @@ async function decidePlannedEvent(event, impact, series, dialog, status, queue =
   let result;
   status.textContent = "";
   choices.forEach((button) => { button.disabled = true; });
+  const pressed = choices.find((button) => button.dataset.impact === impact);
+  setSaving(pressed, true);
   dialog.dataset.pending = "true";
   try {
     result = await api("/api/external-calendar/decisions", {
@@ -2436,6 +2449,7 @@ async function decidePlannedEvent(event, impact, series, dialog, status, queue =
   } catch (error) {
     status.textContent = error.message;
     choices.forEach((button) => { button.disabled = false; });
+    setSaving(pressed, false);
     return;
   } finally {
     delete dialog.dataset.pending;
@@ -3202,7 +3216,7 @@ function libraryWahooRow(workout) {
   button.addEventListener("click", async () => {
     if (state.librarySyncInFlight.has(workout.id)) return;
     state.librarySyncInFlight.add(workout.id);
-    button.disabled = true;
+    setSaving(button, true);
     let failure = "";
     try {
       const done = await runPlanPush(providerIds().wahoo, [{ library_workout_id: workout.id, expected_payload_hash: wahoo.payload_hash }]);
@@ -3212,7 +3226,7 @@ function libraryWahooRow(workout) {
     }
     state.librarySyncInFlight.delete(workout.id);
     globalThis.toast?.(failure || "An Wahoo gesendet", Boolean(failure));
-    button.disabled = false;
+    setSaving(button, false);
     await globalThis.load?.();
   });
   row.append(button);
@@ -3240,7 +3254,9 @@ function libraryActions(workout) {
   const schedule = async (day, accept = false) => {
     if (!day) return;
     const buttons = [...days.querySelectorAll("button, input")];
+    const pressed = days.querySelector(`button[data-day="${day}"]`);
     buttons.forEach((item) => { item.disabled = true; });
+    setSaving(pressed, true, "");
     status.replaceChildren();
     again.hidden = true;
     libraryOpenStrips.delete(id);
@@ -3253,6 +3269,7 @@ function libraryActions(workout) {
       await globalThis.load?.();
       announcePlanChange(text);
     } catch (error) {
+      setSaving(pressed, false);
       buttons.forEach((item) => { item.disabled = false; });
       const classify = plannedClassifyAction(error, day);
       status.replaceChildren(error.message, ...(classify ? [" ", classify] : []));
@@ -3358,7 +3375,10 @@ function planCard(plan) {
   const notes = [removeNote];
   if (plan.status === "archived") {
     const restore = h("button", { type: "button", className: "secondary-button" }, "Wiederherstellen");
-    restore.addEventListener("click", () => void planPost(plan, "update", { status: planRestoredStatus(plan) }, `Wiederhergestellt: ${plan.name}`)().catch((error) => { status.textContent = error.message; }));
+    restore.addEventListener("click", () => {
+      setSaving(restore, true);
+      void planPost(plan, "update", { status: planRestoredStatus(plan) }, `Wiederhergestellt: ${plan.name}`)().catch((error) => { setSaving(restore, false); status.textContent = error.message; });
+    });
     buttons.push(restore);
   } else {
     const edit = h("button", { type: "button", className: "secondary-button" }, "Bearbeiten");
@@ -3434,7 +3454,7 @@ function archivedLibraryCard(workout) {
   const restore = h("button", { type: "button", className: "secondary-button" }, "Wiederherstellen");
   const status = h("p", { className: "planned-move-status", role: "status" });
   restore.addEventListener("click", async () => {
-    restore.disabled = true;
+    setSaving(restore, true);
     try {
       const result = await api(`/api/library/${encodeURIComponent(id)}/restore`, { method: "POST", body: "{}" });
       libraryReceipts.clear();
@@ -3444,7 +3464,7 @@ function archivedLibraryCard(workout) {
       await globalThis.load?.();
       announcePlanChange(`Wiederhergestellt: ${name}`);
     } catch (error) {
-      restore.disabled = false;
+      setSaving(restore, false);
       status.textContent = error.message;
     }
   });
@@ -3691,13 +3711,15 @@ function competitionConflict(competition) {
   try { if (typeof conflict === "string") conflict = JSON.parse(conflict || "{}"); } catch { conflict = {}; }
   const gone = conflict?.type === "remote_missing";
   const status = h("p", { className: "planned-delete-note", role: "status" });
-  const settle = async (strategy, buttons, confirmed = false) => {
+  const settle = async (pressed, strategy, buttons, confirmed = false) => {
     buttons.forEach((button) => { button.disabled = true; });
+    setSaving(pressed, true);
     status.textContent = "";
     try {
       await api(`/api/competitions/${encodeURIComponent(competition.id)}/resolve`, { method: "POST", body: JSON.stringify({ strategy, ...(confirmed ? { confirmed: true } : {}) }) });
     } catch (error) {
       buttons.forEach((button) => { button.disabled = false; });
+      setSaving(pressed, false);
       status.textContent = error.message;
       // Settled elsewhere meanwhile: the card is stale, so the view reads the competition again.
       if (error.status === 409) await globalThis.load?.().catch(() => {});
@@ -3715,11 +3737,11 @@ function competitionConflict(competition) {
     const cancel = h("button", { type: "button", className: "secondary-button" }, "Abbrechen");
     adopt.addEventListener("click", () => { ask.hidden = false; confirm.focus(); });
     cancel.addEventListener("click", () => { ask.hidden = true; });
-    confirm.addEventListener("click", () => void settle("adopt_remote", [keep, adopt, confirm, cancel], true));
+    confirm.addEventListener("click", () => void settle(confirm, "adopt_remote", [keep, adopt, confirm, cancel], true));
     ask.append(h("div", "planned-activity-actions", confirm, cancel));
     buttons.push(adopt);
   }
-  keep.addEventListener("click", () => void settle("keep_local", buttons));
+  keep.addEventListener("click", () => void settle(keep, "keep_local", buttons));
   return h("div", "competition-conflict", h("p", null, gone ? "Bei Intervals.icu gelöscht" : "Bei Intervals.icu geändert"), h("div", "planned-activity-actions", ...buttons), ask, status);
 }
 
@@ -3905,13 +3927,13 @@ function showCompetitionReceipt(text, change) {
   if (!change?.id) return;
   const undo = h("button", { type: "button", className: "message-undo" }, "Rückgängig");
   undo.addEventListener("click", async () => {
-    undo.disabled = true;
+    setSaving(undo, true);
     try {
       await api("/api/change-history/undo", { method: "POST", body: JSON.stringify({ change_id: change.id, expected_current_hash: change.after_hash }) });
       await load("/api/bootstrap?local=1", ["profile"]);
       line.replaceChildren("Zurückgenommen.");
     } catch (error) {
-      undo.disabled = false;
+      setSaving(undo, false);
       line.replaceChildren(`${error.message} `, undo);
     }
   });
@@ -3919,14 +3941,15 @@ function showCompetitionReceipt(text, change) {
 }
 
 async function sendCompetition(path, payload, button, status, receipt) {
-  button.disabled = true;
+  setSaving(button, true);
   let result;
   try {
     result = await api(path, { method: "PUT", body: JSON.stringify(payload) });
   } catch (error) {
     if (!isSessionEndedError(error)) status.textContent = error.message;
-    button.disabled = false;
     return;
+  } finally {
+    setSaving(button, false);
   }
   $("#competitionDialog").close();
   await load("/api/bootstrap?local=1", ["profile"]);

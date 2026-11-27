@@ -168,15 +168,15 @@ async function saveUnitEditor(dialog, status, save, onSaved) {
   }
   if (editor.kind === "unit" && editor.entry) body.expected_payload_hash = editor.entry.payload_hash;
   if (editor.accept) body.accept_plan_findings = ["illness_hard"];
-  save.disabled = true;
+  setSaving(save, true);
   try {
     const result = await api(unitEditorPath(editor), { method: "POST", body: JSON.stringify(body) });
     dialog.close();
     await onSaved(result, editor);
   } catch (error) {
     status.textContent = error.message;
+    setSaving(save, false);
     if (error.reason === "illness_hard") { editor.accept = true; save.textContent = "Trotzdem speichern"; }
-    save.disabled = false;
   }
 }
 
@@ -378,7 +378,7 @@ function openPlanEditor({ plan = null, onSaved }) {
   form.onsubmit = async (event) => {
     event.preventDefault();
     status.textContent = "";
-    save.disabled = true;
+    setSaving(save, true);
     try {
       const body = { name: values.name.trim(), goal: values.goal.trim(), start_date: values.start, end_date: values.end, status: values.status };
       const result = await api(plan ? `/api/training-plans/${encodeURIComponent(plan.id)}/update` : "/api/training-plans", { method: "POST", body: JSON.stringify(body) });
@@ -387,7 +387,7 @@ function openPlanEditor({ plan = null, onSaved }) {
       void Promise.resolve(onSaved(result, body)).catch((error) => globalThis.toast?.(error.message, true));
     } catch (error) {
       status.textContent = error.message;
-      save.disabled = false;
+      setSaving(save, false);
     }
   };
   dialog.addEventListener("close", () => restoreDialogFocus(dialog), { once: true });
@@ -444,7 +444,7 @@ function openPlanReplace({ plan, onReplaced }) {
       h("div", "dialog-actions", add), status, h("div", "dialog-actions", cancel, save));
     form.onsubmit = async (event) => {
       event.preventDefault();
-      save.disabled = true;
+      setSaving(save, true);
       try {
         const body = { start: period.start, end: period.end, replaced_ids: old.map((item) => item.local_id), workouts: period.workouts, confirmed: true };
         const result = await api(`/api/training-plans/${encodeURIComponent(plan.id)}/replace`, { method: "POST", body: JSON.stringify(body) });
@@ -452,7 +452,7 @@ function openPlanReplace({ plan, onReplaced }) {
         await onReplaced(result, { replaced: old.length, created: period.workouts.length });
       } catch (error) {
         status.textContent = error.message;
-        save.disabled = false;
+        setSaving(save, false);
       }
     };
   };
