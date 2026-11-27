@@ -243,7 +243,8 @@ function pageInputPending() {
   const active = document.activeElement;
   return Boolean(active?.matches?.("input, textarea, select") && !active.closest?.("#chatForm"))
     || [...document.querySelectorAll(UPDATE_RELOAD_INPUT_FIELDS)].some((field) => field.value.trim())
-    || Boolean($("#notificationTypes input[data-push-type]:disabled, #coachAutomaticTurns input:disabled"))
+    || Boolean($("#notificationTypes input[data-push-type]:disabled"))
+    || Boolean($("#coachAutomaticTurns input:disabled"))
     || (typeof providerCredentialBusy !== "undefined" && providerCredentialBusy.size > 0)
     || editedFormPending()
     || Boolean($("#nutritionExtraction") && !$("#nutritionExtraction").hidden && $("#nutritionExtraction").childElementCount);

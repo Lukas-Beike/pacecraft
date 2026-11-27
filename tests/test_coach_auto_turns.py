@@ -5,6 +5,7 @@ from __future__ import annotations
 import sqlite3
 import unittest
 from datetime import UTC, datetime
+from typing import cast
 from unittest.mock import Mock
 
 from support import FakeManager
@@ -15,6 +16,7 @@ from backend.coach.auto_turns import (
     diagnostics,
     key_statement,
 )
+from backend.db.manager import DatabaseManager
 from backend.db.repositories import KeyValueRepository
 from backend.errors import AppError
 from backend.settings import SettingsService
@@ -45,7 +47,7 @@ class AutomaticCoachTurnTests(unittest.TestCase):
             lambda: self.state["done"],
             lambda day: self.state["sleep"],
             lambda: self.now,
-            lambda: FakeManager(self.connection),
+            lambda: cast(DatabaseManager, FakeManager(self.connection)),
             self.key_values,
         )
 

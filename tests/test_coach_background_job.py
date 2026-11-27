@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 import unittest
 from datetime import date
+from typing import Any
 from unittest.mock import Mock
 
 from backend.coach.background_job import CoachBackgroundJobRunner
@@ -356,7 +357,7 @@ class CoachBackgroundJobRunnerTests(unittest.TestCase):
         self.sessions.restore_coach_session_csrf_hash.return_value = ""
         self.failures.persist.return_value = {"status": "failed"}
         read_only = '{"allow_mutations": false}'
-        cases = {
+        cases: dict[str, tuple[dict[str, Any], str, int]] = {
             "automatic and read-only": ({"automatic": True}, read_only, 1),
             "automatic but writing": (
                 {"automatic": True},

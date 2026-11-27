@@ -109,6 +109,7 @@ added a row conflicted on it (#4092).
 | Syncs | Check a provider connection | Anbindungen `POST /api/providers/{provider}/check`, `POST /api/nutrition/yazio/check` | `check_provider_connection` | read-only | both | |
 | Syncs | Switch the automatic metric export | Anbindungen `POST /api/metric-export/automatic` | — | consent per field; athlete decision #3960 | UI by rule | |
 | Settings | Select model, thinking level and service tier | Coach & Modell `PUT /api/settings/model`, `PUT /api/settings/thinking-level`, `PUT /api/settings/service-tier` | — | athlete decision #3960 | UI by rule | |
+| Settings | Switch the automatic Coach turns | Mehr › App `PUT /api/settings/automatic-turns` | — | athlete decision #4274 | UI by rule | |
 | Settings | Switch a notification type on or off | App `POST /api/push/preferences` | — | athlete decision #3960 | UI by rule | |
 | Settings | Turn GPS-track storage on or off | Datenschutz `POST /api/privacy/gps` | — | athlete decision #3960 | UI by rule | |
 | Settings | Reset the Coach conversation | Coach & Modell `POST /api/chat/reset` | — | confirmation; athlete decision #3960 | UI by rule | |

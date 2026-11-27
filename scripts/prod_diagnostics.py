@@ -149,6 +149,8 @@ SECTION_FIELDS = {
     ),
     # Web Push: subscribed devices and sent/failed per type, counts only (#3914).
     "push_notifications": re.compile(r"subscriptions|per_type\.[a-z_]+\.(sent|failed)"),
+    # Automatic Coach turns started, completed and failed, counts only (#4274).
+    "coach_automatic_turns": re.compile(r"started|completed|failed"),
     # The energy table's basis and its formula rows' body fat (#3100, #3336, #3362).
     "energy_balance": re.compile(
         r"status|latest_window_(complete_days|weighins|insufficient)|windows"

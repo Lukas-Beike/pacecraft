@@ -141,7 +141,22 @@ def diagnostics(key_values: KeyValueRepository, db: Any) -> dict[str, int]:
     }
 
 
-_MARKUP = re.compile(r"\[([^\]]*)\]\([^)]*\)|[*`]")
+def _plain(line: str) -> str:
+    """The line without emphasis, code marks and link targets: a link keeps its text."""
+    kept: list[str] = []
+    index = 0
+    while index < len(line):
+        char = line[index]
+        end = line.find(")", index + 2) if line.startswith("](", index) else -1
+        if end != -1:
+            index = end + 1
+            continue
+        if char not in "*`[]":
+            kept.append(char)
+        index += 1
+    return "".join(kept)
+
+
 # A sentence ends after a word of three letters or a closing mark, before a
 # capital or the end: "z. B.", "ca. 7 h" and "1." do not end it.
 _SENTENCE = re.compile(r"^(.*?(?:[^\W\d_]{3}|[)\"”])[.!?])(?=\s+[A-ZÄÖÜ\"„(]|$)")
@@ -152,7 +167,7 @@ def key_statement(answer: str) -> str:
     for line in str(answer or "").splitlines():
         if line.lstrip().startswith("#"):
             continue  # a heading is no statement
-        text = " ".join(_MARKUP.sub(r"\1", line).split()).lstrip("->• ")
+        text = " ".join(_plain(line).split()).lstrip("->• ")
         if text:
             match = _SENTENCE.match(text)
             sentence = match[1] if match else text

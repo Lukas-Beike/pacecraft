@@ -346,6 +346,8 @@ class SyncSchedulerBuilderTests(unittest.TestCase):
         )
         ctx.backup.run_nightly.side_effect = lambda: calls.append("nightly backup")
         ctx.push_checks.check.side_effect = lambda: calls.append("push")
+        automatic = ctx.coach_background_jobs.automatic_turns.return_value
+        automatic.check.side_effect = lambda: calls.append("automatic")
         with (
             patch.object(scheduler_wiring.scheduler, "DailySyncLoop") as loop,
             patch.object(scheduler_wiring.scheduler, "DailySyncScheduler"),
@@ -358,9 +360,12 @@ class SyncSchedulerBuilderTests(unittest.TestCase):
         # the nightly backup (#3760) runs first and reads behind the gate,
         # without the writer. The push checks (#3914) come last as background
         # writes; they take the gate themselves, outside their network calls.
-        self.assertEqual(["nightly backup", "prune", "purge", "push"], calls)
-        self.assertEqual(ctx.maintenance.operation.call_count, 2)
-        self.assertEqual(writer.call_count, 2)
+        # Last, a due automatic Coach turn is queued under the gate (#4274).
+        self.assertEqual(
+            ["nightly backup", "prune", "purge", "push", "automatic"], calls
+        )
+        self.assertEqual(ctx.maintenance.operation.call_count, 3)
+        self.assertEqual(writer.call_count, 3)
 
 
 if __name__ == "__main__":

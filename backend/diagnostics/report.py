@@ -20,6 +20,7 @@ from backend.backup.recovery_copies import RecoveryCopies
 from backend.calendar.external import ExternalCalendarReader
 from backend.canonical.garmin_payload import RETIRED_SNAPSHOT_KEY, STATE_KEY
 from backend.canonical.vocabulary import ProviderId
+from backend.coach.auto_turns import diagnostics as automatic_turn_diagnostics
 from backend.coach.morning import MorningCheckinStateService
 from backend.config import DEFAULT_ANTHROPIC_BASE_URL, DEFAULT_OPENAI_BASE_URL, Config
 from backend.db import planning_store
@@ -56,7 +57,6 @@ from backend.planning.library_service import archive_purge_counts
 from backend.provider_credentials import garmin_tokens_connected
 from backend.providers.garmin import GarminClientFactory
 from backend.providers.state import ProviderStateService
-from backend.coach.auto_turns import diagnostics as automatic_turn_diagnostics
 from backend.push.service import diagnostics as push_diagnostics
 from backend.runtime.memory import process_memory, process_settings
 from backend.runtime.ports import ProviderCoverageReader
