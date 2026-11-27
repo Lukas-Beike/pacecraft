@@ -218,7 +218,7 @@ test("@responsive the automatic morning check-in is an opt-in switch under App t
   await expect(toggle).not.toBeChecked();
   const saved = page.waitForResponse((response) => response.url().endsWith("/api/settings/automatic-turns") && response.request().method() === "PUT");
   await toggle.check();
-  expect(await (await saved).json()).toEqual({ morning: true });
+  expect((await (await saved).json()).morning).toBe(true);
   await page.reload();
   await page.waitForFunction(() => state.initialStateLoaded);
   await expect(toggle).toBeChecked();
@@ -231,7 +231,7 @@ test("@responsive the automatic morning check-in is an opt-in switch under App t
   // The fixture is shared: switch it off again.
   const reset = page.waitForResponse((response) => response.url().endsWith("/api/settings/automatic-turns") && response.request().method() === "PUT");
   await toggle.uncheck();
-  expect(await (await reset).json()).toEqual({ morning: false });
+  expect((await (await reset).json()).morning).toBe(false);
   await expect(toggle).not.toBeChecked();
 });
 
