@@ -35,12 +35,13 @@ class AutomaticCoachTurnTests(unittest.TestCase):
             "primary_provider TEXT NOT NULL, state TEXT NOT NULL, "
             "started_at TEXT NOT NULL, created_at TEXT NOT NULL);"
             "CREATE TABLE activity_records (provider TEXT NOT NULL, "
-            "activity_id TEXT, sport TEXT NOT NULL);"
+            "activity_id TEXT, sport TEXT NOT NULL, state TEXT NOT NULL DEFAULT 'active', "
+            "started_at TEXT);"
         )
         self.key_values = KeyValueRepository(lambda: "2026-11-27T06:00:00+00:00")
         self.stored: dict[str, str] = {}
         self.settings = SettingsService(
-            Mock(), self.stored.get, self.stored.__setitem__
+            Mock(), self.stored.get, self.stored.__setitem__, now=lambda: self.now
         )
         self.settings.coach_ready = Mock(return_value=True)  # type: ignore[method-assign]
         self.submission = Mock()
@@ -138,7 +139,8 @@ class AutomaticCoachTurnTests(unittest.TestCase):
             ),
         )
         self.connection.execute(
-            "INSERT INTO activity_records VALUES (?, ?, ?)", (provider, ident, sport)
+            "INSERT INTO activity_records (provider, activity_id, sport) VALUES (?, ?, ?)",
+            (provider, ident, sport),
         )
 
     def _queued(self) -> list[str]:
@@ -147,9 +149,9 @@ class AutomaticCoachTurnTests(unittest.TestCase):
     def test_each_new_session_of_a_checked_sport_is_analysed_once_newest_first(self):
         self.now = datetime(2026, 11, 27, 6, tzinfo=UTC)  # before the first session
         self._session("act_before", -200)
-        self.assertFalse(self.turns.check())  # off: nothing, no start marker
+        self.assertFalse(self.turns.check())  # off: nothing
+        # Switching on marks the start: act_before was stored earlier.
         self.settings.save_automatic_turns({"sessions": True})
-        self.assertFalse(self.turns.check())  # at night only the start is marked
         self._session("act_ride", 10, sport="ride")
         self._session("act_run", 20)
         self._session("act_hike", 30, sport="hike")  # "Sonstiges", unchecked
@@ -171,9 +173,8 @@ class AutomaticCoachTurnTests(unittest.TestCase):
         self.assertEqual(self._counts()["started"], 2)
 
     def test_a_burst_is_capped_per_day_and_switching_off_forgets_the_start(self):
-        self.settings.save_automatic_turns({"sessions": True})
         self.now = datetime(2026, 11, 27, 6, tzinfo=UTC)
-        self.turns.check()  # marks the start
+        self.settings.save_automatic_turns({"sessions": True})  # marks the start
         for number in range(7):
             self._session(f"act_{number}", number)
         self.now = datetime(2026, 11, 27, 10, tzinfo=UTC)
@@ -182,10 +183,14 @@ class AutomaticCoachTurnTests(unittest.TestCase):
         self.assertEqual(self._queued()[0], "auto:session:act_6")  # newest first
         self.now = datetime(2026, 11, 28, 10, tzinfo=UTC)  # a new day, a new cap
         self.assertTrue(self.turns.check())
+        # Off and on again between two checks starts a new window: the older
+        # sessions stay out.
         self.settings.save_automatic_turns({"sessions": False})
-        self.turns.check()
+        self.assertNotIn("sessions_since", self.settings.automatic_turns())
         self.settings.save_automatic_turns({"sessions": True})
-        self.turns.check()  # marks a new start: the older sessions stay out
+        self.assertEqual(
+            self.settings.automatic_turns()["sessions_since"], self.now.isoformat()
+        )
         self.submission.enqueue_automatic.reset_mock()
         self.assertFalse(self.turns.check())
         self.submission.enqueue_automatic.assert_not_called()

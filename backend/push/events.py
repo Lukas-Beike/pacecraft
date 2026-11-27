@@ -229,8 +229,9 @@ def session_groups(db: Any, session_ids: list[str]) -> dict[str, str]:
     rows = db.execute(
         "SELECT s.activity_id, r.sport FROM activity_sessions s "
         "JOIN activity_records r ON r.activity_id = s.activity_id "
-        "AND r.provider = s.primary_provider "
-        f"WHERE s.activity_id IN ({marks})",
+        "AND r.provider = s.primary_provider AND r.state = 'active' "
+        # The earliest record wins, the last row of each session (#4275).
+        f"WHERE s.activity_id IN ({marks}) ORDER BY r.started_at DESC",
         tuple(session_ids),
     ).fetchall()
     groups = {Sport.RUN.value: "run", Sport.RIDE.value: "ride"}

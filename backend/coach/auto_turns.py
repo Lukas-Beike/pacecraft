@@ -16,29 +16,28 @@ import json
 import re
 from collections.abc import Callable
 from contextlib import AbstractContextManager, nullcontext
-from datetime import UTC, date, datetime
+from datetime import date, datetime
 from typing import Any, Final
 
-from backend.coach.authorization import AUTOMATIC_TURN_PREFIX
 from backend.coach.job_submission import CoachJobSubmissionService
 from backend.db import coach_store
 from backend.db.manager import DatabaseManager
 from backend.db.repositories import KeyValueRepository
 from backend.push.events import new_sessions, session_groups
 from backend.push.service import Notification
-from backend.settings import SettingsService
+from backend.settings import SettingsService, analysed_session_sports
 
 MORNING_TURN_PREFIX: Final = coach_store.AUTOMATIC_MORNING_PREFIX
 MORNING_MESSAGE: Final = (
     "Automatischer Morgen-Check-in: Die Werte der Nacht sind da. Bewerte Erholung, "
     "Belastung und die geplante Einheit und sag mir, was heute sinnvoll ist."
 )
-SESSION_TURN_PREFIX: Final = f"{AUTOMATIC_TURN_PREFIX}session:"
+SESSION_TURN_PREFIX: Final = coach_store.AUTOMATIC_SESSION_PREFIX
 SESSION_MESSAGE: Final = (
     "Automatische Einheitenanalyse: Analysiere meine neue Einheit {session_id}: Was "
     "lief gut, was sollte ich anpassen und wie beeinflusst sie die nächste Einheit?"
 )
-# Since when new sessions count, and how many were queued on which day (#4275).
+# How many session analyses were queued on which day (#4275).
 SESSIONS_KEY: Final = "coach_automatic_sessions"
 SESSIONS_PER_DAY: Final = 5
 COUNTS_KEY: Final = "coach_automatic_turn_counts"
@@ -82,23 +81,20 @@ class AutomaticCoachTurns:
         so several new sessions run one after another, newest first.
         """
         local = self._local_now()
-        # The session analysis marks its start, or forgets it, also at night.
-        sports = self._session_sports(local)
         if (
             not START_HOUR <= local.hour < END_HOUR
             or not self._settings.coach_ready()
             or self._busy()
         ):
             return False
-        return self._check_morning(local.date()) or self._check_sessions(local, sports)
+        turns = self._settings.automatic_turns()
+        return self._check_morning(turns, local.date()) or self._check_sessions(
+            turns, local
+        )
 
-    def _check_morning(self, today: date) -> bool:
+    def _check_morning(self, turns: dict[str, Any], today: date) -> bool:
         """Today's check-in: switched on, none for today yet and tonight's sleep stored."""
-        if (
-            not self._settings.automatic_turns()["morning"]
-            or self._morning_done()
-            or not self._sleep_ready(today)
-        ):
+        if not turns["morning"] or self._morning_done() or not self._sleep_ready(today):
             return False
         return self._enqueue(
             MORNING_MESSAGE,
@@ -106,36 +102,25 @@ class AutomaticCoachTurns:
             "morning_checkin",
         )
 
-    def _session_sports(self, local: datetime) -> frozenset[str]:
-        """The analysed sport groups. The first check after switching on marks
-        since when sessions count; switching off removes the mark."""
-        sports = self._settings.automatic_session_sports()
-        with self._database().unit_of_work() as db:
-            if not sports and self._key_values.get(db, SESSIONS_KEY) is not None:
-                self._key_values.delete(db, SESSIONS_KEY)
-            elif sports and not _sessions_state(self._key_values, db):
-                since = local.astimezone(UTC).isoformat()
-                self._key_values.set(db, SESSIONS_KEY, json.dumps({"since": since}))
-        return sports
-
-    def _check_sessions(self, local: datetime, sports: frozenset[str]) -> bool:
+    def _check_sessions(self, turns: dict[str, Any], local: datetime) -> bool:
         """The newest new session of an analysed sport not analysed yet (#4275).
 
         Only sessions stored after the switch was turned on count, so a replay,
         a backfill or an older session never queues a burst; each session has
         one turn id, and at most ``SESSIONS_PER_DAY`` start a day.
         """
+        sports = analysed_session_sports(turns)
+        try:
+            since = datetime.fromisoformat(turns["sessions_since"])
+        except KeyError, TypeError, ValueError:
+            return False
         if not sports:
             return False
         today = local.date().isoformat()
-        with self._database().unit_of_work() as db:
-            state = _sessions_state(self._key_values, db)
-            if not state:
-                return False
-            queued = state.get("queued", 0) if state.get("day") == today else 0
+        with self._database().reader() as db:
+            queued = _queued_today(self._key_values, db, today)
             if queued >= SESSIONS_PER_DAY:
                 return False
-            since = datetime.fromisoformat(state["since"])
             found = new_sessions(db, since, local.date())
             groups = session_groups(db, found)
         for session_id in (item for item in found if groups.get(item) in sports):
@@ -145,7 +130,7 @@ class AutomaticCoachTurns:
                 "session_analysis",
             ):
                 with self._database().unit_of_work() as db:
-                    state = {**state, "day": today, "queued": queued + 1}
+                    state = {"day": today, "queued": queued + 1}
                     self._key_values.set(db, SESSIONS_KEY, json.dumps(state))
                 return True
         return False
@@ -209,14 +194,14 @@ class AutomaticCoachTurns:
             self._key_values.set(db, COUNTS_KEY, json.dumps(counts, sort_keys=True))
 
 
-def _sessions_state(key_values: KeyValueRepository, db: Any) -> dict[str, Any]:
-    """The stored start of the session analysis; empty when unset or unreadable."""
+def _queued_today(key_values: KeyValueRepository, db: Any, today: str) -> int:
+    """How many session analyses were queued today; 0 on another day or unreadable."""
     try:
         state = json.loads(key_values.get(db, SESSIONS_KEY) or "{}")
-        datetime.fromisoformat(state["since"])
-    except KeyError, TypeError, ValueError:
-        return {}
-    return state if type(state.get("queued", 0)) is int else {}
+    except ValueError:
+        return 0
+    queued = state.get("queued") if isinstance(state, dict) else None
+    return queued if type(queued) is int and state.get("day") == today else 0
 
 
 def diagnostics(key_values: KeyValueRepository, db: Any) -> dict[str, int]:

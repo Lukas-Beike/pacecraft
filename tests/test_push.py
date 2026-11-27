@@ -83,7 +83,8 @@ def _database() -> sqlite3.Connection:
         "CREATE TABLE observations (id INTEGER PRIMARY KEY, metric TEXT NOT NULL, "
         "observed_on TEXT NOT NULL, state TEXT NOT NULL);"
         "CREATE TABLE activity_records (provider TEXT NOT NULL, "
-        "activity_id TEXT, sport TEXT NOT NULL);"
+        "activity_id TEXT, sport TEXT NOT NULL, state TEXT NOT NULL DEFAULT 'active', "
+        "started_at TEXT);"
     )
     return connection
 
@@ -595,7 +596,8 @@ class PushChecksTests(unittest.TestCase):
             (ident, started, created),
         )
         self.connection.execute(
-            "INSERT INTO activity_records VALUES ('garmin', ?, ?)", (ident, sport)
+            "INSERT INTO activity_records (provider, activity_id, sport) VALUES ('garmin', ?, ?)",
+            (ident, sport),
         )
 
     def test_the_morning_plan_names_todays_units_once_a_day(self):
@@ -721,6 +723,16 @@ class PushChecksTests(unittest.TestCase):
         self._session("act_hike", 110, sport="hike")
         self.checks.check()
         self.assertEqual(len(self._titled("Neue Einheit")), 3)
+        # A checked session whose analysis exists waits for it; one without an
+        # analysis 15 minutes after it was stored (Coach not ready, daily cap)
+        # gets "Neue Einheit" after all.
+        self.connection.execute(
+            "INSERT INTO coach_commands VALUES ('auto:session:act_run', 'running')"
+        )
+        self._at(13)
+        self._session("act_run_2", 160)  # 12:40, no analysis queued
+        self.checks.check()
+        self.assertEqual(len(self._titled("Neue Einheit")), 4)
 
     def test_the_night_values_are_announced_once_when_they_are_dated_today(self):
         self.connection.executemany(

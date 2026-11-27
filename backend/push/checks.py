@@ -14,7 +14,7 @@ from __future__ import annotations
 import logging
 from collections.abc import Callable, Iterable
 from contextlib import AbstractContextManager, nullcontext
-from datetime import date, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from typing import Any, Final
 
 from backend.canonical.vocabulary import ProviderId
@@ -51,6 +51,8 @@ DAY_START_HOUR: Final = 7
 DAY_END_HOUR: Final = 22
 # Local hour until which the night push waits for an automatic check-in (#4274).
 AUTOMATIC_MORNING_UNTIL_HOUR: Final = 10
+# Minutes a new session's push waits for its automatic analysis (#4275).
+ANALYSIS_WAIT_MINUTES: Final = 15
 # Consecutive failed refreshes that count as a repeated sync failure.
 REPEATED_FAILURES: Final = 3
 UPCOMING_DAYS: Final = 3
@@ -144,7 +146,12 @@ class PushChecks:
                 None if automatic_night else morning_data_event(db, today),
                 checkin_event(db, today),
                 new_activity_event(
-                    [item for item in recent if groups.get(item) not in analysed]
+                    [
+                        item
+                        for item in recent
+                        if groups.get(item) not in analysed
+                        or not _analysis_announces(db, item, local)
+                    ]
                 ),
             ]
         if self._source(self._infection_hint):
@@ -227,6 +234,25 @@ def _automatic_morning_due(db: Any, local: datetime) -> bool:
         return True
     turn_id = f"{coach_store.AUTOMATIC_MORNING_PREFIX}{local.date().isoformat()}"
     return coach_store.command_row(db, turn_id, "status") is not None
+
+
+def _analysis_announces(db: Any, session_id: str, local: datetime) -> bool:
+    """The automatic analysis announces this session itself (#4275): once its
+    turn exists, or for ``ANALYSIS_WAIT_MINUTES`` after the session was stored
+    while it may still start. Later, without one (Coach not ready, daily cap,
+    stored before the switch), "Neue Einheit" goes as before."""
+    turn_id = f"{coach_store.AUTOMATIC_SESSION_PREFIX}{session_id}"
+    if coach_store.command_row(db, turn_id, "status") is not None:
+        return True
+    row = db.execute(
+        "SELECT created_at FROM activity_sessions WHERE activity_id = ?", (session_id,)
+    ).fetchone()
+    created = _parse(row["created_at"]) if row else None
+    if created is None:
+        return False
+    if created.tzinfo is None:
+        created = created.replace(tzinfo=UTC)
+    return local - created < timedelta(minutes=ANALYSIS_WAIT_MINUTES)
 
 
 def _parse(value: Any) -> datetime | None:

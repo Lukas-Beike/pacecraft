@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import Callable
+from datetime import UTC, datetime
 from typing import Any
 
 from backend.config import DEFAULT_OPENAI_BASE_URL, Config
@@ -28,13 +29,18 @@ def automatic_turns_from(stored: Any) -> dict[str, Any]:
     stored = stored if isinstance(stored, dict) else {}
     sports = stored.get("sports")
     sports = sports if isinstance(sports, dict) else {}
-    return {
+    turns: dict[str, Any] = {
         **{name: stored.get(name) is True for name in AUTOMATIC_TURNS},
         "sports": {
             sport: sports[sport] if isinstance(sports.get(sport), bool) else default
             for sport, default in SESSION_SPORTS.items()
         },
     }
+    # Since when new sessions count: the moment the analysis was switched on.
+    since = stored.get("sessions_since")
+    if turns["sessions"] and isinstance(since, str):
+        turns["sessions_since"] = since
+    return turns
 
 
 def analysed_session_sports(turns: dict[str, Any]) -> frozenset[str]:
@@ -140,7 +146,9 @@ class SettingsService:
         get_value: Callable[[str], str | None],
         set_value: Callable[[str, str], None],
         claude_models: Callable[[], dict[str, dict[str, str | None]]] = dict,
+        now: Callable[[], datetime] = lambda: datetime.now(UTC),
     ) -> None:
+        self._now = now
         self._config_supplier = config_supplier
         self._get_value = get_value
         self._set_value = set_value
@@ -340,6 +348,12 @@ class SettingsService:
             raise AppError(400, "Unbekannte automatische Coach-Einstellung.")
         current = self.automatic_turns()
         updated = current | values | {"sports": current["sports"] | sports}
+        # Switching the analysis on starts a new window: sessions stored while
+        # it was off, or before, are never analysed (#4275).
+        if not updated["sessions"]:
+            updated.pop("sessions_since", None)
+        elif not current["sessions"]:
+            updated["sessions_since"] = self._now().isoformat()
         self._set_value(AUTOMATIC_TURNS_KEY, json.dumps(updated, sort_keys=True))
         return updated
 
