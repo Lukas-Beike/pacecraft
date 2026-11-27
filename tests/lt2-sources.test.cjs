@@ -83,7 +83,7 @@ const OFFER_CS = { ...OFFER_LT2, key: "lt2:run:pace:critical_speed:242", metric:
 const OFFER_GARMIN = { ...OFFER_LT2, key: "lt2:ride:power:garmin:270", sport: "ride", metric: "power", source: "garmin", value: 270, unit: "W", current: null, sessions: null, window_days: null, quality: null, spread_pct: null, newest: "2026-11-19" };
 
 function offers() {
-  return extractFunctions("settings.js", ["THRESHOLD_OFFER_SOURCES", "THRESHOLD_OFFER_DFA", "THRESHOLD_OFFER_UNITS", "thresholdOfferNumber", "thresholdOfferBasis", "thresholdOffersFor", "thresholdOfferView", "thresholdOfferWhen"], { state: { data: {} }, AppFormat: require("../public/format.js") });
+  return extractFunctions("settings.js", ["THRESHOLD_OFFER_SOURCES", "THRESHOLD_OFFER_DFA", "THRESHOLD_OFFER_UNITS", "thresholdOfferNumber", "thresholdOfferBasis", "dismissedThresholdOffers", "thresholdOffersFor", "thresholdOfferView", "thresholdOfferWhen"], { state: { data: {} }, AppFormat: require("../public/format.js") });
 }
 
 test("an offer card names the value, the value in effect, source, basis and quality (#4135)", () => {

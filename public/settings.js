@@ -764,8 +764,13 @@ const THRESHOLD_OFFER_DFA = { lt1: ["LT1", "DFA-α1 0,75", "Läufe"], lt2: ["LT2
 const THRESHOLD_OFFER_UNITS = { heart_rate: "bpm", power: "W" };
 const THRESHOLD_OFFER_WIDE = globalThis.matchMedia?.("(min-width: 1100px)");
 
+// Offers just dismissed stay hidden while a read taken before the dismissal answers later
+// (#4315), until the profile read queued after the dismissal has landed; every reader of the
+// offers goes through thresholdOffersFor.
+const dismissedThresholdOffers = new Set();
+
 function thresholdOffersFor(sport, offers = state.data?.threshold_offers) {
-  return (Array.isArray(offers) ? offers : []).filter((offer) => offer.sport === sport);
+  return (Array.isArray(offers) ? offers : []).filter((offer) => offer.sport === sport && !dismissedThresholdOffers.has(offer.key));
 }
 
 // A pace as m:ss, a heart rate or power as a whole number.
@@ -878,6 +883,7 @@ async function dismissThresholdOffers(offers, button) {
   try {
     for (const offer of offers) {
       const result = await api("/api/zones/threshold-offers/dismiss", { method: "POST", body: JSON.stringify({ key: offer.key }) });
+      dismissedThresholdOffers.add(offer.key);
       if (state.data) state.data.threshold_offers = result.threshold_offers;
     }
   } catch (error) {
@@ -886,6 +892,9 @@ async function dismissThresholdOffers(offers, button) {
     else toast(error.message, true);
   } finally { setSaving(button, false); }
   refreshThresholdOffers();
+  // Loads run one after another: this read lands after any older one, so the stored state (and
+  // the device snapshot) end without the dismissed offer, and the hiding ends.
+  if (dismissedThresholdOffers.size) void globalThis.load?.(undefined, ["profile"])?.finally(() => { dismissedThresholdOffers.clear(); refreshThresholdOffers(); });
 }
 
 function zoneKindBox(sport, metric, environment = null) {
