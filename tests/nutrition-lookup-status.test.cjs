@@ -268,7 +268,7 @@ test("a queued Frühstück whose entry is gone is retried as a new Frühstück, 
   const meal = { value: "", closest: () => ({ hidden: true }) };
   const elements = { "#nutritionProductUseMeal": meal, "#nutritionDate": { value: "2026-11-27" }, "#nutritionProductUseAdd": {},"#nutritionProductUseStatus": { textContent: "" } };
   const sent = [];
-  const context = extractFunctions("nutrition.js", ["NUTRITION_MEAL_LABELS", "nutritionOutboxEdit", "queuedMealPayload", "addNutritionProductToMeal"], {
+  const context = extractFunctions("nutrition.js", ["NUTRITION_MEAL_LABELS", "nutritionOutboxEdit", "queuedMealPayload", "nutritionProductUseChoice", "nutritionOutboxEntryGone", "addNutritionProductToMeal"], {
     document: { querySelector: (selector) => elements[selector] },
     state: { sessionGeneration: 1, data: {} },
     todayIso: () => "2026-11-27",

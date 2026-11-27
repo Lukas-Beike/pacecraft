@@ -1354,12 +1354,22 @@ function queuedMealPayload(body) {
 // The new meals the product dialog offers: the fixed meals and the snack, the default (#4271).
 const NUTRITION_NEW_MEALS = [["breakfast", "Neues Frühstück"], ["lunch", "Neues Mittagessen"], ["dinner", "Neues Abendessen"], ["", "Neuer Snack"]];
 
+// The existing meal to extend, or the type of the new meal: a queued entry keeps its stored type.
+function nutritionProductUseChoice(edit) {
+  const choice = edit ? "" : document.querySelector("#nutritionProductUseMeal").value;
+  return { mealId: choice.startsWith("new:") ? "" : choice, mealType: edit?.payload.meal_type || choice.replace("new:", "") || "snack" };
+}
+
+// The edited queued entry is gone: the next save is a new meal of its type, the choice set to it (#4298).
+function nutritionOutboxEntryGone(mealType) {
+  nutritionOutboxEdit = null;
+  document.querySelector("#nutritionProductUseMeal").value = mealType === "snack" ? "" : `new:${mealType}`;
+}
+
 async function addNutritionProductToMeal() {
   const use = nutritionProductUseAmount();
   const edit = nutritionOutboxEdit;
-  const choice = edit ? "" : document.querySelector("#nutritionProductUseMeal").value;
-  const mealId = choice.startsWith("new:") ? "" : choice;
-  const mealType = edit?.payload.meal_type || choice.replace("new:", "") || "snack";
+  const { mealId, mealType } = nutritionProductUseChoice(edit);
   const mealLabel = NUTRITION_MEAL_LABELS[mealType] || "Mahlzeit";
   if (!use) return;
   const generation = state.sessionGeneration;
@@ -1390,10 +1400,7 @@ async function addNutritionProductToMeal() {
     if (generation !== state.sessionGeneration) return;
     // The queued entry is gone meanwhile: the next save goes out as a new meal of the stored type, the choice
     // set to it (Gitar on #3830, #4298).
-    if (error?.reason === "outbox_entry_gone") {
-      nutritionOutboxEdit = null;
-      document.querySelector("#nutritionProductUseMeal").value = mealType === "snack" ? "" : `new:${mealType}`;
-    }
+    if (error?.reason === "outbox_entry_gone") nutritionOutboxEntryGone(mealType);
     document.querySelector("#nutritionProductUseStatus").textContent = `Produkt konnte nicht erfasst werden: ${error.message}`;
     setSaving(addButton, false);
   }
