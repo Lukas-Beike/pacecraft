@@ -81,7 +81,7 @@ class WahooWeightPushService:
         """
         try:
             if not self._status().get("connected"):
-                return OFF
+                return self.push()  # stores off without calling Wahoo
             _count_running(1)
 
             def run() -> None:
@@ -103,6 +103,11 @@ class WahooWeightPushService:
                 "Wahoo weight push not started",
                 extra={"event": "wahoo_weight_push_error", "context": {"error_type": type(error).__name__}},
             )  # fmt: skip
+            # The next Wahoo refresh sends it, as the receipt says.
+            try:
+                self.mark_restored()
+            except Exception:  # noqa: BLE001 - the failure is logged above
+                return OFF
             return PENDING
 
     def mark_restored(self) -> None:
@@ -222,12 +227,18 @@ def _count_running(step: int) -> None:
         _RUNNING[0] += step
 
 
-def push_state(db: Any) -> dict[str, bool]:
-    """Whether a started push runs now and whether a change still waits (#4267)."""
+def push_state(db: Any) -> dict[str, Any]:
+    """Whether a started push runs now, whether a change still waits and how the
+    last push ended (the diagnostics' enum, #4267)."""
     with _RUNNING_LOCK:
         running = _RUNNING[0] > 0
     state = read_state(KeyValueRepository(lambda: "").get(db, STATE_KEY))
-    return {"running": running, "pending": bool(state.get("pending"))}
+    outcome = state.get("last_outcome")
+    return {
+        "running": running,
+        "pending": bool(state.get("pending")),
+        "outcome": outcome if outcome in _OUTCOMES else None,
+    }
 
 
 def read_state(raw: str | None) -> dict[str, Any]:

@@ -94,6 +94,9 @@ LOCAL_ANSWER_S: Final = 0.5
 # The running save pushes per day; a restart forgets them with their threads,
 # so the day then reads as its link's pending state.
 _RUNNING_DAYS: Counter[str] = Counter()
+# Each day's last save push outcome, so the browser reads how a followed push ended.
+_OUTCOMES: dict[str, str] = {}
+_OUTCOMES_KEPT: Final = 60
 _RUNNING_LOCK = threading.Lock()
 _WEIGHT_TOLERANCE_KG: Final = 0.05
 _FAT_TOLERANCE_PCT: Final = 0.05
@@ -210,17 +213,19 @@ class GarminBodyPushService:
         key = day.isoformat()
 
         def run() -> None:
+            outcome = PENDING
             try:
-                answers.put(self._guarded(day, retry=False))
+                outcome = self._guarded(day, retry=False)
+                answers.put(outcome)
             finally:
-                _finish(key)
+                _finish(key, outcome)
 
         with _RUNNING_LOCK:
             _RUNNING_DAYS[key] += 1
         try:
             self._start(run)
         except Exception:
-            _finish(key)
+            _finish(key, PENDING)
             raise
         try:
             return answers.get(timeout=LOCAL_ANSWER_S)
@@ -468,11 +473,15 @@ class GarminBodyPushService:
         self._key_values.set(db, COUNTS_KEY, json.dumps(counts, sort_keys=True))
 
 
-def _finish(key: str) -> None:
+def _finish(key: str, outcome: str) -> None:
     with _RUNNING_LOCK:
         _RUNNING_DAYS[key] -= 1
         if _RUNNING_DAYS[key] <= 0:
             del _RUNNING_DAYS[key]
+        _OUTCOMES.pop(key, None)
+        _OUTCOMES[key] = outcome
+        while len(_OUTCOMES) > _OUTCOMES_KEPT:
+            del _OUTCOMES[next(iter(_OUTCOMES))]
 
 
 def _value(db: Any, kind: MetricKind, day: date) -> float | None:
@@ -551,17 +560,19 @@ def _rejected(response: Any) -> bool:
     return bool(failures) and not successes
 
 
-def push_state(db: Any, today: date) -> dict[str, list[str]]:
-    """The days whose save push runs now and the days still pending (#4267)."""
+def push_state(db: Any, today: date) -> dict[str, Any]:
+    """The days whose save push runs now, how each day's last one ended, and the
+    days still pending (#4267); after a restart only the pending days remain."""
     with _RUNNING_LOCK:
         running = sorted(+_RUNNING_DAYS)
+        outcomes = dict(_OUTCOMES)
     oldest = (today - timedelta(days=RETRY_DAYS)).isoformat()
     pending = sorted(
         link.local_id
         for link in RemoteLinkRepository().list_for_provider(db, GARMIN, KIND)
         if link.sync_state is RemoteLinkState.PENDING and link.local_id >= oldest
     )
-    return {"running": running, "pending": pending}
+    return {"running": running, "outcomes": outcomes, "pending": pending}
 
 
 def summarize_body_push(db: Any) -> dict[str, Any]:

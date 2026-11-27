@@ -264,6 +264,11 @@ class WahooWeightPushTests(unittest.TestCase):
         self.status = {"connected": False, "scope": None}
         self.weights.save({"date": DAY.isoformat(), "kg": 80.4})
         self.assertEqual("off", self.push.start())
+        # Without a connection the off outcome is still recorded (review on #4267).
+        with self.manager.reader() as db:
+            self.assertEqual(
+                {"running": False, "pending": False, "outcome": "off"}, push_state(db)
+            )
         self.status = dict(ONLINE)
         release = threading.Event()
         update = self.client.update_user_weight
@@ -277,7 +282,9 @@ class WahooWeightPushTests(unittest.TestCase):
                 thread.join(5)
         self.assertEqual([80.4], self.client.weights)
         with self.manager.reader() as db:
-            self.assertEqual({"running": False, "pending": False}, push_state(db))
+            self.assertEqual(
+                {"running": False, "pending": False, "outcome": "sent"}, push_state(db)
+            )
         self.client.fail = TimeoutError()
         self.weights.save({"date": DAY.isoformat(), "kg": 80.6})
         with self.assertLogs("intervals_coach"):
@@ -286,7 +293,9 @@ class WahooWeightPushTests(unittest.TestCase):
                 if thread.name == "wahoo-weight-push":
                     thread.join(5)
         with self.manager.reader() as db:
-            self.assertEqual({"running": False, "pending": True}, push_state(db))
+            self.assertEqual(
+                {"running": False, "pending": True, "outcome": "error"}, push_state(db)
+            )
 
 
 class UpdateUserWeightTests(ClientCase):

@@ -2636,8 +2636,9 @@ Response: 200 with `status`, `phase`, `progress` (0 to 100),
 `operation_id`, `running`, `message`, `started_at`, `finished_at`,
 `last_error`, `state_versions`, `provider_freshness`, `maintenance`
 (`active`, `running_operations`), `jobs` (the recent sync jobs) and
-`body_push`: `garmin` (`running` and `pending` ISO days) and `wahoo`
-(`running`, `pending` booleans) of the body value pushes.
+`body_push`: `garmin` (`running` and `pending` ISO days, `outcomes` per
+day) and `wahoo` (`running`, `pending`, last `outcome`) of the body
+value pushes.
 
 Errors: none beyond the common ones.
 

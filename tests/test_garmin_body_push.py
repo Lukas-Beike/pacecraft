@@ -399,7 +399,10 @@ class GarminBodyPushTests(unittest.TestCase):
         self.assertEqual(["2026-11-15"], self.push_state()["running"])
         release.set()
         self.wait_for(lambda: not self.push_state()["running"])
-        self.assertEqual({"running": [], "pending": []}, self.push_state())
+        state = self.push_state()
+        self.assertEqual(
+            ([], "sent"), (state["pending"], state["outcomes"]["2026-11-15"])
+        )
         link = self.link()
         self.assertEqual(
             ("101", RemoteLinkState.SYNCED), (link.remote_id, link.sync_state)
@@ -414,7 +417,27 @@ class GarminBodyPushTests(unittest.TestCase):
             )
             release.set()
             self.wait_for(lambda: not self.push_state()["running"])
-        self.assertEqual({"running": [], "pending": ["2026-11-15"]}, self.push_state())
+        state = self.push_state()
+        self.assertEqual((["2026-11-15"], "pending"),
+                         (state["pending"], state["outcomes"]["2026-11-15"]))  # fmt: skip
+
+    def test_a_slow_push_ending_without_a_send_reports_its_outcome(self):
+        # Review on #4267: a day neither running nor pending is not a success by
+        # itself; the outcome says a body fat still waits for a weight.
+        release = self.hold_garmin()
+        release.set()
+        self.store_garmin_weight(79.0)
+        self.fats.save({"date": "2026-11-15", "pct": 15})
+        self.wait_for(lambda: not self.push_state()["running"])
+        self.weights.save({"date": "2026-11-15", "kg": 80})
+        self.wait_for(lambda: not self.push_state()["running"])
+        self.store_garmin_weight(80.0)
+        self.weights.remove({"date": "2026-11-15", "confirmed": True})
+        self.wait_for(lambda: not self.push_state()["running"])
+        state = self.push_state()
+        self.assertEqual(
+            ([], "needs_weight"), (state["pending"], state["outcomes"]["2026-11-15"])
+        )
 
     def test_a_restart_during_a_push_reads_as_pending(self):
         # The upload went out but its answer never came: the link is pending with
@@ -422,7 +445,15 @@ class GarminBodyPushTests(unittest.TestCase):
         self.sdk.fail_after_upload = TimeoutError()
         with self.assertLogs("intervals_coach", logging.WARNING):
             self.weights.save({"date": "2026-11-15", "kg": 80})
-        self.assertEqual({"running": [], "pending": ["2026-11-15"]}, self.push_state())
+        # The restart forgets the outcomes kept in memory.
+        with (
+            unittest.mock.patch.dict(garmin_body_push._OUTCOMES, clear=True),
+            self.manager.reader() as db,
+        ):
+            self.assertEqual(
+                {"running": [], "outcomes": {}, "pending": ["2026-11-15"]},
+                push_state(db, DAY),
+            )
         # Pending days older than the retry window are not reported.
         with self.manager.reader() as db:
             self.assertEqual([], push_state(db, DAY + timedelta(days=31))["pending"])
