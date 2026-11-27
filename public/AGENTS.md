@@ -16,11 +16,12 @@
   inserts a newline. On touch-first devices, Enter inserts a newline; the send
   button or Ctrl/Cmd+Enter sends.
 - Workouts are stored directly in the local training library; the athlete can
-  synchronize them to Intervals.icu later. Adaptive replan previews need a
-  separate explicit apply action; only the athlete's own Intervals.icu sync
-  request for an illness pause approves one (#2342).
-- One button concept (#4279): icons on rows and cards, words in dialogs (red
-  Löschen leftmost), every save `push-button`; `tests/button-concept.test.cjs`.
+  explicitly synchronize them to Intervals.icu later. Adaptive replan previews
+  still require a separate explicit apply action; the one exception is the
+  athlete's own Intervals.icu sync request for an illness pause, which approves
+  it (#2342).
+- One button concept (#4279): icons on rows and cards, words in dialogs (red Löschen leftmost),
+  every save `push-button`; `tests/button-concept.test.cjs` guards it.
 - The service worker is part of the release cache contract. Source files carry
   no versions: reference assets as `/app.js` in `index.html` and `ASSETS`, and
   keep the `__ASSET_HASH__` cache-name placeholder. `StaticAssetService` stamps
@@ -29,15 +30,14 @@
   cached (a new public file is served from the `public/` listing); never
   hand-write asset `?v=` versions or the cache name. Do not add
   interactive application update dialogs, cache conversion or earlier-client support.
-- The last loaded state and recent view reads are stored on the device, so a
-  start or view shows them at once while fresh data loads. The latest 20 Coach
-  messages are stored separately as soon as they are shown and take precedence
-  over the view cache; older messages load when scrolling up. After an update the
-  start shows a non-interactive "Update wird verarbeitet…" loading screen until
-  the fresh bootstrap arrives; the previous snapshot is shown only when the
-  server cannot be reached or the fresh start data fails to load. Logout, a 401, an
-  unauthenticated start and a privacy deletion clear this device data. Never
-  store credentials, session data or CSRF tokens in it.
-- Keep notifications opt-in, bounded, and functional in browsers without push.
+- The last loaded state and recent view reads are stored on the device, so a start or view shows
+  them at once while fresh data loads. The latest 20 Coach messages are stored separately as soon as
+  they are shown and take precedence over the view cache; older messages load when scrolling up.
+  After an update the start shows a non-interactive "Update wird verarbeitet…" loading screen until
+  the fresh bootstrap arrives; the previous snapshot is shown only when the server cannot be reached
+  or the fresh start data fails to load. Logout, a 401, an unauthenticated start and a privacy
+  deletion clear this device data. Never store credentials, session data or CSRF tokens in it.
+- Keep notifications opt-in, bounded, and functional in browsers that do not
+  support them.
 - Keep UI text and the `README.md` and `docs/` files it links accurate when
-  changing user-visible behavior.
+  adding or changing user-visible behavior.

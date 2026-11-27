@@ -19,14 +19,30 @@ function buttons() {
     found.push(["index.html", HTML.slice(0, match.index).split("\n").length, className.split(/\s+/), match[2].trim()]);
   }
   for (const [name, source] of SOURCES) {
-    source.split("\n").forEach((line, index) => {
-      for (const match of line.matchAll(/h\("button",\s*(?:\{([^}]*)\}|"([^"]*)")\s*,\s*"([^"]+)"/g)) {
-        const className = /className:\s*"([^"]*)"/.exec(match[1] || "")?.[1] ?? match[2] ?? "";
-        found.push([name, index + 1, className.split(/\s+/), match[3]]);
-      }
-    });
+    for (const match of source.matchAll(/h\("button",\s*/g)) {
+      const start = match.index + match[0].length;
+      const props = source[start] === "{" ? balanced(source, start) : /^"[^"]*"/.exec(source.slice(start))?.[0] ?? "";
+      const label = /^\s*,\s*"([^"]+)"/.exec(source.slice(start + props.length));
+      if (!label) continue;
+      const className = source[start] === "{" ? /className:\s*"([^"]*)"/.exec(props)?.[1] ?? "" : props.slice(1, -1);
+      found.push([name, source.slice(0, match.index).split("\n").length, className.split(/\s+/), label[1]]);
+    }
   }
   return found;
+}
+
+// The text of the object literal that opens at `from`, with strings and template literals skipped.
+function balanced(source, from) {
+  let depth = 0;
+  for (let index = from; index < source.length; index += 1) {
+    const char = source[index];
+    if (char === '"' || char === "'" || char === "`") {
+      index += 1;
+      while (index < source.length && source[index] !== char) index += source[index] === "\\" ? 2 : 1;
+    } else if (char === "{") depth += 1;
+    else if (char === "}" && --depth === 0) return source.slice(from, index + 1);
+  }
+  return "";
 }
 
 const where = (rows) => rows.map(([file, line, , text]) => `${file}:${line} "${text}"`);

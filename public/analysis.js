@@ -2899,7 +2899,7 @@ async function renderTrainingRecords({ background = false } = {}) { // NOSONAR
     const archivedRunItems = archivedLocalItems.filter((item) => isRunEquipment(item) || item.kind === "shoes");
     const uncategorizedItems = activeLocalItems.filter((item) => !bikeItems.includes(item) && !runItems.includes(item));
     const archivedUncategorizedItems = archivedLocalItems.filter((item) => !archivedBikeItems.includes(item) && !archivedRunItems.includes(item));
-    // "+ Hinzufügen" sits right of the heading and adds to the shown tab; its form opens in that tab (#4129 M-06).
+    // "+ Ausrüstung" sits right of the heading and adds to the shown tab; its form opens in that tab (#4129 M-06).
     const [addButton, addForm] = equipmentAddControl(equipmentTab);
     gear.querySelector(":scope > h3").replaceWith(h("div", "equipment-head", heading(), addButton));
     const groups = {

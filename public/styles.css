@@ -1479,6 +1479,7 @@ output.planned-move-status { display: block; }
 .backup-actions label { flex: 1; }
 .backup-actions input[type="file"] { padding: 8px; font-size: .72rem; }
 .dialog-actions { display: flex; justify-content: flex-end; gap: 8px; }
+.dialog-actions .icon-button { width: 44px; padding: 0; }
 .confirmation-dialog { max-width: 560px; }
 .confirmation-dialog p { white-space: pre-wrap; max-height: 45vh; overflow: auto; }
 .confirmation-dialog input { width: 100%; }
