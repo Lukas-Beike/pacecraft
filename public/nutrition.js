@@ -313,12 +313,31 @@ function nutritionExpenditureDate(value) {
 function appendNutritionTotals(totals, day) {
   // Empty days report zero totals, which are unknown, so the tiles stay "nicht erfasst".
   const hasEntries = Number(day.entry_count) > 0;
-  for (const [label, key, unit] of [["Kalorien", "kcal", "kcal"], ["Kohlenhydrate", "carbs_g", "g"], ["Protein", "protein_g", "g"], ["Fett", "fat_g", "g"], ["Zucker", "sugar_g", "g"], ["Salz", "salt_g", "g"]]) {
+  for (const [label, key, unit] of [["Kalorien", "kcal", "kcal"], ["Kohlenhydrate", "carbs_g", "g"], ["Protein", "protein_g", "g"], ["Fett", "fat_g", "g"]]) {
     const tile = nutritionTotalTile(label, key, unit, day, hasEntries);
     if (key === "kcal") tile.classList.add("is-hero");
-    if (key === "sugar_g" || key === "salt_g") tile.classList.add("is-minor");
     totals.append(tile);
   }
+  totals.append(nutritionMinorLine(day, hasEntries));
+}
+
+// Zucker and Salz as one slim line (#4300); each value keeps its own "nicht erfasst", and "unvollständig" stands
+// once on the right when either value is only a partial sum.
+function nutritionMinorLine(day, hasEntries) {
+  const line = h("div", "nutrition-minor-line");
+  let partial = false;
+  for (const [label, key] of [["Zucker", "sugar_g"], ["Salz", "salt_g"]]) {
+    const complete = hasEntries ? day[`total_${key}`] : null;
+    const total = hasEntries ? (complete ?? day.known_macro_totals?.[key] ?? day.known_intake_totals?.[key]) : null;
+    const value = h("strong");
+    if (total == null) markValueMissing(value);
+    else setValueWithUnit(value, `${nutritionNumber(total, "g")} g`);
+    partial ||= complete == null && total != null;
+    if (key === "salt_g") line.append(h("span", null, " · "));
+    line.append(h("span", null, `${label} `, value));
+  }
+  if (partial) line.append(h("span", "nutrition-minor-partial", "unvollständig"));
+  return line;
 }
 
 function nutritionTotalTile(label, key, unit, day, hasEntries) {

@@ -250,7 +250,7 @@ button { cursor: pointer; }
 main:focus { outline: none; }
 .nav-icon { width: 21px; height: 21px; fill: none; stroke: currentColor; stroke-linecap: round; stroke-linejoin: round; stroke-width: 1.8; }
 /* One surface-card family (#2434); view rules add only layout. */
-.card, .analysis-chart-card, .settings-section, .connection-card, .nutrition-total, .nutrition-card, .nutrition-tools, .planned-week, .planned-month, .coach-action-review, .status-strip { border: 1px solid var(--line); border-radius: var(--radius-lg); background: var(--surface); box-shadow: var(--shadow-soft); }
+.card, .analysis-chart-card, .settings-section, .connection-card, .nutrition-total, .nutrition-minor-line, .nutrition-card, .nutrition-tools, .planned-week, .planned-month, .coach-action-review, .status-strip { border: 1px solid var(--line); border-radius: var(--radius-lg); background: var(--surface); box-shadow: var(--shadow-soft); }
 .status-chip { display: inline-flex; min-height: 24px; align-items: center; gap: 6px; padding: 4px 9px; border-radius: 999px; color: var(--muted); background: var(--surface-raised); font-size: 12px; font-weight: 700; }
 .status-chip[data-status="ready"], .status-chip.success { color: var(--ink); background: var(--success-surface); }
 .status-chip[data-status="loading"], .status-chip.warning { color: var(--ink); background: var(--warning-surface); }
@@ -1809,7 +1809,7 @@ button:focus-visible, a:focus-visible, summary:focus-visible {
 .composer .chat-attachment-remove:hover { color: var(--ink); background: var(--transparent); filter: none; }
 
 
-.nutrition-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 20px 0; container-type: inline-size; }
+.nutrition-toolbar { display: flex; flex-wrap: wrap; align-items: end; gap: 8px; margin: 20px 0; container-type: inline-size; }
 .nutrition-toolbar label { flex: 1; min-width: 0; }
 .nutrition-date-name { display: block; margin-bottom: 2px; color: var(--muted); font-size: .72rem; text-align: center; }
 /* rem follows the text size: a bigger text puts the day on its own row. */
@@ -1831,8 +1831,11 @@ button:focus-visible, a:focus-visible, summary:focus-visible {
 #nutritionTotals .nutrition-total > span, #nutritionExpenditureTotals .nutrition-total > span { font-size: .78rem; }
 #nutritionTotals .nutrition-total.is-hero { grid-column: 1 / -1; padding: 16px; }
 #nutritionTotals .nutrition-total.is-hero strong { font-size: 2.4rem; letter-spacing: -.02em; white-space: nowrap; }
-#nutritionTotals .nutrition-total.is-minor { grid-column: span 3; }
-#nutritionTotals .nutrition-total.is-minor strong { font-size: 1.1rem; }
+/* Zucker and Salz are one slim line under the macro tiles, not tiles (#4300). */
+#nutritionTotals .nutrition-minor-line { grid-column: 1 / -1; display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 8px; padding: 10px 12px; font-size: .9rem; }
+.nutrition-minor-line strong { font-size: 1rem; }
+.nutrition-minor-line strong.value-missing { font-size: .9rem; }
+.nutrition-minor-line .nutrition-minor-partial { margin-left: auto; color: var(--muted); font-size: .78rem; }
 .nutrition-list { display: grid; gap: 12px; margin: 18px 0; }
 .nutrition-card h3 { margin: 0 0 8px; overflow-wrap: anywhere; }
 .nutrition-card p { overflow-wrap: anywhere; white-space: pre-wrap; }

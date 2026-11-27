@@ -111,7 +111,8 @@ test("@responsive recovery at 12 Monate plots weekly means for every chart and l
 test("@responsive nutrition diary shows calories as hero with one equal macro row", async ({ page }) => {
   await open(page, "nutrition/diary", "#nutritionTotals .nutrition-total");
   const tiles = page.locator("#nutritionTotals .nutrition-total");
-  await expect(tiles).toHaveCount(6);
+  // Zucker and Salz are one line below, not tiles (#4300).
+  await expect(tiles).toHaveCount(4);
   await expect(tiles.first()).toHaveClass(/is-hero/);
   const boxes = await tiles.evaluateAll((nodes) => nodes.map((node) => {
     const box = node.getBoundingClientRect();
@@ -127,6 +128,25 @@ test("@responsive nutrition diary shows calories as hero with one equal macro ro
   expect(boxes[0].valueHeight).toBeLessThan(60);
   await expect(tiles.first().locator(".nutrition-unit")).toHaveText("kcal");
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+});
+
+test("@responsive the diary toolbar lines up with the date field and sugar and salt are one full-width line (#4300)", async ({ page }) => {
+  const edges = () => page.evaluate(() => {
+    const bottom = (selector) => Math.round(document.querySelector(selector).getBoundingClientRect().bottom * 10) / 10;
+    return { input: bottom("#nutritionDate"), buttons: ["#nutritionPrevious", "#nutritionNext", "#nutritionToday"].map(bottom) };
+  });
+  for (const width of [390, 320]) {
+    await page.setViewportSize({ width, height: 800 });
+    await open(page, "nutrition/diary", "#nutritionTotals .nutrition-total");
+    const { input, buttons } = await edges();
+    // Side by side the buttons end where the date field ends; wrapped below the day (narrow), they share one row.
+    const [first, ...rest] = buttons;
+    for (const edge of rest) expect(Math.abs(edge - first)).toBeLessThanOrEqual(1);
+    if (width >= 390) expect(Math.abs(first - input)).toBeLessThanOrEqual(1);
+    const boxes = await page.evaluate(() => ["#nutritionTotals .is-hero", "#nutritionTotals .nutrition-minor-line"].map((selector) => Math.round(document.querySelector(selector).getBoundingClientRect().width)));
+    expect(Math.abs(boxes[1] - boxes[0])).toBeLessThanOrEqual(1);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  }
 });
 
 test("@responsive nutrition history collapses days without data and products keep one primary action", async ({ page }) => {

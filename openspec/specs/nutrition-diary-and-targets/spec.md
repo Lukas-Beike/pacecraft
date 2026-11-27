@@ -462,6 +462,10 @@ The client SHALL show the nutrition area as Tagebuch, Verlauf, Körper and Produ
 - **WHEN** the diary shows a day after today that has no entries
 - **THEN** no total tiles show and "Dieser Tag liegt in der Zukunft." reads below the energy cards, with no button
 
+#### Scenario: Sugar and salt line
+- **WHEN** a day with entries shows its totals
+- **THEN** Zucker and Salz read as one full-width line under the calorie and macro tiles ("Zucker 37,5 g · Salz 2,0 g"), each value keeps its own "nicht erfasst", and "unvollständig" shows on the right when either value is a partial sum; the date toolbar's buttons end at the date field's bottom edge, or share one row below the day name on a narrow screen
+
 #### Scenario: Failed load
 - **WHEN** a day cannot be loaded and no cached copy exists
 - **THEN** the requested date stays in the field and one error with "Erneut laden" is shown; with a cached copy the status reads "Gespeicherter Stand. Aktualisierung fehlgeschlagen: …".

@@ -10,15 +10,17 @@ test("@responsive nutrition overview shows consumed sugar and salt with honest m
     known_intake_totals: { sugar_g: mode === "partial" ? 6.2 : null, salt_g: null },
   } }));
   await page.goto("/#nutrition/diary");
-  const sugar = page.locator("#nutritionTotals .nutrition-total").filter({ hasText: "Zucker" });
-  const salt = page.locator("#nutritionTotals .nutrition-total").filter({ hasText: "Salz" });
-  await expect(sugar).toHaveText("12,5 gZucker");
-  await expect(salt).toHaveText("0,0 gSalz");
+  // Zucker and Salz are one slim line under the tiles, not tiles (#4300).
+  const line = page.locator("#nutritionTotals .nutrition-minor-line");
+  await expect(page.locator("#nutritionTotals .nutrition-total")).toHaveCount(4);
+  await expect(line).toHaveText("Zucker 12,5 g · Salz 0,0 g");
+  await expect(line.locator(".nutrition-minor-partial")).toHaveCount(0);
   mode = "partial";
   await page.reload();
-  await expect(sugar).toHaveText("6,2 gZucker · unvollständig");
-  await expect(salt).toHaveText("nicht erfasstSalz");
-  await expect(salt.locator("strong.value-missing")).toHaveCount(1);
+  await expect(line).toContainText("Zucker 6,2 g · Salz nicht erfasst");
+  await expect(line.locator(".nutrition-minor-partial")).toHaveText("unvollständig");
+  await expect(line.locator("strong.value-missing")).toHaveCount(1);
+  await expect(line.locator("strong.value-missing")).toHaveText("nicht erfasst");
   mode = "empty";
   await page.reload();
   await expect(page.locator("#nutritionTotals")).toBeHidden();
