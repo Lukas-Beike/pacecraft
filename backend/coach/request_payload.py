@@ -11,7 +11,7 @@ from typing import Any
 from backend.coach import dialogue
 from backend.coach.activity_read_tools import named_activity_id, resolve_session
 from backend.coach.attachments import model_attachments
-from backend.coach.context import CoachTrainingContextService
+from backend.coach.context import COACHING_RULES_END, CoachTrainingContextService
 from backend.coach.context_selection import (
     CoachContextSelection,
     compact_coach_dialogue,
@@ -136,6 +136,12 @@ def compose_model_instructions(
     return instructions
 
 
+def cached_prefix_length(instructions: str) -> int:
+    """The length of the rules every turn shares: up to the end of the coaching rules."""
+    end = instructions.find(COACHING_RULES_END)
+    return end + len(COACHING_RULES_END) if end >= 0 else 0
+
+
 def request_context_selection(
     message: str,
     context: dict[str, Any],
@@ -258,6 +264,7 @@ class CoachRequestPayloadService:
         request = ModelRequest(
             model=model or self._settings.selected_model(),
             instructions=model_instructions,
+            cached_instructions=cached_prefix_length(model_instructions),
             input=json.dumps(dialogue_input, ensure_ascii=False, separators=(",", ":")),
             attachments=model_attachments(attachments),
             tools=tools,

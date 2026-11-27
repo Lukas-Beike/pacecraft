@@ -23,6 +23,9 @@ class ModelRequest:
 
     model: str
     instructions: str = ""
+    # The length of the instructions' stable start, which every turn shares;
+    # a provider with explicit cache blocks caches it apart from the rest (#4288).
+    cached_instructions: int = 0
     input: str = ""
     # Provider-safe parts that come with the input; see coach.attachments.
     attachments: list[dict[str, Any]] = field(default_factory=list)

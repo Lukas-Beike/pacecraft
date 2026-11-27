@@ -212,6 +212,10 @@ Evidence: `backend/providers/state.py:ProviderStateService.record_status`, `back
 ### Requirement: MU9 Claude Messages adapter behind the model seam
 The system SHALL translate a neutral model request into one Anthropic Messages request and its reply into a neutral model turn in a single adapter, so no other code reads Claude's content block types. Tool use SHALL be automatic with at most one call per response, effort SHALL follow the requested reasoning level, and the stable tool list and instructions SHALL be marked for prompt caching.
 
+#### Scenario: Shared rules cached apart from the turn context
+- **WHEN** a Coach turn's instructions start with the rules every turn shares
+- **THEN** those rules form the first system block with the cache marker and the per-turn context follows in a second block without one, so the next turn reads the rules from the cache.
+
 #### Scenario: Tool round
 - **WHEN** a turn continues after a tool call
 - **THEN** the request resends the first user message, the earlier assistant content unchanged (thinking signatures included) and all tool results of that round in one user message.

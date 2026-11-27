@@ -168,9 +168,15 @@ def request_payload(request: ModelRequest, *, stream: bool = False) -> dict[str,
     }
     system = _system(request)
     if system:
+        # The shared rules form their own cached block, so the next turn reads
+        # them from the cache although its context differs (#4288).
+        cached = request.cached_instructions
+        static = system[:cached] if 0 < cached < len(system) else system
         payload["system"] = [
-            {"type": "text", "text": system, "cache_control": {"type": "ephemeral"}}
+            {"type": "text", "text": static, "cache_control": {"type": "ephemeral"}}
         ]
+        if static != system:
+            payload["system"].append({"type": "text", "text": system[cached:]})
     payload["messages"] = _messages(request)
     # The last cacheable block: tool rounds of one turn reuse the earlier ones.
     payload["cache_control"] = {"type": "ephemeral"}

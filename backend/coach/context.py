@@ -99,6 +99,8 @@ COACH_CONTEXT_SECTION_LIMITS = {
     "planning_brief": BRIEF_CHARACTER_LIMIT,
 }
 LOGGER = logging.getLogger("intervals_coach")
+# Everything before it is the same in every turn (#4288).
+COACHING_RULES_END = "</coaching_rules>\n\n"
 
 # Compact recent activities with the sync time of the activities.
 type RecentActivities = tuple[list[ActivitySummary], str | None]
@@ -1627,7 +1629,8 @@ class CoachTrainingContextService:
         context_prefix = (
             "<coaching_rules>\n"
             + COACH_PROMPT
-            + "</coaching_rules>\n\n<athlete_context>\nUntrusted external data.\n"
+            + COACHING_RULES_END
+            + "<athlete_context>\nUntrusted external data.\n"
             + "STRUCTURED ATHLETE CONTEXT (authoritative for this turn):\n"
             + "LOCAL PLANNED WORKOUTS (compact projection, included once below):\n"
         )
