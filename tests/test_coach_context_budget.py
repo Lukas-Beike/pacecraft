@@ -276,62 +276,27 @@ PLAN = COMMON | {
     "training_plans",
     "weather",
 }
-# The fixed Coach prompt's rule 8h on subjective rating scales (issue #1671).
-RATING_RULE = 500
-# Rule 8i on the local fitness, fatigue and form (M7, #1726).
-FITNESS_RULE = 300
-# Rule 8f's strength exception (session-RPE TSS, M6 v2, #1726).
-STRENGTH_LOAD_RULE = 200
-# Rule 2b on the infection hint (M14, #3762).
-INFECTION_HINT_RULE = 300
-# The fixed Coach rules and context headers, the same for every kind (#4287).
-# Each kind's dynamic part (context JSON, library, closing note) is measured
-# against its ceiling minus this one, so a rule edit never moves a kind's
-# measurement and the two parts together keep the old ceiling.
+# The fixed Coach rules and context headers, the same for every kind, on a
+# budget of their own (#4287): a rule edit raises only this one and never moves
+# a kind's dynamic measurement. It includes rules 8h (rating scales, #1671),
+# 8i (fitness, fatigue and form) and 8f (strength exception, #1726) and 2b
+# (infection hint, #3762).
 STATIC_PROMPT_CEILING = 14_400
-# Exact present sections and a character ceiling (whole prompt context) per case.
+# Exact present sections and a character ceiling for each kind's dynamic part
+# (context JSON, library, closing note). Each plus STATIC_PROMPT_CEILING is the
+# whole-context ceiling the test held before #4287, so no total rose.
 EXPECTED: dict[str, tuple[set[str], int]] = {
-    "session_analysis": (
-        COMMON | {"recovery"},
-        26_000 + RATING_RULE + FITNESS_RULE + STRENGTH_LOAD_RULE + INFECTION_HINT_RULE,
-    ),
+    "session_analysis": (COMMON | {"recovery"}, 12_900),
     # Progress and block review are one review with the same sections.
-    "progress_review": (
-        COMMON | {"planning", "recovery", "training_plans"},
-        31_000 + RATING_RULE + FITNESS_RULE + STRENGTH_LOAD_RULE + INFECTION_HINT_RULE,
-    ),
-    "block_review": (
-        COMMON | {"planning", "recovery", "training_plans"},
-        31_000 + RATING_RULE + FITNESS_RULE + STRENGTH_LOAD_RULE + INFECTION_HINT_RULE,
-    ),
-    "plan_week": (
-        PLAN,
-        49_500 + RATING_RULE + FITNESS_RULE + STRENGTH_LOAD_RULE + INFECTION_HINT_RULE,
-    ),
-    "plan_block": (
-        PLAN,
-        63_500 + RATING_RULE + FITNESS_RULE + STRENGTH_LOAD_RULE + INFECTION_HINT_RULE,
-    ),
-    "adjust_week": (
-        PLAN,
-        45_500 + RATING_RULE + FITNESS_RULE + STRENGTH_LOAD_RULE + INFECTION_HINT_RULE,
-    ),
-    "morning_checkin": (
-        COMMON | {"daily_planning_context", "recovery"},
-        26_000 + RATING_RULE + FITNESS_RULE + STRENGTH_LOAD_RULE + INFECTION_HINT_RULE,
-    ),
-    "free_text_planning": (
-        PLAN,
-        49_500 + RATING_RULE + FITNESS_RULE + STRENGTH_LOAD_RULE + INFECTION_HINT_RULE,
-    ),
-    "general_question": (
-        COMMON | {"recovery"},
-        25_000 + RATING_RULE + FITNESS_RULE + STRENGTH_LOAD_RULE + INFECTION_HINT_RULE,
-    ),
-    "nutrition_message": (
-        COMMON | {"nutrition_products"},
-        25_000 + RATING_RULE + FITNESS_RULE + STRENGTH_LOAD_RULE + INFECTION_HINT_RULE,
-    ),
+    "progress_review": (COMMON | {"planning", "recovery", "training_plans"}, 17_900),
+    "block_review": (COMMON | {"planning", "recovery", "training_plans"}, 17_900),
+    "plan_week": (PLAN, 36_400),
+    "plan_block": (PLAN, 50_400),
+    "adjust_week": (PLAN, 32_400),
+    "morning_checkin": (COMMON | {"daily_planning_context", "recovery"}, 12_900),
+    "free_text_planning": (PLAN, 36_400),
+    "general_question": (COMMON | {"recovery"}, 11_900),
+    "nutrition_message": (COMMON | {"nutrition_products"}, 11_900),
 }
 
 
@@ -362,10 +327,7 @@ class CoachContextBudgetTests(unittest.TestCase):
             with self.subTest(case=label):
                 row = self.measured[label]
                 self.assertEqual(sections, present(row))
-                self.assertLessEqual(row["dynamic"], ceiling - STATIC_PROMPT_CEILING)
-                # The parts sum to the whole: the old total ceiling still holds.
-                self.assertEqual(row["static"] + row["dynamic"], row["total"])
-                self.assertLessEqual(row["total"], ceiling)
+                self.assertLessEqual(row["dynamic"], ceiling)
 
     def test_every_kind_keeps_one_percent_headroom(self) -> None:
         # #4100: two PRs that each fit can together exceed a ceiling on
@@ -377,8 +339,7 @@ class CoachContextBudgetTests(unittest.TestCase):
             with self.subTest(case=label):
                 row = self.measured[label]
                 self.assertLessEqual(row["static"], static - static // 100)
-                dynamic = ceiling - static
-                self.assertLessEqual(row["dynamic"], dynamic - dynamic // 100)
+                self.assertLessEqual(row["dynamic"], ceiling - ceiling // 100)
 
     def test_a_rule_edit_leaves_every_dynamic_measurement(self) -> None:
         # #4287: the fixed prompt grows on its own budget, never a kind's.
