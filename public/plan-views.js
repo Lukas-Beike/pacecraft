@@ -1640,7 +1640,8 @@ function plannedUnitActions(entry, dateKey, todayKey) {
   const [archive, archiveNote] = plannedArchiveControls(entry, dateKey);
   // The day strip opens right under "Verschieben", not below "Löschen" (#3932 K-11).
   const [garminOpen, garminAsk, garminStatus] = plannedGarminRemoval(entry) || [null, null, null];
-  return [h("div", "planned-activity-actions", edit, h("div", "planned-move-group", toggle, days), coach, garminOpen, archive, remove), confirm, archiveNote, garminAsk, garminStatus, status];
+  // Without a Garmin copy the removal parts are null, and `append(null)` would write the text "null" (#4285).
+  return [h("div", "planned-activity-actions", edit, h("div", "planned-move-group", toggle, days), coach, garminOpen, archive, remove), confirm, archiveNote, garminAsk, garminStatus, status].filter(Boolean);
 }
 
 // "Bearbeiten" and "Archivieren" (#3950): the unit editor over the Coach's change batch; the card shows the receipt

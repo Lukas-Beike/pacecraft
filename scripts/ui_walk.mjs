@@ -436,11 +436,29 @@ async function tryWeek(page, step, capMs, began) {
   for (let index = 0; index < count && Date.now() - began < STEP_TOTAL_MS; index += 1) {
     const started = Date.now();
     const outcome = await tryCandidate(page, step, index, capMs);
-    const result = { ready: { status: "ok" }, shown: { status: "fail", why: `shows ${step.never}` } }[outcome];
+    const leaked = outcome === "ready" ? await leakedValues(page) : "";
+    const result = leaked ? { status: "fail", why: `shows ${leaked}` } : { ready: { status: "ok" }, shown: { status: "fail", why: `shows ${step.never}` } }[outcome];
     if (result) return { result: { ...result, ms: Date.now() - started }, count, empty };
     if (outcome === "empty") empty += 1;
   }
   return { count, empty };
+}
+
+// A value that leaked into the text (#4285): the visible text names `null`, `undefined`, `NaN` or `[object Object]`
+// as a word of its own. Returns up to three "<word> in <element>" names, never the text around them.
+export async function leakedValues(page) {
+  return page.evaluate(() => {
+    const word = /(?:^|[^\p{L}\p{N}_])(null|undefined|NaN|\[object Object\])(?![\p{L}\p{N}_])/u;
+    const hits = [];
+    const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+    for (let node = walker.nextNode(); node && hits.length < 3; node = walker.nextNode()) {
+      const parent = node.parentElement;
+      const found = word.exec(node.textContent);
+      if (!found || !parent || ["SCRIPT", "STYLE"].includes(parent.tagName) || !parent.checkVisibility()) continue;
+      hits.push(`${found[1]} in ${parent.tagName.toLowerCase()}${[...parent.classList].map((name) => `.${name}`).join("")}`);
+    }
+    return hits.join(", ");
+  });
 }
 
 // A details dialog left open by a candidate is closed with Escape and its history entry is gone before the next press.
