@@ -1870,8 +1870,9 @@ function bodyPushText(targets, done) {
   const names = (list) => list.map(bodyPushName).join(" und ");
   if (keys.some((key) => targets[key] === "running")) return `An ${names(keys)} senden…`;
   const saved = keys.filter((key) => targets[key] === "done");
+  const verb = done === "gespeichert" ? "gespeichert" : "aktualisiert";
   return [
-    saved.length ? `✓ In ${names(saved)} ${done === "gespeichert" ? "gespeichert" : "aktualisiert"}` : "",
+    saved.length ? `✓ In ${names(saved)} ${verb}` : "",
     ...keys.filter((key) => targets[key] === "failed").map((key) => `${bodyPushName(key)}-Sync fehlgeschlagen – wird erneut versucht.`),
     targets.garmin === "needs_weight" ? "Garmin braucht ein Gewicht am selben Tag." : "",
     targets.wahoo === "refused" ? "Wahoo-Sync fehlgeschlagen." : "",
