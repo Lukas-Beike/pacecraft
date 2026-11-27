@@ -152,14 +152,17 @@ test("@responsive the diary toolbar lines up with the date field and sugar and s
 
 test("@responsive nutrition history collapses days without data and products keep one primary action", async ({ page }) => {
   await open(page, "nutrition/week", "#nutritionWeek .nutrition-week-chart-day");
+  // #4339: the first chart row can show before the week's data settles, so nothing is read before it has.
+  await waitForSettledState(page);
   const empty = page.locator("#nutritionWeek .nutrition-week-chart-day.is-empty");
   await expect(empty.first()).toContainText("keine Daten");
-  // #4339: the first chart row can show before the week's data settles; poll the heights, which names both in a failure.
-  await waitForSettledState(page);
+  // A rendered height has no locator assertion; a failure names both heights, or the missing kind of row.
   await expect.poll(() => page.locator("#nutritionWeek .nutrition-week-chart-day").evaluateAll((nodes) => {
     const heights = nodes.map((node) => [node.classList.contains("is-empty"), node.getBoundingClientRect().height]);
-    const emptyHeight = Math.max(...heights.filter(([isEmpty]) => isEmpty).map(([, height]) => height));
-    const fullHeight = Math.min(...heights.filter(([isEmpty]) => !isEmpty).map(([, height]) => height));
+    const empties = heights.filter(([isEmpty]) => isEmpty).map(([, height]) => height);
+    const fulls = heights.filter(([isEmpty]) => !isEmpty).map(([, height]) => height);
+    if (!empties.length || !fulls.length) return `${empties.length} empty and ${fulls.length} full rows`;
+    const [emptyHeight, fullHeight] = [Math.max(...empties), Math.min(...fulls)];
     return emptyHeight < fullHeight / 1.5 ? "collapsed" : `empty ${emptyHeight} px, full ${fullHeight} px`;
   })).toBe("collapsed");
   expect(await smallControls(page)).toEqual([]);
