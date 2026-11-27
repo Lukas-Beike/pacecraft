@@ -662,6 +662,8 @@ function renderNutritionDay(day) {
   const empty = document.querySelector("#nutritionEmptyDay");
   empty.textContent = day.date > todayIso() ? "Dieser Tag liegt in der Zukunft." : "Noch keine Mahlzeiten erfasst.";
   empty.hidden = Boolean(day.entry_count);
+  // "+ Mahlzeit" under the day's meals or its status sentence (#4304); a future day takes none.
+  document.querySelector("#nutritionAddMeal").hidden = day.date > todayIso();
   // An empty day shows no row of "nicht erfasst" tiles (athlete decision, #3936 G-13).
   const totals = document.querySelector("#nutritionTotals");
   totals.replaceChildren();
@@ -678,6 +680,7 @@ function showNutritionDayLoadError(status, cached, error, dateInput, requestedDa
   }
   // The requested day stays in the date field so ← and → still have a day to move from.
   document.querySelector("#nutritionEmptyDay").hidden = true;
+  document.querySelector("#nutritionAddMeal").hidden = true;
   dateInput.value = requestedDate;
   syncNutritionDateName();
   const retry = h("button", { type: "button", className: "secondary-button" }, "Erneut laden");
@@ -702,6 +705,7 @@ async function loadNutrition({ preserve = false, expectedRoute = null, expectedD
   if (!cached && !preserve) {
     status.textContent = "Ernährung wird geladen…";
     document.querySelector("#nutritionEmptyDay").hidden = true;
+    document.querySelector("#nutritionAddMeal").hidden = true;
     document.querySelector("#nutritionEntries").replaceChildren();
     document.querySelector("#nutritionTotals").replaceChildren();
   }
