@@ -36,7 +36,7 @@ test("a diary card marks an estimated meal and its button flips the flag", async
   const receipts = [];
   const opened = [];
   const status = { textContent: "" };
-  const ctx = extractFunctions("nutrition.js", ["nutritionMealTitle", "NUTRITION_MEAL_LABELS", "NUTRITION_SOURCE_LABELS", "nutritionCard", "nutritionEstimateChip", "nutritionEntryActions", "nutritionEditButton", "markNutritionEstimate"], {
+  const ctx = extractFunctions("nutrition.js", ["nutritionMealTitle", "NUTRITION_MEAL_LABELS", "NUTRITION_SOURCE_LABELS", "nutritionCard", "nutritionEstimateChip", "nutritionDeleteButton", "nutritionEditButton", "markNutritionEstimate"], {
     h, document: { querySelector: () => status },
     messageActionButton: (icon, label) => h("button", { "aria-label": label }, icon), openNutritionMealEdit: (item) => opened.push(item.id),
     createStatusChip: (label) => h("span", null, label),
@@ -50,11 +50,16 @@ test("a diary card marks an estimated meal and its button flips the flag", async
   const meal = { id: "m1", meal_type: "dinner", logged_at: "2026-11-16T19:30:00", description: "Pizza", kcal: 950, source: "manual", sync_state: "local" };
   const flagged = ctx.nutritionCard({ ...meal, estimate_uncertain: true }, false);
   assert.match(textOf(flagged.children[0]), /Menge geschätzt/);
+  // The card keeps only the pencil and the trash icon in its head; the estimate mark and "Als Mahlzeit speichern"
+  // moved into the edit dialog (#4305).
   const buttons = (card) => card.children.filter((child) => child.tagName === "BUTTON").map(textOf);
-  assert.deepEqual(buttons(flagged), ["Markierung entfernen", "Als Mahlzeit speichern", "trash"]);
+  const icons = (card) => card.children[0].children.filter((child) => child.tagName === "BUTTON").map((child) => child.attributes["aria-label"]);
+  assert.deepEqual(buttons(flagged), []);
+  assert.deepEqual(icons(flagged), ["Mahlzeit bearbeiten: Pizza", "Mahlzeit löschen: Pizza"]);
   const plain = ctx.nutritionCard(meal, false);
   assert.doesNotMatch(textOf(plain.children[0]), /geschätzt/);
-  assert.deepEqual(buttons(plain), ["Als geschätzt markieren", "Als Mahlzeit speichern", "trash"]);
+  assert.deepEqual(buttons(plain), []);
+  assert.deepEqual(icons(plain), ["Mahlzeit bearbeiten: Pizza", "Mahlzeit löschen: Pizza"]);
   // The pencil in the head opens the meal's components; a template has none.
   const pencil = plain.children[0].children[1];
   assert.equal(pencil.attributes["aria-label"], "Mahlzeit bearbeiten: Pizza");

@@ -166,12 +166,17 @@ test("@responsive a diary card marks a meal as estimated and clears the mark", a
   await page.evaluate(() => api("/api/nutrition/entry", { method: "POST", body: JSON.stringify({ meal_type: "dinner", meal_time: "19:30", description: "Pizza beim Italiener", kcal: 950 }) }));
   await page.evaluate(() => loadNutrition());
   const card = page.locator("#nutritionEntries .nutrition-card").filter({ hasText: "Pizza beim Italiener" });
-  await card.getByRole("button", { name: "Als geschätzt markieren" }).click();
+  const markEstimate = async (name) => {
+    await card.getByRole("button", { name: /^Mahlzeit bearbeiten: / }).click();
+    await page.locator("#nutritionMealEditDialog").getByRole("button", { name }).click();
+  };
+  await markEstimate("Als geschätzt markieren");
   await expect(card.locator("h3")).toContainText("Menge geschätzt");
   await expect(card).toContainText("950 kcal");
-  await card.getByRole("button", { name: "Markierung entfernen" }).click();
+  await markEstimate("Markierung entfernen");
   await expect(card.locator("h3")).not.toContainText("Menge geschätzt");
-  await expect(card.getByRole("button", { name: "Als geschätzt markieren" })).toBeVisible();
+  await expect(card.getByRole("button", { name: /^Mahlzeit (bearbeiten|löschen): / })).toHaveCount(2);
+  await expect(card.getByRole("button", { name: "Als geschätzt markieren" })).toHaveCount(0);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBeTruthy();
 });
 
