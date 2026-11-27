@@ -13,6 +13,20 @@ const shown = (texts = {}, rest = {}) => ({
   day_status: "unknown", tags: { travel: false, late_meal: false, high_stress: false }, complaints: [], ...rest,
 });
 
+// #4306: a score slider that was never touched is no answer; a touched one is its value.
+test("an untouched slider is no answer and a touched one sends its value", () => {
+  const { checkinValues } = extractFunctions("checkin-form.js", ["CHECKIN_SCORES", "CHECKIN_TAGS", "checkinValues"], {});
+  const field = (value, type = "text", set = "") => ({ value, type, dataset: { set }, checked: false });
+  const elements = {
+    soreness: field("5", "range", ""), stress: field("7", "range", "1"), motivation: field("5", "range", "1"),
+    available_minutes: field(""), illness: field(""), notes: field(" "),
+    day_status: field("unknown"), tag_travel: field(""), tag_late_meal: field(""), tag_high_stress: field(""),
+  };
+  const form = { elements, querySelectorAll: () => [] };
+  const values = plain(checkinValues(form));
+  assert.deepEqual([values.texts.soreness, values.texts.stress, values.texts.motivation, values.texts.notes], ["", "7", "5", ""]);
+});
+
 test("a form that shows the stored day changes nothing", () => {
   const stored = { stress: 3, notes: "ok", day_status: "rest", tag_answers: { travel: true, late_meal: false }, complaints: [{ area: "knee", side: "left", severity: 2 }] };
   const values = shown({ stress: "3", notes: "ok" }, { day_status: "rest", tags: { travel: true, late_meal: false, high_stress: false }, complaints: [{ area: "knee", side: "left", severity: 2 }] });
