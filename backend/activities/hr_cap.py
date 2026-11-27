@@ -23,13 +23,15 @@ from backend.canonical.planning_fields import HR_CAP
 
 # Default upper limit in percent of the threshold HR by the unit's ``session_focus``.
 # The athlete decides these values (easy and long 84 %, #3915: below the LT1
-# stand-in of 85 %); change them here only.
+# stand-in of 85 %; endurance "Grundlage" lies below LT1 like easy, #4292);
+# change them here only.
 HR_CAP_PERCENT: Final[Mapping[str, float]] = {
     "recovery": 80.0,
     "easy": 84.0,
+    "endurance": 84.0,
     "long": 84.0,
 }
-# With a measured or adopted first threshold: the easy and long cap is that
+# With a measured or adopted first threshold: the easy, endurance and long cap is that
 # threshold's percent of the threshold HR minus this margin (percentage points),
 # and the recovery cap is the lower of its default and the easy cap minus the gap.
 # The athlete decides no margin: the cap is LT1 itself (#4254, was 3 since #3915).
@@ -200,7 +202,7 @@ def cap_rule_text(
         return f"{why}: default {cap_table_text()} {LTHR_LABEL}"
     margin = f" - {percent_text(MEASURED_MARGIN_PCT)}" if MEASURED_MARGIN_PCT else ""
     return (
-        f"easy, long ≤ LT1 % {LTHR_LABEL}{margin} = {percent_text(percents['easy'])} %; "
+        f"easy, endurance, long ≤ LT1 % {LTHR_LABEL}{margin} = {percent_text(percents['easy'])} %; "
         f"recovery ≤ min({percent_text(HR_CAP_PERCENT['recovery'])}, easy - "
         f"{percent_text(RECOVERY_BELOW_EASY_PCT)}) = {percent_text(percents['recovery'])} %"
     )
