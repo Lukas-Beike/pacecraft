@@ -20,7 +20,7 @@ function h(tag, props = null, ...children) {
 // until the answer arrives, so a second press does nothing (#4268); false restores its content.
 const savingButtonContent = new WeakMap();
 
-function setSaving(button, busy, label = "Speichert…") {
+function setSaving(button, busy, label = button?.classList.contains("message-action") ? "" : "Speichert…") {
   if (!button) return;
   if (busy && !savingButtonContent.has(button)) {
     savingButtonContent.set(button, [...button.childNodes]);

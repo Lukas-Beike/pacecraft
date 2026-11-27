@@ -560,7 +560,7 @@ function recordedMaxHrNote(thresholds = state.data?.performance?.thresholds) {
 }
 
 function zoneEditButton(label, attributes) {
-  const button = messageActionButton("edit", attributes.zoneEdit === "lt1" ? "Schwelle (LT1) bearbeiten" : `Zonen ${label.toLowerCase()}`);
+  const button = messageActionButton("edit", attributes.zoneEdit === "lt1" ? "Schwelle (LT1) bearbeiten" : `Zonen ${label.toLowerCase()}: ${ZONE_KIND_TITLES[attributes.zoneEdit]}${attributes.zoneEnvironment ? " · Indoor" : ""}`);
   Object.assign(button.dataset, attributes);
   return button;
 }
