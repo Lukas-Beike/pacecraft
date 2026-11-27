@@ -147,9 +147,21 @@ function page({ controlled = true } = {}) {
     pendingTurn,
     reloads,
     replaceWorker: () => workerListeners.controllerchange(),
+    workerListeners,
     hide: () => { document.visibilityState = "hidden"; documentListeners.visibilitychange(); },
   };
 }
+
+test("the page answers the worker's route request with its own route (#4276)", () => {
+  const { context, workerListeners } = page();
+  context.AppRouter = { baseRoute: () => "coach" };
+  const posted = [];
+  const port = { postMessage: (message) => posted.push(message) };
+  workerListeners.message({ data: { type: "route-request" }, ports: [port] });
+  workerListeners.message({ data: { type: "other" }, ports: [port] });
+  workerListeners.message({ data: { type: "route-request" }, ports: [] });
+  assert.deepEqual(JSON.parse(JSON.stringify(posted)), [{ route: "#coach" }]);
+});
 
 test("a replaced service worker reloads an idle page once", () => {
   const { reloads, replaceWorker } = page();
