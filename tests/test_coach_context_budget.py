@@ -369,9 +369,6 @@ PLAN = COMMON | {
 # 8i (fitness, fatigue and form) and 8f (strength exception, #1726) and 2b
 # (infection hint, #3762).
 STATIC_PROMPT_CEILING = 14_400
-# Exact present sections and a character ceiling for each kind's dynamic part
-# (context JSON, library, closing note). Each plus STATIC_PROMPT_CEILING is the
-# whole-context ceiling the test held before #4287, so no total rose.
 # The measured size of production's available current_performance per kind,
 # which the fixture rendered in the unavailable shape until #4323. A strictly
 # mechanical re-baseline (orchestrator V12, option A, 2026-11-27): each kind keeps
@@ -390,6 +387,10 @@ PRODUCTION_SNAPSHOT_SHAPE: dict[str, int] = {
     "general_question": 3_318,
     "nutrition_message": 3_318,
 }
+# Exact present sections and a character ceiling for each kind's dynamic part
+# (context JSON, library, closing note). Each base number plus
+# STATIC_PROMPT_CEILING is the whole-context ceiling the test held before #4287;
+# since #4323 the ceiling adds PRODUCTION_SNAPSHOT_SHAPE, the one approved rise.
 EXPECTED: dict[str, tuple[set[str], int]] = {
     "session_analysis": (
         COMMON | {"recovery"},
