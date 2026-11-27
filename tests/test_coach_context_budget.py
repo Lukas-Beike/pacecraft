@@ -31,6 +31,7 @@ from backend.coach.context_selection import (
     select_coach_context,
 )
 from backend.coach.playbooks import playbook_for
+from backend.performance.current_metrics import coach_thresholds
 from backend.performance.freshness import GarminSyncStatus
 from backend.planning.compact_activities import ActivitySummarySource
 from backend.planning.context import build_daily_planning_context
@@ -131,6 +132,23 @@ def _calendar_events() -> list[dict[str, Any]]:
     return events
 
 
+class _ThresholdReader(CoachPerformanceContextReader):
+    """Production's run thresholds (#4292): a 167 bpm run threshold and an adopted
+    129 bpm LT1, so run_hr_caps and run_hr_cap_basis render as on a real turn."""
+
+    def current_performance(self, canonical: Any = None) -> Any:
+        metrics: dict[str, dict[str, Any]] = {
+            "cycling_ftp_watts": {"value": 250, "source": "garmin"},
+            "max_hr_bpm": {"value": 190},
+            "bike_threshold_hr_bpm": {"value": 165},
+            "run_threshold_hr_bpm": {"value": 167},
+        }
+        return {
+            **super().current_performance(canonical),
+            "thresholds": coach_thresholds(metrics, 129.0, True),
+        }
+
+
 def _build_service() -> CoachTrainingContextService:
     events = _calendar_events()
     planned = _planned_units()
@@ -215,7 +233,7 @@ def _build_service() -> CoachTrainingContextService:
             # The easy runs' caps resolve to bpm, as in production (#4286).
             lthr_for=lambda: lambda unit: 168.0,
         ),
-        CoachPerformanceContextReader(
+        _ThresholdReader(
             profile,
             payload,
             projection,

@@ -282,6 +282,7 @@ class CoachContextSelection:
             for key, value in context.items()
             if key in self.sections or key == "canonical_data_status"
         }
+        _present_policy(result)
         _dedupe_appointments(result, local_date)
         if self.horizon_days is None:
             return result
@@ -344,6 +345,20 @@ class CoachContextSelection:
             )
             or first <= value <= last
         ]
+
+
+def _present_policy(result: dict[str, Any]) -> None:
+    """The source policy explains only the sections this turn carries (#4292);
+    ``read_coach_context`` loads the whole policy with an omitted section."""
+    policy = result.get("source_policy")
+    if not isinstance(policy, dict):
+        return
+    present = {key for key, value in result.items() if value is not None}
+    if "local_planned_workouts" in present:
+        present.add("planned_rows")
+    result["source_policy"] = {
+        key: text for key, text in policy.items() if key in present
+    }
 
 
 def _dedupe_appointments(result: dict[str, Any], local_date: str) -> None:

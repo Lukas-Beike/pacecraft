@@ -50,6 +50,26 @@ class CoachContextSelectionTests(unittest.TestCase):
         )
         return {tool["name"] for tool in payload.tools}
 
+    def test_the_source_policy_explains_only_the_sections_a_turn_carries(self):
+        # #4292: an omitted section's explanation leaves the turn; the whole
+        # policy stays loadable with read_coach_context.
+        context = {
+            "source_policy": {
+                "activities": "a",
+                "nutrition_products": "n",
+                "planning_brief": "p",
+                "planned_rows": "r",
+            },
+            "activities": [],
+            "local_planned_workouts": [],
+            "nutrition_products": None,
+        }
+        projected = REQUEST_KIND_SELECTIONS["morning_checkin"].project(context)
+        self.assertEqual(
+            projected["source_policy"], {"activities": "a", "planned_rows": "r"}
+        )
+        self.assertEqual(len(context["source_policy"]), 4)  # the input is untouched
+
     def test_explicit_dates_without_planning_keywords_use_full_context(self):
         for message in (
             "What should I train on 2026-12-01?",
