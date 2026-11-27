@@ -204,7 +204,17 @@ class CoachStructuredContextServiceTests(unittest.TestCase):
                 "cycling_ftp_watts": item(250, "Lokal"),
                 "max_hr_bpm": item(190, "Garmin Connect", "älter als 7 Tage"),
                 "bike_threshold_hr_bpm": item(160, "Garmin Connect"),
-                "run_threshold_hr_bpm": item(163, "Lokal"),
+                "run_threshold_hr_bpm": {
+                    **item(163, "Lokal"),
+                    "alternatives": [
+                        {
+                            "value": 165,
+                            "source": "Garmin Connect",
+                            "source_provider": "garmin",
+                        }
+                    ],
+                    "conflict": False,
+                },
                 "run_threshold_pace_seconds_per_km": item(270, "Garmin Connect"),
                 "weight_kg": item(70, "Lokal"),
             },
@@ -234,6 +244,9 @@ class CoachStructuredContextServiceTests(unittest.TestCase):
                 "lthr_source": "Garmin Connect",
                 "run_lthr": 163,
                 "run_lthr_source": "Lokal",
+                # The other provider's value stays visible, named once.
+                "run_lthr_alternatives": [{"source": "Garmin Connect", "value": 165}],
+                "run_lthr_conflict": False,
             },
         )
 

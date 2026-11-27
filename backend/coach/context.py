@@ -655,11 +655,18 @@ def coach_single_thresholds(performance: dict[str, Any]) -> dict[str, Any]:
         item = metrics.get(name)
         if not isinstance(item, dict):
             continue
-        thresholds[f"{key}_source" if key != "ftp_w" else "ftp_source"] = item.get(
-            "source"
-        )
+        prefix = "ftp" if key == "ftp_w" else key
+        thresholds[f"{prefix}_source"] = item.get("source")
         if item.get("note"):
-            thresholds[f"{key}_note"] = item["note"]
+            thresholds[f"{prefix}_note"] = item["note"]
+        # Other providers' values and a material conflict stay visible; FTP's
+        # come from coach_thresholds already.
+        if key != "ftp_w" and item.get("alternatives"):
+            thresholds[f"{prefix}_alternatives"] = [
+                {"source": alt.get("source"), "value": alt.get("value")}
+                for alt in item["alternatives"]
+            ]
+            thresholds[f"{prefix}_conflict"] = item.get("conflict")
     return {
         **performance,
         "metrics": {
