@@ -229,9 +229,11 @@ class MealComponentEditTests(unittest.TestCase):
         self.assertNotEqual(self.diary.get_meal(self.meal["id"]), before)
         self.assertEqual(len(self.components(self.diary.get_meal(self.meal["id"]))), 2)
 
-    def test_the_coach_adds_a_component_with_the_meal_s_components(self) -> None:
+    def test_the_coach_adds_a_product_and_a_food_with_the_meal_s_components(
+        self,
+    ) -> None:
         # Parity (#4270): the Coach's meal edit tool, update_nutrition_entry, adds a
-        # component by naming all of the meal's components with the new one.
+        # saved product and a database food by naming all of the meal's components.
         coach = CoachAthleteRecordToolService(
             Mock(), Mock(), Mock(), self.diary, self.library
         )
@@ -241,6 +243,7 @@ class MealComponentEditTests(unittest.TestCase):
             {"kind": "manual", "name": "Creatine", "amount": 5, "unit": "g",
              "kcal": 0, "carbs_g": 0, "protein_g": 0, "fat_g": 0},
             {"kind": "local_product", "product_id": self.drink["id"], "amount": 200, "unit": "ml"},
+            {"kind": "database", "food_id": BAKED_TOFU, "amount": 100, "unit": "g"},
         ]  # fmt: skip
         result = coach.execute(
             "update_nutrition_entry",
@@ -254,8 +257,10 @@ class MealComponentEditTests(unittest.TestCase):
         assert result is not None
         self.assertEqual(result["entry"], entry)
         names = [c["name"] for c in self.components(entry)]
-        self.assertEqual(names, ["Tofu", "Skyr", "Creatine", "Saft"])
-        self.assertEqual(entry["kcal"], self.meal["kcal"] + 90)
+        self.assertEqual(names, ["Tofu", "Skyr", "Creatine", "Saft", "Tofu gebacken"])
+        self.assertEqual(entry["kcal"], self.meal["kcal"] + 90 + 160)
+        added = self.components(entry)[4]["nutrition_basis"]["food"]["id"]
+        self.assertEqual(added, BAKED_TOFU)
 
     def test_a_swap_to_another_unit_is_refused_and_changes_nothing(self) -> None:
         before = self.diary.get_meal(self.meal["id"])
