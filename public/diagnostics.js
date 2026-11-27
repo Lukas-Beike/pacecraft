@@ -8,7 +8,7 @@ function changeHistoryEntry(change) {
   const item = h("li", { className: "change-history-item", dataset: { changeId: change.id } },
     h("div", null, h("strong", null, change.line || "Änderung"), h("small", null, meta)));
   if (change.can_undo) {
-    const undo = h("button", { type: "button", className: "secondary-button" }, "Rückgängig");
+    const undo = h("button", { type: "button", className: "message-undo" }, "Rückgängig");
     undo.addEventListener("click", () => void undoChangeHistoryEntry(change, undo));
     item.append(undo);
   } else if (change.action !== "undo" && change.undoable !== false && change.remote_sync !== "remote") item.append(h("span", "change-history-state", "überholt"));

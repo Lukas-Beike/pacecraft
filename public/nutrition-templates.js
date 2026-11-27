@@ -120,7 +120,7 @@ function openNutritionTemplateLog(template) {
 function openNutritionTemplateEdit(template) {
   const name = h("label", null, "Name", h("input", { name: "name", maxLength: 120, required: true, autocomplete: "off", value: template.name }));
   const description = h("label", null, "Beschreibung", h("textarea", { name: "description", rows: 2, maxLength: 500, required: true, value: template.description || "" }));
-  const save = h("button", { type: "submit" }, "Speichern");
+  const save = h("button", { type: "submit", className: "push-button" }, "Speichern");
   const ui = nutritionTemplateDialog("Gespeicherte Mahlzeit", [name, description], save);
   ui.form.addEventListener("submit", (event) => {
     event.preventDefault();
@@ -144,7 +144,7 @@ async function deleteNutritionTemplate(template, button) {
 // "Als Mahlzeit speichern" on a diary card: the server copies the meal's values; only the name is asked.
 function openNutritionTemplateFromEntry(item) {
   const name = h("label", null, "Name", h("input", { name: "name", maxLength: 120, required: true, autocomplete: "off", value: String(item.description || "").slice(0, 120) }));
-  const save = h("button", { type: "submit" }, "Speichern");
+  const save = h("button", { type: "submit", className: "push-button" }, "Speichern");
   const ui = nutritionTemplateDialog("Als Mahlzeit speichern", [name], save);
   ui.form.addEventListener("submit", (event) => {
     event.preventDefault();

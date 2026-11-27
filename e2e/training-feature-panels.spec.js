@@ -1,4 +1,4 @@
-const { test, expect } = require("@playwright/test");
+const { test, expect } = require("./helpers/today");
 const { expandConnections } = require("./helpers/connections");
 const { showCalendarEntry } = require("./helpers/ui");
 
@@ -448,7 +448,7 @@ test("@responsive the athlete adds, edits and retires equipment without Garmin, 
   await page.getByRole("tab", { name: "Laufschuhe" }).click();
   const runPanel = page.locator("#equipmentPanel-run");
   // #2879: the form saves through the athlete's own route, never through the Coach.
-  await page.locator("#equipmentItems .equipment-head").getByRole("button", { name: "+ Hinzufügen" }).click();
+  await page.locator("#equipmentItems .equipment-head").getByRole("button", { name: "+ Ausrüstung" }).click();
   const add = runPanel.locator(".equipment-add-row .equipment-form");
   await add.getByLabel("Name").fill("Fixture Pegasus");
   await add.getByLabel("Lebensdauer-Ziel (km)").fill("800");
@@ -476,7 +476,7 @@ test("@responsive the athlete adds, edits and retires equipment without Garmin, 
   await expect(receipt).toContainText("Zurückgenommen.");
   await expect(runPanel.locator(":scope > .equipment-card").filter({ hasText: "Fixture Pegasus 41" })).toHaveCount(1);
   // A form left open belongs to its visit: leaving the area closes it, so later refreshes run again.
-  await page.locator("#equipmentItems .equipment-head").getByRole("button", { name: "+ Hinzufügen" }).click();
+  await page.locator("#equipmentItems .equipment-head").getByRole("button", { name: "+ Ausrüstung" }).click();
   await page.evaluate(async () => { await AppRouter.navigate("more/profile"); await AppRouter.navigate("more/equipment"); });
   await expect(page.locator("#equipmentItems .equipment-form:not([hidden])")).toHaveCount(0);
 });

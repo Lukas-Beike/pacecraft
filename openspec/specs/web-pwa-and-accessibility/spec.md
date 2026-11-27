@@ -735,6 +735,20 @@ Destructive or discarding actions SHALL use one modal confirmation with a title 
 
 Evidence: `public/auth.js::requestConfirmation`; `public/auth.js::runConfirmationSecondaryAction`; `public/auth.js::settleConfirmation`. Tests: `e2e/privacy-delete.spec.js::local data deletion requires the exact confirmation text`; `tests/test_server_frontend.py::test_frontend_uses_accessible_confirmation_dialogs`.
 
+### Requirement: One button concept
+
+The client SHALL use words in dialogs and icons on rows and cards. In a dialog "Löschen" or "Entfernen" is the red-outlined `danger-button`, leftmost, then "Abbrechen", then the primary action. Every save and accept is the `push-button`, adding reads "+ {Objekt}", an undo is `message-undo` and a close glyph is one `icon-button`. Only deleting or removing data is outlined red.
+
+#### Scenario: Dialog actions
+- **WHEN** a dialog offers a delete, a cancel and a save
+- **THEN** they read "Löschen" (red outline), "Abbrechen" and the green "Speichern" from the left
+
+#### Scenario: Guarded by a scan
+- **WHEN** a button in `public/*.js` or `index.html` breaks one of these rules
+- **THEN** `tests/button-concept.test.cjs` fails
+
+Evidence: `tests/button-concept.test.cjs`; `e2e/competition-editor.spec.js`; `e2e/training-feature-panels.spec.js`.
+
 ### Requirement: Write buttons show their saving state
 
 A button that sends a write SHALL show a spinner and the label "Speichert…", be `aria-busy` and disabled from the press until the answer arrives, and then return to its own label. The login button, the provider connection save and the chat send keep their own progress.

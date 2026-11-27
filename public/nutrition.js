@@ -1113,7 +1113,7 @@ async function deleteNutritionProduct(product) {
 
 function appendNutritionProductActions(card, product, local) {
   if (!local || product.local === false) {
-    const button = h("button", { type: "button", className: "secondary-button" }, "Lokal speichern");
+    const button = h("button", { type: "button", className: "push-button" }, "Lokal speichern");
     button.addEventListener("click", () => saveNutritionProduct(product)); card.append(button);
   } else if (product.id) {
     const actions = h("div", "nutrition-actions");
