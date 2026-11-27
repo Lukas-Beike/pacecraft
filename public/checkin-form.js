@@ -36,17 +36,29 @@ function checkinNumberField(name, label, value, max) {
 }
 
 // A 0–10 score as a slider (#4306): a stored value loads onto it; without one it reads "–" and is
-// sent only once it was moved, so an untouched score stays unanswered.
+// sent only once touched, so an untouched score stays unanswered. A tap on its current value (the
+// resting middle) answers too, and the trash icon takes the answer back (#4279's row remove).
 function checkinSlider(name, label, value) {
-  const set = checkinFilled(value);
-  const shown = h("output", { className: "checkin-slider-value" }, set ? String(value) : "–");
-  const input = h("input", { name, type: "range", min: 0, max: 10, step: 1, value: set ? value : 5, "aria-label": `${label} (0–10)`, "aria-valuetext": set ? String(value) : "nicht angegeben", dataset: { set: set ? "1" : "" } });
-  input.addEventListener("input", () => {
-    input.dataset.set = "1";
-    shown.textContent = input.value;
-    input.setAttribute("aria-valuetext", input.value);
-  });
-  return h("div", "checkin-slider", h("span", { "aria-hidden": "true" }, label, shown), input);
+  const shown = h("output", { className: "checkin-slider-value" });
+  const input = h("input", { name, type: "range", min: 0, max: 10, step: 1, value: checkinFilled(value) ? value : 5, "aria-label": `${label} (0–10)` });
+  const clear = messageActionButton("trash", `${label} entfernen`);
+  const mark = (set) => {
+    input.dataset.set = set ? "1" : "";
+    shown.textContent = set ? input.value : "–";
+    input.setAttribute("aria-valuetext", set ? input.value : "nicht angegeben");
+    clear.hidden = !set;
+  };
+  for (const type of ["input", "pointerdown", "keydown"]) input.addEventListener(type, () => mark(true));
+  clear.addEventListener("click", () => { input.value = 5; mark(false); input.focus(); });
+  mark(checkinFilled(value));
+  return h("div", "checkin-slider", h("span", null, h("span", { "aria-hidden": "true" }, label), h("span", null, h("span", { "aria-hidden": "true" }, shown), clear)), input);
+}
+
+// The collapsed row's chevron, turned by the details' open state.
+function checkinChevron() {
+  const icon = svgNode("svg", { viewBox: "0 0 24 24", "aria-hidden": "true" });
+  icon.append(svgNode("path", { d: "M6 9l6 6 6-6" }));
+  return icon;
 }
 
 function checkinSelect(name, label, options, value) {
@@ -142,7 +154,7 @@ function checkinFormNodes(stored) {
     ...CHECKIN_SCORES.map(([key, label]) => checkinSlider(key, label, stored[key])),
     checkinNumberField("available_minutes", "Verfügbare Zeit (min)", stored.available_minutes, 1440),
     checkinChips(stored),
-    h("details", { className: "training-focus-details checkin-unwell", open: unwell }, h("summary", null, "Krank oder Beschwerden"),
+    h("details", { className: "training-focus-details checkin-unwell", open: unwell }, h("summary", null, "Krank oder Beschwerden", checkinChevron()),
       h("div", "checkin-fields", checkinSymptoms(stored),
         h("label", null, "Krank", h("textarea", { name: "illness", rows: 2, maxLength: 1000, value: stored.illness || "" })),
         h("fieldset", "chip-field", h("legend", null, "Beschwerden"), complaints, add))),
@@ -196,6 +208,9 @@ async function openCheckinForm(dateKey) {
       if (read === reads) save.disabled = false;
     }
   });
+  // A field the browser refuses, or a refused save, is shown: the collapsed row opens for it.
+  const unwell = () => form.querySelector("details.checkin-unwell");
+  form.addEventListener("invalid", (event) => { const row = event.target.closest("details"); if (row) row.open = true; }, true);
   form.addEventListener("submit", async (event) => {
     event.preventDefault();
     const day = date.value;
@@ -207,6 +222,7 @@ async function openCheckinForm(dateKey) {
       result = await api("/api/checkins", { method: "POST", body: JSON.stringify(body) });
     } catch (error) {
       setSaving(save, false);
+      if (unwell()?.querySelector(".checkin-complaint")) unwell().open = true;
       if (!isSessionEndedError(error)) status.textContent = error.message;
       return;
     }

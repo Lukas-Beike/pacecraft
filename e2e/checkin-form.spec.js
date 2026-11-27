@@ -140,6 +140,8 @@ test("@responsive the scores are sliders, an untouched one stores nothing, and c
   const dialog = page.locator("#checkinDialog");
   await expect(dialog).toBeVisible();
   const earlier = await page.evaluate(() => addDateKey(todayIso(), -3));
+  // The day starts empty, also on a retry in the same fixture.
+  await page.evaluate((date) => api("/api/checkins", { method: "POST", body: JSON.stringify({ checkin_date: date, complaints: [], clear_fields: ["soreness", "stress", "motivation"] }) }), earlier);
   await dialog.locator("input[name=checkin_date]").fill(earlier);
   const save = dialog.getByRole("button", { name: "Speichern" });
   await expect(save).toBeEnabled();
@@ -174,4 +176,12 @@ test("@responsive the scores are sliders, an untouched one stores nothing, and c
   await expect(dialog.locator("details.checkin-unwell")).toHaveAttribute("open", "");
   await expect(soreness).toHaveValue("7");
   await expect(dialog.locator(".checkin-slider-value").first()).toHaveText("7");
+  // A stored score is taken back with its trash icon; an unanswered one has none.
+  await expect(dialog.getByRole("button", { name: "Motivation entfernen" })).toBeHidden();
+  await dialog.getByRole("button", { name: "Muskelkater entfernen" }).click();
+  await expect(dialog.locator(".checkin-slider-value").first()).toHaveText("–");
+  await save.click();
+  await expect(dialog).toHaveCount(0);
+  const cleared = await page.evaluate((date) => api(`/api/checkins?date=${date}`), earlier);
+  expect(cleared.checkin.soreness ?? null).toBeNull();
 });
