@@ -730,7 +730,17 @@ class PushChecksTests(unittest.TestCase):
             "INSERT INTO coach_commands VALUES ('auto:session:act_run', 'running')"
         )
         self._at(13)
-        self._session("act_run_2", 160)  # 12:40, no analysis queued
+        self._session("act_run_2", 160)  # 12:40, an analysis still running
+        self.checks.check()
+        self.assertEqual(len(self._titled("Neue Einheit")), 3)
+        self.connection.execute("DELETE FROM coach_commands")
+        self.checks.check()  # none left that could start it
+        self.assertEqual(len(self._titled("Neue Einheit")), 4)
+        # A session stored at night waits from 07:00, when the turns may start.
+        self._session(
+            "act_run_night", 19 * 60 + 30, started="2026-11-23T05:30:00+00:00"
+        )
+        self._at(7, day=23)
         self.checks.check()
         self.assertEqual(len(self._titled("Neue Einheit")), 4)
 

@@ -52,6 +52,8 @@ DAY_END_HOUR: Final = 22
 # Local hour until which the night push waits for an automatic check-in (#4274).
 AUTOMATIC_MORNING_UNTIL_HOUR: Final = 10
 # Minutes a new session's push waits for its automatic analysis (#4275).
+# The turn ids of automatic turns, which run one after another.
+AUTOMATIC_TURN_ID_PREFIX: Final = "auto:"
 ANALYSIS_WAIT_MINUTES: Final = 15
 # Consecutive failed refreshes that count as a repeated sync failure.
 REPEATED_FAILURES: Final = 3
@@ -238,11 +240,18 @@ def _automatic_morning_due(db: Any, local: datetime) -> bool:
 
 def _analysis_announces(db: Any, session_id: str, local: datetime) -> bool:
     """The automatic analysis announces this session itself (#4275): once its
-    turn exists, or for ``ANALYSIS_WAIT_MINUTES`` after the session was stored
-    while it may still start. Later, without one (Coach not ready, daily cap,
-    stored before the switch), "Neue Einheit" goes as before."""
+    turn exists, while another automatic turn is queued or running (they run one
+    after another), or for ``ANALYSIS_WAIT_MINUTES`` after the session was
+    stored, counted from 07:00 at the earliest because no automatic turn starts
+    at night. Later, without one (Coach not ready, daily cap, stored before the
+    switch), "Neue Einheit" goes as before."""
     turn_id = f"{coach_store.AUTOMATIC_SESSION_PREFIX}{session_id}"
     if coach_store.command_row(db, turn_id, "status") is not None:
+        return True
+    if any(
+        str(row["client_turn_id"]).startswith(AUTOMATIC_TURN_ID_PREFIX)
+        for row in coach_store.command_rows(db, "client_turn_id")
+    ):
         return True
     row = db.execute(
         "SELECT created_at FROM activity_sessions WHERE activity_id = ?", (session_id,)
@@ -252,7 +261,8 @@ def _analysis_announces(db: Any, session_id: str, local: datetime) -> bool:
         return False
     if created.tzinfo is None:
         created = created.replace(tzinfo=UTC)
-    return local - created < timedelta(minutes=ANALYSIS_WAIT_MINUTES)
+    day_start = local.replace(hour=DAY_START_HOUR, minute=0, second=0, microsecond=0)
+    return local - max(created, day_start) < timedelta(minutes=ANALYSIS_WAIT_MINUTES)
 
 
 def _parse(value: Any) -> datetime | None:

@@ -85,7 +85,7 @@ The server SHALL send each event key at most once, only to subscribed devices, o
 
 #### Scenario: New session
 - **WHEN** a Garmin or Wahoo session started within two days is stored after the subscription
-- **THEN** one "Neue Einheit" notification stands for all sessions new at that check and opens `#plan/overview`; a session of a sport group the automatic analysis covers is announced instead by "Analyse fertig" with the analysis's first sentence, opening `#coach`, under the same switch and key, and by "Neue Einheit" when its analysis fails, has no answer or has not started 15 minutes after the session was stored
+- **THEN** one "Neue Einheit" notification stands for all sessions new at that check and opens `#plan/overview`; a session of a sport group the automatic analysis covers is announced instead by "Analyse fertig" with the analysis's first sentence, opening `#coach`, under the same switch and key, and by "Neue Einheit" when its analysis fails, has no answer or has not started 15 minutes after the session was stored (from 07:00 at the earliest, and not while another automatic turn is queued or running)
 
 #### Scenario: Morning data
 - **WHEN** sleep, HRV or resting heart rate observations dated today are stored
