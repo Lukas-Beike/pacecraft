@@ -43,7 +43,7 @@ added a row conflicted on it (#4092).
 | Planning | Change a planned unit's content | Kalender card "Bearbeiten" `POST /api/planned-units/{id}/update` | `apply_training_patch` (`update`) | receipt, undo, plan checks | both | |
 | Planning | Move a planned unit to another day | Kalender card `POST /api/planned-units/{id}/date` | `apply_training_patch` (`update` with `date`) | receipt, undo | both | |
 | Planning | Delete a planned unit | Kalender card `POST /api/planned-units/{id}/delete` | `apply_training_patch` (`delete`) | delete confirmation | both | |
-| Planning | Archive or restore a planned unit (`POST /api/planned-units/{id}/archive` stays; the Kalender offers only "Löschen", athlete decision 2026-11-27) | — | `apply_training_patch` (`archive`, `restore`) | confirmed request, undo | Coach only | #4307 |
+| Planning | Archive or restore a planned unit (`POST /api/planned-units/{id}/archive` stays for the Coach on purpose: the athlete chose "only Löschen with Rückgängig" for dated units on 2026-11-27, and archived planned units have no UI list) | — | `apply_training_patch` (`archive`, `restore`) | confirmed request, undo | Coach only | #4307 |
 | Planning | Set a planned unit's focus | Kalender card `POST /api/planned-units/{id}/focus` | `apply_training_patch` (`session_focus`, `strength_intensity`) | receipt | both | |
 | Planning | Choose a strength exercise's Garmin exercise | Kalender card `POST /api/planned-units/{id}/garmin-exercise` | `apply_training_patch` (`garmin_exercise`) | receipt | both | |
 | Planning | Read multi-week training plans | Kalender › Pläne `GET /api/plan` | `list_training_plans` | — | both | |
