@@ -61,7 +61,7 @@ test("@responsive each sport shows LT1 and LT2 and its zone kinds, and Bearbeite
   await expect(thresholds.locator('[data-threshold="lt1-main"]')).toHaveText("214 W");
   // The box names the thresholds; a yellow "i" per row opens its origin (#2427).
   await expect(thresholds.locator(".zone-thresholds > .zone-muted")).toHaveText(["Leistung", "Herzfrequenz", /^Aerob \(LT1\)/, /^Anaerob \(LT2\) \/ FTP/]);
-  await expect(thresholds.locator(".zone-source").getByRole("button", { name: "Zonen bearbeiten" })).toHaveCount(1);
+  await expect(thresholds.locator(".zone-source").getByRole("button", { name: "Schwelle (LT1) bearbeiten" })).toHaveCount(1);
   await thresholds.getByRole("button", { name: "Herkunft Aerob (LT1)" }).click();
   await expect(page.locator(".analysis-info-tooltip:not([popover]):not([hidden])")).toHaveText("Herzfrequenz aus der Herzfrequenzvariabilität · Leistung Standardwert");
   await page.keyboard.press("Escape");

@@ -1732,13 +1732,13 @@ function plannedDayStrip(todayKey, skip, label, pick) {
 // "Löschen" acts at once (athlete decision, #3934 G-03): the card's undo line at its place takes the
 // question's place. `remove` runs on the tap and its error shows beside the button.
 function inCardDelete(remove, label) {
-  return inCardAction(messageActionButton("trash", label), remove);
+  return inCardAction(messageActionButton("trash", label), remove, true);
 }
 
-// The button of an in-card action that waits for its request and names a failure under it.
-function inCardAction(button, remove) {
+// The button of an in-card action that waits for its request and names a failure under it; an icon button
+// shows the spinner alone.
+function inCardAction(button, remove, icon = false) {
   const failure = h("p", { className: "planned-delete-note", role: "status" });
-  const icon = button.classList.contains("message-action");
   button.addEventListener("click", async () => {
     setSaving(button, true, icon ? "" : undefined);
     failure.textContent = "";
