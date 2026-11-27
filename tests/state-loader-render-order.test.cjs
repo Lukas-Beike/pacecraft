@@ -21,7 +21,7 @@ function loader(route) {
     localStorage: { getItem: () => null, setItem() {}, removeItem() {} },
     AppRouter: { baseRoute: () => route.split("/")[0] },
     loadNutrition: () => reloads.push(["day", state.data?.profile?.timezone]),
-    reloadNutritionProducts: () => reloads.push(["products", state.data?.profile?.timezone]),
+    reloadNutritionProducts: (options) => reloads.push(["products", state.data?.profile?.timezone, options?.background]),
   });
   return { context, reloads };
 }
@@ -39,7 +39,7 @@ test("the first render reloads the open nutrition diary with the profile in plac
 test("the first render reloads the open product list with the profile in place", () => {
   const { context, reloads } = loader("nutrition/products");
   context.render(data);
-  assert.deepEqual(JSON.parse(JSON.stringify(reloads)), [["products", "Europe/Berlin"]]);
+  assert.deepEqual(JSON.parse(JSON.stringify(reloads)), [["products", "Europe/Berlin", true]]);
 });
 
 test("a render without the route reload leaves the nutrition view alone", () => {
