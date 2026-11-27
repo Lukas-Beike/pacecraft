@@ -2,7 +2,8 @@
 
 Every function maps state an owner already keeps to at most one lock-screen safe
 ``Notification``: a fixed German title and body without names, values, places,
-provider error text or Coach content, an in-app route and a once-only key. Where
+provider error text or Coach content, an in-app route and a once-only key; the
+"Heute" body alone names today's units (athlete, #4273). Where
 several items of one kind are new at once, one notification stands for all of
 them (the first key, the others as ``covers``). The functions read only; the
 checks decide when to run them and ``PushService`` sends each key once.
@@ -11,13 +12,18 @@ checks decide when to run them and ``PushService`` sends each key once.
 from __future__ import annotations
 
 import json
-from collections.abc import Iterable
+import re
+from collections.abc import Callable, Iterable
 from datetime import UTC, date, datetime, timedelta
 from typing import Any, Final
 
-from backend.canonical.vocabulary import GARMIN_ID, WAHOO_ID, MetricKind
+from backend.activities.hr_cap import PERCENT_KEY, resolve_bpm, stored_cap
+from backend.activities.workout_text import WorkoutTextError, structured_blocks
+from backend.canonical.vocabulary import GARMIN_ID, WAHOO_ID, MetricKind, Sport
 from backend.db import canonical_store, planning_store
 from backend.planning.calendar import workout_is_rest
+from backend.planning.library import library_workout_duration_minutes
+from backend.planning.sport import planned_sport_environment
 from backend.push.service import Notification
 from backend.weather.recommendations import day_warning, is_outdoor_activity
 
@@ -100,21 +106,74 @@ def planned_units(db: Any, start: date, end: date) -> list[tuple[str, dict[str, 
 
 
 def morning_plan_event(
-    units: list[tuple[str, dict[str, Any]]], today: date
+    units: list[tuple[str, dict[str, Any]]],
+    today: date,
+    lthr_for: Callable[[dict[str, Any]], float | None] = lambda unit: None,
 ) -> Notification | None:
-    """Today has a planned unit that is no rest day: once a day, without saying which."""
-    if all(
-        not str(unit.get("date")).startswith(today.isoformat()) or workout_is_rest(unit)
+    """Today's planned units that are no rest day, one line each, once a day (#4273).
+
+    ``lthr_for`` gives the run threshold HR on a unit's date for its stored cap.
+    """
+    lines = [
+        unit_line(unit, lthr_for(unit))
         for _, unit in units
-    ):
+        if str(unit.get("date")).startswith(today.isoformat())
+        and not workout_is_rest(unit)
+    ]
+    if not lines:
         return None
     return Notification(
         "morning_plan",
         f"morning_plan:{today.isoformat()}",
         "Heute",
-        "Für heute ist Training geplant.",
+        "\n".join(lines),
         _OVERVIEW,
     )
+
+
+def unit_line(unit: dict[str, Any], lthr: float | None) -> str:
+    """``{title} · {duration} · {key target}``; a part the unit lacks is left out."""
+    minutes = library_workout_duration_minutes(unit)
+    parts = (
+        str(unit.get("name") or "").strip() or "Einheit",
+        f"{round(minutes)} min" if minutes else "",
+        _key_target(unit, lthr),
+    )
+    return " · ".join(part for part in parts if part)
+
+
+def _key_target(unit: dict[str, Any], lthr: float | None) -> str:
+    """The stored cap of an easy or long unit, else the first repeat block of the
+    stored steps unless the title names it already; nothing for strength."""
+    cap = stored_cap(unit)
+    if cap is not None:
+        bpm = resolve_bpm(cap[PERCENT_KEY], lthr)
+        return "" if bpm is None else f"Puls bis {bpm}"
+    if planned_sport_environment(unit)[0] is Sport.STRENGTH:
+        return ""
+    try:
+        blocks = structured_blocks(str(unit.get("description") or ""))
+    except WorkoutTextError:
+        return ""
+    block = next((item for item in blocks if item["repeat"] > 1), None)
+    if block is None:
+        return ""
+    structure = f"{block['repeat']}×{_step_amount(block['steps'][0])}"
+    return "" if _compact(structure) in _compact(str(unit.get("name"))) else structure
+
+
+def _step_amount(step: dict[str, Any]) -> str:
+    if "distance" in step:
+        meters = float(step["distance"])
+        if meters >= 1000:
+            return f"{meters / 1000:g} km".replace(".", ",")
+        return f"{meters:g} m"
+    seconds = float(step["duration"])
+    return f"{seconds / 60:g} min" if seconds % 60 == 0 else f"{seconds:g} s"
+
+
+def _compact(text: str) -> str:
+    return re.sub(r"\s+", "", text.casefold().replace("x", "×"))
 
 
 def weather_event(

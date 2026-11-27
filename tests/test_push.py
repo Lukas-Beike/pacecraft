@@ -20,7 +20,7 @@ from backend.provider_credentials import (
 )
 from backend.push import web_push
 from backend.push.checks import PushChecks
-from backend.push.events import coach_answer_event
+from backend.push.events import coach_answer_event, morning_plan_event, unit_line
 from backend.push.service import (
     TYPES,
     Notification,
@@ -47,6 +47,22 @@ SUBSCRIPTION = {
     "keys": {"p256dh": RFC_RECEIVER_PUBLIC, "auth": RFC_AUTH},
 }
 NOW = datetime(2026, 11, 22, 10, 0, tzinfo=UTC)
+# 80.6 % of a threshold HR of 160 is 129 bpm.
+EASY_RUN = {
+    "date": "2026-11-22",
+    "name": "Lockerer Dauerlauf",
+    "sport": "run",
+    "duration_minutes": 45,
+    "session_focus": "easy",
+    "hr_cap": {"percent_lthr": 80.6, "low_percent_lthr": 65.0, "source": "measured"},
+}
+INTERVALS = {
+    "name": "Schwelle",
+    "sport": "run",
+    "planned_duration_s": 3600,
+    "session_focus": "threshold",
+    "description": "Warmup\n- 15m Z1\n\nMain Set 5x\n- 4m Z4\n- 2m Z1\n\nCooldown\n- 10m Z1",
+}
 
 
 def _database() -> sqlite3.Connection:
@@ -381,6 +397,7 @@ class PushChecksTests(unittest.TestCase):
             weather_days=lambda: self.state["days"],
             server_state=lambda: self.state["server"],
             unrated_sessions=lambda day: self.state["unrated"],
+            lthr_for=lambda: lambda unit: 160.0,
         )
 
     def _refresh(
@@ -572,24 +589,74 @@ class PushChecksTests(unittest.TestCase):
             (ident, started, created),
         )
 
-    def test_the_morning_plan_is_announced_once_a_day_without_details(self):
+    def test_the_morning_plan_names_todays_units_once_a_day(self):
         self._unit("u0", date="2026-11-23", name="Morgen", sport="Swim")
         self._unit("u1", date="2026-11-22", name="Archiviert", archived=True)
         self._unit("u_rest", date="2026-11-22", name="Ruhetag", duration_minutes=0)
         self.checks.check()
         self.assertEqual(self.sender.sent, [])  # tomorrow's, archived and rest units
-        self._unit("u2", date="2026-11-22", name="Geheime Intervalle", sport="Swim")
+        self._unit("u2", date="2026-11-22", name="Schwimmen", sport="Swim")
+        self._unit("u3", **EASY_RUN)
         self._at(6)
         self.checks.check()
         self.assertEqual(self.sender.sent, [])  # not before 07:00
         self._at(7)
-        message = self._announced(
-            "Heute", "Für heute ist Training geplant.", "#plan/overview"
+        self.checks.check()
+        self.checks.check()
+        (message,) = self._titled("Heute")
+        self.assertEqual(
+            (message["body"], message["url"]),
+            ("Schwimmen\nLockerer Dauerlauf · 45 min · Puls bis 129", "#plan/overview"),
         )
-        self.assertNotIn("Geheime", json.dumps(message))
         self._at(8, day=23)
         self.checks.check()
         self.assertEqual(len(self._titled("Heute")), 2)  # a new day, a new key
+
+    def test_each_unit_line_names_its_duration_and_key_target(self):
+        cases = {
+            "an easy unit with a cap": (
+                EASY_RUN,
+                160.0,
+                "Lockerer Dauerlauf · 45 min · Puls bis 129",
+            ),
+            "a cap without a threshold HR": (
+                EASY_RUN,
+                None,
+                "Lockerer Dauerlauf · 45 min",
+            ),
+            "an interval unit named by its structure": (
+                {**INTERVALS, "name": "Intervalle 5×4 min"},
+                None,
+                "Intervalle 5×4 min · 60 min",
+            ),
+            "an interval unit": (INTERVALS, None, "Schwelle · 60 min · 5×4 min"),
+            "strength": (
+                {
+                    "name": "Kraft Oberkörper",
+                    "sport": "strength",
+                    "duration_minutes": 30,
+                },
+                None,
+                "Kraft Oberkörper · 30 min",
+            ),
+            "a missing duration": ({"name": "Lauf", "sport": "run"}, None, "Lauf"),
+        }
+        for label, (unit, lthr, line) in cases.items():
+            with self.subTest(label):
+                self.assertEqual(unit_line(unit, lthr), line)
+        event = morning_plan_event(
+            [
+                ("a", {**EASY_RUN, "date": "2026-11-22"}),
+                ("b", {**INTERVALS, "date": "2026-11-22"}),
+            ],
+            NOW.date(),
+            lambda unit: 160.0,
+        )
+        self.assertEqual(
+            event.body,
+            "Lockerer Dauerlauf · 45 min · Puls bis 129\nSchwelle · 60 min · 5×4 min",
+        )
+        self.assertEqual(event.key, "morning_plan:2026-11-22")
 
     def test_new_sessions_are_announced_as_one_and_only_when_recent(self):
         self._session("act_old", -30)  # stored before the subscription
@@ -988,11 +1055,16 @@ class PushChecksTests(unittest.TestCase):
             lambda: self.local["now"],
             equipment=broken,
             server_state=lambda: {"free_bytes": 1},
+            lthr_for=lambda: lambda unit: broken(),
         )
+        self._unit("u1", **EASY_RUN)
         with self.assertLogs("intervals_coach", "WARNING") as logs:
-            self.assertEqual(checks.check(), 1)
+            self.assertEqual(checks.check(), 2)
         self.assertNotIn("source down", "".join(logs.output))
         self.assertEqual(len(self._titled("Server")), 1)
+        # A failing threshold HR lookup leaves only the cap out.
+        (today,) = self._titled("Heute")
+        self.assertEqual(today["body"], "Lockerer Dauerlauf · 45 min")
 
 
 class PushRouteTests(unittest.TestCase):
