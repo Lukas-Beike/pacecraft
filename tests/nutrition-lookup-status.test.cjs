@@ -34,6 +34,42 @@ test("the product list is one request for all products, and a search is passed o
 
 const LOCAL_LOOKUP = { ok: true, source: "manual", local: true, product: { id: "p1", name: "Haferdrink" } };
 
+test("a reload that keeps the status leaves a receipt in place (#4269)", async () => {
+  const { context, elements, rendered } = harness(async () => ({ products: [] }));
+  elements["#nutritionProductStatus"].textContent = "„Skyr“ zur Mahlzeit ergänzt.";
+  await context.loadNutritionProducts("", { keepStatus: true });
+  assert.equal(elements["#nutritionProductStatus"].textContent, "„Skyr“ zur Mahlzeit ergänzt.");
+  assert.equal(rendered.length, 1);
+});
+
+test("adding a product to a meal shows its receipt without waiting for the product list (#4269)", async () => {
+  // The list read scans the whole diary; the write's answer alone ends the wait.
+  const nodes = {
+    "#nutritionProductUseAdd": new FakeElement("button"),
+    "#nutritionProductUseMeal": { value: "meal-1" },
+    "#nutritionProductUseStatus": { textContent: "" },
+    "#nutritionProductStatus": { textContent: "" },
+  };
+  const requests = [];
+  const receipts = [];
+  const context = extractFunctions("nutrition.js", ["nutritionOutboxEdit", "addNutritionProductToMeal"], {
+    state: { sessionGeneration: 1 },
+    document: { querySelector: (selector) => nodes[selector] || null },
+    nutritionProductUseAmount: () => ({ product: { id: "p1", name: "Skyr" }, amount: "50", unit: "g" }),
+    api: async (path) => { requests.push(path); return { entry: {}, change: { id: "c1" } }; },
+    queuedMealPayload: (body) => body,
+    saveOwnEntry: async () => { throw new Error("not a new meal"); },
+    closeNutritionProductUse: () => {},
+    showNutritionReceipt: (status, message) => { receipts.push(message); },
+    // A list read that never answers would hold the old flow for ever.
+    reloadNutritionProducts: (options) => { requests.push(["reload", options]); return new Promise(() => {}); },
+    todayIso: () => "2026-11-27",
+  });
+  await context.addNutritionProductToMeal();
+  assert.deepEqual(receipts, ["„Skyr“ zur Mahlzeit ergänzt."]);
+  assert.equal(JSON.stringify(requests), JSON.stringify(["/api/nutrition/entry/add-product", ["reload", { keepStatus: true }]]));
+});
+
 test("a background state render does not clobber a fresh lookup result", async () => {
   const { context, elements, rendered } = harness(async (url) => (url.includes("/lookup") ? LOCAL_LOOKUP : { products: [] }));
   await context.lookupNutritionProduct("4006381333931");

@@ -102,9 +102,11 @@ test("nutrition product refresh reload preserves the selected search query", () 
   const source = fs.readFileSync("public/nutrition.js", "utf8");
   assert.match(source, /loadNutritionProducts\(query, \{ background: true, throwOnError: true, refresh: true, expectedQuery: query \}\)/);
   assert.match(source, /if \(background && nutritionLookupResultShown && !refresh\) return;/);
-  assert.match(source, /renderNutritionProducts\(result\.products \|\| \[\], \{ search: query \}\);\s*if \(!preserveLookup\) status\.textContent/);
+  // A preserved lookup (or a receipt shown before the reload, #4269) keeps the status line.
+  assert.match(source, /const quiet = preserveLookup \|\| keepStatus;/);
+  assert.match(source, /renderNutritionProducts\(result\.products \|\| \[\], \{ search: query \}\);\s*if \(!quiet\) status\.textContent/);
   assert.match(source, /targetId: "#nutritionLookupResult"/);
-  assert.match(source, /if \(!preserveLookup\) status\.textContent = "Produkte werden gesucht/);
+  assert.match(source, /if \(!quiet\) status\.textContent = "Produkte werden gesucht/);
 });
 
 
