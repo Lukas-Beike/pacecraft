@@ -11,11 +11,14 @@ import copy
 import json
 import os
 import unittest
+from dataclasses import replace
 from datetime import date, timedelta
 from typing import Any, ClassVar
 from unittest.mock import Mock, patch
 
 from activity_row_support import FixedActivityRows, ReadOnlyManager, StoredCoverage
+from canonical_recovery_support import recovery_only_inputs
+from performance_day_support import canonical_from_snapshot
 from server_test_support import server
 
 from backend.coach import context as coach_context
@@ -25,13 +28,14 @@ from backend.coach.context import (
     CoachPlanningContextReader,
     CoachStructuredContextService,
     CoachTrainingContextService,
+    coach_performance_projection,
 )
 from backend.coach.context_selection import (
     CONTEXT_SECTIONS,
     select_coach_context,
 )
 from backend.coach.playbooks import playbook_for
-from backend.performance.current_metrics import coach_thresholds
+from backend.performance.context import current_performance_context
 from backend.performance.freshness import GarminSyncStatus
 from backend.planning.compact_activities import ActivitySummarySource
 from backend.planning.context import build_daily_planning_context
@@ -132,21 +136,71 @@ def _calendar_events() -> list[dict[str, Any]]:
     return events
 
 
-class _ThresholdReader(CoachPerformanceContextReader):
-    """Production's run thresholds (#4292): a 167 bpm run threshold and an adopted
-    129 bpm LT1, so run_hr_caps and run_hr_cap_basis render as on a real turn."""
+def _provider_snapshot() -> dict[str, Any]:
+    """A synced athlete: thresholds, weight, form and recent sessions (#4323)."""
+    return {
+        "synced_at": f"{TODAY.isoformat()}T05:00:00Z",
+        "athlete": {
+            "icu_ftp": 250,
+            "icu_w_prime": 20000,
+            "max_hr": 190,
+            "lthr": 167,
+            "weight": 72.0,
+        },
+        "recent_wellness": [
+            {
+                "id": (TODAY - timedelta(days=n)).isoformat(),
+                "ctl": 60 - n,
+                "atl": 66 - n,
+                "tsb": -6,
+                "restingHR": 48 + n % 3,
+                "hrv": 58 - n % 4,
+                "sleepSecs": 26_000 + 300 * (n % 5),
+            }
+            for n in range(28)
+        ],
+        "recent_activities": [
+            {
+                "id": f"session-{n}",
+                "type": "Run" if n % 3 else "Ride",
+                "start_date_local": f"{(TODAY - timedelta(days=n + 1)).isoformat()}T07:00:00",
+                "moving_time": 3600,
+                "icu_training_load": 60 + n,
+                "average_heartrate": 140,
+            }
+            for n in range(20)
+        ],
+    }
+
+
+class _ProviderPerformanceReader(CoachPerformanceContextReader):
+    """current_performance through production's available path (#4323): synced
+    thresholds, form, recovery and sessions, and an adopted 129 bpm LT1, so the
+    budget measures what a real turn carries, not the unavailable shape."""
 
     def current_performance(self, canonical: Any = None) -> Any:
-        metrics: dict[str, dict[str, Any]] = {
-            "cycling_ftp_watts": {"value": 250, "source": "garmin"},
-            "max_hr_bpm": {"value": 190},
-            "bike_threshold_hr_bpm": {"value": 165},
-            "run_threshold_hr_bpm": {"value": 167},
-        }
-        return {
-            **super().current_performance(canonical),
-            "thresholds": coach_thresholds(metrics, 129.0, True),
-        }
+        snapshot = _provider_snapshot()
+        inputs = replace(
+            canonical_from_snapshot(snapshot, TODAY),
+            recovery=recovery_only_inputs(
+                None, snapshot["recent_wellness"], snapshot=snapshot
+            ).recovery,
+        )
+        return coach_performance_projection(
+            current_performance_context(
+                GarminSyncStatus(),
+                {
+                    "timezone": "Europe/Berlin",
+                    "first_threshold_hr": "129",
+                    "first_threshold_origin": "estimated",
+                },
+                TODAY,
+                canonical=inputs,
+                session_feedback=self._session_feedback,
+                lt1_session_records=self._lt1_session_records,
+                chest_strap_max_hr=self._chest_strap_max_hr,
+            )
+        )
 
 
 def _build_service() -> CoachTrainingContextService:
@@ -233,7 +287,7 @@ def _build_service() -> CoachTrainingContextService:
             # The easy runs' caps resolve to bpm, as in production (#4286).
             lthr_for=lambda: lambda unit: 168.0,
         ),
-        _ThresholdReader(
+        _ProviderPerformanceReader(
             profile,
             payload,
             projection,
@@ -315,21 +369,61 @@ PLAN = COMMON | {
 # 8i (fitness, fatigue and form) and 8f (strength exception, #1726) and 2b
 # (infection hint, #3762).
 STATIC_PROMPT_CEILING = 14_400
+# The measured size of production's available current_performance per kind,
+# which the fixture rendered in the unavailable shape until #4323. A strictly
+# mechanical re-baseline (orchestrator V12, option A, 2026-11-27): each kind keeps
+# exactly the raw headroom it had. #4325 pays it back: every character trimmed
+# from the dedupe of thresholds and recovery lowers these values, and freed room
+# is never spent elsewhere.
+PRODUCTION_SNAPSHOT_SHAPE: dict[str, int] = {
+    "session_analysis": 5_243,
+    "progress_review": 5_243,
+    "block_review": 5_243,
+    "plan_week": 3_318,
+    "plan_block": 3_318,
+    "adjust_week": 3_318,
+    "morning_checkin": 3_318,
+    "free_text_planning": 3_318,
+    "general_question": 3_318,
+    "nutrition_message": 3_318,
+}
 # Exact present sections and a character ceiling for each kind's dynamic part
-# (context JSON, library, closing note). Each plus STATIC_PROMPT_CEILING is the
-# whole-context ceiling the test held before #4287, so no total rose.
+# (context JSON, library, closing note). Each base number plus
+# STATIC_PROMPT_CEILING is the whole-context ceiling the test held before #4287;
+# since #4323 the ceiling adds PRODUCTION_SNAPSHOT_SHAPE, the one approved rise.
 EXPECTED: dict[str, tuple[set[str], int]] = {
-    "session_analysis": (COMMON | {"recovery"}, 12_900),
+    "session_analysis": (
+        COMMON | {"recovery"},
+        12_900 + PRODUCTION_SNAPSHOT_SHAPE["session_analysis"],
+    ),
     # Progress and block review are one review with the same sections.
-    "progress_review": (COMMON | {"planning", "recovery", "training_plans"}, 17_900),
-    "block_review": (COMMON | {"planning", "recovery", "training_plans"}, 17_900),
-    "plan_week": (PLAN, 36_400),
-    "plan_block": (PLAN, 50_400),
-    "adjust_week": (PLAN, 32_400),
-    "morning_checkin": (COMMON | {"daily_planning_context", "recovery"}, 12_900),
-    "free_text_planning": (PLAN, 36_400),
-    "general_question": (COMMON | {"recovery"}, 11_900),
-    "nutrition_message": (COMMON | {"nutrition_products"}, 11_900),
+    "progress_review": (
+        COMMON | {"planning", "recovery", "training_plans"},
+        17_900 + PRODUCTION_SNAPSHOT_SHAPE["progress_review"],
+    ),
+    "block_review": (
+        COMMON | {"planning", "recovery", "training_plans"},
+        17_900 + PRODUCTION_SNAPSHOT_SHAPE["block_review"],
+    ),
+    "plan_week": (PLAN, 36_400 + PRODUCTION_SNAPSHOT_SHAPE["plan_week"]),
+    "plan_block": (PLAN, 50_400 + PRODUCTION_SNAPSHOT_SHAPE["plan_block"]),
+    "adjust_week": (PLAN, 32_400 + PRODUCTION_SNAPSHOT_SHAPE["adjust_week"]),
+    "morning_checkin": (
+        COMMON | {"daily_planning_context", "recovery"},
+        12_900 + PRODUCTION_SNAPSHOT_SHAPE["morning_checkin"],
+    ),
+    "free_text_planning": (
+        PLAN,
+        36_400 + PRODUCTION_SNAPSHOT_SHAPE["free_text_planning"],
+    ),
+    "general_question": (
+        COMMON | {"recovery"},
+        11_900 + PRODUCTION_SNAPSHOT_SHAPE["general_question"],
+    ),
+    "nutrition_message": (
+        COMMON | {"nutrition_products"},
+        11_900 + PRODUCTION_SNAPSHOT_SHAPE["nutrition_message"],
+    ),
 }
 
 
@@ -365,7 +459,9 @@ class CoachContextBudgetTests(unittest.TestCase):
     def test_every_kind_keeps_one_percent_headroom(self) -> None:
         # #4100: two PRs that each fit can together exceed a ceiling on
         # develop; a PR that eats the last 1 % fails in its own CI instead.
-        # Make room by trimming context text, never by raising the ceiling.
+        # Make room by trimming context text, never by raising the ceiling. The
+        # one exception: a fixture-shape correction that keeps every kind's
+        # headroom identical (PRODUCTION_SNAPSHOT_SHAPE, #4323).
         # The fixed prompt and each kind's dynamic part keep it each (#4287).
         static = STATIC_PROMPT_CEILING
         for label, (_sections, ceiling) in EXPECTED.items():
