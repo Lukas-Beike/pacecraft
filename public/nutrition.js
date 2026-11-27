@@ -1391,11 +1391,11 @@ async function addNutritionProductToMeal() {
       document.querySelector("#nutritionProductStatus").textContent = `„${use.product.name}“ wartet, noch nicht gesendet.`;
       return;
     }
-    // The list shows the new use in the product's count (#3435); its reload
-    // clears the status line, so the receipt follows it.
-    await reloadNutritionProducts();
-    if (generation !== state.sessionGeneration) return;
-    showNutritionReceipt(document.querySelector("#nutritionProductStatus"), `„${use.product.name}“ ${mealId ? "zur Mahlzeit ergänzt" : "als " + mealLabel + " erfasst"}.`, result.change, () => reloadNutritionProducts());
+    // The receipt comes with the write's answer; the list then reads the new use count (#3435)
+    // without waiting for it: that read scans the whole diary (#4269).
+    const reload = () => { void reloadNutritionProducts({ keepStatus: true }); };
+    showNutritionReceipt(document.querySelector("#nutritionProductStatus"), `„${use.product.name}“ ${mealId ? "zur Mahlzeit ergänzt" : "als " + mealLabel + " erfasst"}.`, result.change, reload);
+    reload();
   } catch (error) {
     if (generation !== state.sessionGeneration) return;
     // The queued entry is gone meanwhile: the next save goes out as a new meal of the stored type, the choice
@@ -1425,22 +1425,28 @@ function showNutritionProductLoadError(preserveLookup, sequence, generation, exp
   }
 }
 
-async function loadNutritionProducts(query = "", { background = false, throwOnError = false, refresh = false, expectedQuery = null } = {}) {
+// keepStatus leaves the status line to a receipt shown before the list reads again (#4269).
+async function loadNutritionProducts(query = "", { background = false, throwOnError = false, refresh = false, expectedQuery = null, keepStatus = false } = {}) {
   if (background && nutritionLookupResultShown && !refresh) return;
   const preserveLookup = refresh && nutritionLookupResultShown;
   prepareNutritionProductLookup(preserveLookup);
   const sequence = ++nutritionProductLoadSequence;
   const generation = state.sessionGeneration;
   const status = document.querySelector("#nutritionProductStatus");
+  // A background load never takes the status line from a lookup or a receipt.
+  const quiet = preserveLookup || keepStatus || background;
+  // A quiet load still ends a searching message an overtaken load left behind, with its
+  // list or its error (Gitar on #4301).
+  const searching = "Produkte werden gesucht …";
+  if (!quiet) status.textContent = searching;
   try {
-    if (!preserveLookup) status.textContent = "Produkte werden gesucht …";
     const search = query ? "&q=" + encodeURIComponent(query) : "";
     const result = await api(`/api/nutrition/products?scope=all${search}`);
     if (!isCurrentNutritionProductLoad(sequence, generation, expectedQuery)) return;
     renderNutritionProducts(result.products || [], { search: query });
-    if (!preserveLookup) status.textContent = result.products?.length ? "" : "Keine Produkte gefunden.";
+    if (!quiet || status.textContent === searching) status.textContent = result.products?.length ? "" : "Keine Produkte gefunden.";
   } catch (error) {
-    showNutritionProductLoadError(preserveLookup, sequence, generation, expectedQuery, error);
+    showNutritionProductLoadError(quiet && status.textContent !== searching, sequence, generation, expectedQuery, error);
     if (throwOnError) throw error;
   }
 }
