@@ -40,7 +40,7 @@ import sys
 import tempfile
 import urllib.error
 import urllib.request
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -980,6 +980,26 @@ def _seed(server: Any, case: dict[str, Any]) -> dict[str, str]:
             "Run",
             hr_cap=hr_cap(lt1["old_cap_percent"], lt1["origin"]),
         )
+    _seed_review_cases(server, setup, unit, lt1)
+    if not setup.get("no_blocker"):
+        _seed_blocker(server)
+    _seed_nutrition(server, setup)
+    if setup.get("activity"):
+        _seed_activity(server, setup["activity"])
+    if setup.get("long_run"):
+        _seed_long_runs(server, unit)
+    if setup.get("draft"):
+        tags["draft"] = _seed_draft(server, setup["draft"])
+    if setup.get("pending"):
+        _seed_pending(server, setup["pending"])
+    return tags
+
+
+def _seed_review_cases(
+    server: Any, setup: dict[str, Any], unit: Callable[..., None], lt1: dict[str, Any]
+) -> None:
+    """The #4293 setups: a Grundlage run, external calendar titles and an
+    earlier dialogue."""
     if setup.get("endurance"):
         # #4292: a Grundlage run capped at the LT1 like an easy run, within the
         # three days an ordinary question sees.
@@ -1004,18 +1024,6 @@ def _seed(server: Any, case: dict[str, Any]) -> dict[str, str]:
         messages = server.APP.coach_conversation.message_service()
         for role, text in setup["history"]:
             messages.add(role, text)
-    if not setup.get("no_blocker"):
-        _seed_blocker(server)
-    _seed_nutrition(server, setup)
-    if setup.get("activity"):
-        _seed_activity(server, setup["activity"])
-    if setup.get("long_run"):
-        _seed_long_runs(server, unit)
-    if setup.get("draft"):
-        tags["draft"] = _seed_draft(server, setup["draft"])
-    if setup.get("pending"):
-        _seed_pending(server, setup["pending"])
-    return tags
 
 
 def _seed_nutrition(server: Any, setup: dict[str, Any]) -> None:
