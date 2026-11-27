@@ -2917,11 +2917,13 @@ function weekReviewTiles(review, extra, running) {
   return [weekReviewPlanTile(review.plan), sessions, time, load, ...weekReviewRecoveryTiles(review.recovery), checkins, weekReviewNotableTile(review.notable), complaints].filter(Boolean);
 }
 
-// The week's count and totals sit in the head, which every refill of the card keeps.
+// The head and the week's count and totals under it stay through every refill of the card (#4308).
+const weekReviewKept = (card) => [...card.querySelectorAll(":scope > :is(.week-review-head, .planned-week-figures)")];
+
 function plannedWeekReview(weekKey, todayKey, extra, planLine, figures) {
   const thisWeek = weekKey === planWeekStart(todayKey);
   const card = h("section", { className: "week-review", dataset: { weekReview: weekKey, extra: String(extra), thisWeek: String(thisWeek) }, "aria-labelledby": "weekReviewTitle" },
-    h("header", "week-review-head", h("h5", { id: "weekReviewTitle" }, "Wochenrückblick"), h("span", null, [`KW ${isoWeekNumber(weekKey)}`, thisWeek ? "bis heute" : null].filter(Boolean).join(" · ")), figures),
+    h("header", "week-review-head", h("h5", { id: "weekReviewTitle" }, "Wochenrückblick"), h("span", null, [`KW ${isoWeekNumber(weekKey)}`, thisWeek ? "bis heute" : null].filter(Boolean).join(" · "))), figures,
     createLoadingState("Wochenrückblick wird geladen…"));
   weekReviewFallbacks.set(card, planLine);
   void fillWeekReview(card);
@@ -2941,7 +2943,7 @@ function weekReviewFailed(card) {
   card.dataset.failed = "true";
   const retry = h("button", { type: "button", className: "secondary-button" }, "Erneut laden");
   retry.addEventListener("click", () => retryWeekReview(card, true));
-  card.replaceChildren(card.firstElementChild, h("p", "empty", "Wochenrückblick gerade nicht verfügbar"), retry);
+  card.replaceChildren(...weekReviewKept(card), h("p", "empty", "Wochenrückblick gerade nicht verfügbar"), retry);
   // A retry started from the button keeps the keyboard there when it fails again (Gitar #3413).
   if (card.dataset.retryFocus && document.activeElement === card) retry.focus();
   delete card.dataset.retryFocus;
@@ -2950,7 +2952,7 @@ function weekReviewFailed(card) {
 // The pressed button leaves the card, so a tapped retry moves focus to the card while it loads.
 function retryWeekReview(card, focus = false) {
   delete card.dataset.failed;
-  card.replaceChildren(card.firstElementChild, createLoadingState("Wochenrückblick wird geladen…"));
+  card.replaceChildren(...weekReviewKept(card), createLoadingState("Wochenrückblick wird geladen…"));
   if (focus) {
     card.dataset.retryFocus = "true";
     card.tabIndex = -1;
@@ -2994,7 +2996,7 @@ async function fillWeekReview(card, refill = false) {
   }
   card.dataset.version = version;
   delete card.dataset.retryFocus;
-  card.replaceChildren(card.firstElementChild, h("div", "week-review-tiles", ...tiles));
+  card.replaceChildren(...weekReviewKept(card), h("div", "week-review-tiles", ...tiles));
 }
 
 // Wide screens show the open card's body as the detail pane beside the week (styles.css). It starts level

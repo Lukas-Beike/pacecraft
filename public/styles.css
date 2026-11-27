@@ -2275,7 +2275,8 @@ button:focus-visible, a:focus-visible, summary:focus-visible {
 .activity-dynamics-bands { display: grid; gap: 8px; }
 /* The week review under the calendar week (#3298, layout B). */
 .week-review { margin: 4px 12px 12px; border: 1px solid var(--line-strong); border-radius: var(--radius-sm); background: var(--surface-raised); }
-.week-review-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px; padding: 10px 12px; }
+.week-review-head { display: flex; align-items: baseline; gap: 8px; padding: 10px 12px; }
+.week-review > .planned-week-figures { padding: 0 12px 10px; }
 .week-review-head h5 { margin: 0; font-size: .85rem; font-weight: 750; }
 .week-review-head span { margin-left: auto; color: var(--muted); font-size: .76rem; font-variant-numeric: tabular-nums; }
 .week-review > .loading-state, .week-review > .error-state { margin: 0 12px 12px; }

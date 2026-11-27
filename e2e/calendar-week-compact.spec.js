@@ -508,3 +508,35 @@ test("@responsive a done planned unit shows no focus field in its card", async (
   await expect(card.locator("select[name='session_focus']")).toHaveCount(0);
   await expect(card.getByLabel("Art der Einheit")).toHaveCount(0);
 });
+
+// #4308 (variant A): on a phone the page heading gives way and its refresh sits at the end of the Woche/Monat
+// row, the sport chips scroll in one row, and the week's count and Geplant/Absolviert totals stand under the week.
+test("@responsive the phone calendar header is compact and the week's totals stand under the week", async ({ page, request }, testInfo) => {
+  test.skip(testInfo.project.name !== "mobile", "the compact header is the phone layout (#4308)");
+  expect((await request.get("/api/fixture/demo")).ok()).toBeTruthy();
+  await page.goto("/#plan/overview");
+  await page.waitForFunction(() => state.initialStateLoaded);
+  const week = page.locator(".planned-week");
+  await expect(week.locator(".planned-week-days .planned-day").first()).toBeVisible();
+  await expect(page.locator("#workoutsPanel > .section-heading")).toBeHidden();
+  await expect(week.locator(".planned-view-row .planned-refresh-slot #planRefreshButton")).toBeVisible();
+  // One row of chips, each a 44 px target, the chosen one in view.
+  const chips = week.locator(".planned-sport-filter");
+  expect((await chips.boundingBox()).height).toBeLessThan(60);
+  await expect(chips.locator("label:has(input:checked)")).toBeInViewport();
+  // The first day starts right under the week row: about 310 px from the page top without the notices.
+  await page.evaluate(() => scrollTo(0, 0));
+  const start = await page.evaluate(() => {
+    const notices = [...document.querySelectorAll("#plannedCalendar > :not(.planned-week)")].reduce((sum, node) => sum + node.getBoundingClientRect().height, 0);
+    return document.querySelector(".planned-week-days .planned-day").getBoundingClientRect().top + scrollY - notices;
+  });
+  expect(start).toBeLessThanOrEqual(340);
+  // The count and the totals left the heading for the week's end, the review when it has one.
+  await expect(week.locator(".planned-week-heading :is(.planned-week-summary, .planned-week-metrics)")).toHaveCount(0);
+  const end = week.locator(":is(.week-review, .planned-week-end)");
+  await expect(end.locator(".planned-week-summary")).toContainText(/abgeschlossen|geplant|Keine Einheiten/);
+  await expect(end.locator(".planned-week-metrics")).toContainText("Absolviert");
+  // Another calendar area keeps the heading with its refresh.
+  await page.goto("/#plan/library");
+  await expect(page.locator("#workoutsPanel > .section-heading #planRefreshButton")).toBeVisible();
+});
