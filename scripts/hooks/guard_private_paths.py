@@ -50,23 +50,30 @@ QUOTES = re.compile(r"[\"'`]")
 DOT_SEGMENT = re.compile(r"[/\\]\.(?=[/\\])")
 CONTINUATION = re.compile(r"[\\`]\r?\n")
 SEGMENTS = re.compile(r"&&|\|\||[;|&\n]")
-# The prod scripts and the node scripts, as two patterns each below Sonar's complexity limit.
-SECRET_RUN = tuple(
-    re.compile(pattern, re.IGNORECASE)
-    for pattern in (
-        (
-            r"py(?:thon\d*(?:\.\d+)*)?(?:\.exe)?(?:\s+-[\w.]+)*\s+"
-            r"(?:\.[/\\])?scripts[/\\]prod_(?:diagnostics|guards|logs)\.py(?=\s)"
-        ),
-        (
-            r"node(?:\.exe)?\s+(?:\.[/\\])?scripts[/\\]"
-            r"(?:ui_walk|ui_explore|post_release_actions)\.mjs(?=\s)"
-        ),
-    )
-)
 # A literal value only: no expansion, substitution or redirection inside it.
-PASSWORD_FILE = re.compile(
-    r"\s--password-file(?:=|\s+)(?:\"[^\"$`]*\"|'[^']*'|[^\s\"'$`()<>]+)(?=\s|$)"
+FILE_VALUE = r"(?:=|\s+)(?:\"[^\"$`]*\"|'[^']*'|[^\s\"'$`()<>]+)(?=\s|$)"
+PASSWORD_FILE = re.compile(r"\s--password-file" + FILE_VALUE)
+# The live Coach eval takes its key as one --key-file value (#4329); only that script.
+KEY_FILE = re.compile(r"\s--key-file" + FILE_VALUE)
+PYTHON_RUN = r"py(?:thon\d*(?:\.\d+)*)?(?:\.exe)?(?:\s+-[\w.]+)*\s+(?:\.[/\\])?"
+NODE_RUN = r"node(?:\.exe)?\s+(?:\.[/\\])?scripts[/\\]"
+# Each script that may read a secret file, with the one flag whose value it is and how
+# many of that flag's values are removed before the check (0: all, 1: only the first).
+SECRET_RUN = tuple(
+    (re.compile(pattern, re.IGNORECASE), flag, count)
+    for pattern, flag, count in (
+        (
+            PYTHON_RUN + r"scripts[/\\]prod_(?:diagnostics|guards|logs)\.py(?=\s)",
+            PASSWORD_FILE,
+            0,
+        ),
+        (
+            NODE_RUN + r"(?:ui_walk|ui_explore|post_release_actions)\.mjs(?=\s)",
+            PASSWORD_FILE,
+            0,
+        ),
+        (PYTHON_RUN + r"tests[/\\]coach_live_eval\.py(?=\s)", KEY_FILE, 1),
+    )
 )
 
 
@@ -136,8 +143,11 @@ def secret_mention_allowed(command: str) -> bool:
         if (
             ESCAPED_SEPARATOR.search(command)
             or SUBSTITUTION.search(segment)
-            or not any(run.match(segment.strip()) for run in SECRET_RUN)
-            or names_secrets(PASSWORD_FILE.sub(" ", segment))
+            or not any(
+                run.match(segment.strip())
+                and not names_secrets(flag.sub(" ", segment, count=count))
+                for run, flag, count in SECRET_RUN
+            )
             or not all(safe_before(item.strip()) for item in segments[:index])
             or not alongside_safe(segments, separators, index)
         ):
@@ -248,7 +258,8 @@ def main() -> int:
             "Blocked: the command names T3's secret folder, which holds the app "
             "password and database key (#3758). Pass its file only as --password-file "
             "to scripts/prod_diagnostics.py, prod_guards.py, prod_logs.py, "
-            "ui_walk.mjs, ui_explore.mjs or post_release_actions.mjs. If you only mention the path "
+            "ui_walk.mjs, ui_explore.mjs or post_release_actions.mjs, or as --key-file "
+            "to tests/coach_live_eval.py. If you only mention the path "
             "(for example in a commit message), pass the text through a file.",
             file=sys.stderr,
         )

@@ -132,9 +132,9 @@ Use [README.md](README.md) for the overview and [docs/setup.md](docs/setup.md) a
 Only non-discoverable facts and hard constraints belong in this file. Add a rule
 only for a failure that actually happened; prefer a hook, deny rule, or test
 for anything without exceptions. `.claude/settings.json` blocks agent access to
-`.env`, `data/`, the Garmin token store, and T3's secret folder (the prod
-scripts' `--password-file` only), and `.githooks/pre-push` scans
-outgoing commits for secrets and runs the quality ratchet; never bypass either.
+`.env`, `data/`, the Garmin token store, and T3's secret folder (only the prod
+scripts' `--password-file` and the live eval's `--key-file`), and `.githooks/pre-push`
+scans outgoing commits for secrets and runs the quality ratchet; never bypass either.
 
 - Work in a dedicated task worktree; leave the primary checkout unchanged. Check
   the branch and existing diff before editing and preserve prior work; keep
