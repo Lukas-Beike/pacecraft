@@ -133,10 +133,10 @@ def morning_plan_event(
 
 def unit_line(unit: dict[str, Any], lthr: float | None) -> str:
     """``{title} · {duration} · {key target}``; a part the unit lacks is left out."""
-    minutes = library_workout_duration_minutes(unit)
+    minutes = round(library_workout_duration_minutes(unit) or 0)
     parts = (
         str(unit.get("name") or "").strip() or "Einheit",
-        f"{round(minutes)} min" if minutes else "",
+        f"{minutes} min" if minutes > 0 else "",
         _key_target(unit, lthr),
     )
     return " · ".join(part for part in parts if part)

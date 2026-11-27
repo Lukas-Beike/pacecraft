@@ -640,6 +640,11 @@ class PushChecksTests(unittest.TestCase):
                 "Kraft Oberkörper · 30 min",
             ),
             "a missing duration": ({"name": "Lauf", "sport": "run"}, None, "Lauf"),
+            "a duration under half a minute": (
+                {"name": "Lauf", "sport": "run", "planned_duration_s": 20},
+                None,
+                "Lauf",
+            ),
         }
         for label, (unit, lthr, line) in cases.items():
             with self.subTest(label):
