@@ -156,7 +156,12 @@ test("@responsive the scores are sliders, an untouched one stores nothing, and c
   await soreness.press("ArrowRight");
   await expect(soreness).toHaveValue("7");
   await expect(soreness).toHaveAttribute("aria-valuetext", "7");
-  // By pointer: a tap on the track's left part.
+  // Tab only passes the motivation slider: it stays unanswered (Gitar on #4327).
+  await motivation.focus();
+  await motivation.press("Tab");
+  await expect(dialog.locator(".checkin-slider-value").nth(2)).toHaveText("–");
+  // By pointer: a tap on the track's left part, scrolled into view first in a short viewport.
+  await stress.scrollIntoViewIfNeeded();
   const box = await stress.boundingBox();
   await page.mouse.click(box.x + box.width * 0.2, box.y + box.height / 2);
   const tapped = Number(await stress.inputValue());

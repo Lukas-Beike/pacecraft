@@ -6,6 +6,7 @@ const CHECKIN_TAGS = [["travel", "Reise"], ["late_meal", "Spätes Essen"], ["hig
 const CHECKIN_DAY_STATUS = [["unknown", "Offen"], ["rest", "Ruhetag"], ["pause", "Pause"]];
 const CHECKIN_SIDES = [["none", "ohne Seite"], ["left", "links"], ["right", "rechts"], ["both", "beidseitig"]];
 const CHECKIN_MAX_COMPLAINTS = 8;
+const CHECKIN_SLIDER_KEYS = new Set(["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", "Home", "End", "PageUp", "PageDown"]);
 const checkinReceipts = new Map();
 
 const checkinComplaintKey = (item) => `${item.area}|${item.side}`;
@@ -48,7 +49,9 @@ function checkinSlider(name, label, value) {
     input.setAttribute("aria-valuetext", set ? input.value : "nicht angegeben");
     clear.hidden = !set;
   };
-  for (const type of ["input", "pointerdown", "keydown"]) input.addEventListener(type, () => mark(true));
+  // Moving it, pressing it or a key that sets its value answers; Tab passing through does not (Gitar on #4327).
+  for (const type of ["input", "pointerdown"]) input.addEventListener(type, () => mark(true));
+  input.addEventListener("keydown", (event) => { if (CHECKIN_SLIDER_KEYS.has(event.key)) mark(true); });
   clear.addEventListener("click", () => { input.value = 5; mark(false); input.focus(); });
   mark(checkinFilled(value));
   return h("div", "checkin-slider", h("span", null, h("span", { "aria-hidden": "true" }, label), h("span", null, h("span", { "aria-hidden": "true" }, shown), clear)), input);
