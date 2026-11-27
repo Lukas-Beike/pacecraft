@@ -133,11 +133,15 @@ The system SHALL build ordinary Coach context from saved Garmin, Wahoo and local
 
 #### Scenario: No Intervals.icu input
 - **WHEN** the recovery section is built, whatever the stored provider coverage (Intervals.icu is no longer read, #1728)
-- **THEN** it requests Garmin's performance values beside the recovery records, keeps provider recovery separate and keeps unavailable evidence explicit.
+- **THEN** it reads the recovery records without Garmin's performance values, which current_performance carries with their source, keeps provider recovery separate and keeps unavailable evidence explicit.
 
 #### Scenario: Recovery section from canonical records
 - **WHEN** the Coach recovery section is built
-- **THEN** sleep, HRV, resting HR and readiness each show the latest canonical Garmin record of the last 14 days (`date` plus neutral fields such as `sleep_seconds`, `sleep_score`, the night values `avg_spo2_pct`, `lowest_spo2_pct`, `avg_respiration_brpm` and `avg_sleeping_hr_bpm`, `last_night_avg_ms`, `weekly_avg_ms`, `resting_hr_bpm`, `score`, and the provider status codes `status` and `level`; the sleep record adds `night_means` with each night value's mean and night count over those 14 days), Body Battery the stored morning record, and the sync time, window, freshness and errors come from the Garmin sync status, read in the same read transaction as the records; the raw Garmin view is not read, and the section always carries Garmin's performance values under `performance`.
+- **THEN** sleep, HRV, resting HR and readiness each show the latest canonical Garmin record of the last 14 days (`date` plus neutral fields such as `sleep_seconds`, `sleep_score`, the night values `avg_spo2_pct`, `lowest_spo2_pct`, `avg_respiration_brpm` and `avg_sleeping_hr_bpm`, `last_night_avg_ms`, `weekly_avg_ms`, `resting_hr_bpm`, `score`, and the provider status codes `status` and `level`; the sleep record adds `night_means` with each night value's mean and night count over those 14 days), Body Battery the stored morning record, and the sync time, window, freshness and errors come from the Garmin sync status, read in the same read transaction as the records; the raw Garmin view is not read, and the section carries no `performance` values.
+
+#### Scenario: Each value once
+- **WHEN** a Coach turn's context is projected (#4325)
+- **THEN** each threshold plans use (FTP, max HR, bike and run LTHR) appears once, in `current_performance.thresholds` with its source and any note, not again in `metrics`; `current_performance.recovery` is left out when the turn carries the recovery section and every value in it is Garmin's.
 
 #### Scenario: Local calendar planning
 - **WHEN** context combines planned units, competitions and external calendar entries
