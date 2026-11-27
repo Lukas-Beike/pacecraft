@@ -56,7 +56,7 @@ instructions.
 
 Follow [orchestration](../orchestrated-plan-implementation/SKILL.md) for the
 delegation decision. Typical fits: an L1 search subagent per orchestration
-(`explorer` with Graphify on Claude Code) for wide discovery, parallel workers
+(`explorer` on Claude Code) for wide discovery, parallel workers
 only for truly independent work packages.
 
 ## Working with the athlete

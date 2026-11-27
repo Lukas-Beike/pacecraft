@@ -141,9 +141,9 @@ scans outgoing commits for secrets and runs the quality ratchet; never bypass ei
   runtime files and worktrees out of commits.
   `python scripts/prepare_worktree.py` installs Node dependencies, Graphify and the
   hash-locked Ruff and mypy, then reports newer versions (advisory, online);
-  the SessionStart hook keeps the graph current. For symbol, caller, or
-  dependency lookups, query Graphify (`python scripts/graphify_local.py query`)
-  before Grep. Verify graph results in source.
+  the SessionStart hook keeps the graph current. Targeted lookups may use Grep
+  directly; Graphify (`python scripts/graphify_local.py query`) is optional, for
+  wide caller or dependency maps. Verify graph results in source.
 - Skills live only in [`.agents/skills/`](.agents/skills/README.md); read the
   relevant one when a task needs it. Never install them globally. Coding uses the
   [Ponytail](.agents/skills/pacecraft-ponytail/SKILL.md) smallest-complete-change

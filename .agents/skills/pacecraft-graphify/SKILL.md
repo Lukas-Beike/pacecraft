@@ -35,11 +35,11 @@ offline and never install packages or call external/paid models. Do not bypass
 native repository hook trust.
 
 The Codex and Claude SessionStart hooks synchronously invoke
-`update --session-start` on startup and resume, before graph use. This hook does
-not consume its stdin event payload. Run `python scripts/graphify_local.py
-update` after source edits during a session and `status` to inspect freshness
-or availability. If the update was skipped or failed, query fresh source with
-normal tools before proceeding.
+`update --session-start` on startup and resume; using the graph is optional
+(#4290), so a targeted lookup may use Grep directly. The hook ignores its stdin
+payload. Run `python scripts/graphify_local.py update` after source edits and
+`status` to inspect freshness. If the update was skipped or failed, query fresh
+source with normal tools.
 
 Commands (run from the repository root):
 
