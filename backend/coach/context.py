@@ -921,6 +921,16 @@ class CoachStructuredContextService:
             return self._planning_reader.external_calendar(selection.horizon_days)
         return self._planning_reader.external_calendar()
 
+    def performance_section_sizes(self) -> dict[str, int]:
+        """Counts only: the characters of each current_performance block a Coach
+        turn carries, as sent, and their total (#4323, #4325)."""
+        performance_inputs, _activity_rows = self._performance_reader.read_sources()
+        current = self._current_performance(performance_inputs)
+        if not isinstance(current, dict):
+            return {}
+        sizes = {key: coach_context_json_size(value) for key, value in current.items()}
+        return {**sizes, "total": coach_context_json_size(current)}
+
     def _current_performance(
         self, performance_inputs: CanonicalPerformanceInputs | None
     ) -> Any:
