@@ -36,6 +36,7 @@ from backend.coach.context_selection import (
     select_coach_context,
 )
 from backend.coach.playbooks import playbook_for
+from backend.coach.prompt import COACH_PROMPT
 from backend.performance.context import current_performance_context
 from backend.performance.freshness import GarminSyncStatus
 from backend.planning.compact_activities import ActivitySummarySource
@@ -369,7 +370,23 @@ PLAN = COMMON | {
 # a kind's dynamic measurement. It includes rules 8h (rating scales, #1671),
 # 8i (fitness, fatigue and form) and 8f (strength exception, #1726) and 2b
 # (infection hint, #3762).
-STATIC_PROMPT_CEILING = 14_400
+# Directives moved from source_policy into the rules (#4288 C7, orchestrator V12
+# option B, 2026-11-27): each section's measured rule growth. The static ceiling
+# rises by exactly that and each kind carrying the section drops by the same.
+MOVED_DIRECTIVES: dict[str, int] = {
+    "current_performance": 296,
+    "nutrition_products": 170,
+}
+STATIC_PROMPT_CEILING = 14_400 + sum(MOVED_DIRECTIVES.values())
+
+
+def moved(kind: str) -> int:
+    """The moved directives of the sections this kind carries (#4288 C7)."""
+    return MOVED_DIRECTIVES["current_performance"] + (
+        MOVED_DIRECTIVES["nutrition_products"] if kind == "nutrition_message" else 0
+    )
+
+
 # The measured size of production's available current_performance per kind,
 # which the fixture rendered in the unavailable shape until #4323. A strictly
 # mechanical re-baseline (orchestrator V12, option A, 2026-11-27): each kind keeps
@@ -395,35 +412,56 @@ PRODUCTION_SNAPSHOT_SHAPE: dict[str, int] = {
 EXPECTED: dict[str, tuple[set[str], int]] = {
     "session_analysis": (
         COMMON | {"recovery"},
-        12_900 + PRODUCTION_SNAPSHOT_SHAPE["session_analysis"],
+        12_900
+        + PRODUCTION_SNAPSHOT_SHAPE["session_analysis"]
+        - moved("session_analysis"),
     ),
     # Progress and block review are one review with the same sections.
     "progress_review": (
         COMMON | {"planning", "recovery", "training_plans"},
-        17_900 + PRODUCTION_SNAPSHOT_SHAPE["progress_review"],
+        17_900
+        + PRODUCTION_SNAPSHOT_SHAPE["progress_review"]
+        - moved("progress_review"),
     ),
     "block_review": (
         COMMON | {"planning", "recovery", "training_plans"},
-        17_900 + PRODUCTION_SNAPSHOT_SHAPE["block_review"],
+        17_900 + PRODUCTION_SNAPSHOT_SHAPE["block_review"] - moved("block_review"),
     ),
-    "plan_week": (PLAN, 36_400 + PRODUCTION_SNAPSHOT_SHAPE["plan_week"]),
-    "plan_block": (PLAN, 50_400 + PRODUCTION_SNAPSHOT_SHAPE["plan_block"]),
-    "adjust_week": (PLAN, 32_400 + PRODUCTION_SNAPSHOT_SHAPE["adjust_week"]),
+    "plan_week": (
+        PLAN,
+        36_400 + PRODUCTION_SNAPSHOT_SHAPE["plan_week"] - moved("plan_week"),
+    ),
+    "plan_block": (
+        PLAN,
+        50_400 + PRODUCTION_SNAPSHOT_SHAPE["plan_block"] - moved("plan_block"),
+    ),
+    "adjust_week": (
+        PLAN,
+        32_400 + PRODUCTION_SNAPSHOT_SHAPE["adjust_week"] - moved("adjust_week"),
+    ),
     "morning_checkin": (
         COMMON | {"daily_planning_context", "recovery"},
-        12_900 + PRODUCTION_SNAPSHOT_SHAPE["morning_checkin"],
+        12_900
+        + PRODUCTION_SNAPSHOT_SHAPE["morning_checkin"]
+        - moved("morning_checkin"),
     ),
     "free_text_planning": (
         PLAN,
-        36_400 + PRODUCTION_SNAPSHOT_SHAPE["free_text_planning"],
+        36_400
+        + PRODUCTION_SNAPSHOT_SHAPE["free_text_planning"]
+        - moved("free_text_planning"),
     ),
     "general_question": (
         COMMON | {"recovery"},
-        11_900 + PRODUCTION_SNAPSHOT_SHAPE["general_question"],
+        11_900
+        + PRODUCTION_SNAPSHOT_SHAPE["general_question"]
+        - moved("general_question"),
     ),
     "nutrition_message": (
         COMMON | {"nutrition_products"},
-        11_900 + PRODUCTION_SNAPSHOT_SHAPE["nutrition_message"],
+        11_900
+        + PRODUCTION_SNAPSHOT_SHAPE["nutrition_message"]
+        - moved("nutrition_message"),
     ),
 }
 
@@ -481,6 +519,23 @@ class CoachContextBudgetTests(unittest.TestCase):
             with self.subTest(case=label):
                 self.assertEqual(row["dynamic"], self.measured[label]["dynamic"])
                 self.assertEqual(row["static"], self.measured[label]["static"] + 500)
+
+    def test_source_policy_describes_and_the_rules_direct(self) -> None:
+        # #4288 C7: directives live in the trusted rules, not in the untrusted
+        # athlete_context block; source_policy only describes its sections.
+        policy = _build_service()._structured_context_service.build()["source_policy"]
+        for key, moved_text in (
+            ("current_performance", "nenne zone_source"),
+            ("current_performance", "mit save_zones übernehmen"),
+            ("current_performance", "erkläre Laufdeckel"),
+            ("current_performance", "nenne own_sessions"),
+            ("nutrition_products", "lookup_food"),
+            ("nutrition_products", "direkt als Komponenten speichern"),
+        ):
+            with self.subTest(moved=moved_text):
+                self.assertNotIn(moved_text, policy[key])
+        self.assertIn("8j. current_performance: name zone_source", COACH_PROMPT)
+        self.assertIn("use lookup_food without source", COACH_PROMPT)
 
     def test_the_performance_sizes_count_each_block_as_sent(self) -> None:
         # #4323: the diagnostics count what the Coach's current_performance holds.
