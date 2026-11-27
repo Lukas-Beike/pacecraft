@@ -1253,8 +1253,8 @@ async function useNutritionProduct(product, edit = null) {
   const status = document.querySelector("#nutritionProductUseStatus");
   // A save still running from an earlier open keeps no spinner on the reopened dialog (#4268).
   setSaving(addButton, false);
-  select.replaceChildren(h("option", { value: "" }, "Neuer Snack")); addButton.disabled = true; status.textContent = "";
-  // A queued meal stays a new snack: no choice of an existing meal, no Coach draft.
+  select.replaceChildren(...NUTRITION_NEW_MEALS.map(([type, label]) => h("option", { value: type ? `new:${type}` : "", selected: !type }, label))); addButton.disabled = true; status.textContent = "";
+  // A queued meal keeps its stored type: no choice of a new or an existing meal, no Coach draft.
   select.closest("label").hidden = Boolean(edit);
   document.querySelector("#nutritionProductUseCoach").hidden = Boolean(edit);
   if (edit) {
@@ -1343,18 +1343,34 @@ function addNutritionProductToCoachDraft() {
   jumpToLatestMessages();
 }
 
-// A meal of today that waits in the outbox keeps the time it was entered, not the later
-// time it is sent (review on #3761).
+// A snack of today that waits in the outbox keeps the time it was entered, not the later
+// time it is sent (review on #3761); the fixed meals take the server's type default (#4271).
 function queuedMealPayload(body) {
-  if (body.meal_date !== todayIso()) return body;
+  if (body.meal_date !== todayIso() || (body.meal_type && body.meal_type !== "snack")) return body;
   const time = new Intl.DateTimeFormat("de-DE", { hour: "2-digit", minute: "2-digit", hourCycle: "h23", timeZone: state.data?.profile?.timezone || undefined }).format(new Date());
   return { ...body, meal_time: time };
+}
+
+// The new meals the product dialog offers: the fixed meals and the snack, the default (#4271).
+const NUTRITION_NEW_MEALS = [["breakfast", "Neues Frühstück"], ["lunch", "Neues Mittagessen"], ["dinner", "Neues Abendessen"], ["", "Neuer Snack"]];
+
+// The existing meal to extend, or the type of the new meal: a queued entry keeps its stored type.
+function nutritionProductUseChoice(edit) {
+  const choice = edit ? "" : document.querySelector("#nutritionProductUseMeal").value;
+  return { mealId: choice.startsWith("new:") ? "" : choice, mealType: edit?.payload.meal_type || choice.replace("new:", "") || "snack" };
+}
+
+// The edited queued entry is gone: the next save is a new meal of its type, the choice set to it (#4298).
+function nutritionOutboxEntryGone(mealType) {
+  nutritionOutboxEdit = null;
+  document.querySelector("#nutritionProductUseMeal").value = mealType === "snack" ? "" : `new:${mealType}`;
 }
 
 async function addNutritionProductToMeal() {
   const use = nutritionProductUseAmount();
   const edit = nutritionOutboxEdit;
-  const mealId = edit ? "" : document.querySelector("#nutritionProductUseMeal").value;
+  const { mealId, mealType } = nutritionProductUseChoice(edit);
+  const mealLabel = NUTRITION_MEAL_LABELS[mealType] || "Mahlzeit";
   if (!use) return;
   const generation = state.sessionGeneration;
   const addButton = document.querySelector("#nutritionProductUseAdd");
@@ -1362,13 +1378,13 @@ async function addNutritionProductToMeal() {
   try {
     const body = mealId
       ? { id: mealId, product_id: use.product.id, amount: Number(use.amount), unit: use.unit }
-      : { product_id: use.product.id, amount: Number(use.amount), unit: use.unit, meal_type: "snack", meal_date: edit?.payload.meal_date || document.querySelector("#nutritionDate").value || todayIso(), source: "manual" };
+      : { product_id: use.product.id, amount: Number(use.amount), unit: use.unit, meal_type: mealType, meal_date: edit?.payload.meal_date || document.querySelector("#nutritionDate").value || todayIso(), source: "manual" };
     // An edited meal keeps the day and time it was entered.
     const queued = edit?.payload.meal_time ? { ...body, meal_time: edit.payload.meal_time } : queuedMealPayload(body);
     // A new meal waits in the outbox when the server cannot be reached; adding to a meal does not.
     const result = mealId
       ? await api("/api/nutrition/entry/add-product", { method: "POST", body: JSON.stringify(body) })
-      : await saveOwnEntry({ kind: "meal", method: "POST", path: "/api/nutrition/entry", payload: body, queuedPayload: queued, label: `„${use.product.name}“ als Snack`, replaces: edit });
+      : await saveOwnEntry({ kind: "meal", method: "POST", path: "/api/nutrition/entry", payload: body, queuedPayload: queued, label: `„${use.product.name}“ als ${mealLabel}`, replaces: edit });
     if (generation !== state.sessionGeneration) return;
     closeNutritionProductUse();
     if (result.outboxEntry) {
@@ -1379,11 +1395,12 @@ async function addNutritionProductToMeal() {
     // clears the status line, so the receipt follows it.
     await reloadNutritionProducts();
     if (generation !== state.sessionGeneration) return;
-    showNutritionReceipt(document.querySelector("#nutritionProductStatus"), `„${use.product.name}“ ${mealId ? "zur Mahlzeit ergänzt" : "als Snack erfasst"}.`, result.change, () => reloadNutritionProducts());
+    showNutritionReceipt(document.querySelector("#nutritionProductStatus"), `„${use.product.name}“ ${mealId ? "zur Mahlzeit ergänzt" : "als " + mealLabel + " erfasst"}.`, result.change, () => reloadNutritionProducts());
   } catch (error) {
     if (generation !== state.sessionGeneration) return;
-    // The queued entry is gone meanwhile: the next save goes out as a new snack (Gitar on #3830).
-    if (error?.reason === "outbox_entry_gone") nutritionOutboxEdit = null;
+    // The queued entry is gone meanwhile: the next save goes out as a new meal of the stored type, the choice
+    // set to it (Gitar on #3830, #4298).
+    if (error?.reason === "outbox_entry_gone") nutritionOutboxEntryGone(mealType);
     document.querySelector("#nutritionProductUseStatus").textContent = `Produkt konnte nicht erfasst werden: ${error.message}`;
     setSaving(addButton, false);
   }

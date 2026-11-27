@@ -148,6 +148,21 @@ test("@responsive nutrition product library supports review, local save, favorit
   await expect(page.locator("#nutritionProductStatus")).toContainText("als Snack erfasst");
   await page.goto("/#nutrition/diary");
   await expect(page.locator("#nutritionEntries .nutrition-card").filter({ hasText: "Snack" }).filter({ hasText: productName })).toHaveCount(1);
+  // A product can also start a new Frühstück, Mittagessen or Abendessen; the snack stays the default (#4271).
+  await page.goto("/#nutrition/products");
+  await page.reload();
+  await openProductSection(page, "all");
+  await card.getByRole("button", { name: "Verwenden" }).click();
+  await expect(page.locator("#nutritionProductUseMeal option").nth(4)).toBeAttached();
+  expect((await page.locator("#nutritionProductUseMeal option").allTextContents()).slice(0, 4)).toEqual(["Neues Frühstück", "Neues Mittagessen", "Neues Abendessen", "Neuer Snack"]);
+  await expect(page.locator("#nutritionProductUseMeal")).toHaveValue("");
+  await page.locator("#nutritionProductUseMeal").selectOption("new:breakfast");
+  const posted = page.waitForRequest((request) => request.method() === "POST" && new URL(request.url()).pathname === "/api/nutrition/entry");
+  await page.locator("#nutritionProductUseAdd").click();
+  expect((await posted).postDataJSON().meal_type).toBe("breakfast");
+  await expect(page.locator("#nutritionProductStatus")).toContainText("als Frühstück erfasst");
+  await page.goto("/#nutrition/diary");
+  await expect(page.locator("#nutritionEntries .nutrition-card").filter({ hasText: "Frühstück" }).filter({ hasText: productName })).toHaveCount(1);
   await page.goto("/#nutrition/products");
   await page.reload();
   await openProductSection(page, "all");
