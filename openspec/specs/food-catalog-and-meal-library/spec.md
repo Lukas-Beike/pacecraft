@@ -220,7 +220,7 @@ The client SHALL present product and label candidates for review and explicit lo
 
 #### Scenario: Add a product to a logged meal
 - **WHEN** the athlete adds a saved product and quantity to a logged meal
-- **THEN** the meal becomes a composite of its earlier values and the product's nutrients frozen at that time, with at most 20 components.
+- **THEN** the meal becomes a composite of its earlier values and the product's nutrients frozen at that time, with at most 20 components, and the receipt follows the write's answer while the product list reads its new use count afterwards (#4269).
 
 #### Scenario: Product without a chosen meal
 - **WHEN** the athlete adds a saved product and quantity without choosing a meal
@@ -241,6 +241,7 @@ Evidence:
 - `public/nutrition.js::nutritionComponentDetails`
 - `public/nutrition.js::saveNutritionProduct`
 - `public/nutrition.js::useNutritionProduct`
+- `tests/nutrition-lookup-status.test.cjs::adding a product to a meal shows its receipt without waiting for the product list (#4269)`
 - `tests/test_nutrition_favorites_and_meal_additions.py::FavoritesAndMealAdditionTests.test_adding_a_product_turns_a_single_product_meal_into_a_composite`
 - `tests/test_nutrition_favorites_and_meal_additions.py::FavoritesAndMealAdditionTests.test_favorites_are_listed_first_and_survive_edits`
 

@@ -702,14 +702,18 @@ class ProdChecksTests(unittest.TestCase):
                      "p95_ms": 3300, "max_ms": 3370, "disconnects": 0,
                      "planted": "secret"},
                     {"route": "GET /api/body/energy", "count": 2, "p50_ms": 2100,
-                     "p95_ms": None, "max_ms": 2400, "disconnects": 1},
+                     "p95_ms": None, "max_ms": 2400, "disconnects": 1,
+                     # #4269: bucket counts print; a planted name or value never does.
+                     "buckets_ms": {"<3000": 1, ">=3000": 1, "planted": 3, "<100": "x"}},
                     {"route": 5, "count": 1},
                     "not a row",
                 ]
             }
         }  # fmt: skip
         preview = "count 4 p50_ms 900 p95_ms 3300 max_ms 3370 disconnects 0"
-        energy = "count 2 p50_ms 2100 p95_ms null max_ms 2400 disconnects 1"
+        energy = (
+            "count 2 p50_ms 2100 p95_ms null max_ms 2400 disconnects 1 <3000 1 >=3000 1"
+        )
         self.assertEqual(
             prod_diagnostics.named_section_lines(report, "route_timings"),
             [

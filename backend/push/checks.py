@@ -14,7 +14,7 @@ from __future__ import annotations
 import logging
 from collections.abc import Callable, Iterable
 from contextlib import AbstractContextManager, nullcontext
-from datetime import date, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from typing import Any, Final
 
 from backend.canonical.vocabulary import ProviderId
@@ -32,11 +32,16 @@ from backend.push.events import (
     personal_best_event,
     planned_units,
     server_event,
+    session_groups,
     threshold_offer_events,
     weather_event,
 )
 from backend.push.service import Notification, PushService
-from backend.settings import AUTOMATIC_TURNS_KEY, automatic_turns_from
+from backend.settings import (
+    AUTOMATIC_TURNS_KEY,
+    analysed_session_sports,
+    automatic_turns_from,
+)
 from backend.sync.retry_hold import ATHLETE_ACTION_ERROR_CODES
 
 _LOGGER = logging.getLogger("intervals_coach")
@@ -46,6 +51,10 @@ DAY_START_HOUR: Final = 7
 DAY_END_HOUR: Final = 22
 # Local hour until which the night push waits for an automatic check-in (#4274).
 AUTOMATIC_MORNING_UNTIL_HOUR: Final = 10
+# Minutes a new session's push waits for its automatic analysis (#4275).
+# The turn ids of automatic turns, which run one after another.
+AUTOMATIC_TURN_ID_PREFIX: Final = "auto:"
+ANALYSIS_WAIT_MINUTES: Final = 15
 # Consecutive failed refreshes that count as a repeated sync failure.
 REPEATED_FAILURES: Final = 3
 UPCOMING_DAYS: Final = 3
@@ -128,14 +137,24 @@ class PushChecks:
                 self._push.stored(db, AUTOMATIC_TURNS_KEY, {})
             )
             automatic_night = automatic["morning"] and _automatic_morning_due(db, local)
+            # A session of an analysed sport group is announced by its analysis (#4275).
+            analysed = analysed_session_sports(automatic)
             recent = new_sessions(db, since, today)
+            groups = session_groups(db, recent) if analysed else {}
             units = planned_units(db, today, today + timedelta(days=1))
             found = [
                 *provider_problems(db, since),
                 *upcoming_competitions(db, today),
                 None if automatic_night else morning_data_event(db, today),
                 checkin_event(db, today),
-                new_activity_event(recent),
+                new_activity_event(
+                    [
+                        item
+                        for item in recent
+                        if groups.get(item) not in analysed
+                        or not _analysis_announces(db, item, local)
+                    ]
+                ),
             ]
         if self._source(self._infection_hint):
             found.append(infection_hint_event(today))
@@ -217,6 +236,33 @@ def _automatic_morning_due(db: Any, local: datetime) -> bool:
         return True
     turn_id = f"{coach_store.AUTOMATIC_MORNING_PREFIX}{local.date().isoformat()}"
     return coach_store.command_row(db, turn_id, "status") is not None
+
+
+def _analysis_announces(db: Any, session_id: str, local: datetime) -> bool:
+    """The automatic analysis announces this session itself (#4275): once its
+    turn exists, while another automatic turn is queued or running (they run one
+    after another), or for ``ANALYSIS_WAIT_MINUTES`` after the session was
+    stored, counted from 07:00 at the earliest because no automatic turn starts
+    at night. Later, without one (Coach not ready, daily cap, stored before the
+    switch), "Neue Einheit" goes as before."""
+    turn_id = f"{coach_store.AUTOMATIC_SESSION_PREFIX}{session_id}"
+    if coach_store.command_row(db, turn_id, "status") is not None:
+        return True
+    if any(
+        str(row["client_turn_id"]).startswith(AUTOMATIC_TURN_ID_PREFIX)
+        for row in coach_store.command_rows(db, "client_turn_id")
+    ):
+        return True
+    row = db.execute(
+        "SELECT created_at FROM activity_sessions WHERE activity_id = ?", (session_id,)
+    ).fetchone()
+    created = _parse(row["created_at"]) if row else None
+    if created is None:
+        return False
+    if created.tzinfo is None:
+        created = created.replace(tzinfo=UTC)
+    day_start = local.replace(hour=DAY_START_HOUR, minute=0, second=0, microsecond=0)
+    return local - max(created, day_start) < timedelta(minutes=ANALYSIS_WAIT_MINUTES)
 
 
 def _parse(value: Any) -> datetime | None:

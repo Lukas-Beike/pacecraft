@@ -71,21 +71,30 @@ async function savePushType(event) {
   }
 }
 
-// The opt-in automatic Coach turns (#4274), off by default; a save in flight keeps its switch.
+// The opt-in automatic Coach turns (#4274) and the analysed sports under the session
+// switch (#4275), off by default; a save in flight keeps its switch.
 function renderAutomaticTurns(data) {
   const turns = data?.model?.automatic_turns || {};
   for (const input of document.querySelectorAll("#coachAutomaticTurns input[data-automatic-turn]")) {
     if (!input.disabled) input.checked = turns[input.dataset.automaticTurn] === true;
   }
+  for (const input of document.querySelectorAll("#coachAutomaticSports input[data-automatic-sport]")) {
+    if (!input.disabled) input.checked = turns.sports?.[input.dataset.automaticSport] === true;
+  }
+  $("#coachAutomaticSports").hidden = turns.sessions !== true;
 }
 
 async function saveAutomaticTurn(event) {
-  const input = event.target.closest?.("input[data-automatic-turn]");
+  const input = event.target.closest?.("input[data-automatic-turn], input[data-automatic-sport]");
   if (!input) return;
+  const { automaticTurn: turn, automaticSport: sport } = input.dataset;
   input.disabled = true;
   try {
-    const turns = await api("/api/settings/automatic-turns", { method: "PUT", body: JSON.stringify({ [input.dataset.automaticTurn]: input.checked }) });
+    const body = sport ? { sports: { [sport]: input.checked } } : { [turn]: input.checked };
+    const turns = await api("/api/settings/automatic-turns", { method: "PUT", body: JSON.stringify(body) });
     if (state.data?.model) state.data.model.automatic_turns = turns;
+    input.disabled = false;
+    renderAutomaticTurns({ model: { automatic_turns: turns } });
   } catch (error) {
     input.checked = !input.checked;
     toast(error.message || "Die Einstellung konnte nicht gespeichert werden", true);
@@ -207,6 +216,10 @@ function registerServiceWorker() {
   document.addEventListener("focusout", () => { if (!pointerHeld) requestAnimationFrame(reloadForUpdateWhenSafe); });
   document.addEventListener("pointerdown", () => { pointerHeld = true; }, true);
   for (const type of ["pointerup", "pointercancel"]) document.addEventListener(type, () => { pointerHeld = false; setTimeout(() => requestAnimationFrame(reloadForUpdateWhenSafe), 0); }, true);
+  // A Coach answer push stays silent while this window shows the Coach: the worker asks the route (#4276).
+  navigator.serviceWorker.addEventListener("message", (event) => {
+    if (event.data?.type === "route-request") event.ports[0]?.postMessage({ route: `#${AppRouter.baseRoute()}` });
+  });
   navigator.serviceWorker.register("/service-worker.js").catch(() => {});
 }
 

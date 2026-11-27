@@ -6,14 +6,18 @@ const { test } = require("node:test");
 const { extractFunctions, loadPublicScript } = require("./frontend-harness.cjs");
 
 // Runs public/service-worker.js with recorded cache and lifecycle calls.
-function worker() {
+function worker({ windows = [], notifications = [] } = {}) {
   const handlers = {};
   const calls = [];
   const context = loadPublicScript("service-worker.js", {
     URL,
+    MessageChannel,
+    setTimeout,
+    clearTimeout,
+    registration: { showNotification: async (title, options) => { notifications.push([title, options.tag]); } },
     addEventListener: (type, handler) => { handlers[type] = handler; },
     skipWaiting: async () => { calls.push(["skipWaiting"]); },
-    clients: { claim: async () => { calls.push(["claim"]); } },
+    clients: { claim: async () => { calls.push(["claim"]); }, matchAll: async () => windows },
     caches: {
       open: async (name) => ({ addAll: async () => { calls.push(["addAll", name]); } }),
       keys: async () => ["intervals-coach-old", cacheName],
@@ -21,13 +25,20 @@ function worker() {
     },
   });
   const cacheName = vm.runInContext("CACHE", context);
-  const run = async (type) => {
+  const run = async (type, data) => {
     const waits = [];
-    handlers[type]({ waitUntil: (promise) => waits.push(promise) });
+    handlers[type]({ waitUntil: (promise) => waits.push(promise), data: data && { json: () => data } });
     await Promise.all(waits);
   };
-  return { calls, run, cacheName };
+  return { calls, run, cacheName, context };
 }
+
+// An app window that answers the worker's route request with its own route.
+const appWindow = (route, { visibilityState = "visible", focused = true } = {}) => ({
+  visibilityState,
+  focused,
+  postMessage: (message, [port]) => { if (message.type === "route-request") port.postMessage({ route }); },
+});
 
 test("a new service worker takes over once its assets are cached", async () => {
   const { calls, run, cacheName } = worker();
@@ -39,6 +50,34 @@ test("an activated service worker removes old caches and controls open pages", a
   const { calls, run } = worker();
   await run("activate");
   assert.deepEqual(calls, [["delete", "intervals-coach-old"], ["claim"]]);
+});
+
+const ANSWER = { kind: "coach_answer", title: "Coach", body: "Deine Antwort ist da.", tag: "coach:t1", url: "#coach" };
+
+test("a Coach answer push is silent only on the visible, focused Coach route (#4276)", async () => {
+  const silent = (states) => vm.runInContext("pushIsSilent", worker().context)("coach_answer", states);
+  const coach = { visible: true, focused: true, route: "#coach" };
+  assert.equal(silent([coach]), true);
+  assert.equal(silent([{ ...coach, route: "#plan" }]), false);
+  assert.equal(silent([{ ...coach, visible: false }]), false);
+  assert.equal(silent([{ ...coach, focused: false }]), false);
+  assert.equal(silent([]), false);
+  // Another kind of push on the Coach route shows.
+  assert.equal(vm.runInContext("pushIsSilent", worker().context)("morning_plan", [coach]), false);
+
+  const shown = async (windows, message = ANSWER) => {
+    const notifications = [];
+    await worker({ windows, notifications }).run("push", message);
+    return notifications.length;
+  };
+  assert.equal(await shown([appWindow("#coach")]), 0);
+  assert.equal(await shown([appWindow("#nutrition")]), 1);
+  assert.equal(await shown([appWindow("#coach", { visibilityState: "hidden" })]), 1);
+  assert.equal(await shown([appWindow("#coach", { focused: false })]), 1);
+  assert.equal(await shown([]), 1);
+  assert.equal(await shown([appWindow("#coach")], { ...ANSWER, kind: "morning_plan" }), 1);
+  // A window that never answers counts as unknown: the notification shows.
+  assert.equal(await shown([{ visibilityState: "visible", focused: true, postMessage() {} }]), 1);
 });
 
 // Runs the service worker registration of public/notifications.js with the real
@@ -108,9 +147,21 @@ function page({ controlled = true } = {}) {
     pendingTurn,
     reloads,
     replaceWorker: () => workerListeners.controllerchange(),
+    workerListeners,
     hide: () => { document.visibilityState = "hidden"; documentListeners.visibilitychange(); },
   };
 }
+
+test("the page answers the worker's route request with its own route (#4276)", () => {
+  const { context, workerListeners } = page();
+  context.AppRouter = { baseRoute: () => "coach" };
+  const posted = [];
+  const port = { postMessage: (message) => posted.push(message) };
+  workerListeners.message({ data: { type: "route-request" }, ports: [port] });
+  workerListeners.message({ data: { type: "other" }, ports: [port] });
+  workerListeners.message({ data: { type: "route-request" }, ports: [] });
+  assert.deepEqual(JSON.parse(JSON.stringify(posted)), [{ route: "#coach" }]);
+});
 
 test("a replaced service worker reloads an idle page once", () => {
   const { reloads, replaceWorker } = page();

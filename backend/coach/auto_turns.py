@@ -1,12 +1,13 @@
-"""Opt-in automatic Coach turns that only read and propose (#4274).
+"""Opt-in automatic Coach turns that only read and propose (#4274, #4275).
 
 Once the night's sleep is stored, ``check`` queues the morning check-in of the
-day as an unattended background job: the same request kind, preparation and
-model as the quick action, but with every write withheld (``enqueue_automatic``)
-and no login session. Its turn id names the day, so a day gets one attempt and a
-failure is never retried. The daily loop calls ``check`` every few minutes;
-``record`` counts the outcomes for diagnostics and builds the push that replaces
-"Morgenwerte".
+day, and for each new Garmin or Wahoo session of an analysed sport its session
+analysis, as an unattended background job: the same request kind, preparation
+and model as the quick action, but with every write withheld
+(``enqueue_automatic``) and no login session. Each turn id names its day or
+session, so it gets one attempt and a failure is never retried. The daily loop
+calls ``check`` every few minutes; ``record`` counts the outcomes for
+diagnostics and builds the push that replaces "Morgenwerte" or "Neue Einheit".
 """
 
 from __future__ import annotations
@@ -22,14 +23,23 @@ from backend.coach.job_submission import CoachJobSubmissionService
 from backend.db import coach_store
 from backend.db.manager import DatabaseManager
 from backend.db.repositories import KeyValueRepository
+from backend.push.events import new_sessions, session_groups
 from backend.push.service import Notification
-from backend.settings import SettingsService
+from backend.settings import SettingsService, analysed_session_sports
 
 MORNING_TURN_PREFIX: Final = coach_store.AUTOMATIC_MORNING_PREFIX
 MORNING_MESSAGE: Final = (
     "Automatischer Morgen-Check-in: Die Werte der Nacht sind da. Bewerte Erholung, "
     "Belastung und die geplante Einheit und sag mir, was heute sinnvoll ist."
 )
+SESSION_TURN_PREFIX: Final = coach_store.AUTOMATIC_SESSION_PREFIX
+SESSION_MESSAGE: Final = (
+    "Automatische Einheitenanalyse: Analysiere meine neue Einheit {session_id}: Was "
+    "lief gut, was sollte ich anpassen und wie beeinflusst sie die nächste Einheit?"
+)
+# How many session analyses were queued on which day (#4275).
+SESSIONS_KEY: Final = "coach_automatic_sessions"
+SESSIONS_PER_DAY: Final = 5
 COUNTS_KEY: Final = "coach_automatic_turn_counts"
 OUTCOMES: Final = ("started", "completed", "failed")
 # Local hours in which an automatic turn starts, as the push notifications.
@@ -65,27 +75,68 @@ class AutomaticCoachTurns:
         self._operation = operation
 
     def check(self) -> bool:
-        """Queue today's morning check-in when it is due; True when one was queued.
+        """Queue at most one due automatic turn; True when one was queued.
 
-        Due: switched on, the Coach ready, daytime, no Coach turn queued or
-        running, no check-in for today yet and tonight's sleep stored.
+        Only by day, with the Coach ready and no Coach turn queued or running,
+        so several new sessions run one after another, newest first.
         """
         local = self._local_now()
-        today = local.date()
         if (
-            not self._settings.automatic_turns()["morning"]
-            or not START_HOUR <= local.hour < END_HOUR
+            not START_HOUR <= local.hour < END_HOUR
             or not self._settings.coach_ready()
             or self._busy()
-            or self._morning_done()
-            or not self._sleep_ready(today)
         ):
             return False
-        queued = self._submission().enqueue_automatic(
+        turns = self._settings.automatic_turns()
+        return self._check_morning(turns, local.date()) or self._check_sessions(
+            turns, local
+        )
+
+    def _check_morning(self, turns: dict[str, Any], today: date) -> bool:
+        """Today's check-in: switched on, none for today yet and tonight's sleep stored."""
+        if not turns["morning"] or self._morning_done() or not self._sleep_ready(today):
+            return False
+        return self._enqueue(
             MORNING_MESSAGE,
             f"{MORNING_TURN_PREFIX}{today.isoformat()}",
             "morning_checkin",
         )
+
+    def _check_sessions(self, turns: dict[str, Any], local: datetime) -> bool:
+        """The newest new session of an analysed sport not analysed yet (#4275).
+
+        Only sessions stored after the switch was turned on count, so a replay,
+        a backfill or an older session never queues a burst; each session has
+        one turn id, and at most ``SESSIONS_PER_DAY`` start a day.
+        """
+        sports = analysed_session_sports(turns)
+        try:
+            since = datetime.fromisoformat(turns["sessions_since"])
+        except KeyError, TypeError, ValueError:
+            return False
+        if not sports:
+            return False
+        today = local.date().isoformat()
+        with self._database().reader() as db:
+            queued = _queued_today(self._key_values, db, today)
+            if queued >= SESSIONS_PER_DAY:
+                return False
+            found = new_sessions(db, since, local.date())
+            groups = session_groups(db, found)
+        for session_id in (item for item in found if groups.get(item) in sports):
+            if self._enqueue(
+                SESSION_MESSAGE.format(session_id=session_id),
+                f"{SESSION_TURN_PREFIX}{session_id}",
+                "session_analysis",
+            ):
+                with self._database().unit_of_work() as db:
+                    state = {"day": today, "queued": queued + 1}
+                    self._key_values.set(db, SESSIONS_KEY, json.dumps(state))
+                return True
+        return False
+
+    def _enqueue(self, message: str, turn_id: str, request_kind: str) -> bool:
+        queued = self._submission().enqueue_automatic(message, turn_id, request_kind)
         if queued:
             self._count("started")
         return queued
@@ -101,6 +152,20 @@ class AutomaticCoachTurns:
             self._count(outcome)
         turn_id = str(job.get("client_turn_id") or "")
         statement = key_statement(answer) if outcome == "completed" else ""
+        if turn_id.startswith(SESSION_TURN_PREFIX):
+            # The key of "Neue Einheit", which its analysis replaces (#4275).
+            key = f"new_activity:{turn_id.removeprefix(SESSION_TURN_PREFIX)}"
+            if not statement:
+                return Notification(
+                    "new_activity",
+                    key,
+                    "Neue Einheit",
+                    "Eine neue Einheit ist synchronisiert.",
+                    "#plan/overview",
+                )
+            return Notification(
+                "new_activity", key, "Analyse fertig", statement, "#coach"
+            )
         if not turn_id.startswith(MORNING_TURN_PREFIX):
             return None
         day = turn_id.removeprefix(MORNING_TURN_PREFIX)
@@ -127,6 +192,16 @@ class AutomaticCoachTurns:
             counts = diagnostics(self._key_values, db)
             counts[outcome] = counts.get(outcome, 0) + 1
             self._key_values.set(db, COUNTS_KEY, json.dumps(counts, sort_keys=True))
+
+
+def _queued_today(key_values: KeyValueRepository, db: Any, today: str) -> int:
+    """How many session analyses were queued today; 0 on another day or unreadable."""
+    try:
+        state = json.loads(key_values.get(db, SESSIONS_KEY) or "{}")
+    except ValueError:
+        return 0
+    queued = state.get("queued") if isinstance(state, dict) else None
+    return queued if type(queued) is int and state.get("day") == today else 0
 
 
 def diagnostics(key_values: KeyValueRepository, db: Any) -> dict[str, int]:

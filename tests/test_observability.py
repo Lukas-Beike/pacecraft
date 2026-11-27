@@ -969,6 +969,23 @@ class RouteTimingTests(unittest.TestCase):
         self.assertEqual(rows[-1]["route"], "GET /api/left")
         self.assertIsNone(rows[-1]["p95_ms"])
 
+    def test_the_meal_add_routes_are_shown_with_duration_buckets(self):
+        # #4269: the add-product path is listed however fast it is, with counts
+        # per duration bucket only.
+        timings = RouteTimings()
+        for index in range(RouteTimings.SHOWN):
+            timings.record(f"GET /api/slow{index}", 20000.0)
+        for value in (40.0, 99.0, 100.0, 450.0, 2999.0, 3000.0, 9000.0):
+            timings.record("POST /api/nutrition/entry/add-product", value)
+        timings.record("GET /api/nutrition/products", 20.0)
+        rows = {row["route"]: row for row in timings.summary()}
+        self.assertEqual(RouteTimings.SHOWN + 2, len(rows))
+        self.assertEqual(
+            {"<100": 2, "<300": 1, "<1000": 1, "<3000": 1, ">=3000": 2},
+            rows["POST /api/nutrition/entry/add-product"]["buckets_ms"],
+        )
+        self.assertEqual({"<100": 1}, rows["GET /api/nutrition/products"]["buckets_ms"])
+
     def test_session_report_counts_hold_counts_only(self):
         # #3084: reports built, checks by verdict and resolutions; no id or value.
         counts = SessionReportCounts()

@@ -49,7 +49,7 @@ The server SHALL generate the VAPID key pair once, keep the private key and the 
 Evidence: `backend/push/service.py:PushService`, `backend/push/service.py::diagnostics`, `backend/provider_credentials.py:CREDENTIAL_KV_KEYS`; `tests/test_push.py::test_payload_encryption_matches_the_rfc_8291_example`, `tests/test_push.py::test_vapid_token_is_an_es256_jwt_for_the_endpoint_origin`, `tests/test_push.py::test_a_gone_subscription_is_removed_and_the_log_names_no_endpoint`.
 
 ### Requirement: Each event is sent once, lock-screen safe, per-type switchable
-The server SHALL send each event key at most once, only to subscribed devices, only for types switched on (all on by default), and, except a Coach answer, only between 07:00 and 22:00 athlete-local time; an event found at night waits. A switched-off type's event is recorded as handled, so switching it on replays nothing; an event that stays current is never announced again. Bodies SHALL carry no names, values, places, provider error text or Coach content, except "Heute" and "Morgen-Check-in".
+The server SHALL send each event key at most once, only to subscribed devices, only for types switched on (all on by default), and, except a Coach answer, only between 07:00 and 22:00 athlete-local time; an event found at night waits. A switched-off type's event is recorded as handled, so switching it on replays nothing; an event that stays current is never announced again. Bodies SHALL carry no names, values, places, provider error text or Coach content, except as the scenarios say.
 
 #### Scenario: Delivery
 - **WHEN** a claimed event reaches no device (no answer, 5xx or 429)
@@ -75,13 +75,17 @@ The server SHALL send each event key at most once, only to subscribed devices, o
 - **WHEN** a Coach turn started by the athlete's own stored message finishes with an answer
 - **THEN** "Coach" / "Deine Antwort ist da." opens `#coach` right away at any hour, after the turn's operation; it is sent on its own thread, once and without a retry; a failed delivery never fails or holds the turn and no unfinished turn sends one
 
+#### Scenario: Coach answer while the Coach is open
+- **WHEN** a Coach answer push arrives while an app window is visible, focused and on the Coach route
+- **THEN** the service worker shows no notification; on another route, with a hidden or unfocused window, without an answer from the window's route request, or with no window the notification shows as before, and no other push kind is held back (the payload carries its `kind`)
+
 #### Scenario: Morning plan
 - **WHEN** today has a planned unit
 - **THEN** from 07:00 one "Heute" notification a day lists each non-rest unit of today as "{title} · {duration} · {key target}", a part the unit does not store left out: the key target is the stored heart-rate cap in bpm of an easy or long unit, the first repeat block of an interval unit unless its title names it, and none for strength; it opens `#plan/overview`
 
 #### Scenario: New session
 - **WHEN** a Garmin or Wahoo session started within two days is stored after the subscription
-- **THEN** one "Neue Einheit" notification stands for all sessions new at that check and opens `#plan/overview`
+- **THEN** one "Neue Einheit" notification stands for all sessions new at that check and opens `#plan/overview`; a session of a sport group the automatic analysis covers is announced instead by "Analyse fertig" with the analysis's first sentence, opening `#coach`, under the same switch and key, and by "Neue Einheit" when its analysis fails, has no answer or has not started 15 minutes after the session was stored (from 07:00 at the earliest, and not while another automatic turn is queued or running)
 
 #### Scenario: Morning data
 - **WHEN** sleep, HRV or resting heart rate observations dated today are stored

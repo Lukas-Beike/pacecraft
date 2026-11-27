@@ -82,6 +82,9 @@ def _database() -> sqlite3.Connection:
         "started_at TEXT NOT NULL, created_at TEXT NOT NULL);"
         "CREATE TABLE observations (id INTEGER PRIMARY KEY, metric TEXT NOT NULL, "
         "observed_on TEXT NOT NULL, state TEXT NOT NULL);"
+        "CREATE TABLE activity_records (provider TEXT NOT NULL, "
+        "activity_id TEXT, sport TEXT NOT NULL, state TEXT NOT NULL DEFAULT 'active', "
+        "started_at TEXT);"
     )
     return connection
 
@@ -270,6 +273,7 @@ class PushServiceTests(unittest.TestCase):
                         "url": "#plan/season",
                         # One tag per event: two events never replace each other.
                         "tag": "competition:c1:2026-11-25",
+                        "kind": "upcoming",
                     },
                 )
             ],
@@ -583,11 +587,17 @@ class PushChecksTests(unittest.TestCase):
             "INSERT INTO planned_units VALUES (?, ?)", (local_id, json.dumps(payload))
         )
 
-    def _session(self, ident, created_minutes, started="2026-11-22T08:00:00+00:00"):
+    def _session(
+        self, ident, created_minutes, started="2026-11-22T08:00:00+00:00", sport="run"
+    ):
         created = (NOW + timedelta(minutes=created_minutes)).isoformat()
         self.connection.execute(
             "INSERT INTO activity_sessions VALUES (?, 'garmin', 'active', ?, ?)",
             (ident, started, created),
+        )
+        self.connection.execute(
+            "INSERT INTO activity_records (provider, activity_id, sport) VALUES ('garmin', ?, ?)",
+            (ident, sport),
         )
 
     def test_the_morning_plan_names_todays_units_once_a_day(self):
@@ -701,6 +711,38 @@ class PushChecksTests(unittest.TestCase):
         self._session("act_3", 90)
         self.checks.check()
         self.assertEqual(len(self._titled("Neue Einheit")), 2)
+        # #4275: a session of an analysed sport group is announced by its
+        # analysis; one of an unchecked group keeps "Neue Einheit".
+        self.connection.execute(
+            "INSERT OR REPLACE INTO kv VALUES ('coach_automatic_turns', ?, '')",
+            ('{"sessions": true, "sports": {"ride": false}}',),
+        )
+        self._session("act_run", 100)
+        self.checks.check()
+        self.assertEqual(len(self._titled("Neue Einheit")), 2)
+        self._session("act_hike", 110, sport="hike")
+        self.checks.check()
+        self.assertEqual(len(self._titled("Neue Einheit")), 3)
+        # A checked session whose analysis exists waits for it; one without an
+        # analysis 15 minutes after it was stored (Coach not ready, daily cap)
+        # gets "Neue Einheit" after all.
+        self.connection.execute(
+            "INSERT INTO coach_commands VALUES ('auto:session:act_run', 'running')"
+        )
+        self._at(13)
+        self._session("act_run_2", 160)  # 12:40, an analysis still running
+        self.checks.check()
+        self.assertEqual(len(self._titled("Neue Einheit")), 3)
+        self.connection.execute("DELETE FROM coach_commands")
+        self.checks.check()  # none left that could start it
+        self.assertEqual(len(self._titled("Neue Einheit")), 4)
+        # A session stored at night waits from 07:00, when the turns may start.
+        self._session(
+            "act_run_night", 19 * 60 + 30, started="2026-11-23T05:30:00+00:00"
+        )
+        self._at(7, day=23)
+        self.checks.check()
+        self.assertEqual(len(self._titled("Neue Einheit")), 4)
 
     def test_the_night_values_are_announced_once_when_they_are_dated_today(self):
         self.connection.executemany(
@@ -1082,8 +1124,8 @@ class PushChecksTests(unittest.TestCase):
         self.assertFalse(self.checks.notify(coach_answer_event("turn-1")))
         (message,) = self._titled("Coach")
         self.assertEqual(
-            (message["body"], message["url"], message["tag"]),
-            ("Deine Antwort ist da.", "#coach", "coach:turn-1"),
+            (message["body"], message["url"], message["tag"], message["kind"]),
+            ("Deine Antwort ist da.", "#coach", "coach:turn-1", "coach_answer"),
         )
         self.assertTrue(self.checks.notify(coach_answer_event("turn-2")))
 

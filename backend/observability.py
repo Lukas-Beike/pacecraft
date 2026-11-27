@@ -711,6 +711,13 @@ class RouteTimings:
 
     SAMPLES = 512
     SHOWN = 15
+    # Counts per duration bucket over the same samples as the percentiles: under
+    # each bound in ms, and the rest (#4269).
+    BUCKETS_MS = (100, 300, 1000, 3000)
+    # Shown whatever their speed, so a fix of their path can be checked (#4269).
+    WATCHED = frozenset(
+        {"POST /api/nutrition/entry/add-product", "GET /api/nutrition/products"}
+    )
 
     def __init__(self) -> None:
         self._lock = threading.Lock()
@@ -738,6 +745,13 @@ class RouteTimings:
         with self._lock:
             self._route(key)["disconnects"] += 1
 
+    def _buckets(self, samples: Iterable[float]) -> dict[str, int]:
+        found: Counter[str] = Counter()
+        for value in samples:
+            bound = next((b for b in self.BUCKETS_MS if value < b), None)
+            found[f"<{bound}" if bound else f">={self.BUCKETS_MS[-1]}"] += 1
+        return dict(found)
+
     def summary(self) -> list[dict[str, Any]]:
         """The slowest routes by p95, and every route a client left, slowest first."""
         with self._lock:
@@ -750,6 +764,7 @@ class RouteTimings:
                     "p95_ms": _quantile(route["samples"], 0.95),
                     "max_ms": round(route["max_ms"]),
                     "disconnects": route["disconnects"],
+                    "buckets_ms": self._buckets(route["samples"]),
                 }
                 for key, route in self._routes.items()
             ]
@@ -757,7 +772,7 @@ class RouteTimings:
         return [
             row
             for index, row in enumerate(rows)
-            if index < self.SHOWN or row["disconnects"]
+            if index < self.SHOWN or row["disconnects"] or row["route"] in self.WATCHED
         ]
 
 

@@ -233,6 +233,8 @@ class PushService:
             "url": notification.url,
             # One tag per event, so two events never replace each other on the phone.
             "tag": notification.key,
+            # The service worker keeps a Coach answer silent while the Coach is open (#4276).
+            "kind": notification.type,
         }
         return {
             item["endpoint"]: self._sender(

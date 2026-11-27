@@ -367,6 +367,8 @@ def draft_user_message_ids(db: Any) -> list[int]:
 
 # The turn id of a day's automatic morning check-in (#4274), read by the push checks.
 AUTOMATIC_MORNING_PREFIX = "auto:morning:"
+# The turn id of a session's automatic analysis (#4275).
+AUTOMATIC_SESSION_PREFIX = "auto:session:"
 
 
 def automatic_message_ids(db: Any) -> list[int]:
