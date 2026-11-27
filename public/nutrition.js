@@ -266,7 +266,9 @@ function nutritionCard(item, template, sessions = []) {
     h("p", null, item.description),
     h("p", "nutrition-macros", `${nutritionNumber(item.kcal)} kcal · Kohlenhydrate ${nutritionNumber(item.carbs_g, "g")} g · Protein ${nutritionNumber(item.protein_g, "g")} g · Fett ${nutritionNumber(item.fat_g, "g")} g${template ? " / Portion" : ""}${volume}`),
     sourceText ? h("small", null, sourceText) : null);
-  if (!template) card.append(...nutritionEntryActions(item));
+  // The meal's ingredients; its estimate mark and "Als Mahlzeit speichern" are in "Mahlzeit bearbeiten" (#4305).
+  const details = template ? null : nutritionComponentDetails(item);
+  if (details) card.append(details);
   return card;
 }
 
@@ -294,11 +296,6 @@ function nutritionDeleteButton(item) {
     try { await deleteNutritionEntry(item); } finally { setSaving(remove, false); }
   });
   return remove;
-}
-
-// A logged meal's ingredients; its estimate mark and "Als Mahlzeit speichern" are in "Mahlzeit bearbeiten" (#4305).
-function nutritionEntryActions(item) {
-  return [nutritionComponentDetails(item)].filter(Boolean);
 }
 
 function nutritionExpenditureDate(value) {

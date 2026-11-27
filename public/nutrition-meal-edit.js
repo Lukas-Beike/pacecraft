@@ -12,7 +12,7 @@ const NUTRITION_FOOD_ORIGINS = { bls: "BLS 4.0", off: "Open Food Facts", yazio: 
 function nutritionMealEditNodes() {
   const root = document.querySelector("#nutritionMealEditDialog");
   const pick = (id) => root.querySelector(`#nutritionMealEdit${id}`);
-  return { root, form: pick("Main"), main: pick("Main"), swap: pick("Swap"), date: pick("Date"), time: pick("Time"), type: pick("Type"), unknown: pick("Unknown"), title: pick("Title"), subtitle: pick("Subtitle"), list: pick("List"), save: pick("Save"), status: pick("Status"), query: pick("Query"), results: pick("Results"), swapStatus: pick("SwapStatus"), add: pick("Add"), estimate: pick("Estimate") };
+  return { root, form: pick("Main"), main: pick("Main"), swap: pick("Swap"), date: pick("Date"), time: pick("Time"), type: pick("Type"), unknown: pick("Unknown"), title: pick("Title"), subtitle: pick("Subtitle"), list: pick("List"), save: pick("Save"), status: pick("Status"), query: pick("Query"), results: pick("Results"), swapStatus: pick("SwapStatus"), add: pick("Add"), estimate: pick("Estimate"), keep: pick("Keep") };
 }
 
 // "BLS 4.0", "Open Food Facts", "Yazio", "Eigenes Produkt" or "Schätzung" for a stored component.
@@ -124,9 +124,15 @@ function renderNutritionMealEdit() {
 function updateNutritionMealEditSave() {
   const nodes = nutritionMealEditNodes();
   const offline = !navigator.onLine;
-  // A running save keeps its button locked (#4268).
-  if (nodes.save.getAttribute("aria-busy") === "true") return;
-  nodes.save.disabled = offline || nutritionMealEditChanges().length === 0 && !nutritionMealFieldChanges();
+  // A running save keeps its button locked (#4268), and the two rare actions wait for it.
+  const busy = nodes.save.getAttribute("aria-busy") === "true";
+  const dirty = nutritionMealEditChanges().length > 0 || Boolean(nutritionMealFieldChanges());
+  for (const button of [nodes.estimate, nodes.keep]) {
+    button.disabled = busy || offline || dirty;
+    button.title = dirty ? "Erst speichern" : "";
+  }
+  if (busy) return;
+  nodes.save.disabled = offline || !dirty;
   if (offline) nodes.status.textContent = "Offline: Speichern erst mit Verbindung möglich.";
   else if (nodes.status.textContent.startsWith("Offline")) nodes.status.textContent = "";
 }
