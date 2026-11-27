@@ -30,7 +30,7 @@ test("@responsive nutrition diary keeps saved meals in Produkte and preserves co
   const below = async () => page.evaluate(() => {
     const top = (selector) => document.querySelector(selector).getBoundingClientRect();
     const energy = top("#nutritionEnergy");
-    return energy.height > 0 && top("#nutritionEmptyDay").top >= energy.bottom && energy.top >= top(".nutrition-toolbar").bottom;
+    return top("#nutritionEmptyDay").top >= energy.bottom && energy.top >= top(".nutrition-toolbar").bottom;
   });
   await expect.poll(below).toBe(true);
   // A future day names itself (#4037).

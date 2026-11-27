@@ -657,6 +657,7 @@ function showNutritionDayLoadError(status, cached, error, dateInput, requestedDa
     return;
   }
   // The requested day stays in the date field so ← and → still have a day to move from.
+  document.querySelector("#nutritionEmptyDay").hidden = true;
   dateInput.value = requestedDate;
   syncNutritionDateName();
   const retry = h("button", { type: "button", className: "secondary-button" }, "Erneut laden");

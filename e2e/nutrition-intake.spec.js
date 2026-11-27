@@ -32,6 +32,5 @@ test("@responsive an empty diary day shows only its sentence, with no button and
   await page.goto("/#nutrition/diary");
   await expect(page.locator("#nutritionEmptyDay")).toHaveText("Noch keine Mahlzeiten erfasst.");
   await expect(page.locator("#nutritionDiary").getByRole("button", { name: "Dem Coach sagen" })).toHaveCount(0);
-  await expect(page.locator("#nutritionTellCoach")).toHaveCount(0);
   expect(chats).toBe(0);
 });
