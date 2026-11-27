@@ -991,6 +991,7 @@ def _seed(server: Any, case: dict[str, Any]) -> dict[str, str]:
             "Grundlage 60 min",
             "Run",
             session_focus="endurance",
+            description="- 60m Z2 HR",
             duration_minutes=60,
             hr_cap=hr_cap(percent[0]["endurance"], percent[1]),
         )
