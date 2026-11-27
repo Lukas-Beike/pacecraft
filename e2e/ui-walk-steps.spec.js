@@ -18,6 +18,7 @@ const PAGE = `<main>
   <p id="words">nullable, undefinedx und NaNa sind Wörter, kein Leck</p>
   <details id="leaky"><summary>Leck</summary><p id="leak">Wert null</p></details>
   <div id="messages"><p>Bilanz auf null gesetzt</p></div>
+  <details class="release-changelog" open><summary>2.2.38</summary><ul><li>fix(ui): opened planned units no longer show "null"; "undefined" and "NaN" quoted too</li></ul></details>
 </main>`;
 
 test("a step fails on an empty chart or panel and passes on a drawn one", async ({ page }) => {
