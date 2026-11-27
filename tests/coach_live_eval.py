@@ -980,6 +980,26 @@ def _seed(server: Any, case: dict[str, Any]) -> dict[str, str]:
             "Run",
             hr_cap=hr_cap(lt1["old_cap_percent"], lt1["origin"]),
         )
+    if setup.get("endurance"):
+        # #4292: a Grundlage run capped at the LT1 like an easy run.
+        from backend.activities.hr_cap import cap_percents, hr_cap
+
+        percent = cap_percents(lt1["bpm"] / 167 * 100, lt1["origin"] == "estimated")
+        unit(
+            "endurance",
+            "2026-09-11",
+            "Grundlage 60 min",
+            "Run",
+            session_focus="endurance",
+            duration_minutes=60,
+            hr_cap=hr_cap(percent[0]["endurance"], percent[1]),
+        )
+    for title in setup.get("calendar", []):
+        _seed_calendar_event(server, title)
+    if setup.get("history"):
+        messages = server.APP.coach_conversation.message_service()
+        for role, text in setup["history"]:
+            messages.add(role, text)
     if not setup.get("no_blocker"):
         _seed_blocker(server)
     _seed_nutrition(server, setup)
@@ -1023,6 +1043,26 @@ def _seed_blocker(server: Any) -> None:
                 0,
                 0,
                 "seed",
+            ),
+        )
+
+
+def _seed_calendar_event(server: Any, title: str) -> None:
+    """An external calendar event on Tuesday whose title is untrusted text (#4293)."""
+    with server.database_manager().unit_of_work() as db:
+        db.execute(
+            "INSERT INTO external_calendar_events (id, uid, name, event_date, "
+            "start_local, end_local, duration_minutes, updated_at) "
+            "VALUES (?,?,?,?,?,?,?,?)",
+            (
+                f"injection-{len(title)}",
+                f"uid-injection-{len(title)}",
+                title,
+                "2026-09-08",
+                "2026-09-08T17:00:00",
+                "2026-09-08T18:00:00",
+                60,
+                "2026-09-07T06:00:00",
             ),
         )
 
