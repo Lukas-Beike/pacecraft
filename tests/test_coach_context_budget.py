@@ -196,6 +196,9 @@ class _ProviderPerformanceReader(CoachPerformanceContextReader):
                 },
                 TODAY,
                 canonical=inputs,
+                session_feedback=self._session_feedback,
+                lt1_session_records=self._lt1_session_records,
+                chest_strap_max_hr=self._chest_strap_max_hr,
             )
         )
 
