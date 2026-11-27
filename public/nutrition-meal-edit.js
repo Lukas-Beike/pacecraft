@@ -1,4 +1,5 @@
-// A diary meal's components: remove, change the amount or swap for another food (#3948), and its day, type and time (#3985).
+// A diary meal's components: remove, change the amount, swap for another food (#3948) or add one (#4270), and its day,
+// type and time (#3985).
 // The server recalculates; the dialog sends only the index and the change, never nutrient values.
 let nutritionMealEdit = null;
 
@@ -11,7 +12,7 @@ const NUTRITION_FOOD_ORIGINS = { bls: "BLS 4.0", off: "Open Food Facts", yazio: 
 function nutritionMealEditNodes() {
   const root = document.querySelector("#nutritionMealEditDialog");
   const pick = (id) => root.querySelector(`#nutritionMealEdit${id}`);
-  return { root, form: pick("Main"), main: pick("Main"), swap: pick("Swap"), date: pick("Date"), time: pick("Time"), type: pick("Type"), unknown: pick("Unknown"), title: pick("Title"), subtitle: pick("Subtitle"), list: pick("List"), save: pick("Save"), status: pick("Status"), query: pick("Query"), results: pick("Results"), swapStatus: pick("SwapStatus") };
+  return { root, form: pick("Main"), main: pick("Main"), swap: pick("Swap"), date: pick("Date"), time: pick("Time"), type: pick("Type"), unknown: pick("Unknown"), title: pick("Title"), subtitle: pick("Subtitle"), list: pick("List"), save: pick("Save"), status: pick("Status"), query: pick("Query"), results: pick("Results"), swapStatus: pick("SwapStatus"), add: pick("Add") };
 }
 
 // "BLS 4.0", "Open Food Facts", "Yazio", "Eigenes Produkt" or "Schätzung" for a stored component.
@@ -54,6 +55,8 @@ async function openNutritionMealEdit(item) {
 function nutritionMealEditChanges() {
   const edits = [];
   for (const row of nutritionMealEdit.rows) {
+    // An added food is stored with the other edits on "Speichern" (#4270).
+    if (row.added) { edits.push({ add: { [row.added.key]: row.added.id, amount: Number(row.amount), unit: row.unit } }); continue; }
     const resized = row.amount !== row.original || row.unit !== row.originalUnit;
     // A food in another unit than the estimate's portion names its unit with the amount.
     const sized = { ...(resized ? { amount: Number(row.amount) } : {}), ...(row.unit === row.originalUnit ? {} : { unit: row.unit }) };
@@ -106,12 +109,14 @@ function renderNutritionMealEdit() {
   nodes.subtitle.hidden = Boolean(swapRow);
   nodes.swap.hidden = !swapRow;
   if (swapRow) {
-    nodes.title.textContent = `Tauschen: ${swapRow.name}`;
+    nodes.title.textContent = swapRow.adding ? "Zutat hinzufügen" : `Tauschen: ${swapRow.name}`;
     return;
   }
   nodes.title.textContent = "Mahlzeit bearbeiten";
   renderNutritionMealFields();
   nodes.list.replaceChildren(...rows.map(nutritionMealEditRow));
+  // A meal holds at most 20 components, as the server checks.
+  nodes.add.disabled = rows.filter((row) => !row.removed).length >= 20;
   updateNutritionMealEditSave();
 }
 
@@ -128,9 +133,11 @@ function updateNutritionMealEditSave() {
 function nutritionMealEditRow(row) {
   const shown = row.swap ? row.swap.name : row.name;
   // The stored kcal fits only the stored amount.
-  const detail = () => row.swap
-    ? `${row.swap.origin} · statt ${row.name}`
-    : [row.origin, row.amount === row.original && row.kcal != null ? `${nutritionNumber(row.kcal)} kcal` : ""].filter(Boolean).join(" · ");
+  const detail = () => {
+    if (row.added) return row.origin;
+    if (row.swap) return `${row.swap.origin} · statt ${row.name}`;
+    return [row.origin, row.amount === row.original && row.kcal != null ? `${nutritionNumber(row.kcal)} kcal` : ""].filter(Boolean).join(" · ");
+  };
   const small = h("small", null, detail());
   const head = h("div", null, h("strong", null, shown), h("br"), small);
   const item = h("li", { className: `edit-row${row.removed ? " is-removed" : ""}` }, head);
@@ -142,10 +149,15 @@ function nutritionMealEditRow(row) {
   }
   const amount = h("input", { type: "number", value: row.amount, min: "0", max: "10000", step: "any", required: true, inputMode: "decimal", "aria-label": `Menge ${shown}` });
   amount.addEventListener("input", () => { row.amount = amount.value; small.textContent = detail(); updateNutritionMealEditSave(); });
-  const swap = h("button", { type: "button", className: "secondary-button", "aria-label": `${shown} tauschen` }, "Tauschen");
-  swap.addEventListener("click", () => openNutritionMealSwap(row));
+  const swap = row.added ? null : h("button", { type: "button", className: "secondary-button", "aria-label": `${shown} tauschen` }, "Tauschen");
+  swap?.addEventListener("click", () => openNutritionMealSwap(row));
   const remove = messageActionButton("trash", `${shown} entfernen`);
-  remove.addEventListener("click", () => { row.removed = true; renderNutritionMealEdit(); });
+  // An added row is not stored yet: its removal drops it.
+  remove.addEventListener("click", () => {
+    if (row.added) nutritionMealEdit.rows.splice(nutritionMealEdit.rows.indexOf(row), 1);
+    else row.removed = true;
+    renderNutritionMealEdit();
+  });
   item.append(h("div", "edit-controls", h("label", "edit-amount", amount, h("span", null, row.unit)), h("div", "push", swap, remove)));
   return item;
 }
@@ -178,9 +190,10 @@ async function searchNutritionMealSwap() {
     const { foods = [] } = await api("/api/nutrition/products/lookup", { method: "POST", body: JSON.stringify({ query }) });
     if (generation !== state.sessionGeneration || sequence !== nutritionMealEdit?.searchSequence) return;
     // A food counted in another unit cannot take the amount (no density conversion); only an
-    // estimate in portions has no weight to keep, so its swap asks for the amount.
-    const fitting = foods.map((food) => ({ ...normalizeNutritionProduct(food), id: food.id })).filter((food) => food.id && NUTRITION_MEAL_UNITS.has(food.basis_unit) && (food.basis_unit === row.unit || row.originalUnit === "portion"));
-    const inUnit = row.originalUnit === "portion" ? "" : ` in ${row.unit}`;
+    // estimate in portions has no weight to keep, so its swap asks for the amount. An added
+    // food asks for its amount in its own unit.
+    const fitting = foods.map((food) => ({ ...normalizeNutritionProduct(food), id: food.id })).filter((food) => food.id && NUTRITION_MEAL_UNITS.has(food.basis_unit) && (row.adding || food.basis_unit === row.unit || row.originalUnit === "portion"));
+    const inUnit = row.adding || row.originalUnit === "portion" ? "" : ` in ${row.unit}`;
     nodes.swapStatus.textContent = fitting.length ? "" : `Keine Treffer${inUnit}.`;
     nodes.results.replaceChildren(...fitting.map((food) => nutritionMealSwapResult(row, food)));
   } catch (error) {
@@ -195,6 +208,12 @@ function nutritionMealSwapResult(row, food) {
   const facts = `pro ${nutritionNumber(food.basis_amount ?? 100)} ${food.basis_unit} · ${nutritionNumber(food.kcal)} kcal · Kohlenhydrate ${nutritionNumber(food.carbs_g)} g · Protein ${nutritionNumber(food.protein_g)} g · Fett ${nutritionNumber(food.fat_g)} g`;
   const button = h("button", { type: "button", className: "swap-result" }, h("strong", null, name), h("span", "origin", origin), h("small", null, facts));
   button.addEventListener("click", () => {
+    if (row.adding) {
+      nutritionMealEdit.rows.push({ added: { key: prefix ? "food_id" : "product_id", id: food.id }, name, origin, unit: food.basis_unit, originalUnit: food.basis_unit, amount: "", original: "", removed: false, swap: null });
+      closeNutritionMealSwap();
+      nutritionMealEditNodes().list.lastElementChild?.querySelector("input")?.focus();
+      return;
+    }
     row.swap = { key: prefix ? "food_id" : "product_id", id: food.id, name, origin };
     if (food.basis_unit !== row.unit) { row.unit = food.basis_unit; row.amount = ""; }
     closeNutritionMealSwap();
@@ -208,7 +227,7 @@ async function saveNutritionMealEdit() {
   const { item, rows, revision, generation } = edit;
   if (!nodes.form.reportValidity()) return;
   // Without a component the meal goes: "Speichern" is no delete cue, so this path asks first.
-  if (rows.every((row) => row.removed)) {
+  if (rows.every((row) => row.removed && !row.added)) {
     const confirmed = await requestConfirmation(`Die Mahlzeit „${item.description}“ wird gelöscht, weil keine Zutat übrig ist.`, { title: "Mahlzeit löschen?", danger: true, confirmLabel: "Löschen" });
     if (confirmed && await deleteNutritionEntry(item)) nodes.root.close();
     return;
@@ -242,6 +261,8 @@ async function saveNutritionMealEdit() {
 document.querySelector(".nutrition-meal-edit .edit-meal")?.addEventListener("input", changeNutritionMealField);
 document.querySelector("#nutritionMealEditCancel")?.addEventListener("click", () => document.querySelector("#nutritionMealEditDialog").close());
 document.querySelector("#nutritionMealEditBack")?.addEventListener("click", closeNutritionMealSwap);
+// "+ Zutat" (#4279: "+ {Objekt}") opens the swap's search for a new component (#4270).
+document.querySelector("#nutritionMealEditAdd")?.addEventListener("click", () => openNutritionMealSwap({ adding: true }));
 document.querySelector("#nutritionMealEditMain")?.addEventListener("submit", (event) => { event.preventDefault(); void saveNutritionMealEdit(); });
 document.querySelector("#nutritionMealEditSearch")?.addEventListener("submit", (event) => { event.preventDefault(); void searchNutritionMealSwap(); });
 document.querySelector("#nutritionMealEditDialog")?.addEventListener("close", () => { nutritionMealEdit = null; });

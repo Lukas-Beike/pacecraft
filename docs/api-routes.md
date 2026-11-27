@@ -116,7 +116,7 @@ handler's docstring. Regenerate it with
 | POST | `/api/nutrition/entry` | Session + CSRF | after access | Log a meal; returns a `change` undo reference. |
 | POST | `/api/nutrition/entry/add-product` | Session + CSRF | after access | Add a saved product to a logged meal as one more component. |
 | GET | `/api/nutrition/entry/components` | Session | no | The components of a logged meal, as the edit addresses them (#3948). |
-| POST | `/api/nutrition/entry/components` | Session + CSRF | after access | Remove, resize or swap components of a logged meal, and change its day, type or time (#3948, #3985). |
+| POST | `/api/nutrition/entry/components` | Session + CSRF | after access | Remove, resize, swap or add components of a logged meal, and change its day, type or time (#3948, #3985, #4270). |
 | POST | `/api/nutrition/entry/delete` | Session + CSRF | after access | Delete a logged meal. |
 | POST | `/api/nutrition/entry/estimate` | Session + CSRF | after access | Mark a meal's amounts as estimated (restaurant, friends), or clear the mark. |
 | POST | `/api/nutrition/entry/session` | Session + CSRF | after access | Attach a "Vor/Während der Einheit" entry to the session the athlete chose. |
@@ -1636,7 +1636,9 @@ each edit names a component by its `index` (see
 `GET /api/nutrition/entry/components`) and is one of `{"index", "remove": true}`,
 `{"index", "amount"}` (above 0 up to 10000, the same unit) or a swap
 `{"index", "food_id"}` / `{"index", "product_id"}` with optional `amount` and
-`unit` (default: the component's own, so the amount stays). Every index at
+`unit` (default: the component's own, so the amount stays). An add
+`{"add": {"food_id" | "product_id", "amount", "unit"}}` names no index and
+appends one component, at most 20 in all. Every index at
 most once, other components stay as stored. The server scales the nutrients from
 the stored snapshot or calculates them from the food or product and the amount;
 the client sends none. The meal becomes a composite and keeps its description;
@@ -1649,10 +1651,11 @@ Errors: 400 "Ungültige Eintrags-ID."; 404 "Ernährungseintrag nicht gefunden.";
 409 `meal_changed` "Die Mahlzeit hat sich geändert. Bitte erneut öffnen." when the
 components differ from the `revision`; 400 "Ungültige Änderung der
 Mahlzeitenkomponenten." for a malformed edit; 400
-`last_component` when nothing would remain; 400 "Ungültige Komponentenmenge." or
+`last_component` when nothing would remain; 400 "Eine Mahlzeit kann höchstens 20
+Komponenten enthalten."; 400 "Ungültige Komponentenmenge." or
 "Komponentenmenge muss größer als 0 sein."; 404 `food_not_found`, 404
 `nutrition_product_not_found`, 409 `nutrition_product_archived`, 400
-`food_unit_mismatch` and 400 `food_energy_missing` for a swap target.
+`food_unit_mismatch` and 400 `food_energy_missing` for a swap or add target.
 
 ### `POST /api/nutrition/entry/delete`
 

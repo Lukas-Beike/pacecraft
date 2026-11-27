@@ -78,7 +78,7 @@ added a row conflicted on it (#4092).
 | Nutrition | Log a saved product as a meal | Produkt dialog `POST /api/nutrition/entry` | `save_nutrition_entry` | receipt, undo | both | |
 | Nutrition | Log a composed meal from several foods | Produkte "Mahlzeit zusammenstellen" `POST /api/nutrition/entry` | `save_nutrition_entry` | receipt, undo | both | |
 | Nutrition | Add a saved product to a meal | Tagebuch card `POST /api/nutrition/entry/add-product` | `update_nutrition_entry` (`components`) | receipt, undo | both | |
-| Nutrition | Remove, resize or swap a meal component | Tagebuch card pencil `GET /api/nutrition/entry/components`, `POST /api/nutrition/entry/components` | `update_nutrition_entry` (`components`) | receipt, undo | both | |
+| Nutrition | Remove, resize, swap or add a meal component | Tagebuch card pencil `GET /api/nutrition/entry/components`, `POST /api/nutrition/entry/components` (`add`, #4270) | `update_nutrition_entry` (`components`, all of the meal's components with the new one) | receipt, undo | both | |
 | Nutrition | Change a meal's date, time or type | Tagebuch card pencil `POST /api/nutrition/entry/components` (`meal`) | `update_nutrition_entry` | receipt, undo | both | |
 | Nutrition | Mark a meal as estimated | Tagebuch card `POST /api/nutrition/entry/estimate` | `update_nutrition_entry` (`estimate_uncertain`) | receipt, undo | both | |
 | Nutrition | Attach a session meal to its session | Tagebuch card `POST /api/nutrition/entry/session` | `update_nutrition_entry` (`session_id`) | receipt | both | |

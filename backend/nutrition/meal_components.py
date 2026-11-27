@@ -1,9 +1,10 @@
 """Direct correction of a logged meal's components (#3948).
 
-The athlete removes a component, changes its amount or swaps it for another
-database food or saved product. Components are addressed by their position in
-``entry_components``; the client never sends nutrient values, the server scales
-or calculates them from the stored snapshot, the food ID and the amount.
+The athlete removes a component, changes its amount, swaps it for another
+database food or saved product, or adds one (#4270). Components are addressed by
+their position in ``entry_components``; an added one is appended. The client never
+sends nutrient values, the server scales or calculates them from the stored
+snapshot, the food ID and the amount.
 """
 
 from __future__ import annotations
@@ -18,6 +19,9 @@ from backend.nutrition.components import MealComponentCalculator
 from backend.nutrition.food_database import NUTRIENTS
 
 EDIT_KEYS = {"index", "remove", "amount", "unit", "food_id", "product_id"}
+ADD_KEYS = {"amount", "unit", "food_id", "product_id"}
+MAX_COMPONENTS = 20
+TOO_MANY = "Eine Mahlzeit kann höchstens 20 Komponenten enthalten."
 CLOCK = re.compile(r"(\d{2}:\d{2})(?::(\d{2}))?")
 MEAL_KEYS = {"meal_date", "meal_type", "meal_time", "logged_time_known"}
 INVALID_EDIT = "Ungültige Änderung der Mahlzeitenkomponenten."
@@ -110,12 +114,24 @@ def components_revision(components: list[dict[str, Any]]) -> str:
     return hashlib.sha256(text.encode()).hexdigest()[:16]
 
 
+def _is_add(edit: Any) -> bool:
+    """``{"add": {food_id or product_id, amount, unit}}``: one more component (#4270)."""
+    add = edit.get("add") if isinstance(edit, dict) and set(edit) == {"add"} else None
+    keys = set(add) if isinstance(add, dict) else set()
+    return (
+        keys <= ADD_KEYS
+        and len(keys & {"food_id", "product_id"}) == 1
+        and len(keys) == 3
+    )
+
+
 def _validated_edits(edits: Any, count: int) -> list[dict[str, Any]]:
-    """Each edit names a free position once: a removal alone or a change of the rest."""
+    """Each edit names a free position once: a removal alone or a change of the rest;
+    an add names no position."""
     if not isinstance(edits, list) or not edits:
         raise AppError(400, INVALID_EDIT)
     seen: set[Any] = set()
-    for edit in edits:
+    for edit in [edit for edit in edits if not _is_add(edit)]:
         keys = set(edit) if isinstance(edit, dict) else set()
         index = edit.get("index") if keys else None
         positioned = (
@@ -165,25 +181,29 @@ def validated_meal_changes(meal: Any) -> dict[str, Any]:
 def swap_foods(
     edits: Any, calculator: MealComponentCalculator
 ) -> dict[Any, dict[str, Any]]:
-    """The database foods the swaps name, read before the transaction opens."""
+    """The database foods the swaps and adds name, read before the transaction opens;
+    a swap's by its index, an add's by ``("add", n)``."""
+    edits = edits if isinstance(edits, list) else []
+    adds = [edit["add"] for edit in edits if _is_add(edit)]
+    # Over the limit by the adds alone: refused before any food is looked up.
+    if len(adds) > MAX_COMPONENTS:
+        raise AppError(400, TOO_MANY)
     named = [
-        edit
-        for edit in (edits if isinstance(edits, list) else [])
+        (edit.get("index"), edit)
+        for edit in edits
         if isinstance(edit, dict)
         and "food_id" in edit
         and isinstance(edit.get("index"), int)
-    ]
+    ] + [(("add", n), add) for n, add in enumerate(adds) if "food_id" in add]
     if not named:
         return {}
     resolved = calculator.prepare_resolutions(
         [
             {"kind": "database", "food_id": edit["food_id"], "amount": 1, "unit": "g"}
-            for edit in named
+            for _key, edit in named
         ]
     )
-    return {
-        edit.get("index"): resolved[position] for position, edit in enumerate(named)
-    }
+    return {key: resolved[position] for position, (key, _edit) in enumerate(named)}
 
 
 def _scaled(component: dict[str, Any], amount: float) -> dict[str, Any]:
@@ -238,7 +258,7 @@ def edited_components(
             reason="meal_changed",
         )
     edits = _validated_edits(edits, len(components))
-    by_index = {edit["index"]: edit for edit in edits}
+    by_index = {edit["index"]: edit for edit in edits if not _is_add(edit)}
     result: list[dict[str, Any]] = []
     for index, component in enumerate(components):
         edit = by_index.get(index)
@@ -246,10 +266,25 @@ def edited_components(
             result.append(component)
         elif "remove" not in edit:
             result.append(_changed(component, edit, calculator, db, foods.get(index)))
-    if not result:
+    adds = [edit["add"] for edit in edits if _is_add(edit)]
+    if not result and not adds:
         raise AppError(
             400,
             "Die letzte Zutat lässt sich nur mit der Mahlzeit löschen.",
             reason="last_component",
         )
+    # The limit and the checks of a single add (#4270), as the add of a saved product.
+    if len(result) + len(adds) > MAX_COMPONENTS:
+        raise AppError(400, TOO_MANY)
+    for n, add in enumerate(adds):
+        key = "food_id" if "food_id" in add else "product_id"
+        spec = {
+            "kind": "database" if key == "food_id" else "local_product",
+            key: add[key],
+            "amount": add["amount"],
+            "unit": add["unit"],
+        }
+        food = foods.get(("add", n))
+        calculated = calculator.calculate(db, [spec], {0: food} if food else None)
+        result.append(calculated["nutrition_basis"]["components"][0])
     return result
