@@ -1229,7 +1229,7 @@ function coachActionButtons(proposal) {
   const later = h("button", { type: "button", className: "secondary-button" }, remoteWrite || localWrite ? "Nicht freigeben" : "Später prüfen");
   later.addEventListener("click", () => {
     if (remoteWrite || localWrite) {
-      later.disabled = true;
+      setSaving(later, true);
       api("/api/coach/actions/cancel", {
         method: "POST",
         body: JSON.stringify({ proposal_id: proposal.id }),
@@ -1237,7 +1237,7 @@ function coachActionButtons(proposal) {
         state.coachActionProposals = (state.coachActionProposals || []).filter((item) => item.id !== proposal.id);
         renderCoachActionReview();
       }).catch((error) => {
-        later.disabled = false;
+        setSaving(later, false);
         toast(error.message, true);
       });
       return;
@@ -1348,7 +1348,7 @@ async function executeCoachActionProposal(proposal, button) {
   const originalRoute = state.route;
   let executeSent = false;
   let executeResponded = false;
-  button.disabled = true;
+  setSaving(button, true);
   try {
     const confirmed = await api("/api/coach/actions/confirm", {
       method: "POST",
@@ -1391,7 +1391,7 @@ function lockUnknownCoachActionOutcome(proposal) {
 
 function rejectCoachActionProposal(proposal, button, error, confirmStage = false) {
   if (!isSessionEndedError(error)) addCoachReceipt({ title: "Aktion nicht bestätigt", message: error.message, status: "error" });
-  button.disabled = false;
+  setSaving(button, false);
   // The server refused the proposal for good; keeping the button would only repeat the refusal.
   if (error.reason === "proposal_expired" || error.reason === "proposal_payload_changed") {
     proposal.status = "expired";
@@ -1770,6 +1770,7 @@ async function undoCoachTurn(clientTurnId, button) {
     button.disabled = false;
     return;
   }
+  setSaving(button, true);
   try {
     const result = await api("/api/change-history/undo-turn", {
       method: "POST",
@@ -1782,7 +1783,7 @@ async function undoCoachTurn(clientTurnId, button) {
     toast("Änderungen zurückgenommen");
     await load("/api/bootstrap?local=1", ["plan", "library", "profile"]);
   } catch (error) {
-    button.disabled = false;
+    setSaving(button, false);
     // A record edited since keeps the turn from being undone as one: say so on its receipt.
     if (error.status === 409) {
       (state.data?.messages || []).forEach((item) => {

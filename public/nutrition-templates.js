@@ -88,15 +88,17 @@ const nutritionTemplateDayFields = (date = todayIso()) => [
 ];
 
 // Sends one request from a dialog: its button waits, a refusal shows in the dialog and keeps the entries.
-async function nutritionTemplateSend(ui, path, body, done) {
-  // One write at a time: every button of the dialog waits.
+async function nutritionTemplateSend(ui, path, body, done, pressed = ui.form.querySelector("button[type=submit]")) {
+  // One write at a time: every button of the dialog waits, the pressed one with its spinner.
   const buttons = [...ui.form.querySelectorAll("button")];
   for (const button of buttons) button.disabled = true;
+  setSaving(pressed, true);
   let result;
   try {
     result = await api(path, { method: "POST", body: JSON.stringify(body) });
   } catch (error) {
     for (const button of buttons) button.disabled = false;
+    setSaving(pressed, false);
     if (!isSessionEndedError(error)) ui.status.textContent = error.message;
     return;
   }
@@ -129,12 +131,12 @@ function openNutritionTemplateEdit(template) {
 
 // Acts at once, like the diary's delete (#3934): "Rückgängig" in the receipt takes the question's place.
 async function deleteNutritionTemplate(template, button) {
-  button.disabled = true;
+  setSaving(button, true);
   try {
     const result = await api("/api/nutrition/templates/delete", { method: "POST", body: JSON.stringify({ id: template.id, confirmed: true }) });
     await nutritionTemplateChanged("Gespeicherte Mahlzeit gelöscht.", result.change);
   } catch (error) {
-    button.disabled = false;
+    setSaving(button, false);
     if (!isSessionEndedError(error)) toast(error.message, true);
   }
 }
@@ -218,12 +220,12 @@ function openNutritionCompose() {
   log.addEventListener("click", () => {
     if (!ready()) return;
     const { name, components } = body();
-    void nutritionTemplateSend(ui, "/api/nutrition/entry", { description: name, components, ...nutritionTemplateMealFields(ui.form) }, "Mahlzeit eingetragen.");
+    void nutritionTemplateSend(ui, "/api/nutrition/entry", { description: name, components, ...nutritionTemplateMealFields(ui.form) }, "Mahlzeit eingetragen.", log);
   });
   keep.addEventListener("click", () => {
     if (!ready()) return;
     const { name, components } = body();
-    void nutritionTemplateSend(ui, "/api/nutrition/templates", { name, description: rows.map((row) => row.name).join(", ").slice(0, 500), components }, "Mahlzeit gespeichert.");
+    void nutritionTemplateSend(ui, "/api/nutrition/templates", { name, description: rows.map((row) => row.name).join(", ").slice(0, 500), components }, "Mahlzeit gespeichert.", keep);
   });
   showAccessibleDialog(ui.dialog);
 }

@@ -16,6 +16,25 @@ function h(tag, props = null, ...children) {
   return element;
 }
 
+// A button that sends a write shows the spinner and "Speichert…", is aria-busy and disabled
+// until the answer arrives, so a second press does nothing (#4268); false restores its content.
+const savingButtonContent = new WeakMap();
+
+function setSaving(button, busy, label = "Speichert…") {
+  if (!button) return;
+  if (busy && !savingButtonContent.has(button)) {
+    savingButtonContent.set(button, [...button.childNodes]);
+    button.replaceChildren(h("span", { className: "button-spinner", "aria-hidden": "true" }), label);
+  } else if (!busy && savingButtonContent.has(button)) {
+    button.replaceChildren(...savingButtonContent.get(button));
+    savingButtonContent.delete(button);
+  }
+  button.disabled = busy;
+  button.classList.toggle("is-loading", busy);
+  if (busy) button.setAttribute("aria-busy", "true");
+  else button.removeAttribute("aria-busy");
+}
+
 const SVG_NS = "http://www.w3.org/2000/svg";
 
 function svgNode(tag, attributes = {}, content = "") {

@@ -113,11 +113,11 @@
     const action = (label, body, done) => {
       const button = h("button", { className: "secondary-button", type: "button" }, label); buttons.push(button);
       button.addEventListener("click", async () => {
-        buttons.forEach((item) => { item.disabled = true; }); status.textContent = "Speichere …";
+        buttons.forEach((item) => { item.disabled = true; }); setSaving(button, true); status.textContent = "Speichere …";
         try {
           const result = await api(`/api/activities/${encodeURIComponent(bundle.activity_id)}/session`, { method: "POST", body: JSON.stringify(body) });
           await reload({ text: done, change: result.change });
-        } catch (error) { buttons.forEach((item) => { item.disabled = false; }); status.textContent = error.message; }
+        } catch (error) { buttons.forEach((item) => { item.disabled = false; }); setSaving(button, false); status.textContent = error.message; }
       });
       return button;
     };
@@ -139,13 +139,13 @@
     remove.addEventListener("click", async () => {
       const confirmed = await requestConfirmation("Die Aktivität wird mit allen Aufzeichnungen lokal gelöscht. Bei den Anbietern bleibt sie erhalten.", { title: "Aktivität löschen?", danger: true, confirmLabel: "Löschen" });
       if (!confirmed) return;
-      buttons.forEach((item) => { item.disabled = true; }); status.textContent = "Speichere …";
+      buttons.forEach((item) => { item.disabled = true; }); setSaving(remove, true); status.textContent = "Speichere …";
       try {
         const result = await api(`/api/activities/${encodeURIComponent(bundle.activity_id)}/session`, { method: "POST", body: JSON.stringify({ action: "delete", confirmed: true }) });
         const deleted = h("p", "muted", "Aktivität gelöscht. "); deleted.setAttribute("role", "status");
         if (result.change?.id) deleted.append(undoButton(api, result.change, deleted, reload));
         content.replaceChildren(deleted); reload.deleted?.();
-      } catch (error) { buttons.forEach((item) => { item.disabled = false; }); status.textContent = error.message; }
+      } catch (error) { buttons.forEach((item) => { item.disabled = false; }); setSaving(remove, false); status.textContent = error.message; }
     });
     section.append(remove);
     section.append(status); content.append(section);
@@ -155,11 +155,11 @@
   function undoButton(api, change, status, reload) {
     const undo = h("button", { className: "message-undo", type: "button" }, "Rückgängig");
     undo.addEventListener("click", async () => {
-      undo.disabled = true;
+      setSaving(undo, true);
       try {
         await api("/api/change-history/undo", { method: "POST", body: JSON.stringify({ change_id: change.id, expected_current_hash: change.after_hash }) });
         await reload({ text: "Zurückgenommen." });
-      } catch (error) { undo.disabled = false; status.textContent = error.message; }
+      } catch (error) { setSaving(undo, false); status.textContent = error.message; }
     });
     return undo;
   }
@@ -264,11 +264,11 @@
       const status = h("span", "muted"); status.setAttribute("role", "status");
       const form = h("form", null, input, " ", save, " ", cancel, " ", status);
       form.addEventListener("submit", async (event) => {
-        event.preventDefault(); save.disabled = true; status.textContent = "Speichere …";
+        event.preventDefault(); setSaving(save, true); status.textContent = "Speichere …";
         try {
           const result = await api("/api/routes/rename", { method: "POST", body: JSON.stringify({ route_id: route.route_id, name: input.value }) });
           label = result.label; show();
-        } catch (error) { status.textContent = error.message; save.disabled = false; }
+        } catch (error) { status.textContent = error.message; setSaving(save, false); }
       });
       line.replaceChildren(form); input.focus();
     };

@@ -35,6 +35,8 @@ function contextFor(globals) {
   if (vm.isContext(globals)) return globals;
   // The shared formatter is a browser global; a test may stub it.
   if (!("AppFormat" in globals)) globals.AppFormat = require("../public/format.js");
+  // The saving button helper of components.js (#4268): here it only locks the button; a test may stub it.
+  if (!("setSaving" in globals)) globals.setSaving = (button, busy) => { if (button) button.disabled = busy; };
   return vm.createContext(globals);
 }
 

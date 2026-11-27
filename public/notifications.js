@@ -94,14 +94,14 @@ function pushKeyBytes(text) {
 async function enableNotifications() {
   if (!pushSupported()) { toast("Dieser Browser unterstützt keine Push-Benachrichtigungen", true); return; }
   const button = $("#notificationEnableButton");
-  button.disabled = true;
+  setSaving(button, true);
   try {
     if (button.dataset.active) await disablePush();
     else await enablePush();
   } catch (error) {
     toast(error.message || "Benachrichtigungen konnten nicht geändert werden", true);
   } finally {
-    button.disabled = false;
+    setSaving(button, false);
     await renderNotificationStatus();
   }
 }

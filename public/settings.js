@@ -39,7 +39,7 @@ async function adoptFirstThresholdPercent(percent, button) {
   const profile = state.data?.profile || {};
   const replacesMeasured = Boolean(profile.first_threshold_hr) && profile.first_threshold_origin === "measured";
   if (replacesMeasured && !(await requestConfirmation("Der gemessene Wert wird durch den Wert aus DFA-α1 ersetzt.", { title: "Gemessenen Wert ersetzen?", confirmLabel: "Ersetzen" }))) return;
-  button.disabled = true;
+  setSaving(button, true);
   try {
     const result = await api("/api/profile/first-threshold/adopt", { method: "POST", body: JSON.stringify({ percent_lthr: percent, ...(replacesMeasured ? { replace_measured: true } : {}) }) });
     applyAdoptedFirstThreshold(result);
@@ -51,7 +51,7 @@ async function adoptFirstThresholdPercent(percent, button) {
     // A changed estimate answers 409: read it again so the block and the offer show the new value (#4135).
     if (error.status === 409) await globalThis.load?.(undefined, ["profile"]);
   }
-  finally { button.disabled = false; }
+  finally { setSaving(button, false); }
 }
 
 function determineChangedProfileFields(formValues, baseline) {
@@ -69,12 +69,7 @@ async function saveProfile(event) {
   profileSaveInFlight = true;
   // The zone editor's save button sits in the same section list but submits its own form.
   const button = event.submitter || event.currentTarget.querySelector(".save-bar button[type=submit]");
-  const buttonLabel = button?.textContent || "Profil speichern";
-  if (button) {
-    button.disabled = true;
-    button.setAttribute("aria-busy", "true");
-    button.textContent = "Profil wird gespeichert…";
-  }
+  setSaving(button, true);
   const form = event.currentTarget;
   const generation = state.sessionGeneration;
   const submittedForm = JSON.stringify([...new FormData(form)]);
@@ -92,21 +87,13 @@ async function saveProfile(event) {
     // The birth year and the sex decide the skinfold body fat and sites (#3099).
     if (Object.hasOwn(changed, "birth_year") || Object.hasOwn(changed, "sex")) resetSkinfolds();
     toast("Profil gespeichert");
-    if (button) {
-      button.disabled = false;
-      button.removeAttribute("aria-busy");
-      button.textContent = buttonLabel;
-    }
+    setSaving(button, false);
     await load();
   } catch (error) {
     toast(error.message, true);
   } finally {
     profileSaveInFlight = false;
-    if (button) {
-      button.disabled = false;
-      button.removeAttribute("aria-busy");
-      button.textContent = buttonLabel;
-    }
+    setSaving(button, false);
   }
 }
 
@@ -136,7 +123,7 @@ async function restoreDatabaseBackup() {
   // Without a file the button opens the file picker; choosing one continues here (#3936 M-05).
   if (!file) { input?.click?.(); return; }
   if (!await requestConfirmation("Das aktuelle Datenbank-Backup wird vorher gesichert und durch die ausgewählte Datei ersetzt.", { title: "Datenbank-Backup wiederherstellen?", danger: true, confirmLabel: "Wiederherstellen" })) return;
-  button.disabled = true;
+  setSaving(button, true);
   if (input) input.disabled = true;
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 130_000);
@@ -155,7 +142,7 @@ async function restoreDatabaseBackup() {
       : error.message, true);
   } finally {
     clearTimeout(timeout);
-    button.disabled = false;
+    setSaving(button, false);
     if (input) input.disabled = false;
   }
 }
@@ -255,7 +242,10 @@ async function deleteGpsTracks() {
       { title: "GPS-Spuren löschen?", inputLabel: "Bestätigungstext", expectedText, danger: true, confirmLabel: "Löschen" },
     );
     if (!confirmation) return;
-    const result = await api("/api/privacy/gps/delete", { method: "POST", body: JSON.stringify({ confirm: confirmation }) });
+    const button = $("#gpsTracksDeleteButton");
+    setSaving(button, true);
+    let result;
+    try { result = await api("/api/privacy/gps/delete", { method: "POST", body: JSON.stringify({ confirm: confirmation }) }); } finally { setSaving(button, false); }
     renderGpsTracks(result);
     toast("GPS-Spuren gelöscht");
   } catch (error) { toast(error.message, true); }
@@ -726,12 +716,12 @@ function chooseLt2Values(row) {
 async function adoptLt2(sport, row, button) {
   const chosen = row.adopt.length > 1 ? await chooseLt2Values(row) : row.adopt;
   if (!chosen.length) return;
-  button.disabled = true;
+  setSaving(button, true);
   try {
     for (const item of chosen) {
       if (!await adoptLt2Value(sport, row, item, {})) break;
     }
-  } finally { button.disabled = false; }
+  } finally { setSaving(button, false); }
 }
 
 // One value; the server asks for the second step above 5 % (F9) or before replacing an entered value.
@@ -874,17 +864,17 @@ async function adoptThresholdOffer(offer, button) {
   if (button.disabled) return;
   const view = thresholdOfferView(offer);
   const { sport, source, value, shown } = offer.adopt;
-  button.disabled = true;
+  setSaving(button, true);
   try {
     const adopted = await adoptLt2Value(sport, { source, name: view.source }, { value, shown, label: `${view.label} ${view.value}` }, {});
     // In Analyse the zone receipt is out of view; its undo stays in Zonen & Schwellen.
     if (adopted && !button.closest("#zoneOverview")) toast(`${view.label} ${view.value} übernommen`);
-  } finally { button.disabled = false; }
+  } finally { setSaving(button, false); }
 }
 
 // Verwerfen stores the dismissal; the cards follow the returned offers.
 async function dismissThresholdOffers(offers, button) {
-  button.disabled = true;
+  setSaving(button, true);
   try {
     for (const offer of offers) {
       const result = await api("/api/zones/threshold-offers/dismiss", { method: "POST", body: JSON.stringify({ key: offer.key }) });
@@ -894,7 +884,7 @@ async function dismissThresholdOffers(offers, button) {
     // The offer is gone already (offer_unknown): the current offers load instead.
     if (error.reason === "offer_unknown") await globalThis.load?.(undefined, ["profile"]);
     else toast(error.message, true);
-  } finally { button.disabled = false; }
+  } finally { setSaving(button, false); }
   refreshThresholdOffers();
 }
 
@@ -1034,7 +1024,7 @@ async function saveZones(event) {
   const metric = $("#zoneMetric").value;
   const button = $("#zoneSaveButton");
   const limits = $("#zoneLimits").value.split(/[\s,;]+/).filter(Boolean).map(Number);
-  button.disabled = true;
+  setSaving(button, true);
   try {
     const result = await api("/api/zones", {
       method: "PUT",
@@ -1051,20 +1041,20 @@ async function saveZones(event) {
     showZoneReceipt("Lokale Zonen gespeichert", result.change);
     await reloadZonesAndThresholds();
   } catch (error) { toast(error.message, true); }
-  finally { button.disabled = false; }
+  finally { setSaving(button, false); }
 }
 
 async function removeZones() {
   const button = $("#zoneRemoveButton");
   const confirmed = await requestConfirmation("Danach gelten wieder die Zonen des Anbieters.", { title: "Lokale Zonen entfernen?", danger: true, confirmLabel: "Entfernen" });
   if (!confirmed) return;
-  button.disabled = true;
+  setSaving(button, true);
   try {
     const result = await api("/api/zones/remove", { method: "PUT", body: JSON.stringify({ key: button.dataset.key, confirmed: true }) });
     showZoneReceipt("Lokale Zonen entfernt", result.change);
     await reloadZonesAndThresholds();
   } catch (error) { toast(error.message, true); }
-  finally { button.disabled = false; }
+  finally { setSaving(button, false); }
 }
 
 // A zone change moves LT1 and LT2, which the performance values and the offers carry; the zones draw after them.
@@ -1079,13 +1069,13 @@ function showZoneReceipt(message, change) {
   if (change?.id) {
     const undo = h("button", { type: "button", className: "message-undo" }, "Rückgängig");
     undo.addEventListener("click", async () => {
-      undo.disabled = true;
+      setSaving(undo, true);
       try {
         await api("/api/change-history/undo", { method: "POST", body: JSON.stringify({ change_id: change.id, expected_current_hash: change.after_hash }) });
         receipt.replaceChildren("Zurückgenommen.");
         await reloadZonesAndThresholds();
       } catch (error) {
-        undo.disabled = false;
+        setSaving(undo, false);
         toast(error.message, true);
       }
     });

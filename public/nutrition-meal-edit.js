@@ -209,7 +209,7 @@ async function saveNutritionMealEdit() {
     if (confirmed && await deleteNutritionEntry(item)) nodes.root.close();
     return;
   }
-  nodes.save.disabled = true;
+  setSaving(nodes.save, true);
   nodes.status.textContent = "";
   let result;
   const edits = nutritionMealEditChanges();
@@ -217,6 +217,7 @@ async function saveNutritionMealEdit() {
   try {
     result = await api("/api/nutrition/entry/components", { method: "POST", body: JSON.stringify({ id: item.id, revision, ...(edits.length ? { edits } : {}), ...(meal ? { meal } : {}) }) });
   } catch (error) {
+    setSaving(nodes.save, false);
     if (generation !== state.sessionGeneration) return;
     const message = `Mahlzeit konnte nicht gespeichert werden: ${error.message}`;
     // The dialog was closed while the request ran: a toast carries the error.
@@ -225,6 +226,7 @@ async function saveNutritionMealEdit() {
     updateNutritionMealEditSave();
     return;
   }
+  setSaving(nodes.save, false);
   if (generation !== state.sessionGeneration) return;
   nodes.root.close();
   // The change is saved; a failed reload still shows its receipt, and the diary reads again on the next refresh.

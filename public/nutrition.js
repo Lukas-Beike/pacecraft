@@ -100,13 +100,13 @@ function showNutritionReceipt(status, message, change, afterUndo) {
   if (!change?.id) return;
   const undo = h("button", { type: "button", className: "message-undo" }, "Rückgängig");
   undo.addEventListener("click", async () => {
-    undo.disabled = true;
+    setSaving(undo, true);
     try {
       await api("/api/change-history/undo", { method: "POST", body: JSON.stringify({ change_id: change.id, expected_current_hash: change.after_hash }) });
       await afterUndo?.();
       status.textContent = "Zurückgenommen.";
     } catch (error) {
-      undo.disabled = false;
+      setSaving(undo, false);
       text.textContent = `${error.message} `;
     }
   });
@@ -236,7 +236,10 @@ function nutritionSessionBlock(item, sessions) {
   if (sessions.length) {
     block.append(h("p", null, "Zu welcher Einheit gehört das?"), h("div", "nutrition-session-choices", sessions.map((session) => {
       const choice = h("button", { type: "button", className: "secondary-button" }, nutritionSessionLabel(session));
-      choice.addEventListener("click", () => void chooseNutritionSession(item, session));
+      choice.addEventListener("click", async () => {
+        setSaving(choice, true);
+        try { await chooseNutritionSession(item, session); } finally { setSaving(choice, false); }
+      });
       return choice;
     })));
   }
@@ -287,12 +290,15 @@ function nutritionEstimateChip(item) {
 // A logged meal's ingredients, its estimate mark, "Als Mahlzeit speichern" and its removal.
 function nutritionEntryActions(item) {
   const estimate = h("button", { type: "button", className: "secondary-button" }, item.estimate_uncertain ? "Markierung entfernen" : "Als geschätzt markieren");
-  estimate.addEventListener("click", () => void markNutritionEstimate(item));
+  estimate.addEventListener("click", async () => {
+    setSaving(estimate, true);
+    try { await markNutritionEstimate(item); } finally { setSaving(estimate, false); }
+  });
   const remove = h("button", { type: "button", className: "secondary-button danger-button", "aria-label": `Mahlzeit löschen: ${item.description}` }, "Löschen");
   remove.addEventListener("click", async () => {
     // One tap, one delete: the button waits for the request, as the removed dialog did.
-    remove.disabled = true;
-    try { await deleteNutritionEntry(item); } finally { remove.disabled = false; }
+    setSaving(remove, true);
+    try { await deleteNutritionEntry(item); } finally { setSaving(remove, false); }
   });
   const keep = h("button", { type: "button", className: "secondary-button" }, "Als Mahlzeit speichern");
   keep.addEventListener("click", () => openNutritionTemplateFromEntry(item));
@@ -973,7 +979,7 @@ function showNutritionProductError(prefix, error) {
 }
 
 async function refreshNutritionProduct(product, button) {
-  button.disabled = true;
+  setSaving(button, true);
   const status = document.querySelector("#nutritionProductStatus");
   const generation = state.sessionGeneration;
   try {
@@ -990,7 +996,7 @@ async function refreshNutritionProduct(product, button) {
       ? "Für Aktualisieren wird eine EAN gebraucht. Unter Bearbeiten eintragen."
       : `Eintrag konnte nicht aktualisiert werden: ${error.message}`;
   }
-  button.disabled = false;
+  setSaving(button, false);
 }
 
 // #3299: one background run re-checks every product with the single "Aktualisieren" rule; the
@@ -1033,7 +1039,7 @@ async function loadNutritionCleanup() {
 async function runNutritionCleanup() {
   const confirm = document.querySelector("#nutritionCleanupConfirm");
   const days = Number(document.querySelector("#nutritionCleanupDays").value);
-  confirm.disabled = true;
+  setSaving(confirm, true);
   try {
     const result = await api("/api/nutrition/products/cleanup", { method: "POST", body: JSON.stringify({ days, confirmed: true }) });
     document.querySelector("#nutritionCleanupDialog").close();
@@ -1041,7 +1047,8 @@ async function runNutritionCleanup() {
     showNutritionReceipt(document.querySelector("#nutritionProductStatus"), `${result.count} ${result.count === 1 ? "Produkt" : "Produkte"} gelöscht.`, result.change, () => reloadNutritionProducts());
   } catch (error) {
     document.querySelector("#nutritionCleanupStatus").textContent = error.message;
-    confirm.disabled = false;
+  } finally {
+    setSaving(confirm, false);
   }
 }
 
@@ -1112,8 +1119,8 @@ function appendNutritionProductActions(card, product, local) {
       button.addEventListener("click", async () => {
         if (label !== "Löschen") { run(button); return; }
         // One tap, one delete: the button waits for the request, as the removed dialog did.
-        button.disabled = true;
-        try { await run(button); } finally { button.disabled = false; }
+        setSaving(button, true);
+        try { await run(button); } finally { setSaving(button, false); }
       });
       actions.append(button);
       // Without a known unit an amount cannot be counted against the values.
@@ -1127,13 +1134,13 @@ function nutritionFavoriteButton(product) {
   const favorite = Boolean(product.favorite);
   const button = h("button", { type: "button", className: "nutrition-favorite", "aria-pressed": String(favorite), "aria-label": `${favorite ? "Favorit entfernen" : "Als Favorit markieren"}: ${product.name}` }, favorite ? "★" : "☆");
   button.addEventListener("click", async () => {
-    button.disabled = true;
+    setSaving(button, true, "");
     try {
       await api("/api/nutrition/products/favorite", { method: "POST", body: JSON.stringify({ id: product.id, favorite: !favorite }) });
       await reloadNutritionProducts({ refresh: true });
     } catch (error) {
       showNutritionProductError("Favorit konnte nicht geändert werden", error);
-      button.disabled = false;
+      setSaving(button, false);
     }
   });
   return button;
@@ -1359,7 +1366,7 @@ async function addNutritionProductToMeal() {
   if (!use) return;
   const generation = state.sessionGeneration;
   const addButton = document.querySelector("#nutritionProductUseAdd");
-  addButton.disabled = true;
+  setSaving(addButton, true);
   try {
     const body = mealId
       ? { id: mealId, product_id: use.product.id, amount: Number(use.amount), unit: use.unit }
@@ -1386,7 +1393,8 @@ async function addNutritionProductToMeal() {
     // The queued entry is gone meanwhile: the next save goes out as a new snack (Gitar on #3830).
     if (error?.reason === "outbox_entry_gone") nutritionOutboxEdit = null;
     document.querySelector("#nutritionProductUseStatus").textContent = `Produkt konnte nicht erfasst werden: ${error.message}`;
-    addButton.disabled = false;
+  } finally {
+    setSaving(addButton, false);
   }
 }
 
@@ -1433,6 +1441,8 @@ async function submitNutritionProductForm(form) {
   const generation = state.sessionGeneration;
   const editor = document.querySelector("#nutritionExtraction");
   const status = document.querySelector("#nutritionProductStatus");
+  const submit = form.querySelector('button[type="submit"]');
+  setSaving(submit, true);
   try {
     const payload = nutritionProductPayload(form);
     const saved = await api("/api/nutrition/products", { method: payload.id ? "PUT" : "POST", body: JSON.stringify({ ...payload, confirmed: true }) });
@@ -1445,7 +1455,11 @@ async function submitNutritionProductForm(form) {
     showNutritionReceipt(status, message, saved.change, () => reloadNutritionProducts());
     // A new product is selected for a meal at once, no search needed (#3435).
     if (!payload.id && saved.product?.id && saved.product.basis_unit) void useNutritionProduct(normalizeNutritionProduct(saved.product));
-  } catch (error) { if (generation === state.sessionGeneration) status.textContent = `Produkt konnte nicht gespeichert werden: ${error.message}`; }
+  } catch (error) {
+    if (generation === state.sessionGeneration) status.textContent = `Produkt konnte nicht gespeichert werden: ${error.message}`;
+  } finally {
+    setSaving(submit, false);
+  }
 }
 
 async function saveNutritionProduct(product) {
