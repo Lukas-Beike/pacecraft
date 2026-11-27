@@ -100,6 +100,6 @@ they share the CPU. To see which thread holds the interpreter once the app is
 ready, run `docker kill -s USR1 fixture-walk` and read the stacks with
 `docker logs`; before readiness the signal stops the container.
 
-It presses no control that saves, synchronizes, deletes or sends. Exit 0 no
-error, 1 a view logged errors, a step failed or logout failed, 2 bad input or the walk
-stopped.
+It presses no control that saves, synchronizes, deletes or sends. Run it from the deployed
+release commit: another `APP_VERSION` stops it first (#4263). Exit 0 no error, 1 a view
+logged errors, a step failed or logout failed, 2 bad input or the walk stopped.

@@ -26,12 +26,12 @@ previous release's results come from the session notes. Whether the release
 carries a given fix: [release-contains](../pacecraft-release-contains/SKILL.md).
 
 **Current checkout:** run every step from one checkout at `origin/develop`; an
-older one runs old checks and an old UI walk against the new release (#3344).
+older one runs old checks against the new release (#3344).
 `prod_diagnostics.py` and `prod_guards.py` (steps 2 and 3, before the walk)
 print `WARN this checkout is N commit(s) behind origin/develop` with the
-command that fixes it, and refuse with `--require-current` (exit 2); a warning
-there also holds for the walk. They compare the local git state only, so fetch
-first.
+command that fixes it, and refuse with `--require-current` (exit 2). They
+compare the local git state only, so fetch first. Run the walk from the deployed
+release commit: another `APP_VERSION` stops it (#4263).
 
 **Stop rule:** on an unexpected effect (a dropped record count, a failed
 guard, an undo that does not fully restore, any remote write, an error state),
