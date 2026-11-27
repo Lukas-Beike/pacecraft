@@ -571,6 +571,21 @@ class OutdatedCapTests(unittest.TestCase):
             ],
         )
 
+    def test_both_caps_come_in_bpm_on_the_units_date_without_issue_numbers(
+        self,
+    ) -> None:
+        # #4286: the R12 case, a stored 76.1 % resolves to 124 bpm while the
+        # rule gives 129 bpm (LT1 129 of a threshold HR of 163).
+        lt1 = 129 / 163 * 100
+        old = unit("long", hr_cap=hr_cap(76.1, SOURCE_ESTIMATED))
+        (found,) = run_hr_cap.outdated_caps(
+            [old], lt1, estimated=True, lthr_for=lambda _unit: 163.0
+        )
+        self.assertEqual((found["stored_bpm"], found["current_bpm"]), (124, 129))
+        (unknown,) = run_hr_cap.outdated_caps([old], lt1, estimated=True)
+        self.assertNotIn("stored_bpm", unknown)  # no threshold HR, no bpm
+        self.assertNotIn("#", run_hr_cap.OUTDATED_CAPS_NOTE)
+
     def test_the_brief_lists_an_estimated_cap_below_todays_cap(self) -> None:
         old = unit("long", hr_cap=hr_cap(76.1, SOURCE_ESTIMATED))
         guard = PlanGuardService(

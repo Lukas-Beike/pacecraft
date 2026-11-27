@@ -2,8 +2,15 @@ import json
 import unittest
 from unittest.mock import Mock
 
-from backend.coach.context import CoachTrainingContextService
+from backend.coach.context import (
+    PLANNED_CAP_BPM,
+    CoachPlanningContextReader,
+    CoachTrainingContextService,
+    coach_daily_rows,
+    compact_coach_local_planned_workout,
+)
 from backend.coach.prompt import COACH_PROMPT
+from backend.planning import context as planning_context
 
 
 class CoachTrainingContextServiceTests(unittest.TestCase):
@@ -64,6 +71,8 @@ class CoachTrainingContextServiceTests(unittest.TestCase):
 
         compacted_plans = [
             {
+                # 2026-09-24 is a Thursday (#4286).
+                "weekday": "Do",
                 "id": "local-1",
                 "date": "2026-09-24",
                 "name": "Easy run",
@@ -107,6 +116,99 @@ class CoachTrainingContextServiceTests(unittest.TestCase):
         self.assertEqual(result, expected)
         self.assertNotIn("private_description", result)
         self.structured.build.assert_called_once_with(selection=None)
+
+    def test_planned_rows_carry_weekday_focus_and_cap_and_leave_defaults_out(self):
+        # #4286: the Coach reads the stored cap in percent and bpm on the unit's
+        # date and the weekday, never infers them; defaults are named once.
+        unit = {
+            "id": "local-1",
+            "date": "2026-12-01",
+            "name": "Lockerer Dauerlauf",
+            "type": "Run",
+            "session_focus": "easy",
+            "hr_cap": {
+                "percent_lthr": 79.1,
+                "low_percent_lthr": 64.1,
+                "source": "measured",
+            },
+            PLANNED_CAP_BPM: 129,
+            "status": "planned",
+            "sync_status": "local",
+        }
+        row = compact_coach_local_planned_workout(
+            unit, select=planning_context.selected
+        )
+        self.assertEqual(
+            row,
+            {
+                "weekday": "Di",
+                "id": "local-1",
+                "date": "2026-12-01",
+                "name": "Lockerer Dauerlauf",
+                "type": "Run",
+                "session_focus": "easy",
+                "hr_cap": {"percent_lthr": 79.1, "bpm": 129},
+            },
+        )
+        other = compact_coach_local_planned_workout(
+            {"id": "local-2", "date": "2026-12-06", "status": "completed"},
+            select=planning_context.selected,
+        )
+        self.assertEqual(
+            other,
+            {
+                "weekday": "So",
+                "id": "local-2",
+                "date": "2026-12-06",
+                "status": "completed",
+            },
+        )
+
+    def test_the_planning_reader_resolves_each_cap_on_the_units_date(self):
+        capped = {
+            "id": "u1",
+            "date": "2026-12-01",
+            "session_focus": "long",
+            "hr_cap": {
+                "percent_lthr": 76.1,
+                "low_percent_lthr": 61.1,
+                "source": "estimated",
+            },
+        }
+        plain = {"id": "u2", "date": "2026-12-02", "session_focus": "threshold"}
+        planned = Mock()
+        planned.list.return_value = [capped, plain]
+        reader = CoachPlanningContextReader(
+            planned,
+            Mock(),
+            Mock(),
+            Mock(),
+            Mock(),
+            Mock(),
+            Mock(),
+            lthr_for=lambda: lambda unit: 163.0,
+        )
+        first, second = reader.planned()
+        self.assertEqual(first[PLANNED_CAP_BPM], 124)  # 76.1 % of 163
+        self.assertNotIn(PLANNED_CAP_BPM, second)
+
+    def test_day_rows_carry_their_weekday_and_no_repeated_check_in_date(self):
+        rows = coach_daily_rows(
+            [
+                {
+                    "date": "2026-12-01",
+                    "checkin": {"checkin_date": "2026-12-01", "notes": "x"},
+                },
+                {"date": "2026-12-07"},
+            ]
+        )
+        self.assertEqual(
+            rows,
+            [
+                {"weekday": "Di", "date": "2026-12-01", "checkin": {"notes": "x"}},
+                {"weekday": "Mo", "date": "2026-12-07"},
+            ],
+        )
 
     def test_external_text_cannot_reproduce_the_untrusted_data_fence(self):
         forged = (

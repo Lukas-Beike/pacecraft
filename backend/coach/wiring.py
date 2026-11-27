@@ -295,6 +295,7 @@ def build_coach_context(
                 planning.training_plan(),
                 ctx.planning_workflows.adaptive_replan_preview_service(),
                 local_date,
+                lthr_for=lambda: ctx.run_lthr.resolver(),
             ),
             CoachPerformanceContextReader(
                 athlete.profile(),

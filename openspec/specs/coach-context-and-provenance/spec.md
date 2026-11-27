@@ -75,6 +75,10 @@ The system SHALL bound per-section and total Coach context, retain valid structu
 - **WHEN** a Coach turn is built for an analysis, review, planning, morning check-in, typed planning, general or nutrition request
 - **THEN** only the sections that task needs are included, within a deterministic character budget per kind, measured on the kind's dynamic part while the fixed rules have one budget of their own and both sum to the kind's total, and the request diagnostics record the selection name, request kind and the characters of each present section so live sizes can be compared.
 
+#### Scenario: Weekdays on dated rows (#4286)
+- **WHEN** the Coach context holds planned units and day rows
+- **THEN** each planned row and each `daily_planning_context` day carries its German weekday abbreviation (`weekday`, Mo to So), the dialogue's `local_date` comes with `local_weekday`, a planned row leaves out the defaults `status` planned and `sync_status` local (named once in `source_policy.planned_rows`), and a day's check-in does not repeat the day's date
+
 #### Scenario: Canonical data is not yet available
 - **WHEN** the first canonical backfill is pending or failed and a scoped Coach context is built
 - **THEN** the context marks the unavailable canonical activity and provider data, preserves that marker through selection, and identifies local plans as still available.
