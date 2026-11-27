@@ -11,11 +11,14 @@ import copy
 import json
 import os
 import unittest
+from dataclasses import replace
 from datetime import date, timedelta
 from typing import Any, ClassVar
 from unittest.mock import Mock, patch
 
 from activity_row_support import FixedActivityRows, ReadOnlyManager, StoredCoverage
+from canonical_recovery_support import recovery_only_inputs
+from performance_day_support import canonical_from_snapshot
 from server_test_support import server
 
 from backend.coach import context as coach_context
@@ -25,13 +28,14 @@ from backend.coach.context import (
     CoachPlanningContextReader,
     CoachStructuredContextService,
     CoachTrainingContextService,
+    coach_performance_projection,
 )
 from backend.coach.context_selection import (
     CONTEXT_SECTIONS,
     select_coach_context,
 )
 from backend.coach.playbooks import playbook_for
-from backend.performance.current_metrics import coach_thresholds
+from backend.performance.context import current_performance_context
 from backend.performance.freshness import GarminSyncStatus
 from backend.planning.compact_activities import ActivitySummarySource
 from backend.planning.context import build_daily_planning_context
@@ -132,21 +136,68 @@ def _calendar_events() -> list[dict[str, Any]]:
     return events
 
 
-class _ThresholdReader(CoachPerformanceContextReader):
-    """Production's run thresholds (#4292): a 167 bpm run threshold and an adopted
-    129 bpm LT1, so run_hr_caps and run_hr_cap_basis render as on a real turn."""
+def _provider_snapshot() -> dict[str, Any]:
+    """A synced athlete: thresholds, weight, form and recent sessions (#4323)."""
+    return {
+        "synced_at": f"{TODAY.isoformat()}T05:00:00Z",
+        "athlete": {
+            "icu_ftp": 250,
+            "icu_w_prime": 20000,
+            "max_hr": 190,
+            "lthr": 167,
+            "weight": 72.0,
+        },
+        "recent_wellness": [
+            {
+                "id": (TODAY - timedelta(days=n)).isoformat(),
+                "ctl": 60 - n,
+                "atl": 66 - n,
+                "tsb": -6,
+                "restingHR": 48 + n % 3,
+                "hrv": 58 - n % 4,
+                "sleepSecs": 26_000 + 300 * (n % 5),
+            }
+            for n in range(28)
+        ],
+        "recent_activities": [
+            {
+                "id": f"session-{n}",
+                "type": "Run" if n % 3 else "Ride",
+                "start_date_local": f"{(TODAY - timedelta(days=n + 1)).isoformat()}T07:00:00",
+                "moving_time": 3600,
+                "icu_training_load": 60 + n,
+                "average_heartrate": 140,
+            }
+            for n in range(20)
+        ],
+    }
+
+
+class _ProviderPerformanceReader(CoachPerformanceContextReader):
+    """current_performance through production's available path (#4323): synced
+    thresholds, form, recovery and sessions, and an adopted 129 bpm LT1, so the
+    budget measures what a real turn carries, not the unavailable shape."""
 
     def current_performance(self, canonical: Any = None) -> Any:
-        metrics: dict[str, dict[str, Any]] = {
-            "cycling_ftp_watts": {"value": 250, "source": "garmin"},
-            "max_hr_bpm": {"value": 190},
-            "bike_threshold_hr_bpm": {"value": 165},
-            "run_threshold_hr_bpm": {"value": 167},
-        }
-        return {
-            **super().current_performance(canonical),
-            "thresholds": coach_thresholds(metrics, 129.0, True),
-        }
+        snapshot = _provider_snapshot()
+        inputs = replace(
+            canonical_from_snapshot(snapshot, TODAY),
+            recovery=recovery_only_inputs(
+                None, snapshot["recent_wellness"], snapshot=snapshot
+            ).recovery,
+        )
+        return coach_performance_projection(
+            current_performance_context(
+                GarminSyncStatus(),
+                {
+                    "timezone": "Europe/Berlin",
+                    "first_threshold_hr": "129",
+                    "first_threshold_origin": "estimated",
+                },
+                TODAY,
+                canonical=inputs,
+            )
+        )
 
 
 def _build_service() -> CoachTrainingContextService:
@@ -233,7 +284,7 @@ def _build_service() -> CoachTrainingContextService:
             # The easy runs' caps resolve to bpm, as in production (#4286).
             lthr_for=lambda: lambda unit: 168.0,
         ),
-        _ThresholdReader(
+        _ProviderPerformanceReader(
             profile,
             payload,
             projection,
