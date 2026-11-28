@@ -1,7 +1,6 @@
 # Risky changes
 
-Read before code or delegation for a change to the app start, device storage, a sync path or a remote write, a schema or migration, or derived state. Moved unchanged from the deliver-issue skill (#4290).
-
+Read before code or delegation for a change to the app start, device storage, a sync path or a remote write, a schema or migration, or derived state.
 Before code or delegation for a change to the app start (bootstrap and
 device snapshot), device storage or a sync path, write a short design note naming
 its risks, record it and its approval as an issue comment, and hand the approved

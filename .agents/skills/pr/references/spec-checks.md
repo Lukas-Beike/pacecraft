@@ -1,6 +1,7 @@
 # OpenSpec archive check
 
-Read when the diff touches `openspec/changes`. Moved unchanged from the pr skill (#4290).
+Read when the diff touches `openspec/changes`. The archive procedure is in
+[OpenSpec change](../../deliver-issue/references/openspec-change.md).
 
 - **OpenSpec:** list `git diff --name-only --no-renames origin/develop...HEAD --
   openspec/changes`. Each `openspec/changes/<name>/` path outside `archive/`

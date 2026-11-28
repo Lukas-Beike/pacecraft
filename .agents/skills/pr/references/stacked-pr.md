@@ -1,7 +1,6 @@
 # Stacked PR
 
-Read when the parent of a stacked PR was merged. Moved unchanged from the pr skill (#4290).
-
+Read when the parent of a stacked PR was merged.
 A stacked PR whose parent was merged: run
 branch-sync `--after-pr <parent> --push`, which refuses on a stale base,
 rebases only this layer, retargets to `develop`, waits a minute for the

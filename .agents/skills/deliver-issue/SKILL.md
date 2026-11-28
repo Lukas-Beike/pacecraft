@@ -105,8 +105,9 @@ across several flows, or when the user asks): [OpenSpec change](references/opens
 ## 3. Implement and validate
 
 Implement with [Ponytail](../pacecraft-ponytail/SKILL.md) and the relevant domain
-owner. A change to the app start, device storage, a sync path or a remote write, a schema or
-migration, or one that derives state from data only the new code writes follows
+owner. Before any code or delegation, a change to the app start (bootstrap and device snapshot), device
+storage, a sync path, a new remote write, a schema or migration, or one that derives state from
+data only the new code writes follows
 [risky changes](references/risky-changes.md) first (design note, schema evidence, the
 first state after an upgrade). A fix gets a regression test that
 fails before the change and extends an existing table or case; a

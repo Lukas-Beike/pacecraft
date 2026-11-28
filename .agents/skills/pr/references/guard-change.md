@@ -1,6 +1,7 @@
 # Guard or hook change
 
-Read when the diff changes a guard, a hook or the checks they run. Moved unchanged from the pr skill (#4290).
+Read when the diff changes a guard, a hook or the checks they run, or adds or tightens a
+repository-wide guard or contract test (the last section).
 
 A change to a guard, a hook, or the checks they run (`scripts/hooks/`,
 `.githooks/`, `.claude/settings.json` hooks, an architecture or quality guard)

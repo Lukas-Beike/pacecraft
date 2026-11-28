@@ -54,8 +54,9 @@ Copy this checklist into your response and tick it as you go:
 - A PR that adds or alters a user-visible function adds or updates its step in
   `STEPS` of `scripts/ui_walk.mjs`, or names in the description why it cannot
   be walked read-only (#3009).
-- **OpenSpec:** a path under `openspec/changes/<name>/` outside `archive/` in the diff names a
-  change that must be archived on this branch: [archive check](references/spec-checks.md).
+- **OpenSpec:** list `git diff --name-only --no-renames origin/develop...HEAD --
+  openspec/changes`; a path outside `archive/` names a change that must be archived on this
+  branch: [archive check](references/spec-checks.md).
 - **Spec drift:** when the branch archives no OpenSpec change, list the main
   specs that cite each changed file outside `tests/` and `openspec/`
   (application code, `Dockerfile`, `scripts/`, `.github/`, and so on):

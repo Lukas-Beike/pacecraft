@@ -1,7 +1,6 @@
 # OpenSpec change
 
-Read when the delivery uses an OpenSpec change (a larger feature). Moved unchanged from the deliver-issue skill (#4290).
-
+Read when the delivery uses an OpenSpec change (a larger feature).
 Use an OpenSpec change only for a larger feature: a new capability or a
 behavior change across several flows, or when the user asks for one. Then
 create it with the CLI (`npm run openspec -- new change <name>`, then

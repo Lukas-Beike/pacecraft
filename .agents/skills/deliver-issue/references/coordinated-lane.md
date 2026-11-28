@@ -1,7 +1,6 @@
 # Coordinated lane
 
-Read when an orchestrator coordinates the delivery. Moved unchanged from the deliver-issue skill (#4290).
-
+Read when an orchestrator coordinates the delivery.
 When an orchestrator coordinates the run: ask it for the `AGENTS.md` turn before
 touching that file, follow its hold on a red `develop`, and report each closed
 issue or merged part with a one-line entry from
