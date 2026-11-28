@@ -6,10 +6,11 @@ a prompt (athlete decision #2629). The script checks its own preconditions
 and refuses otherwise, so this hook asks for two things only (#4289):
 
 - a command that starts `python scripts/resolve_review_thread.py` (the spelling
-  the allow rule matches, alone or in a chain) runs only while the script and the
-  `scripts/` modules it imports match origin/develop byte for byte and no entry in
-  `scripts/` can shadow one of them (#3072); a changed script has no checks worth
-  trusting;
+  the allow rule matches, after the wrappers it strips) runs only while the script
+  and the `scripts/` modules it imports match origin/develop byte for byte and no
+  entry in `scripts/` can shadow one of them (#3072); a changed script has no
+  checks worth trusting. It runs first in the command: anything before it could
+  change what the check saw, so a later start blocks;
 - a direct GraphQL resolve mutation through an API call blocks (#3759).
 
 No command is read for the script's name otherwise: read-only commands that
@@ -27,13 +28,20 @@ import sys
 import unicodedata
 from pathlib import Path
 
-# The spelling the allow rule matches: a command that starts with `python scripts/<name>`,
-# also after a separator, whatever follows it. Read-only commands that only mention the
-# path do not start the script.
-SEPARATORS = re.compile(r"[;&|(\n]")
+# The spelling the allow rule matches: a simple command that starts with
+# `python scripts/<name>`, after the wrappers and environment assignments the rule may
+# strip, whatever follows it. Read-only commands that only mention the path do not start
+# the script. Line breaks of every shell separate commands.
+SEPARATORS = re.compile(r"[;&|(\n\r\x85  ]")
+WRAPPER = r"(?:[\w.-]+=\S*|time|nohup|nice|timeout|stdbuf|env|command|exec)\s+(?:-\S*\s+|\d+[smhd]?\s+)*"
 INVOCATION = re.compile(
-    r"(?:py|python[\d.]*)(?:\.exe)?\s+(?:\./)?scripts[/\\]resolve_review_thread\.py(?![\w.-])",
+    rf"(?:{WRAPPER}){{0,4}}(?:py|python[\d.]*)(?:\.exe)?\s+(?:\./)?scripts[/\\]"
+    r"resolve_review_thread\.py(?![\w.-])",
     re.IGNORECASE,
+)
+# Escapes of a name in a direct mutation: \xHH, \uHHHH, octal and PowerShell `u{H}.
+ESCAPE = re.compile(
+    r"\\x([0-9a-f]{2})|\\u([0-9a-f]{4})|[\\`]u\{([0-9a-f]{1,6})\}|\\([0-7]{3})"
 )
 SCRIPTS = Path("scripts")
 RUN = "resolve_review_thread"
@@ -47,7 +55,9 @@ GRAPHQL = re.compile(
     re.DOTALL,
 )
 RESOLVE_MUTATION = "resolvereview"
-QUOTING = re.compile(r"[\"'‘’“”`$^\\]")
+# What a shell or PowerShell drops or joins inside a word: quotes, `$`, backticks,
+# carets, backslashes and `+`.
+QUOTING = re.compile(r"[\"'‘’“”`$^\\+]")
 
 
 def _git(*args: str) -> subprocess.CompletedProcess[str]:
@@ -148,15 +158,26 @@ def unchanged() -> bool:
     )
 
 
-def starts_the_script(command: str) -> bool:
-    """Whether a simple command of the text starts with the allow rule's spelling."""
-    return any(INVOCATION.match(part.lstrip()) for part in SEPARATORS.split(command))
+def invocation(command: str) -> str | None:
+    """ "first" when the command starts with the allow rule's spelling, "later" when
+    another simple command of it does, else None."""
+    first, *later = SEPARATORS.split(command)
+    if INVOCATION.match(first.lstrip()):
+        return "first"
+    return "later" if any(INVOCATION.match(part.lstrip()) for part in later) else None
 
 
 def resolves_directly(command: str) -> bool:
     """A GraphQL API call that names the resolve mutation."""
-    text = QUOTING.sub("", unicodedata.normalize("NFKC", command)).casefold()
-    return bool(GRAPHQL.search(text)) and RESOLVE_MUTATION in text
+
+    def decode(match: re.Match[str]) -> str:
+        code, base = next((g, b) for g, b in zip(match.groups(), (16, 16, 16, 8)) if g)
+        return chr(int(code, base))
+
+    text = unicodedata.normalize("NFKC", command).casefold()
+    text = QUOTING.sub("", ESCAPE.sub(decode, text))
+    # Blanks stay for the API call's words; the name is read with pieces joined.
+    return bool(GRAPHQL.search(text)) and RESOLVE_MUTATION in "".join(text.split())
 
 
 def main() -> int:
@@ -187,10 +208,12 @@ def decide() -> int:
             file=sys.stderr,
         )
         return 2
-    if starts_the_script(command) and not unchanged():
+    where = invocation(command)
+    # Anything before the script in the same command could change what the check saw.
+    if where == "later" or (where == "first" and not unchanged()):
         print(
-            "Blocked: the review-thread resolve script runs only from a checkout "
-            "whose scripts/ matches origin/develop (#2629).",
+            "Blocked: the review-thread resolve script runs alone, first in the "
+            "command, from a checkout whose scripts/ matches origin/develop (#2629).",
             file=sys.stderr,
         )
         return 2

@@ -184,20 +184,42 @@ class GuardHookTests(unittest.TestCase):
         self.assertEqual(self.decide(exact, unchanged=False, err=err), 2)
         self.assertIn("matches origin/develop", err.getvalue())
         # What the allow rule's prefix also lets start the script: more words, a
-        # chain, another interpreter spelling, a leading folder mark.
+        # chain after it, another interpreter spelling, a leading folder mark, and
+        # the wrappers and environment assignments the rule may strip.
         for command in (
             exact + " extra",
             exact + " && echo done",
-            "git status; " + exact,
-            "echo x | " + exact,
-            "(" + exact + ")",
             "py scripts/resolve_review_thread.py 1 PRRT_x",
             "python3.14.exe ./scripts/resolve_review_thread.py 1 PRRT_x",
             "PYTHON scripts\\RESOLVE_REVIEW_THREAD.PY 1 PRRT_x",
+            "timeout 60 " + exact,
+            "nohup " + exact,
+            "PYTHONDONTWRITEBYTECODE=1 " + exact,
+            "A=1 B=2 time -p " + exact,
         ):
             with self.subTest(command):
                 self.assertEqual(self.decide(command), 0)
                 self.assertEqual(self.decide(command, unchanged=False), 2)
+        # Anything before the script could change what the check saw (a copied or
+        # added module, another directory, PYTHONPATH, PATH): a start after it
+        # blocks, changed checkout or not (bypass review of #4289).
+        for command in (
+            "git status; " + exact,
+            "echo x | " + exact,
+            "(" + exact + ")",
+            "cp /tmp/x.py scripts/resolve_review_thread.py && " + exact,
+            "echo 'import os' > scripts/argparse.py; " + exact,
+            "cd ../other-worktree && " + exact,
+            "export PYTHONPATH=/tmp/x; " + exact,
+            "export PATH=/tmp/x:$PATH; " + exact,
+            "git checkout feature -- scripts; " + exact,
+            "Set-Content scripts/json.py x; " + exact,
+            "Get-Date\r" + exact,
+            "Get-Date " + exact,
+            "& " + exact,
+        ):
+            with self.subTest(command):
+                self.assertEqual(self.decide(command), 2)
 
     def test_other_commands_are_not_read_for_the_scripts_name(self):
         # Three rounds of name recognition (#3759, #3982, #4155) kept blocking
@@ -264,6 +286,11 @@ class GuardHookTests(unittest.TestCase):
             't=Thread; gh api graphql -f query="mutation{resolveReview$t(input:{})}"',
             'curl https://api.github.com/graphql -d \'{"query":"resolveReviewThread"}\'',
             "gh api graphql -f query='mutation{resolveReview\\u0054hread(input:{})}'",
+            # Escapes of the name's letters, and pieces a shell or PowerShell joins.
+            "gh api graphql -f query=$'mutation{\\x72esolveReviewThread(input:{})}'",
+            "gh api graphql -f query=$'mutation{\\162esolveReviewThread(input:{})}'",
+            'gh api graphql -f query="mutation{`u{72}esolveReviewThread(input:{})}"',
+            "irm https://api.github.com/graphql -Body ('mutation{' + 'resolve' + 'ReviewThread(input:{})}')",
         ):
             with self.subTest(command):
                 self.assertEqual(self.decide(command), 2)
