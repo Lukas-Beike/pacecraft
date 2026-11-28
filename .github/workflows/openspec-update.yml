@@ -112,8 +112,8 @@ jobs:
               return json.loads(shown.stdout)
           skill = re.compile(r"\.agents/skills/openspec-[a-z0-9-]+/SKILL\.md")
           def kept(data):
-              sizes = {key: value for key, value in data["instruction_lines"].items() if not skill.fullmatch(key)}
-              return {**{key: value for key, value in data.items() if key != "instruction_lines"}, "sizes": sizes}
+              sizes = {key: value for key, value in data.get("instruction_words", {}).items() if not skill.fullmatch(key)}
+              return {**{key: value for key, value in data.items() if key != "instruction_words"}, "sizes": sizes}
           if kept(read("HEAD")) != kept(read("")):
               raise SystemExit("openspec update changed the quality baseline beyond the generated skills' sizes")
           PY

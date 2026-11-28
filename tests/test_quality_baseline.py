@@ -196,7 +196,7 @@ class QualityBaselineTests(unittest.TestCase):
         result, output = self.check([])
         self.assertEqual(result, 1)
         self.assertIn("1 obsolete", output)
-        self.assertIn("Regenerate with", output)
+        self.assertIn("--prune", output)
 
     def test_removed_baseline_entry_cannot_be_reintroduced(self):
         self.baseline["diagnostics"] = []
@@ -206,16 +206,16 @@ class QualityBaselineTests(unittest.TestCase):
 
     def test_instruction_files_may_not_grow(self):
         # #3925: AGENTS.md and SKILL.md files grew without a counterweight.
-        self.baseline["instruction_lines"] = {"AGENTS.md": 10, "a/SKILL.md": 5}
+        self.baseline["instruction_words"] = {"AGENTS.md": 10, "a/SKILL.md": 5}
         output = io.StringIO()
         for sizes, code, lines in (
             ({"AGENTS.md": 10, "a/SKILL.md": 5}, 0, []),
             ({"AGENTS.md": 11, "a/SKILL.md": 4}, 1,
-             ["NEW size AGENTS.md: 10 -> 11 lines",
-              "OBSOLETE size a/SKILL.md: 5 -> 4 lines"]),
+             ["NEW size AGENTS.md: 10 -> 11 words",
+              "OBSOLETE size a/SKILL.md: 5 -> 4 words"]),
             ({"AGENTS.md": 10, "a/SKILL.md": 5, "b/SKILL.md": 1}, 1,
-             ["NEW size b/SKILL.md: 0 -> 1 lines"]),
-            ({"AGENTS.md": 10}, 1, ["OBSOLETE size a/SKILL.md: 5 -> 0 lines"]),
+             ["NEW size b/SKILL.md: 0 -> 1 words"]),
+            ({"AGENTS.md": 10}, 1, ["OBSOLETE size a/SKILL.md: 5 -> 0 words"]),
         ):  # fmt: skip
             output = io.StringIO()
             with self.subTest(sizes=sizes), contextlib.redirect_stdout(output):
@@ -227,10 +227,129 @@ class QualityBaselineTests(unittest.TestCase):
                 self.assertIn(line, output.getvalue())
         self.assertIn("may not grow", self.check_sizes({"AGENTS.md": 12}))
         # The recorded files are this repository's instruction files.
-        sizes = quality_baseline.instruction_lines(quality_baseline.ROOT)
+        sizes = quality_baseline.instruction_words(quality_baseline.ROOT)
         self.assertIn("AGENTS.md", sizes)
         self.assertIn(".agents/skills/deliver-issue/SKILL.md", sizes)
         self.assertIn("tests/AGENTS.md", sizes)
+
+    def test_instruction_size_counts_words_not_lines(self):
+        # #4290: a 21-line skill held 1,027 words, so lines could be made long.
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            (root / "AGENTS.md").write_text(
+                "one two\nthree\n\nfour five six\n", encoding="utf-8"
+            )
+            skill = root / ".agents/skills/x/SKILL.md"
+            skill.parent.mkdir(parents=True)
+            skill.write_text("a " * 500 + "\n", encoding="utf-8")
+            self.assertEqual(
+                quality_baseline.instruction_words(root),
+                {"AGENTS.md": 6, ".agents/skills/x/SKILL.md": 500},
+            )
+            # Unspaced text does not count less: `a/b/c,d` is four words.
+            (root / "AGENTS.md").write_text("a/b/c,d\n", encoding="utf-8")
+            self.assertEqual(quality_baseline.instruction_words(root)["AGENTS.md"], 4)
+            (root / "AGENTS.md").write_text(
+                "one two\nthree\n\nfour five six\n", encoding="utf-8"
+            )
+            # One long line is as much growth as many short ones.
+            self.baseline["instruction_words"] = {
+                "AGENTS.md": 6,
+                ".agents/skills/x/SKILL.md": 500,
+            }
+            grown = {"AGENTS.md": 6, ".agents/skills/x/SKILL.md": 501}
+            self.assertIn("500 -> 501 words", self.check_sizes(grown))
+
+    def test_prune_only_removes_and_never_records_something_new(self):
+        # #4290: the obsolete entries and shrunk sizes go; a new finding or a grown
+        # file refuses and changes nothing, so a prune cannot hide a regression.
+        gone = {**self.existing, "path": "backend/gone.py"}
+        eslint = {
+            "tool": "eslint",
+            "path": "public/x.js",
+            "code": "r",
+            "message_sha256": "b" * 64,
+        }
+        baseline = {
+            **self.baseline,
+            "diagnostics": [self.existing, gone, eslint],
+            "instruction_words": {"AGENTS.md": 10, "a/SKILL.md": 5, "gone/SKILL.md": 7},
+        }
+        pruned = quality_baseline.pruned_baseline(
+            baseline, [self.existing], {"AGENTS.md": 8, "a/SKILL.md": 5}, ("eslint",)
+        )
+        self.assertEqual(
+            [item["path"] for item in pruned["diagnostics"]],
+            sorted([quality_baseline.identity(self.existing)["path"], "public/x.js"]),
+        )
+        self.assertEqual(pruned["instruction_words"], {"AGENTS.md": 8, "a/SKILL.md": 5})
+        self.assertEqual(pruned["versions"], baseline["versions"])
+        new = {**self.existing, "path": "backend/new.py"}
+        for diagnostics, sizes in (
+            ([self.existing, new], {"AGENTS.md": 8, "a/SKILL.md": 5}),
+            ([self.existing], {"AGENTS.md": 11, "a/SKILL.md": 5}),
+            ([self.existing], {"AGENTS.md": 8, "a/SKILL.md": 5, "b/SKILL.md": 1}),
+        ):
+            with self.subTest(diagnostics=len(diagnostics), sizes=sizes):
+                self.assertIsNone(
+                    quality_baseline.pruned_baseline(baseline, diagnostics, sizes)
+                )
+
+    def test_the_prune_command_writes_only_a_pure_prune(self):
+        with tempfile.TemporaryDirectory() as folder:
+            target = Path(folder) / "baseline.json"
+            written = {**self.baseline, "instruction_words": {"AGENTS.md": 10}}
+            target.write_text(json.dumps(written), encoding="utf-8")
+            for diagnostics, words, code, text in (
+                ([self.existing], {"AGENTS.md": 7}, 0, "pruned"),
+                ([self.existing], {"AGENTS.md": 12}, 1, "Nothing was pruned"),
+                ([self.existing], {"AGENTS.md": 7}, 0, "nothing to prune"),
+            ):
+                output = io.StringIO()
+                with (
+                    patch("tools.quality_baseline.BASELINE", target),
+                    patch("tools.quality_baseline.ROOT", Path(folder)),
+                    patch(
+                        "tools.quality_baseline.collect",
+                        return_value=(self.versions, diagnostics),
+                    ),
+                    patch(
+                        "tools.quality_baseline.instruction_words", return_value=words
+                    ),
+                    patch("tools.quality_baseline.eslint_script", return_value=True),
+                    patch.object(sys, "argv", ["quality_baseline.py", "--prune"]),
+                    contextlib.redirect_stdout(output),
+                ):
+                    self.assertEqual(quality_baseline.main(), code, output.getvalue())
+                self.assertIn(text, output.getvalue())
+                if code:
+                    self.assertEqual(
+                        json.loads(target.read_text(encoding="utf-8"))[
+                            "instruction_words"
+                        ],
+                        {"AGENTS.md": 7},
+                    )
+            # Another tool version would call valid entries obsolete: nothing is read
+            # as obsolete, nothing is written. One mode flag at a time.
+            before = target.read_text(encoding="utf-8")
+            for argv, problem in (
+                (["--prune"], RuntimeError),
+                (["--prune", "--snapshot", "--base", "a" * 40], SystemExit),
+            ):
+                with (
+                    self.subTest(argv=argv),
+                    patch("tools.quality_baseline.BASELINE", target),
+                    patch("tools.quality_baseline.ROOT", Path(folder)),
+                    patch(
+                        "tools.quality_baseline.collect",
+                        return_value=({"ruff": "9.9.9", "mypy": "9.9.9"}, []),
+                    ),
+                    patch.object(sys, "argv", ["quality_baseline.py", *argv]),
+                    contextlib.redirect_stderr(io.StringIO()),
+                    self.assertRaises(problem),
+                ):
+                    quality_baseline.main()
+            self.assertEqual(target.read_text(encoding="utf-8"), before)
 
     def check_sizes(self, sizes):
         output = io.StringIO()
@@ -406,7 +525,7 @@ class QualityBaselineTests(unittest.TestCase):
             gone: 50,
             ".agents/skills/pr/SKILL.md": 200,
         }
-        baseline = {**self.baseline, "instruction_lines": recorded}
+        baseline = {**self.baseline, "instruction_words": recorded}
         sizes = {
             "AGENTS.md": 130, grown: 227, ".agents/skills/pr/SKILL.md": 260,
             ".agents/skills/openspec-new/SKILL.md": 40,
@@ -415,7 +534,7 @@ class QualityBaselineTests(unittest.TestCase):
             json.dumps(baseline, indent=2) + "\n", sizes
         )
         self.assertEqual(
-            json.loads(aligned)["instruction_lines"],
+            json.loads(aligned)["instruction_words"],
             {
                 "AGENTS.md": 100, grown: 227, ".agents/skills/pr/SKILL.md": 200,
                 ".agents/skills/openspec-new/SKILL.md": 40,

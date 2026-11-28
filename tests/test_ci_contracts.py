@@ -759,7 +759,7 @@ class WorkflowSourceTests(unittest.TestCase):
         before = {
             "schema": 1,
             "versions": {"ruff": "1"},
-            "instruction_lines": {"AGENTS.md": 9, skill: 221},
+            "instruction_words": {"AGENTS.md": 9, skill: 221},
         }
         for changed, code in (
             ({skill: 227}, 0),
@@ -776,7 +776,7 @@ class WorkflowSourceTests(unittest.TestCase):
                 subprocess.run([*git, "commit", "-qm", "base"], check=True)
                 after = {
                     **before,
-                    "instruction_lines": {**before["instruction_lines"], **changed},
+                    "instruction_words": {**before["instruction_words"], **changed},
                 }
                 path.write_text(json.dumps(after), encoding="utf-8")
                 subprocess.run([*git, "add", "."], check=True)

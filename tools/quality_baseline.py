@@ -78,7 +78,7 @@ CSS_NO_SELECTORS = ("@keyframes", "@-webkit-keyframes", "@font-face", "@page")
 # A Python file `ruff format` would rewrite (#3061). The files unformatted when
 # the check arrived are baseline debt; one a push leaves unformatted is new.
 FORMAT = "format"
-# Instruction files may not grow (#3925): their line counts are recorded too.
+# Instruction files may not grow (#3925, in words since #4290): their word counts are recorded too.
 INSTRUCTION_GLOBS = ("AGENTS.md", "*/AGENTS.md", ".agents/skills/*/SKILL.md")
 # Line and column are reported for humans but are not debt identity, so an
 # unrelated edit that moves a known diagnostic does not fail the ratchet.
@@ -849,11 +849,13 @@ def collect(root: Path, notes: dict[str, str]) -> tuple[dict[str, str], list[dic
     )
 
 
-def instruction_lines(root: Path) -> dict[str, int]:
-    """Line count per instruction file (AGENTS.md and skill files)."""
+def instruction_words(root: Path) -> dict[str, int]:
+    """Word count per instruction file (AGENTS.md and skill files): lines can be
+    made long, so a 21-line skill held 1,027 words (#4290). A word is a run of word
+    characters, so `a/b/c` is three: unspaced text does not count less."""
     return {
         path.relative_to(root).as_posix(): len(
-            path.read_text(encoding="utf-8").splitlines()
+            re.findall(r"\w+", path.read_text(encoding="utf-8"))
         )
         for pattern in INSTRUCTION_GLOBS
         for path in sorted(root.glob(pattern))
@@ -865,14 +867,14 @@ def size_findings(
 ) -> tuple[list[str], list[str]]:
     """Grown or unrecorded instruction files, and shrunk or removed ones."""
     grown = [
-        f"size {path}: {recorded.get(path, 0)} -> {lines} lines"
-        for path, lines in sorted(sizes.items())
-        if lines > recorded.get(path, 0)
+        f"size {path}: {recorded.get(path, 0)} -> {words} words"
+        for path, words in sorted(sizes.items())
+        if words > recorded.get(path, 0)
     ]
     shrunk = [
-        f"size {path}: {lines} -> {sizes.get(path, 0)} lines"
-        for path, lines in sorted(recorded.items())
-        if sizes.get(path, 0) < lines
+        f"size {path}: {words} -> {sizes.get(path, 0)} words"
+        for path, words in sorted(recorded.items())
+        if sizes.get(path, 0) < words
     ]
     return grown, shrunk
 
@@ -933,10 +935,10 @@ OPENSPEC_SKILL = re.compile(r"\.agents/skills/openspec-[a-z0-9-]+/SKILL\.md")
 
 
 def openspec_sized_baseline(baseline_text: str, sizes: dict[str, int]) -> str | None:
-    """Return the baseline with the generated OpenSpec skills' line counts, or None
+    """Return the baseline with the generated OpenSpec skills' word counts, or None
     when they already match. No other instruction file's entry changes."""
     baseline = json.loads(baseline_text)
-    recorded = baseline.get("instruction_lines")
+    recorded = baseline.get("instruction_words")
     if baseline.get("schema") != 1 or not isinstance(recorded, dict):
         raise RuntimeError(
             "Quality baseline schema or instruction sizes are not supported"
@@ -958,6 +960,57 @@ def openspec_sized_baseline(baseline_text: str, sizes: dict[str, int]) -> str | 
     return json.dumps(baseline, indent=2) + "\n"
 
 
+def pruned_baseline(
+    baseline: dict,
+    diagnostics: list[dict],
+    sizes: Mapping[str, int],
+    skipped: tuple[str, ...] = (),
+) -> dict | None:
+    """The baseline without its obsolete entries and with shrunk sizes lowered, or
+    None when something is new or grew: a prune only ever removes (#4290). Findings
+    of a tool that did not run (``skipped``) stay as they are."""
+    kept = [item for item in baseline["diagnostics"] if item["tool"] in skipped]
+    expected = [item for item in baseline["diagnostics"] if item["tool"] not in skipped]
+    added, _ = compare(expected, diagnostics)
+    recorded = baseline.get("instruction_words", {})
+    if added or size_findings(recorded, sizes)[0]:
+        return None
+    return {
+        **baseline,
+        "diagnostics": sorted(
+            [*kept, *(identity(item) for item in diagnostics)], key=identity_key
+        ),
+        "instruction_words": {
+            path: min(words, sizes[path])
+            for path, words in recorded.items()
+            if path in sizes
+        },
+    }
+
+
+def prune_command() -> int:
+    """Write the pruned baseline; exit 1 and write nothing when it cannot be."""
+    versions, diagnostics = collect(ROOT, {})
+    baseline = json.loads(BASELINE.read_text(encoding="utf-8"))
+    require_versions(baseline, versions)
+    skipped = () if eslint_script() else ("eslint",)
+    pruned = pruned_baseline(baseline, diagnostics, instruction_words(ROOT), skipped)
+    if pruned is None:
+        print(
+            "Nothing was pruned: a finding or an instruction file is new or grew. "
+            "Fix it, or record a reviewed exception with --snapshot."
+        )
+        return 1
+    if pruned == baseline:
+        print("Quality ratchet: nothing to prune")
+        return 0
+    BASELINE.write_text(
+        json.dumps(pruned, indent=2) + "\n", encoding="utf-8", newline="\n"
+    )
+    print(f"Quality ratchet: pruned {BASELINE.relative_to(ROOT).as_posix()}")
+    return 0
+
+
 def finding(item: dict) -> str:
     location = f"{item['path']}:{item['line']}" if "line" in item else item["path"]
     return f"{item['tool']} {location} {item['code']}"
@@ -967,6 +1020,17 @@ def note_key(item: dict) -> str:
     """One finding's message key: its message hash, as two errors of a code
     can share a line and even a column."""
     return f"{finding(item)} {item['message_sha256']}"
+
+
+def require_versions(baseline: dict, versions: dict[str, str]) -> None:
+    """The recorded findings are the pinned tools' findings: another version's
+    would call valid entries obsolete."""
+    if baseline["versions"] != versions:
+        raise RuntimeError(
+            f"Quality baseline tool versions {baseline['versions']} do not match "
+            f"installed {versions}. Run `python tools/quality_baseline.py "
+            "--align-versions` and commit tests/fixtures/quality_baseline.json."
+        )
 
 
 def check(
@@ -979,12 +1043,7 @@ def check(
 ) -> int:
     if baseline["schema"] != 1:
         raise RuntimeError("Quality baseline schema does not match")
-    if baseline["versions"] != versions:
-        raise RuntimeError(
-            f"Quality baseline tool versions {baseline['versions']} do not match "
-            f"installed {versions}. Run `python tools/quality_baseline.py "
-            "--align-versions` and commit tests/fixtures/quality_baseline.json."
-        )
+    require_versions(baseline, versions)
     if any(
         item.get("tool") not in {*TOOLS, COGNITIVE, FORMAT, CSS_DUPLICATE, "eslint"}
         for item in [*baseline["diagnostics"], *diagnostics]
@@ -1001,14 +1060,14 @@ def check(
     grown, shrunk = (
         ([], [])
         if sizes is None
-        else size_findings(baseline.get("instruction_lines", {}), sizes)
+        else size_findings(baseline.get("instruction_words", {}), sizes)
     )
     for line in [*(f"NEW {g}" for g in grown), *(f"OBSOLETE {s}" for s in shrunk)]:
         print(line)
     if grown:
         print(
-            "An instruction file may not grow: remove as many lines as you add "
-            "(#3925); a reviewed exception is recorded with --snapshot."
+            "An instruction file may not grow: remove as many words as you add "
+            "(#3925, #4290); a reviewed exception is recorded with --snapshot."
         )
     added_count = len(added) + len(grown)
     obsolete_count = len(obsolete) + len(shrunk)
@@ -1018,31 +1077,20 @@ def check(
     )
     if obsolete or shrunk:
         print(
-            "Obsolete baseline entries must be removed. Regenerate with "
-            "`python tools/quality_baseline.py --snapshot --base <commit>`, which "
-            "rewrites tests/fixtures/quality_baseline.json."
+            "Obsolete baseline entries must be removed: after the NEW findings above "
+            "are fixed, `python tools/quality_baseline.py --prune` removes them and "
+            "lowers shrunk sizes, and records nothing new."
         )
     return 1 if added_count or obsolete_count else 0
 
 
-def main() -> int:
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--snapshot", action="store_true")
-    parser.add_argument("--base")
-    parser.add_argument(
-        "--align-versions",
-        action="store_true",
-        help="record the requirements-dev.txt tool pins without running the tools",
-    )
-    parser.add_argument(
-        "--align-openspec-sizes",
-        action="store_true",
-        help="record the generated openspec-* skills' line counts, nothing else",
-    )
-    args = parser.parse_args()
+def baseline_edit(args: argparse.Namespace) -> int | None:
+    """The exit code of a command that only edits the baseline, else None."""
+    if args.prune:
+        return prune_command()
     if args.align_openspec_sizes:
         sized = openspec_sized_baseline(
-            BASELINE.read_text(encoding="utf-8"), instruction_lines(ROOT)
+            BASELINE.read_text(encoding="utf-8"), instruction_words(ROOT)
         )
         if sized is not None:
             BASELINE.write_text(sized, encoding="utf-8", newline="\n")
@@ -1054,9 +1102,37 @@ def main() -> int:
             REQUIREMENTS.read_text(encoding="utf-8"),
         )
         if aligned is not None:
-            BASELINE.write_text(aligned, encoding="utf-8")
+            BASELINE.write_text(aligned, encoding="utf-8", newline="\n")
         print("aligned" if aligned is not None else "unchanged")
         return 0
+    return None
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--base")
+    # One mode at a time: a second flag would be dropped without a word.
+    mode = parser.add_mutually_exclusive_group()
+    mode.add_argument("--snapshot", action="store_true")
+    mode.add_argument(
+        "--align-versions",
+        action="store_true",
+        help="record the requirements-dev.txt tool pins without running the tools",
+    )
+    mode.add_argument(
+        "--align-openspec-sizes",
+        action="store_true",
+        help="record the generated openspec-* skills' word counts, nothing else",
+    )
+    mode.add_argument(
+        "--prune",
+        action="store_true",
+        help="remove obsolete baseline entries and lower shrunk sizes; refuses, and "
+        "writes nothing, when a finding or an instruction file is new or grew",
+    )
+    args = parser.parse_args()
+    if (done := baseline_edit(args)) is not None:
+        return done
     notes: dict[str, str] = {}
     versions, diagnostics = collect(ROOT, notes)
     if args.snapshot:
@@ -1073,7 +1149,7 @@ def main() -> int:
                         identity(item) for item in sorted(diagnostics, key=identity_key)
                     ],
                     "coverage_evidence": current.get("coverage_evidence"),
-                    "instruction_lines": instruction_lines(ROOT),
+                    "instruction_words": instruction_words(ROOT),
                 },
                 indent=2,
             )
@@ -1089,7 +1165,7 @@ def main() -> int:
         diagnostics,
         () if eslint_script() else ("eslint",),
         notes,
-        instruction_lines(ROOT),
+        instruction_words(ROOT),
     )
 
 
