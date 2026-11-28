@@ -136,7 +136,7 @@ The test workflow SHALL run on pushes and pull requests to `develop` and `main`,
 
 #### Scenario: SBOM tool cache
 - **WHEN** the image job runs
-- **THEN** the Syft binary of the one pinned version is restored from a cache keyed by runner, architecture and that version before the SBOM step, so a warm cache needs no release download and a GitHub release outage does not fail the SBOM; a cache miss downloads it as before, and the SBOM step stays blocking
+- **THEN** the Syft binary of the one pinned version is restored from a cache keyed by runner, architecture and that version before the SBOM step, so a warm cache needs no release download and a GitHub release outage does not fail the SBOM; a cache miss downloads it as before and saves it as soon as the SBOM exists, and the SBOM step stays blocking
 
 #### Scenario: Run cancellation
 - **WHEN** a pull request or `develop` push run is in progress and a newer push to the same pull request or to `develop` arrives

@@ -104,7 +104,8 @@ jobs:
       # Keep the security steps read-only; the SBOM is stored as a workflow artifact.
       contents: read
     env:
-      # The one Syft release the SBOM uses, for the cache key and both SBOM steps (#4359).
+      # The one Syft release the SBOM uses, for the cache key and both SBOM steps (#4359). It is the
+      # default of the pinned anchore/sbom-action; raise it together with that pin.
       SYFT_VERSION: v1.57.2
     steps:
       - name: Check out repository
@@ -145,10 +146,13 @@ jobs:
           retention-days: 1
           compression-level: 0
       # The action finds Syft in the runner's tool cache before it downloads it, so the cache below
-      # keeps a GitHub release outage from failing the SBOM (#4359). A miss downloads as before and
-      # fills the cache for the next run; the SBOM stays a blocking step.
+      # keeps a GitHub release outage from failing the SBOM (#4359). A miss downloads as before (the
+      # installer checks the release's checksums) and is saved right after the SBOM exists, so a
+      # later failing step cannot lose it; a restored binary is not checked again, and only this
+      # repository's runs can write the key. The SBOM stays a blocking step.
       - name: Restore the Syft binary
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        id: syft_cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ${{ runner.tool_cache }}/syft
           key: syft-${{ runner.os }}-${{ runner.arch }}-${{ env.SYFT_VERSION }}
@@ -175,6 +179,12 @@ jobs:
           format: spdx-json
           output-file: pacecraft-sbom.spdx.json
           upload-release-assets: false
+      - name: Save the Syft binary
+        if: success() && steps.syft_cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ runner.tool_cache }}/syft
+          key: syft-${{ runner.os }}-${{ runner.arch }}-${{ env.SYFT_VERSION }}
       - name: Upload image SBOM
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
