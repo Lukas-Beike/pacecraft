@@ -212,8 +212,9 @@ class ServerCoachTests(ServerTestCase):
         )
         context = server.COACH_CONTEXT.structured_context_service().build()
 
-        # The recovery section always carries Garmin's performance values.
-        self.assertIn("performance", context["recovery"])
+        # Garmin's performance values reach the Coach once, in
+        # current_performance with their source, not again in recovery (#4325).
+        self.assertNotIn("performance", context["recovery"])
         self.assertNotIn("activities", context["recovery"])
         self.assertEqual(
             context["current_performance"]["metrics"]["running_vo2max_ml_kg_min"][

@@ -12,15 +12,29 @@ import json
 import os
 import unittest
 from dataclasses import replace
-from datetime import date, timedelta
+from datetime import UTC, date, datetime, timedelta
 from typing import Any, ClassVar
 from unittest.mock import Mock, patch
+from zoneinfo import ZoneInfo
 
 from activity_row_support import FixedActivityRows, ReadOnlyManager, StoredCoverage
-from canonical_recovery_support import recovery_only_inputs
-from performance_day_support import canonical_from_snapshot
+from canonical_domain_support import local_zone_configuration
+from canonical_recovery_support import (
+    FilteringReader,
+    recovery_only_inputs,
+    with_local_load_of,
+)
+from performance_day_support import (
+    garmin_activity_summaries,
+    garmin_body_from_payload,
+    garmin_sync_status,
+)
 from server_test_support import server
 
+from backend.athlete.body_records import read_current_body
+from backend.canonical.activity_detail import ActivityDfaAlpha1, DfaWindow
+from backend.canonical.domain_records import ZoneConfiguration
+from backend.canonical.vocabulary import DfaQuality, Sport, ZoneConfigurationMetric
 from backend.coach import context as coach_context
 from backend.coach.context import (
     COACH_CONTEXT_SECTION_LIMITS,
@@ -37,12 +51,24 @@ from backend.coach.context_selection import (
 )
 from backend.coach.playbooks import playbook_for
 from backend.coach.prompt import COACH_PROMPT
+from backend.performance.canonical_current import read_current_inputs
 from backend.performance.context import current_performance_context
+from backend.performance.first_threshold_estimate import (
+    SessionThreshold,
+    estimate_view,
+    first_threshold_estimate,
+)
 from backend.performance.freshness import GarminSyncStatus
+from backend.performance.second_threshold_estimate import (
+    critical_second_threshold,
+    dfa_second_threshold,
+)
 from backend.planning.compact_activities import ActivitySummarySource
 from backend.planning.context import build_daily_planning_context
+from backend.providers.garmin_health_mapping import map_garmin_health
 
 TODAY = date(2026, 10, 7)
+SYNCED_AT = datetime(2026, 10, 7, 6, 0, tzinfo=UTC)
 MARKER = "LOCAL PLANNED WORKOUTS (compact projection, included once below):\n"
 MORNING_MESSAGE = (
     "Gib mir den heutigen Morgen-Check-in. Lade dafür die aktuellen "
@@ -138,66 +164,371 @@ def _calendar_events() -> list[dict[str, Any]]:
     return events
 
 
-def _provider_snapshot() -> dict[str, Any]:
-    """A synced athlete: thresholds, weight, form and recent sessions (#4323)."""
-    return {
-        "synced_at": f"{TODAY.isoformat()}T05:00:00Z",
-        "athlete": {
-            "icu_ftp": 250,
-            "icu_w_prime": 20000,
-            "max_hr": 190,
-            "lthr": 167,
-            "weight": 72.0,
+def _garmin_payload() -> dict[str, Any]:
+    """A synced Garmin athlete (#4325): 84 days of sleep, HRV and resting heart
+    rate, thresholds, weight, training load and 60 days of sessions with zone
+    times and training effect, every section fresh."""
+    day = TODAY.isoformat()
+
+    def at(offset: int, hour: int, minute: int) -> int:
+        stamp = datetime(
+            *(TODAY - timedelta(days=offset)).timetuple()[:3],
+            hour,
+            minute,
+            tzinfo=UTC,
+        )
+        return int(stamp.timestamp() * 1000)
+
+    dated = [((TODAY - timedelta(days=n)).isoformat(), n) for n in range(84)]
+    sessions = []
+    for n in range(60):
+        if n % 7 == 3:  # a rest day each week
+            continue
+        kind = {5: "lap_swimming", 6: "hiking"}.get(
+            n % 7, ("running", "cycling", "strength_training")[n % 3]
+        )
+        seconds = (3000, 4200, 2400)[n % 3] + 60 * (n % 5)
+        row: dict[str, Any] = {
+            "activityId": 9000 + n,
+            "startTimeLocal": f"{(TODAY - timedelta(days=n)).isoformat()}T07:30:00",
+            "activityName": f"Synthetic {kind.replace('_', ' ')} {n}",
+            "activityType": {"typeKey": kind},
+            "movingDuration": seconds,
+            "duration": seconds + 90,
+            "distance": (9500, 31000, 0)[n % 3] + 100 * n,
+            "averageHR": 138 + n % 9,
+            "maxHR": 168 + n % 11,
+            "activityTrainingLoad": 55 + 3 * (n % 8),
+            "trainingEffectLabel": (
+                "AEROBIC_BASE",
+                "TEMPO",
+                "THRESHOLD",
+                "VO2MAX",
+                "RECOVERY",
+                "ANAEROBIC_CAPACITY",
+            )[n % 6],
+            "aerobicTrainingEffect": 2.4 + (n % 5) / 4,
+            "anaerobicTrainingEffect": 0.3 + (n % 4) / 5,
+            "calories": 450 + 12 * n,
+        }
+        if kind == "strength_training":
+            row.update(directWorkoutRpe=50 + 10 * (n % 4), directWorkoutFeel=50)
+        for zone in range(1, 6):
+            row[f"hrTimeInZone_{zone}"] = (seconds // 5) + 40 * (n % 4) * zone
+        if kind == "cycling":
+            row.update(avgPower=188 + n % 20, normPower=205 + n % 25, maxPower=640)
+            for zone in range(1, 8):
+                row[f"powerTimeInZone_{zone}"] = (seconds // 7) + 30 * (n % 5) * zone
+        sessions.append(row)
+    payload: dict[str, Any] = {
+        "synced_at": f"{day}T05:00:00Z",
+        "sleep": [
+            {
+                "calendarDate": iso,
+                "sleepTimeSeconds": 25_800 + 600 * (n % 5),
+                "sleepScore": 76 + n % 9,
+                "sleepStartTimestampGMT": at(n + 1, 21, 15 + 10 * (n % 4)),
+                "sleepEndTimestampGMT": at(n, 4, 40 + 3 * (n % 6)),
+            }
+            for iso, n in dated
+        ],
+        "hrv": [{"calendarDate": iso, "hrvLastNight": 58 + n % 7} for iso, n in dated],
+        "resting_hr": [
+            {"calendarDate": iso, "restingHeartRate": 47 + n % 4} for iso, n in dated
+        ],
+        "readiness": [{"calendarDate": iso, "score": 62 + n % 15} for iso, n in dated],
+        "weight": [
+            {"calendarDate": iso, "weight": 72.6 - 0.03 * n, "bodyFat": 14.8 - n / 80}
+            for iso, n in dated[:30]
+        ],
+        "daily_stats": [
+            {
+                "calendarDate": iso,
+                "totalSteps": 7000 + 400 * (n % 6),
+                "floorsAscended": 9 + n % 5,
+                "totalKilocalories": 2600 + 25 * (n % 7),
+            }
+            for iso, n in dated[:14]
+        ],
+        "max_metrics": [
+            {
+                "calendarDate": day,
+                "generic": {"vo2MaxPreciseValue": 54.2, "calendarDate": day},
+                "cycling": {"vo2MaxPreciseValue": 56.8, "calendarDate": day},
+            }
+        ],
+        "cycling_ftp": [{"calendarDate": day, "functionalThresholdPower": 252}],
+        "running_threshold": [
+            {
+                "speed_and_heart_rate": {
+                    "speed": 3.7,
+                    "heartRate": 168,
+                    "heartRateCycling": 163,
+                },
+                "power": {"functionalThresholdPower": 238},
+            }
+        ],
+        "heart_rate_zones": [
+            {"sport": "cycling", "maxHeartRateUsed": 186},
+            {"sport": "running", "maxHeartRateUsed": 191},
+        ],
+        "performance_history": [
+            {
+                "date": iso,
+                "metrics": {
+                    "cycling_ftp_watts": 247 + (29 - n) // 5,
+                    "bike_threshold_hr_bpm": 161 + (29 - n) // 12,
+                    "run_threshold_watts": 234 + (29 - n) // 6,
+                    "run_threshold_hr_bpm": 166 + (29 - n) // 14,
+                    "run_threshold_pace_seconds_per_km": 275 - (29 - n) // 5,
+                    "cycling_vo2max_ml_kg_min": 55.4 + (29 - n) / 20,
+                    "running_vo2max_ml_kg_min": 53.0 + (29 - n) / 25,
+                    "run_5k_seconds": 1330 - (29 - n) * 2,
+                    "run_10k_seconds": 2790 - (29 - n) * 3,
+                    "run_half_marathon_seconds": 6150 - (29 - n) * 6,
+                    "run_marathon_seconds": 12900 - (29 - n) * 12,
+                },
+            }
+            for iso, n in dated[:30]
+        ],
+        "race_predictions": {
+            "5k": 1290,
+            "10k": 2700,
+            "halfMarathon": 6000,
+            "marathon": 12600,
         },
-        "recent_wellness": [
-            {
-                "id": (TODAY - timedelta(days=n)).isoformat(),
-                "ctl": 60 - n,
-                "atl": 66 - n,
-                "tsb": -6,
-                "restingHR": 48 + n % 3,
-                "hrv": 58 - n % 4,
-                "sleepSecs": 26_000 + 300 * (n % 5),
+        "daily_training_status": {
+            "mostRecentTrainingStatus": {
+                "latestTrainingStatusData": {
+                    "3300001": {
+                        "calendarDate": day,
+                        "primaryTrainingDevice": True,
+                        "acuteTrainingLoadDTO": {
+                            "dailyTrainingLoadAcute": 520,
+                            "dailyTrainingLoadChronic": 480,
+                            "dailyAcuteChronicWorkloadRatio": 1.1,
+                        },
+                    }
+                }
             }
-            for n in range(28)
-        ],
-        "recent_activities": [
-            {
-                "id": f"session-{n}",
-                "type": "Run" if n % 3 else "Ride",
-                "start_date_local": f"{(TODAY - timedelta(days=n + 1)).isoformat()}T07:00:00",
-                "moving_time": 3600,
-                "icu_training_load": 60 + n,
-                "average_heartrate": 140,
+        },
+        "training_load_balance": {
+            "mostRecentTrainingLoadBalance": {
+                "metricsTrainingLoadBalanceDTOMap": {
+                    "3300001": {
+                        "calendarDate": day,
+                        "primaryTrainingDevice": True,
+                        "monthlyLoadAerobicLow": 420.0,
+                        "monthlyLoadAerobicLowTargetMin": 300.0,
+                        "monthlyLoadAerobicLowTargetMax": 600.0,
+                        "monthlyLoadAerobicHigh": 180.0,
+                        "monthlyLoadAerobicHighTargetMin": 120.0,
+                        "monthlyLoadAerobicHighTargetMax": 260.0,
+                        "monthlyLoadAnaerobic": 30.0,
+                        "monthlyLoadAnaerobicTargetMin": 0.0,
+                        "monthlyLoadAnaerobicTargetMax": 80.0,
+                    }
+                }
             }
-            for n in range(20)
+        },
+        "activities": sessions,
+        "training_load_activities": [
+            {
+                key: row[key]
+                for key in (
+                    "activityId",
+                    "activityTrainingLoad",
+                    "trainingEffectLabel",
+                    "aerobicTrainingEffect",
+                    "anaerobicTrainingEffect",
+                )
+            }
+            for row in sessions
         ],
+    }
+    payload["source_freshness"] = {
+        section: {
+            "freshness": "current",
+            "observed_at": day,
+            "fetched_at": f"{day}T05:00:00Z",
+        }
+        for section in list(payload) + ["training_load_activities"]
+    }
+    return payload
+
+
+def _performance_inputs(payload: dict[str, Any]) -> Any:
+    """The canonical inputs a Garmin sync of ``payload`` stores, with the local
+    session load a pass computes from its thresholds."""
+    observations = map_garmin_health(
+        payload, zone=ZoneInfo("Europe/Berlin"), retrieved_at=SYNCED_AT
+    ).records
+    return replace(
+        recovery_only_inputs(payload),
+        current=read_current_inputs(
+            _StoredReader(observations),
+            None,
+            as_of=TODAY,
+            body=lambda reader, db, day: read_current_body(
+                reader, db, day, lambda _db, _until: ()
+            ),
+        ),
+        activities=with_local_load_of(garmin_activity_summaries(payload), observations),
+        body=garmin_body_from_payload(payload, TODAY),
+        activities_synced_at=SYNCED_AT.isoformat(),
+    )
+
+
+class _StoredReader(FilteringReader):
+    """The stored observations of a synced athlete and their local zone settings."""
+
+    def zone_configurations(self, _db: Any) -> tuple[ZoneConfiguration, ...]:
+        return _zone_configurations()
+
+
+def _zone_configurations() -> tuple[ZoneConfiguration, ...]:
+    """The athlete's local zone settings: heart rate, power and pace by sport."""
+    since = date(2026, 9, 1)
+    return (
+        local_zone_configuration(
+            sport=Sport.RUN,
+            valid_from=since,
+            threshold=168.0,
+            maximum=191.0,
+            limits=(124.0, 141.0, 155.0, 168.0, 191.0),
+        ),
+        local_zone_configuration(
+            sport=Sport.RIDE,
+            valid_from=since,
+            threshold=163.0,
+            maximum=186.0,
+            limits=(118.0, 135.0, 149.0, 163.0, 186.0),
+        ),
+        local_zone_configuration(
+            metric=ZoneConfigurationMetric.POWER,
+            sport=Sport.RIDE,
+            valid_from=since,
+            threshold=252.0,
+            maximum=None,
+            resting=None,
+            limits=(139.0, 189.0, 227.0, 265.0, 302.0, 378.0),
+        ),
+        local_zone_configuration(
+            metric=ZoneConfigurationMetric.POWER,
+            sport=Sport.RUN,
+            valid_from=since,
+            threshold=238.0,
+            maximum=None,
+            resting=None,
+            limits=(167.0, 202.0, 238.0, 274.0, 321.0),
+        ),
+        local_zone_configuration(
+            metric=ZoneConfigurationMetric.PACE,
+            sport=Sport.RUN,
+            valid_from=since,
+            threshold=3.7,
+            maximum=None,
+            resting=None,
+            limits=(2.6, 3.1, 3.4, 3.7, 4.0, 4.4),
+        ),
+    )
+
+
+def _lt1_session_records(days: int) -> list[dict[str, Any]]:
+    """The curve records of the last sessions: one ride's best 20 minutes."""
+    return [
+        {
+            "date": (TODAY - timedelta(days=12)).isoformat(),
+            "sport": "ride",
+            "environment": "outdoor",
+            "power_profile": {
+                "duration_curve": [{"duration_seconds": 1200, "watts": 236}]
+            },
+        }
+    ]
+
+
+def _first_threshold_estimate() -> dict[str, Any] | None:
+    """The adopted-estimate view of four chest-strap runs at about 77 % of LTHR."""
+    sessions = [
+        SessionThreshold(TODAY - timedelta(days=age), bpm, DfaQuality.GOOD)
+        for age, bpm in ((6, 127.0), (15, 129.0), (24, 128.0), (33, 130.0))
+    ]
+    return estimate_view(
+        first_threshold_estimate(sessions, lambda _day: 168.0, TODAY), 168.0
+    )
+
+
+def _lt2_estimates() -> dict[str, Any]:
+    """The LT2 estimates as the service composes them: DFA-a1 crossings of three
+    hard runs and the withheld critical speed and power fits."""
+    windows = tuple(
+        DfaWindow(
+            start_s=30.0 * step,
+            heart_rate_bpm=150.0 + step / 2,
+            alpha1=round(0.75 - step * 0.00625, 4),
+            artifact_share=0.0,
+        )
+        for step in range(61)
+    )
+    stored = ActivityDfaAlpha1(
+        estimate_bpm=127.0,
+        windows=len(windows),
+        artifact_share=0.01,
+        quality=DfaQuality.GOOD,
+        method=3,
+        series=windows,
+    )
+    dfa = dfa_second_threshold(
+        [(TODAY - timedelta(days=age), stored) for age in (5, 14)],
+        TODAY,
+        first_threshold_bpm=129.0,
+    )
+    fits = [
+        {
+            "sport": sport,
+            "environment": "outdoor",
+            "status": "insufficient_data",
+            "reason": "Keine unabhängigen 3, 7, 12-Minuten-Belastungen in 42 Tagen.",
+        }
+        for sport in ("run", "ride")
+    ]
+    return {
+        "run": {
+            "dfa_alpha1": dfa,
+            "critical_speed": critical_second_threshold(fits, "run"),
+        },
+        "ride": {
+            "dfa_alpha1": {
+                "status": "unknown",
+                "reason": "nur aus Läufen",
+                "sessions": 0,
+            },
+            "critical_power": critical_second_threshold(fits, "ride"),
+        },
     }
 
 
 class _ProviderPerformanceReader(CoachPerformanceContextReader):
-    """current_performance through production's available path (#4323): synced
-    thresholds, form, recovery and sessions, and an adopted 129 bpm LT1, so the
-    budget measures what a real turn carries, not the unavailable shape."""
+    """current_performance through production's available path (#4323, #4325): a
+    synced Garmin athlete's thresholds, recovery, load and sessions, and an
+    adopted 129 bpm LT1, so the budget measures what a real turn carries, not
+    the unavailable shape."""
 
     def current_performance(self, canonical: Any = None) -> Any:
-        snapshot = _provider_snapshot()
-        inputs = replace(
-            canonical_from_snapshot(snapshot, TODAY),
-            recovery=recovery_only_inputs(
-                None, snapshot["recent_wellness"], snapshot=snapshot
-            ).recovery,
-        )
+        payload = _garmin_payload()
         return coach_performance_projection(
             current_performance_context(
-                GarminSyncStatus(),
+                garmin_sync_status(payload),
                 {
                     "timezone": "Europe/Berlin",
                     "first_threshold_hr": "129",
                     "first_threshold_origin": "estimated",
+                    "height_cm": 178,
+                    "sleep_target_hours": 8,
                 },
                 TODAY,
-                canonical=inputs,
+                canonical=_performance_inputs(payload),
                 session_feedback=self._session_feedback,
                 lt1_session_records=self._lt1_session_records,
                 chest_strap_max_hr=self._chest_strap_max_hr,
@@ -299,9 +630,14 @@ def _build_service() -> CoachTrainingContextService:
                 lambda: FixedActivityRows(_activities()),
                 coverage=lambda: StoredCoverage("2026-10-07T06:00:00+00:00"),
             ),
+            lt1_session_records=_lt1_session_records,
+            chest_strap_max_hr=lambda _since: (195.0, "2026-09-14"),
         ),
+        zone_configurations=_zone_configurations,
         planning_brief=lambda: {"weeks": "synthetic brief " * 400},
         today=lambda: TODAY,
+        first_threshold_estimate=_first_threshold_estimate,
+        lt2_estimates=_lt2_estimates,
     )
     library = Mock()
     library.list.return_value = []
@@ -392,18 +728,26 @@ def moved(kind: str) -> int:
 # mechanical re-baseline (orchestrator V12, option A, 2026-11-27): each kind keeps
 # exactly the raw headroom it had. #4325 pays it back: every character trimmed
 # from the dedupe of thresholds and recovery lowers these values, and freed room
-# is never spent elsewhere.
+# is never spent elsewhere. #4325 trimmed 634 characters from every kind with
+# the Garmin recovery section (thresholds once, one recovery block) and 329 from
+# nutrition_message (thresholds once). The fixture was corrected once more against
+# the 2.2.41 production counts (orchestrator V12 approval, 2026-11-27, #4325): a
+# synced Garmin athlete with sessions, zones and estimates; each kind's value rose
+# by exactly its measured growth. The plan kinds' 1 % then needed 36 more
+# characters than their unchanged raw headroom: the weather source_policy text
+# was trimmed by 51 and, as the one exception (orchestrator V12, option 2), those
+# characters were not taken off these values.
 PRODUCTION_SNAPSHOT_SHAPE: dict[str, int] = {
-    "session_analysis": 5_243,
-    "progress_review": 5_243,
-    "block_review": 5_243,
-    "plan_week": 3_318,
-    "plan_block": 3_318,
-    "adjust_week": 3_318,
-    "morning_checkin": 3_318,
-    "free_text_planning": 3_318,
-    "general_question": 3_318,
-    "nutrition_message": 3_318,
+    "session_analysis": 16_625,
+    "progress_review": 16_625,
+    "block_review": 16_625,
+    "plan_week": 11_891,
+    "plan_block": 11_891,
+    "adjust_week": 11_891,
+    "morning_checkin": 11_891,
+    "free_text_planning": 11_891,
+    "general_question": 11_891,
+    "nutrition_message": 13_081,
 }
 # Exact present sections and a character ceiling for each kind's dynamic part
 # (context JSON, library, closing note). Each base number plus

@@ -510,5 +510,5 @@ class CurrentBodyReadTests(unittest.TestCase):
         )
         weight = performance["metrics"]["weight_kg"]
         self.assertEqual((72.5, "aktuell"), (weight["value"], weight["source"]))
-        # The Coach's threshold weight is the same value.
-        self.assertEqual(72.5, performance["thresholds"]["weight"])
+        # The Coach reads the weight once, in metrics (#4325).
+        self.assertNotIn("weight", performance["thresholds"])
