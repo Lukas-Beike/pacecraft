@@ -6,6 +6,8 @@ const { contrastRatio, showCalendarEntry, openSessionDetails } = require("./help
 
 // #2530: WCAG AA text contrast of every main view and segment, collapsibles opened, in both themes.
 const THEMES = ["light", "dark"];
+// The widest screen the phone checks (touch targets, page overflow) apply to.
+const PHONE_MAX_WIDTH = 480;
 // [view label, route, calendar view]. One test per group and theme keeps each test short.
 const GROUPS = {
   "Coach und Kalender": [
@@ -190,6 +192,28 @@ async function expectStructure(page, view) {
   expect(found, `axe structure: ${found.join(" | ")}`).toEqual([]);
 }
 
+// #4347: on the phone no view is wider than the screen. A wider page shifts every view and surfaces in CI as a
+// timeout in an unrelated sweep, so the widest element reaching past the edge is named here instead.
+async function expectNoPageOverflow(page, view) {
+  // The configured screen width, not innerWidth: a mobile browser widens its layout viewport to the content.
+  // Only a phone has one; any wider screen has no limit here and needs no wait.
+  const { width } = page.viewportSize();
+  // Read after the layout has settled (the sweep's contrast scan waits for it too).
+  if (width <= PHONE_MAX_WIDTH) await waitForStableLayout(page);
+  const wide = await page.evaluate((screenWidth) => {
+    const scroll = document.documentElement.scrollWidth;
+    if (scroll <= screenWidth) return null;
+    // What a scroller, a table or a code block holds may be wider on purpose; it is never the culprit.
+    const scrolls = (element) => { for (let node = element.parentElement; node && node !== document.body; node = node.parentElement) if (getComputedStyle(node).overflowX !== "visible") return true; return false; };
+    const reaching = [...document.querySelectorAll("body *")].filter((element) => element.getBoundingClientRect().right > screenWidth && !scrolls(element));
+    const widest = reaching.reduce((best, element) => (element.getBoundingClientRect().width > (best?.getBoundingClientRect().width ?? 0) ? element : best), null);
+    const first = typeof widest?.className === "string" ? widest.className.trim().split(/\s+/)[0] : "";
+    const name = widest ? widest.tagName + (first && "." + first) : "no element past the screen";
+    return `page ${scroll} > ${screenWidth} (${name})`;
+  }, width <= PHONE_MAX_WIDTH ? width : Infinity);
+  expect(wide, `${view}: horizontal overflow`).toBeNull();
+}
+
 // #3935 X-03: on the phone every control that is not a link inside a sentence keeps a 44 px hit area.
 async function expectTouchTargets(page, view) {
   const small = await page.evaluate(() => {
@@ -306,11 +330,12 @@ test.describe("colour contrast sweep", () => {
         for (const [view, route, calendarView] of views) {
           await showView(page, route, calendarView);
           await applyTheme(page, theme);
+          await expectNoPageOverflow(page, view);
           await expectContrast(page, view, theme);
           if (route === "plan/overview" && !calendarView) await expectDetailsContrast(page, view, theme, "Synthetic completed");
           if (theme === "light") await expectTextFormats(page, view);
           if (theme === "light") await expectStructure(page, view);
-          if (theme === "light" && page.viewportSize().width <= 480) await expectTouchTargets(page, view);
+          if (theme === "light" && page.viewportSize().width <= PHONE_MAX_WIDTH) await expectTouchTargets(page, view);
           if (route === "analysis/running") {
             // One opened explanation popover, named so a new chart legend cannot change it (#2766).
             await page.locator(".panel.active").getByRole("button", { name: "Entwicklung: Informationen", exact: true }).click();
