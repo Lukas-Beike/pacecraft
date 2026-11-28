@@ -736,18 +736,20 @@ def moved(kind: str) -> int:
 # by exactly its measured growth. The plan kinds' 1 % then needed 36 more
 # characters than their unchanged raw headroom: the weather source_policy text
 # was trimmed by 51 and, as the one exception (orchestrator V12, option 2), those
-# characters were not taken off these values.
+# characters were not taken off these values. #4358 trimmed what the Coach
+# never reads or the turn already carries from the five largest blocks: 3,276
+# characters from the analysis and review kinds, 2,181 from every other kind.
 PRODUCTION_SNAPSHOT_SHAPE: dict[str, int] = {
-    "session_analysis": 16_625,
-    "progress_review": 16_625,
-    "block_review": 16_625,
-    "plan_week": 11_891,
-    "plan_block": 11_891,
-    "adjust_week": 11_891,
-    "morning_checkin": 11_891,
-    "free_text_planning": 11_891,
-    "general_question": 11_891,
-    "nutrition_message": 13_081,
+    "session_analysis": 13_349,
+    "progress_review": 13_349,
+    "block_review": 13_349,
+    "plan_week": 9_710,
+    "plan_block": 9_710,
+    "adjust_week": 9_710,
+    "morning_checkin": 9_710,
+    "free_text_planning": 9_710,
+    "general_question": 9_710,
+    "nutrition_message": 10_900,
 }
 # Exact present sections and a character ceiling for each kind's dynamic part
 # (context JSON, library, closing note). Each base number plus
@@ -896,6 +898,43 @@ class CoachContextBudgetTests(unittest.TestCase):
             sizes["total_other_kinds"], coach_context.coach_context_json_size(planning)
         )
         self.assertLess(sizes["total_other_kinds"], sizes["total"])
+
+    def test_the_coach_blocks_carry_no_unread_or_repeated_fields(self) -> None:
+        # #4358: dropped from the Coach's view only; labels and freshness stay.
+        current = self.measured["session_analysis"]["context"]["current_performance"]
+        for name, item in current["metrics"].items():
+            with self.subTest(metric=name):
+                self.assertTrue(item["source"])
+                self.assertFalse(
+                    {"fetched_at", "measurement_status", "measurement_age_days"}
+                    & set(item)
+                )
+        self.assertEqual("current", current["metrics"]["steps_7d"]["freshness"])
+        self.assertEqual("2026-10-07", current["metrics"]["steps_7d"]["observed_at"])
+        recovery = current["personal_recovery"]
+        self.assertNotIn("preferred_providers", recovery)
+        self.assertIn("Keine Diagnose", recovery["note"])
+        series = recovery["regularity"]["series"][0]
+        self.assertEqual("Garmin Connect", series["source"])
+        self.assertFalse({"method", "source_observed_at", "reason"} & set(series))
+        # Two series of one source keep the method that tells them apart.
+        pair = [{"source": "Garmin Connect", "method": name} for name in ("a", "b")]
+        self.assertEqual(
+            pair,
+            coach_context.coach_sleep_timing_projection({"series": pair})["series"],
+        )
+        focus = current["training_focus"]
+        self.assertTrue(focus["zones_method"].startswith("Zones the provider"))
+        self.assertTrue(all("method" not in row for row in focus["zones"]))
+        self.assertEqual(
+            {"freshness": "current", "observed_at": "2026-10-07"},
+            focus["category_freshness"]["activities"],
+        )
+        self.assertNotIn(None, current["comparisons"].values())
+        references = current["activity_validation"]["provider_references"]
+        self.assertEqual(7, len(references))
+        self.assertTrue(all("historical_comparison" not in row for row in references))
+        self.assertEqual("Garmin Connect", references[0]["source"])
 
     def test_a_given_structured_build_gives_the_identical_text(self) -> None:
         """The preview's one build yields the same text as the text's own build (#2966)."""
