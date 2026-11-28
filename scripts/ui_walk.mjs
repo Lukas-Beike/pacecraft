@@ -516,6 +516,13 @@ async function sawLabel(page, saw) {
   return ` (${label ?? saw.find(([, selector]) => !selector)?.[0] ?? "nothing"})`;
 }
 
+// Why an optional step skipped. A step without `each` has the page as its one candidate: "none of 1" would
+// read like a count of cards (#4348).
+async function skipReason(page, step, count) {
+  const found = step.each ? "none of " + count + " has it" : "not found";
+  return found + (await sawLabel(page, step.saw));
+}
+
 // One step: { status: ok|fail|skip, ms (interaction to ready, of the candidate that passed), why }.
 export async function runStep(page, { pre = [], post = [], unseek, ...step }, capMs = STEP_CAP_MS) {
   // After a restart the app reloads its data as each start sync ends, and a reload re-renders the view:
@@ -541,8 +548,7 @@ export async function runStep(page, { pre = [], post = [], unseek, ...step }, ca
     }
     // Nothing loaded and nothing empty: the data this step needs does not exist (info, not a failure).
     if (!empty) return { status: "skip", ms: 0, why: count ? "no stored data" : NO_SESSION };
-    // A step without `each` has the page as its one candidate: "none of 1" would read like a count of cards (#4348).
-    return step.optional ? { status: "skip", ms: 0, why: `${step.each ? `none of ${count} has it` : "not found"}${await sawLabel(page, step.saw)}` } : { status: "fail", ms: Date.now() - began, why: "missing or empty" };
+    return step.optional ? { status: "skip", ms: 0, why: await skipReason(page, step, count) } :{ status: "fail", ms: Date.now() - began, why: "missing or empty" };
   } catch (error) {
     return { status: "fail", ms: Date.now() - began, why: error.name === "TimeoutError" ? "control missing" : error.message.split("\n")[0] };
   } finally {
