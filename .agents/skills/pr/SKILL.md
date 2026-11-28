@@ -54,13 +54,8 @@ Copy this checklist into your response and tick it as you go:
 - A PR that adds or alters a user-visible function adds or updates its step in
   `STEPS` of `scripts/ui_walk.mjs`, or names in the description why it cannot
   be walked read-only (#3009).
-- **OpenSpec:** list `git diff --name-only --no-renames origin/develop...HEAD --
-  openspec/changes`. Each `openspec/changes/<name>/` path outside `archive/`
-  names a change that must be archived on this branch: its active directory is
-  gone at `HEAD`, an `archive/<date>-<name>/` exists, and
-  [spec-validate](../pacecraft-spec-validate/SKILL.md) `--all` passes.
-  Archive it under deliver-issue's rules if all tasks are done; otherwise stop
-  and report the open tasks.
+- **OpenSpec:** a path under `openspec/changes/<name>/` outside `archive/` in the diff names a
+  change that must be archived on this branch: [archive check](references/spec-checks.md).
 - **Spec drift:** when the branch archives no OpenSpec change, list the main
   specs that cite each changed file outside `tests/` and `openspec/`
   (application code, `Dockerfile`, `scripts/`, `.github/`, and so on):
@@ -105,30 +100,9 @@ act only on P0-P2 findings and real security gaps, and list the unfixed P3s in
 one summary line; guidelines may have exceptions, and hypothetical edge cases
 in prose are not findings.
 
-A change to a guard, a hook, or the checks they run (`scripts/hooks/`,
-`.githooks/`, `.claude/settings.json` hooks, an architecture or quality guard)
-also gets one adversarial bypass review before the PR (#3102).
-- Run it in a fresh-context subagent. Brief it only with the diff, the guard's
-  purpose, and that nothing it guarded may pass afterwards.
-- Ask for concrete inputs or commands the change wrongly allows or fails open
-  on, each with an expected result, and for the attacks it ruled out.
-- Add every valid case as a test before the PR.
-- For a hook that judges command text (`scripts/hooks/guard_*.py`), run
-  `python scripts/guard_regression_fuzz.py <hook> --base origin/develop` before
-  the bypass review; a tightening must show "0 newly allowed", and the PR body
-  states that line (#3527).
-- Report the result to whoever asked for the change. In the public PR text,
-  describe it neutrally ("tighten detection"), never as a step-by-step bypass.
-- Loosening a text guard (a hook that blocks guarded names in command text,
-  such as `scripts/hooks/guard_shell.py`) starts with a design question to the
-  orchestrator, or the user without one, before any code, and still gets the
-  bypass review above. Write the content with Write/Edit instead of adding a
-  shell exception: #3347 found a new bypass class in each of three review
-  rounds and kept the guard. An approved loosening is an allowlist of known
-  safe command shapes (such as a listed program with a listed subcommand, in
-  text every shell splits the same way) that falls back to the full check for
-  anything else, never a list of constructs to watch for: #3781 spent two
-  review rounds on such a list before it switched (#3791).
+A change to a guard, a hook, or the checks they run (`scripts/hooks/`, `.githooks/`,
+`.claude/settings.json` hooks, an architecture or quality guard) also gets one adversarial
+bypass review before the PR (#3102): [guard change](references/guard-change.md).
 
 Fix valid findings with new commits and rerun the affected checks, then push. A
 finding you consider invalid needs concrete evidence (file and line, or the
@@ -147,13 +121,8 @@ confirmation. List every unfixed finding with its reason in the PR body.
   [line-balance](../pacecraft-line-balance/SKILL.md). Name the issue with `Closes #N`, or `Part of #N` when more
   PRs follow; CI rejects a body with neither. Pass bodies with `--body-file`.
   Link the PR with the host's PR-linking tool when available.
-- While `develop` does not require up-to-date branches, a PR that adds or
-  tightens a repository-wide guard or contract test checks the open PRs each time
-  before (re-)enabling auto-merge: match its rule against their diffs
-  (`gh pr diff <n>`), or run the guard test on a local merge of a PR head when the
-  rule is not textual. For each match, comment on that PR, tell the orchestrator
-  (or the user), and keep auto-merge off until the match is fixed, or until that
-  PR merged and this branch is rebased so its own CI shows the result (#2645).
+- A PR that adds or tightens a repository-wide guard or contract test also checks the open PRs
+  before (re-)enabling auto-merge: [guard change](references/guard-change.md).
 - Then enable squash auto-merge with [pr-merge](../pacecraft-pr-merge/SKILL.md)
   `--wait 30` only when the base is `develop`, Gitar has reviewed the current
   head, and no feedback is open: review comments do not block an armed
@@ -191,12 +160,7 @@ cause as below. On each wake:
   armed it reports them as accepted, so do not rebase for that alone.
 - If the branch falls behind or conflicts, rebase and push with
   [branch-sync](../pacecraft-branch-sync/SKILL.md) `--push` (never a
-  merge-style "Update branch"). A stacked PR whose parent was merged: run
-  branch-sync `--after-pr <parent> --push`, which refuses on a stale base,
-  rebases only this layer, retargets to `develop`, waits a minute for the
-  retarget to settle and then pushes; two near-simultaneous events can leave
-  the required `SonarCloud Code Analysis` cancelled, and only a new push
-  re-runs it (pr-state names this; #2934, #3243).
+  merge-style "Update branch"). A stacked PR whose parent was merged: [stacked PR](references/stacked-pr.md).
 - If checks fail, read the logs, fix the cause, and push. The `Gitar` check is
   required (see `.github/AGENTS.md`); no bypass or admin merge without the user.
   Silent on one head: note the PR in #1906. Named silent repo-wide by pr-merge:

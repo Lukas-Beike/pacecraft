@@ -70,22 +70,9 @@ Design and UI questions come only with rendered mockups. Re-read the issue comme
 before a design or remote-write question (#4046); a request that is unclear or differs
 from a recorded decision (issue comments, epic, docs) is asked about before acting.
 
-When an orchestrator coordinates the run: ask it for the `AGENTS.md` turn before
-touching that file, follow its hold on a red `develop`, and report each closed
-issue or merged part with a one-line entry from
-[ledger-line](../pacecraft-ledger-line/SKILL.md), written after the `close` or
-`tick`, because it reads the issue's live state. Ask the athlete directly only
-in a turn the athlete started in this lane thread; otherwise report the question
-to the orchestrator with `t3_thread_send`, prefixed `ORCHESTRATOR:`, and
-write the same line as the first line of your final message; if the send was
-refused, say so there (#3753). The orchestrator asks it under its
-[athlete question rules](../pacecraft-orchestrator/SKILL.md#athlete-questions)
-and passes the answer back (#3376). Keep that item in the queue as parked and
-continue with the next independent one; with none left, report that the lane
-waits for the answer. A question that offers a default parks only its item:
-keep building every item that needs no decision, and end the run only when no
-ready work is left (#3669). Record the answer as an issue comment; no closing
-sentence while an item is parked.
+When an orchestrator coordinates the run, read [coordinated lane](references/coordinated-lane.md)
+first: the `AGENTS.md` turn, the hold on a red `develop`, the ledger line after each
+`close` or `tick`, and how a question reaches the athlete.
 
 ## 1. Requirements brief
 
@@ -112,31 +99,16 @@ A multi-part issue gets one PR per part with `Part of #N`, the last one
 Put the brief's acceptance criteria in the PR body; that is the spec for most
 issues. Without an OpenSpec change, still update the main specs in
 `openspec/specs/` directly when the issue changes behavior they describe; the
-`pr` workflow checks this. Use an OpenSpec change only for a larger feature: a new capability or a
-behavior change across several flows, or when the user asks for one. Then
-create it with the CLI (`npm run openspec -- new change <name>`, then
-`instructions <artifact> --change <name>`), keep it to a short proposal, the
-spec delta, and tasks you finish before merge (see the task rules in
-`openspec/config.yaml`), and reuse an existing change for the same work.
+`pr` workflow checks this. Use an OpenSpec change only for a larger feature (a new capability, a behavior change
+across several flows, or when the user asks): [OpenSpec change](references/openspec-change.md).
 
 ## 3. Implement and validate
 
 Implement with [Ponytail](../pacecraft-ponytail/SKILL.md) and the relevant domain
-owner. Before code or delegation for a change to the app start (bootstrap and
-device snapshot), device storage or a sync path, write a short design note naming
-its risks, record it and its approval as an issue comment, and hand the approved
-note to any implementer; the coordinating orchestrator approves it, the athlete
-a behaviour choice or when no orchestrator runs. A new remote write's note names
-how it handles a lost answer, concurrent requests for the same entity, a failure
-after the local commit, the provider's echo on the next refresh, an accepted
-write that cannot be read back, and a change made while writes are unavailable
-(#3417). Schema or migration changes go through
-[database migrations](../pacecraft-db-migrations/SKILL.md) and need the
-`AGENTS.md` evidence (populated upgrade from the frozen baseline and from production's schema, rollback
-on failure, same-build restart) before the PR. When a change derives state from
-data only the new code writes, cover the first state after an upgrade on
-existing data (adopt or backfill from durable data, or state why not) with a
-test on pre-existing data (#2673). A fix gets a regression test that
+owner. A change to the app start, device storage, a sync path or a remote write, a schema or
+migration, or one that derives state from data only the new code writes follows
+[risky changes](references/risky-changes.md) first (design note, schema evidence, the
+first state after an upgrade). A fix gets a regression test that
 fails before the change and extends an existing table or case; a
 behavior-preserving refactor first adds the golden or equality test on unchanged
 code. No test is weakened; if one changes form, the PR names the protection it
@@ -155,20 +127,8 @@ against the fixture before the push (#3416).
 Wait for a running suite or review inside the turn (poll its output until the
 verdict); never end a turn with that work in flight (#2735).
 
-If a change exists, close every task before archiving. Do the work, or, for a
-check this environment cannot run, run what is available, tick the task, and
-add the unavailable part to an `## Evidence gaps` section in `tasks.md` and the
-PR body. A failing check, or an acceptance criterion with no evidence at all,
-stays open and blocks delivery. Then confirm `completedTasks` equals
-`totalTasks` in `npm run openspec -- list --json`, run
-[spec-validate](../pacecraft-spec-validate/SKILL.md) `--change <name>`, and only then
-`npm run openspec -- archive <name> --yes`, which also updates the main specs;
-then delete the created `openspec/changes/archive/<date>-<name>` folder in the
-same PR (git history keeps it).
-`--yes` skips the CLI's incomplete-task prompt, so never run it before that
-check, and never use `--skip-specs` or `--no-validate`. Afterwards run
-spec-validate again: a delta that passed alone can
-push a merged requirement past the length limit. Commit the
+If a change exists, finish and archive it as [OpenSpec change](references/openspec-change.md)
+says before the PR. Commit the
 implementation, spec updates, and archive together with Conventional Commits.
 
 ## 4. PR through verified merge
