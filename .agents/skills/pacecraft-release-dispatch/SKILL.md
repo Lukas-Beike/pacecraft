@@ -26,9 +26,8 @@ running checks, then the green check runs; each wait has its own `--timeout`,
 and not quiet within it exits 3. A lasting GitHub error is a later look.
 
 `dispatch` starts `daily-release.yml` on `develop` (without `--version` the workflow
-picks the next patch; a `--version` with a release, tag or version PR exits 1 at once,
-before and after the waits, naming the next free one, #4369) and prints the run it
-started. `follow` prints one line per link: version PR, promotion PR to `main`, the
+picks the next patch; a taken `--version` exits 1 at once, naming the next free one, #4369)
+and prints the run. `follow` prints one line per link: version PR, promotion PR to `main`, the
 GitHub Release, and the `Test and publish container image` run. Once the version PR merged,
 `contains #a #b` lists the PRs merged after the previous version PR, so a late merge that
 missed the release shows. Exit 0 published, 1 a link failed (a PR closed unmerged, or the
