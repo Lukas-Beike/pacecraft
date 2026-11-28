@@ -193,14 +193,15 @@ async function expectStructure(page, view) {
 // #4347: on the phone no view is wider than the screen. A wider page shifts every view and surfaces in CI as a
 // timeout in an unrelated sweep, so the widest element reaching past the edge is named here instead.
 async function expectNoPageOverflow(page, view) {
-  const wide = await page.evaluate(() => {
-    const page = document.documentElement.scrollWidth;
-    if (page <= innerWidth) return null;
-    const reaching = [...document.querySelectorAll(".panel.active *")].filter((element) => element.getBoundingClientRect().right > innerWidth + 0.5);
+  // The configured screen width, not innerWidth: a mobile browser widens its layout viewport to the content.
+  const wide = await page.evaluate((screenWidth) => {
+    const scroll = document.documentElement.scrollWidth;
+    if (scroll <= screenWidth) return null;
+    const reaching = [...document.querySelectorAll(".panel.active *")].filter((element) => element.getBoundingClientRect().right > screenWidth + 0.5);
     const widest = reaching.reduce((best, element) => (element.getBoundingClientRect().width > (best?.getBoundingClientRect().width ?? 0) ? element : best), null);
     const first = typeof widest?.className === "string" ? widest.className.trim().split(/\s+/)[0] : "";
-    return `page ${page} > ${innerWidth} (${widest ? widest.tagName + (first ? "." + first : "") : "no element in the active view"})`;
-  });
+    return `page ${scroll} > ${screenWidth} (${widest ? widest.tagName + (first ? "." + first : "") : "no element in the active view"})`;
+  }, page.viewportSize().width);
   expect(wide, `${view}: horizontal overflow`).toBeNull();
 }
 
