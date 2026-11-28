@@ -183,14 +183,11 @@ class GuardHookTests(unittest.TestCase):
         self.assertEqual(self.decide(f"  {exact}\n"), 0)
         self.assertEqual(self.decide(exact, unchanged=False, err=err), 2)
         self.assertIn("matches origin/develop", err.getvalue())
-        # What the allow rule's prefix also lets start the script: more words, a
-        # chain after it, another interpreter spelling, a leading folder mark, and
-        # the wrappers and environment assignments the rule may strip.
+        # The exact call in the other spellings the allow rule matches: another
+        # interpreter spelling, a leading folder mark, a stream copy, and the wrappers
+        # and harmless environment assignments the rule may strip.
         for command in (
-            exact + " extra",
-            exact + " && echo done",
             exact + " 2>&1",
-            exact + "; echo done",
             "py scripts/resolve_review_thread.py 1 PRRT_x",
             "python3.14.exe ./scripts/resolve_review_thread.py 1 PRRT_x",
             "PYTHON scripts\\RESOLVE_REVIEW_THREAD.PY 1 PRRT_x",
@@ -203,9 +200,21 @@ class GuardHookTests(unittest.TestCase):
             with self.subTest(command):
                 self.assertEqual(self.decide(command), 0)
                 self.assertEqual(self.decide(command, unchanged=False), 2)
-        # A variable that changes what the script imports or runs blocks, as does
-        # any start the hook cannot place first.
+        # Every other command that holds the start blocks, changed checkout or not:
+        # more words, anything after it, a variable that changes what the script
+        # imports or runs, and any start the hook cannot place first.
         for command in (
+            exact + " extra",
+            exact + " && echo done",
+            exact + "; echo done",
+            # A second start after the first, and a separator hidden in a quote or
+            # a substitution before the start (second bypass review of #4289).
+            exact + " && cd /tmp/clone && " + exact,
+            exact + "; PYTHONPATH=/tmp/x " + exact,
+            exact + " ';' $(cp /tmp/evil.py scripts/resolve_review_thread.py)",
+            "X=$(cp /tmp/evil.py scripts/resolve_review_thread.py) " + exact,
+            "$(true) " + exact,
+            '"$(cmd)" ' + exact,
             "PYTHONPATH=/tmp/x " + exact,
             "PATH=/tmp/x:$PATH " + exact,
             "PYTHONSTARTUP=x.py " + exact,

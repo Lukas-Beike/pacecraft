@@ -5,16 +5,17 @@ a prompt (athlete decision #2629). The script checks its own preconditions
 (its pull request, its author, an unresolved thread, a reply naming a fix commit)
 and refuses otherwise, so this hook asks for two things only (#4289):
 
-- a command that starts `python scripts/resolve_review_thread.py` (the spelling
-  the allow rule matches, after the wrappers it strips) runs only while the script
-  and the `scripts/` modules it imports match origin/develop byte for byte and no
-  entry in `scripts/` can shadow one of them (#3072); a changed script has no
-  checks worth trusting. It runs first in the command: anything before it could
-  change what the check saw, so a later start blocks;
+- a command that holds the start `python scripts/resolve_review_thread.py` (the
+  spelling the allow rule matches) must be exactly that call, with at most a few
+  harmless wrappers and variables before it and `2>&1` after it, and it runs only
+  while the script and the `scripts/` modules it imports match origin/develop byte
+  for byte and no entry in `scripts/` can shadow one of them (#3072); a changed
+  script has no checks worth trusting, and whatever runs before, beside or around
+  the script in its command could change what the check saw;
 - a direct GraphQL resolve mutation through an API call blocks (#3759).
 
 No command is read for the script's name otherwise: read-only commands that
-mention it, globs, short names and other spellings pass, which three earlier
+mention the file, globs, short names and other spellings pass, which three earlier
 rounds of name recognition (#3759, #3982, #4155) kept blocking by mistake. Exit
 code 2 blocks the call; unreadable input blocks (#3367).
 """
@@ -28,27 +29,28 @@ import sys
 import unicodedata
 from pathlib import Path
 
-# The spelling the allow rule matches: a simple command that starts with
-# `python scripts/<name>`, after the wrappers and environment assignments the rule may
-# strip, whatever follows it. Read-only commands that only mention the path do not start
-# the script. Line breaks of every shell separate commands.
-SEPARATORS = re.compile(r"[;&|(`\n\r\x85  ]")
+# The spelling the allow rule matches: `python scripts/<name>`, after the wrappers and
+# environment assignments the rule may strip. Only the exact call runs; any other command
+# that holds this start blocks, since what runs before, beside or around the script could
+# change what the check saw. Commands that only mention the file (grep, git diff) do not
+# hold it.
 WRAPPER = (
-    r"(?:[\w.-]+=\S*|time|nohup|nice|timeout|stdbuf|env|command|exec|sudo"
-    r"|then|do|else|if|while|until|!|\{)\s+(?:-\S*\s+|\d+[smhd]?\s+)*"
+    r"(?:[\w.-]+=\S*|time|nohup|nice|timeout|stdbuf|env|command|exec|sudo|!)[ \t]+"
+    r"(?:-\S*[ \t]+|\d+[smhd]?[ \t]+)*"
 )
-INVOCATION = re.compile(
-    rf"(?P<pre>(?:{WRAPPER}){{0,4}})(?:py|python[\d.]*)(?:\.exe)?\s+(?:\./)?scripts[/\\]"
-    r"resolve_review_thread\.py(?![\w.-])",
+START = (
+    r"(?:py|python[\d.]*)(?:\.exe)?[ \t]+(?:\./)?scripts[/\\]"
+    r"resolve_review_thread\.py(?![\w.-])"
+)
+INVOCATION = re.compile(START, re.IGNORECASE)
+EXACT = re.compile(
+    rf"(?P<pre>(?:{WRAPPER}){{0,4}}){START}[ \t]+\d+[ \t]+PRRT_[A-Za-z0-9_-]+(?:[ \t]+2>&1)?",
     re.IGNORECASE,
 )
 # The only environment assignments that cannot change what the script imports or runs.
 HARMLESS_ENV = frozenset(
     {"PYTHONDONTWRITEBYTECODE", "PYTHONUNBUFFERED", "PYTHONUTF8", "PYTHONIOENCODING"}
 )
-# `2>&1` copies a stream; its `&` starts no job. What may follow the script in order.
-STREAM_COPY = re.compile(r"(?<=[\s\d])>&(?=[0-9-])")
-SEQUENCE = ("&&", "||", ";", "\n", "\r", "\x85", " ", " ")
 # Escapes of a name in a direct mutation: \xHH, \uHHHH, octal and PowerShell `u{H}.
 ESCAPE = re.compile(
     r"\\x([0-9a-f]{2})|\\u([0-9a-f]{4})|[\\`]u\{([0-9a-f]{1,6})\}|\\([0-7]{3})"
@@ -168,30 +170,16 @@ def unchanged() -> bool:
     )
 
 
-def invocation(command: str) -> str | None:
-    """ "first" when the command starts with the allow rule's spelling, "later" when
-    another simple command of it does, else None."""
-    text = STREAM_COPY.sub(">", command)
-    first, *later = SEPARATORS.split(text)
-    starts = INVOCATION.match(first.lstrip())
+def exact_call(command: str) -> bool | None:
+    """True for the one call that may run (a few harmless wrappers and variables
+    before it, nothing after it but a stream copy), False for any other command
+    that holds the start `python scripts/resolve_review_thread.py`, else None."""
+    exact = EXACT.fullmatch(command.strip())
+    if exact is None:
+        return False if INVOCATION.search(command) else None
     # Another variable (PYTHONPATH, PATH, ...) could load code from outside scripts/.
-    names = (
-        [word.split("=")[0] for word in starts["pre"].split() if "=" in word]
-        if starts
-        else []
-    )
-    # What follows the script's words must run after it: a substitution, a pipe or a
-    # background job in the same command runs before or beside it.
-    rest = text[len(first) :]
-    # A heredoc body and a continued line belong to the script's own command, and the
-    # shell expands them before the script starts.
-    joined = "<<" in first or first.rstrip().endswith("\\")
-    after = (not rest or rest.startswith(SEQUENCE)) and not joined
-    if starts and after and all(name.upper() in HARMLESS_ENV for name in names):
-        return "first"
-    return (
-        "later" if starts or any(INVOCATION.match(p.lstrip()) for p in later) else None
-    )
+    words = exact["pre"].split()
+    return all(w.split("=")[0].upper() in HARMLESS_ENV for w in words if "=" in w)
 
 
 def resolves_directly(command: str) -> bool:
@@ -235,12 +223,13 @@ def decide() -> int:
             file=sys.stderr,
         )
         return 2
-    where = invocation(command)
-    # Anything before the script in the same command could change what the check saw.
-    if where == "later" or (where == "first" and not unchanged()):
+    call = exact_call(command)
+    # Anything around the script in the same command could change what the check saw.
+    if call is False or (call and not unchanged()):
         print(
-            "Blocked: the review-thread resolve script runs alone, first in the "
-            "command, from a checkout whose scripts/ matches origin/develop (#2629).",
+            "Blocked: the review-thread resolve script runs only as "
+            "`python scripts/resolve_review_thread.py <pr> <PRRT_id>`, alone, from a "
+            "checkout whose scripts/ matches origin/develop (#2629).",
             file=sys.stderr,
         )
         return 2
