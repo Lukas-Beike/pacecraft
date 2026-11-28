@@ -220,6 +220,11 @@ class GuardHookTests(unittest.TestCase):
             exact + " & cp evil.py scripts/json.py",
             exact + " | cp evil.py scripts/json.py",
             exact + " |& cp evil.py scripts/json.py",
+            # Gitar on #4367: a heredoc body and a continued line join the script's command.
+            exact + " <<EOF\n$(cp evil.py scripts/json.py)\nEOF",
+            exact + " <<'EOF'\nbody\nEOF",
+            exact + " \\\n$(cp evil.py scripts/json.py)",
+            exact + " \\\nextra",
             "echo `" + exact + "`",
             "git commit -m 'fix\n" + exact + "'",
         ):

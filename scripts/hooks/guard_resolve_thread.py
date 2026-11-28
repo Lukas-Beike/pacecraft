@@ -183,7 +183,10 @@ def invocation(command: str) -> str | None:
     # What follows the script's words must run after it: a substitution, a pipe or a
     # background job in the same command runs before or beside it.
     rest = text[len(first) :]
-    after = not rest or rest.startswith(SEQUENCE)
+    # A heredoc body and a continued line belong to the script's own command, and the
+    # shell expands them before the script starts.
+    joined = "<<" in first or first.rstrip().endswith("\\")
+    after = (not rest or rest.startswith(SEQUENCE)) and not joined
     if starts and after and all(name.upper() in HARMLESS_ENV for name in names):
         return "first"
     return (
