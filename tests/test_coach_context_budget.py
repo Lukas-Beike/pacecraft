@@ -733,7 +733,10 @@ def moved(kind: str) -> int:
 # nutrition_message (thresholds once). The fixture was corrected once more against
 # the 2.2.41 production counts (orchestrator V12 approval, 2026-11-27, #4325): a
 # synced Garmin athlete with sessions, zones and estimates; each kind's value rose
-# by exactly its measured growth.
+# by exactly its measured growth. The plan kinds' 1 % then needed 36 more
+# characters than their unchanged raw headroom: the weather source_policy text
+# was trimmed by 51 and, as the one exception (orchestrator V12, option 2), those
+# characters were not taken off these values.
 PRODUCTION_SNAPSHOT_SHAPE: dict[str, int] = {
     "session_analysis": 16_625,
     "progress_review": 16_625,
