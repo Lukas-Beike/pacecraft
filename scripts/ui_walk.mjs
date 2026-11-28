@@ -280,7 +280,7 @@ const EARLIER_MONTH = { seek: 'button[aria-label="Vorheriger Monat"]', unseek: '
 const tab = (area, segment) => `a[data-${area}-segment="${segment}"]`;
 const detail = (name, covers, ready, kind, extra) => ({ view: "plan", name, covers, each: DONE, ...EARLIER, opens: [DETAILS_OPEN], ready, kind, absent: NO_DETAILS, ...extra });
 // What an optional step's skip names when the page still loads its data (#4348); its own fallback label follows.
-const STILL_LOADING = ["still loading", ".panel.active .loading-state, .panel.active [aria-busy='true']"];
+const STILL_LOADING = ["still loading", ".panel.active .loading-state"];
 export const STEPS = [
   { view: "coach", name: "Coach: Verlauf", covers: "Coach history", ready: "#messages [data-message-id]", kind: "text" },
   // The week review left Analyse for a card under the selected week (#3298). It is the first calendar
@@ -548,7 +548,7 @@ export async function runStep(page, { pre = [], post = [], unseek, ...step }, ca
     }
     // Nothing loaded and nothing empty: the data this step needs does not exist (info, not a failure).
     if (!empty) return { status: "skip", ms: 0, why: count ? "no stored data" : NO_SESSION };
-    return step.optional ? { status: "skip", ms: 0, why: await skipReason(page, step, count) } :{ status: "fail", ms: Date.now() - began, why: "missing or empty" };
+    return step.optional ? { status: "skip", ms: 0, why: await skipReason(page, step, count) } : { status: "fail", ms: Date.now() - began, why: "missing or empty" };
   } catch (error) {
     return { status: "fail", ms: Date.now() - began, why: error.name === "TimeoutError" ? "control missing" : error.message.split("\n")[0] };
   } finally {
