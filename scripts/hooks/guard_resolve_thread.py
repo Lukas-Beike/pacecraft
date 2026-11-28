@@ -34,9 +34,13 @@ from pathlib import Path
 # that holds this start blocks, since what runs before, beside or around the script could
 # change what the check saw. Commands that only mention the file (grep, git diff) do not
 # hold it.
+# Only what cannot change what the script imports or runs: four plain environment
+# assignments (a value of word characters, dots and dashes, never a substitution or
+# quote), `time`, `nohup`, `timeout <seconds>` and `!`; no option that takes a value
+# (`env -C`, `nice -n$(...)`) and no other variable.
 WRAPPER = (
-    r"(?:[\w.-]+=\S*|time|nohup|nice|timeout|stdbuf|env|command|exec|sudo|!)[ \t]+"
-    r"(?:-\S*[ \t]+|\d+[smhd]?[ \t]+)*"
+    r"(?:(?:PYTHONDONTWRITEBYTECODE|PYTHONUNBUFFERED|PYTHONUTF8|PYTHONIOENCODING)"
+    r"=[\w.-]*|nohup|time(?:[ \t]+-p)?|timeout[ \t]+\d+[smhd]?|!)[ \t]+"
 )
 START = (
     r"(?:py|python[\d.]*)(?:\.exe)?[ \t]+(?:\./)?scripts[/\\]"
@@ -44,12 +48,8 @@ START = (
 )
 INVOCATION = re.compile(START, re.IGNORECASE)
 EXACT = re.compile(
-    rf"(?P<pre>(?:{WRAPPER}){{0,4}}){START}[ \t]+\d+[ \t]+PRRT_[A-Za-z0-9_-]+(?:[ \t]+2>&1)?",
+    rf"(?:{WRAPPER}){{0,4}}{START}[ \t]+\d+[ \t]+PRRT_[A-Za-z0-9_-]+(?:[ \t]+2>&1)?",
     re.IGNORECASE,
-)
-# The only environment assignments that cannot change what the script imports or runs.
-HARMLESS_ENV = frozenset(
-    {"PYTHONDONTWRITEBYTECODE", "PYTHONUNBUFFERED", "PYTHONUTF8", "PYTHONIOENCODING"}
 )
 # Escapes of a name in a direct mutation: \xHH, \uHHHH, octal and PowerShell `u{H}.
 ESCAPE = re.compile(
@@ -174,12 +174,9 @@ def exact_call(command: str) -> bool | None:
     """True for the one call that may run (a few harmless wrappers and variables
     before it, nothing after it but a stream copy), False for any other command
     that holds the start `python scripts/resolve_review_thread.py`, else None."""
-    exact = EXACT.fullmatch(command.strip())
-    if exact is None:
-        return False if INVOCATION.search(command) else None
-    # Another variable (PYTHONPATH, PATH, ...) could load code from outside scripts/.
-    words = exact["pre"].split()
-    return all(w.split("=")[0].upper() in HARMLESS_ENV for w in words if "=" in w)
+    if EXACT.fullmatch(command.strip()):
+        return True
+    return False if INVOCATION.search(command) else None
 
 
 def resolves_directly(command: str) -> bool:

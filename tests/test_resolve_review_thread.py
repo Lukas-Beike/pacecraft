@@ -215,6 +215,18 @@ class GuardHookTests(unittest.TestCase):
             "X=$(cp /tmp/evil.py scripts/resolve_review_thread.py) " + exact,
             "$(true) " + exact,
             '"$(cmd)" ' + exact,
+            # Gitar on #4367: a harmless variable's value or a wrapper's option that
+            # runs code or moves the run, and wrappers that take such options.
+            "PYTHONUTF8=$(cp${IFS}evil.py${IFS}scripts/json.py) " + exact,
+            "PYTHONUTF8=`cp evil.py scripts/json.py` " + exact,
+            "PYTHONUTF8='a b' " + exact,
+            "nice -n$(cp evil.py scripts/json.py) " + exact,
+            "env --chdir=clone " + exact,
+            "env -C clone " + exact,
+            "env PYTHONPATH=/tmp/x " + exact,
+            "sudo " + exact,
+            "timeout -k$(cp evil.py scripts/json.py) 5 " + exact,
+            "timeout 5s -s KILL " + exact,
             "PYTHONPATH=/tmp/x " + exact,
             "PATH=/tmp/x:$PATH " + exact,
             "PYTHONSTARTUP=x.py " + exact,
