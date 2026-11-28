@@ -392,18 +392,20 @@ def moved(kind: str) -> int:
 # mechanical re-baseline (orchestrator V12, option A, 2026-11-27): each kind keeps
 # exactly the raw headroom it had. #4325 pays it back: every character trimmed
 # from the dedupe of thresholds and recovery lowers these values, and freed room
-# is never spent elsewhere.
+# is never spent elsewhere. #4325 trimmed 634 characters from every kind with
+# the Garmin recovery section (thresholds once, one recovery block) and 329 from
+# nutrition_message (thresholds once).
 PRODUCTION_SNAPSHOT_SHAPE: dict[str, int] = {
-    "session_analysis": 5_243,
-    "progress_review": 5_243,
-    "block_review": 5_243,
-    "plan_week": 3_318,
-    "plan_block": 3_318,
-    "adjust_week": 3_318,
-    "morning_checkin": 3_318,
-    "free_text_planning": 3_318,
-    "general_question": 3_318,
-    "nutrition_message": 3_318,
+    "session_analysis": 4_609,
+    "progress_review": 4_609,
+    "block_review": 4_609,
+    "plan_week": 2_684,
+    "plan_block": 2_684,
+    "adjust_week": 2_684,
+    "morning_checkin": 2_684,
+    "free_text_planning": 2_684,
+    "general_question": 2_684,
+    "nutrition_message": 2_989,
 }
 # Exact present sections and a character ceiling for each kind's dynamic part
 # (context JSON, library, closing note). Each base number plus

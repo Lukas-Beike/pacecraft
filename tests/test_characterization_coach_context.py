@@ -508,12 +508,12 @@ class CoachPerformanceReaderProvenanceTests(unittest.TestCase):
 
         result = reader.current_performance(_recovery(garmin, snapshot))
 
-        self.assertEqual(
-            result["metrics"]["cycling_ftp_watts"]["source"], GARMIN_SOURCE
-        )
-        self.assertNotIn("alternatives", result["metrics"]["cycling_ftp_watts"])
+        # Each threshold plans use carries its source in thresholds (#4325).
+        self.assertEqual(result["thresholds"]["ftp_source"], GARMIN_SOURCE)
+        self.assertNotIn("ftp_alternatives", result["thresholds"])
         self.assertIsNone(result["metrics"]["weight_kg"]["source"])
-        self.assertIsNone(result["metrics"]["bike_threshold_hr_bpm"]["source"])
+        self.assertIsNone(result["thresholds"]["lthr_source"])
+        self.assertNotIn("cycling_ftp_watts", result["metrics"])
         self.assertEqual(result["recovery"]["resting_hr_bpm_source"], GARMIN_SOURCE)
         self.assertEqual(result["recovery"]["hrv_ms_source"], GARMIN_SOURCE)
         self.assertEqual(result["recovery"]["sleep_score_source"], GARMIN_SOURCE)
@@ -531,7 +531,7 @@ class CoachPerformanceReaderProvenanceTests(unittest.TestCase):
 
         self.assertNotIn(VENDOR_SENTINEL, json.dumps(result, ensure_ascii=False))
 
-    def test_garmin_context_always_requests_the_performance_values(
+    def test_garmin_context_leaves_the_performance_values_to_current_performance(
         self,
     ) -> None:
         reader, garmin_projection = _performance_reader(
@@ -553,10 +553,9 @@ class CoachPerformanceReaderProvenanceTests(unittest.TestCase):
             {key: value for key, value in garmin_context.items() if key != "source"},
             {"recovery": {}},
         )
-        self.assertEqual(
-            garmin_projection.coach_context.call_args_list[0].kwargs,
-            {"include_performance": True},
-        )
+        # current_performance.metrics carries Garmin's values with their
+        # source; a second copy let the Coach mix them up (#4325).
+        self.assertEqual(garmin_projection.coach_context.call_args_list[0].kwargs, {})
 
 
 class CoachIntervalsProjectionTests(unittest.TestCase):
@@ -733,9 +732,7 @@ class CoachStructuredContextSwitchTests(unittest.TestCase):
 
         result = service.build()
 
-        garmin_projection.coach_context.assert_called_once_with(
-            include_performance=True
-        )
+        garmin_projection.coach_context.assert_called_once_with()
         self.assertTrue(result["current_performance"]["available"])
         self.assertEqual(
             result["current_performance"]["source"], STORED_PROVIDERS_SOURCE

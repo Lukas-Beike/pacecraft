@@ -11,9 +11,13 @@ from backend.coach.context import (
     CoachPerformanceContextReader,
     CoachPlanningContextReader,
     CoachStructuredContextService,
+    coach_single_recovery,
+    coach_single_thresholds,
 )
 from backend.coach.context_selection import select_coach_context
 from backend.performance.freshness import GarminSyncStatus
+from backend.performance.garmin_metrics import GARMIN_PERFORMANCE_SOURCE
+from backend.performance.recovery_context import GARMIN_WEEKLY_HRV_SOURCE
 from backend.planning.compact_activities import ActivitySummarySource
 
 # The coverage time is deliberately not the snapshot's own `synced_at`.
@@ -140,9 +144,9 @@ class CoachStructuredContextServiceTests(unittest.TestCase):
         self.weather_service.state.assert_called_once_with(
             self.planned_unit_service.list.return_value, refresh=False
         )
-        self.garmin_projection_service.coach_context.assert_called_once_with(
-            include_performance=True
-        )
+        # #4325: Garmin's performance values stay out of the recovery section;
+        # current_performance.metrics carries each with its source.
+        self.garmin_projection_service.coach_context.assert_called_once_with()
         # No canonical source is wired here, so there are no canonical values.
         self.assertEqual(result["current_performance"]["available"], False)
         self.assertEqual(
@@ -189,6 +193,89 @@ class CoachStructuredContextServiceTests(unittest.TestCase):
             result["source_policy"]["durable_profile"],
             "Vom Athleten bestätigte Werte, lokal in SQLite gespeichert",
         )
+
+    def test_each_threshold_plans_use_is_named_once_with_its_source(self) -> None:
+        # #4325: the Coach saw LTHR 165 (Garmin) and 163 (local) in two blocks.
+        def item(value: Any, source: str, note: str = "") -> dict[str, Any]:
+            return {"value": value, "unit": "bpm", "source": source, "note": note}
+
+        performance = {
+            "metrics": {
+                "cycling_ftp_watts": item(250, "Lokal"),
+                "max_hr_bpm": item(190, "Garmin Connect", "älter als 7 Tage"),
+                "bike_threshold_hr_bpm": item(160, "Garmin Connect"),
+                "run_threshold_hr_bpm": {
+                    **item(163, "Lokal"),
+                    "alternatives": [
+                        {
+                            "value": 165,
+                            "source": "Garmin Connect",
+                            "source_provider": "garmin",
+                        }
+                    ],
+                    "conflict": False,
+                },
+                "run_threshold_pace_seconds_per_km": item(270, "Garmin Connect"),
+                "weight_kg": item(70, "Lokal"),
+            },
+            "thresholds": {
+                "ftp_w": 250,
+                "ftp_source": "Lokal",
+                "max_hr": 190,
+                "lthr": 160,
+                "run_lthr": 163,
+                "weight": 70,
+            },
+        }
+        result = coach_single_thresholds(performance)
+        self.assertEqual(
+            set(result["metrics"]),
+            {"run_threshold_pace_seconds_per_km", "weight_kg"},
+        )
+        self.assertEqual(
+            result["thresholds"],
+            {
+                "ftp_w": 250,
+                "ftp_source": "Lokal",
+                "max_hr": 190,
+                "max_hr_source": "Garmin Connect",
+                "max_hr_note": "älter als 7 Tage",
+                "lthr": 160,
+                "lthr_source": "Garmin Connect",
+                "run_lthr": 163,
+                "run_lthr_source": "Lokal",
+                # The other provider's value stays visible, named once.
+                "run_lthr_alternatives": [{"source": "Garmin Connect", "value": 165}],
+                "run_lthr_conflict": False,
+            },
+        )
+
+    def test_one_recovery_block_unless_another_provider_supplies_a_value(
+        self,
+    ) -> None:
+        # #4325: the Garmin recovery section repeats Garmin's current values.
+        garmin_only = {
+            "resting_hr_bpm": 48,
+            "resting_hr_bpm_source": GARMIN_PERFORMANCE_SOURCE,
+            "hrv_ms": 62,
+            "hrv_ms_source": GARMIN_WEEKLY_HRV_SOURCE,
+            "sleep_hours": None,
+            "sleep_source": None,
+        }
+        wahoo_sleep = {**garmin_only, "sleep_hours": 7.5, "sleep_source": "Wahoo"}
+        for recovery, section, kept in (
+            (garmin_only, {"source": "Garmin"}, False),
+            (wahoo_sleep, {"source": "Garmin"}, True),
+            (garmin_only, None, True),
+        ):
+            with self.subTest(kept=kept, section=section is not None):
+                context = {
+                    "recovery": section,
+                    "current_performance": {"available": True, "recovery": recovery},
+                }
+                result = coach_single_recovery(context)
+                self.assertEqual("recovery" in result["current_performance"], kept)
+                self.assertTrue(result["current_performance"]["available"])
 
     def test_daily_context_gets_the_planned_units_and_no_snapshot(self) -> None:
         # Canonical reads (#1416): the daily planning context takes no snapshot.

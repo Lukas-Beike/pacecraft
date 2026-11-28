@@ -55,7 +55,9 @@ from backend.performance.canonical_inputs import (
     CanonicalPerformanceSource,
     inputs_for_snapshot,
 )
+from backend.performance.garmin_metrics import GARMIN_PERFORMANCE_SOURCE
 from backend.performance.load import SessionFeedback
+from backend.performance.recovery_context import GARMIN_WEEKLY_HRV_SOURCE
 from backend.performance.session_rpe_load import FeedbackLookup, feedback_by_session
 from backend.planning import adaptive as planning_adaptive
 from backend.planning import context as planning_context
@@ -624,6 +626,86 @@ def coach_weather_projection(weather: Any) -> Any:
     }
 
 
+# current_performance.thresholds key -> the metric it repeats (#4325).
+_THRESHOLD_METRICS = {
+    "ftp_w": "cycling_ftp_watts",
+    "max_hr": "max_hr_bpm",
+    "lthr": "bike_threshold_hr_bpm",
+    "run_lthr": "run_threshold_hr_bpm",
+}
+# The labels a Garmin recovery value carries in current_performance.recovery.
+_GARMIN_RECOVERY_LABELS = frozenset(
+    {GARMIN_PERFORMANCE_SOURCE, GARMIN_WEEKLY_HRV_SOURCE}
+)
+
+
+def coach_single_thresholds(performance: dict[str, Any]) -> dict[str, Any]:
+    """Name each threshold plans use once, in ``thresholds`` with its source.
+
+    The repeated metrics leave ``metrics``; their source and note move next to
+    the value, and FTP keeps its alternatives there already (#4325).
+    """
+    thresholds = performance.get("thresholds")
+    metrics = performance.get("metrics")
+    if not isinstance(thresholds, dict) or not isinstance(metrics, dict):
+        return performance
+    thresholds = dict(thresholds)
+    thresholds.pop("weight", None)
+    for key, name in _THRESHOLD_METRICS.items():
+        item = metrics.get(name)
+        if not isinstance(item, dict):
+            continue
+        prefix = "ftp" if key == "ftp_w" else key
+        thresholds[f"{prefix}_source"] = item.get("source")
+        if item.get("note"):
+            thresholds[f"{prefix}_note"] = item["note"]
+        # Other providers' values and a material conflict stay visible; FTP's
+        # come from coach_thresholds already.
+        if key != "ftp_w" and item.get("alternatives"):
+            thresholds[f"{prefix}_alternatives"] = [
+                {"source": alt.get("source"), "value": alt.get("value")}
+                for alt in item["alternatives"]
+            ]
+            thresholds[f"{prefix}_conflict"] = item.get("conflict")
+    return {
+        **performance,
+        "metrics": {
+            key: value
+            for key, value in metrics.items()
+            if key not in _THRESHOLD_METRICS.values()
+        },
+        "thresholds": thresholds,
+    }
+
+
+def coach_single_recovery(context: dict[str, Any]) -> dict[str, Any]:
+    """One recovery block per turn (#4325).
+
+    With the Garmin recovery section in the turn, current_performance.recovery
+    repeats it when every value there is Garmin's; it stays when another
+    provider supplies a value.
+    """
+    performance = context.get("current_performance")
+    if not isinstance(context.get("recovery"), dict) or not isinstance(
+        performance, dict
+    ):
+        return context
+    recovery = performance.get("recovery")
+    if not isinstance(recovery, dict):
+        return context
+    sources = {
+        value for key, value in recovery.items() if key.endswith("_source") and value
+    }
+    if not sources <= _GARMIN_RECOVERY_LABELS:
+        return context
+    return {
+        **context,
+        "current_performance": {
+            key: value for key, value in performance.items() if key != "recovery"
+        },
+    }
+
+
 def coach_performance_projection(performance: Any) -> Any:
     """Keep baseline and sleep timing summaries, without repeated per-day arrays.
 
@@ -634,6 +716,7 @@ def coach_performance_projection(performance: Any) -> Any:
     """
     if not isinstance(performance, dict):
         return performance
+    performance = coach_single_thresholds(performance)
     recovery = performance.get("personal_recovery")
     if not isinstance(recovery, dict):
         return performance
@@ -770,10 +853,10 @@ class CoachPerformanceContextReader:
         )
 
     def recovery(self) -> dict[str, Any]:
-        """The Garmin recovery section, with Garmin's performance values."""
-        projection = self._garmin_projection_service.coach_context(
-            include_performance=True
-        )
+        """The Garmin recovery section. Garmin's performance values are left out:
+        current_performance.metrics carries each with its source, and a second
+        Garmin copy let the Coach mix them with the values plans use (#4325)."""
+        projection = self._garmin_projection_service.coach_context()
         return {
             "source": _section_source(ProviderId.GARMIN, projection.get("synced_at")),
             **projection,
@@ -1055,7 +1138,7 @@ class CoachStructuredContextService:
                 "planned_rows": "local_planned_workouts ohne status: planned, ohne sync_status: local; hr_cap: gespeicherter Deckel, bpm am Tag der Einheit; daily_planning_context nennt dort gelistete Einheiten nur mit id und Startzeit",
                 "daily_planning_context": "Date-specific compact combination of planned sessions, recovery, Garmin daily health totals, day form, illness, athlete check-in, weather, and read-only calendar signals",
                 "activities": f"Letzte abgeschlossene Einheiten und Sportartensummen aus {SESSION_SOURCES_LABEL}; sie bleiben für die tatsächlich absolvierte Belastung maßgeblich",
-                "recovery": f"Aktuellster {garmin_label}-Recovery-Datensatz (Schlaf mit Nacht-SpO2, Atemfrequenz und Schlaf-HF samt 14-Tage-Mittel, HRV, Ruheherzfrequenz, Readiness, Body Battery); {garmin_label}-Leistungswerte unter performance",
+                "recovery": f"Aktuellster {garmin_label}-Recovery-Datensatz (Schlaf mit Nacht-SpO2, Atemfrequenz und Schlaf-HF samt 14-Tage-Mittel, HRV, Ruheherzfrequenz, Readiness, Body Battery)",
                 "durable_profile": "Vom Athleten bestätigte Werte, lokal in SQLite gespeichert",
                 "target_competitions": "Vom Athleten bestätigte Wettkämpfe, lokal in SQLite gespeichert",
                 "planning_brief": "Only for plan and week-adjustment requests: deterministic summary of the last weeks per sport from local activity records, the longest run of 30 days, session focus of upcoming units, next competitions, training_model and the server plan checks",
@@ -1571,6 +1654,7 @@ class CoachTrainingContextService:
         prompt_context = dict(structured_context)
         if selection:
             prompt_context = selection.project(prompt_context, local_date)
+        prompt_context = coach_single_recovery(prompt_context)
         local_planned_workouts = compact_coach_local_planned_workouts(
             prompt_context.get("local_planned_workouts"),
             limit=self._local_planned_limit,

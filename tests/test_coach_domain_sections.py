@@ -116,9 +116,8 @@ class CoachDomainSectionSourceTests(unittest.TestCase):
             Mock(), Mock(), projection_service, lambda: TODAY
         )
         result = reader.recovery()
-        projection_service.coach_context.assert_called_once_with(
-            include_performance=True
-        )
+        # Garmin's performance values live in current_performance (#4325).
+        projection_service.coach_context.assert_called_once_with()
         self.assertEqual(next(iter(result)), "source")
         self.assertEqual(
             result["source"],
