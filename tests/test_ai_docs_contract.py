@@ -202,6 +202,56 @@ class AiDocsContractTests(unittest.TestCase):
                     len(content.splitlines()), 15, "Stub holds workflow text"
                 )
 
+    def test_the_model_and_effort_rule_has_one_source(self) -> None:
+        # #4290: the orchestration skill states the tiers; the agent definitions, the
+        # thread hook and the other files agree with it and do not restate it.
+        skill = (
+            SKILL_ROOT / "orchestrated-plan-implementation" / "SKILL.md"
+        ).read_text(encoding="utf-8")
+        table = {
+            row[0]: row[2]
+            for line in skill.splitlines()
+            if line.startswith("| L")
+            for row in [[cell.strip() for cell in line.strip("|").split("|")]]
+        }
+        self.assertIn(
+            "Sonnet: `implementer` high, routine `reviewer` medium", table["L2"]
+        )
+        self.assertIn("Opus, at most medium", table["L3"])
+        self.assertIn("Haiku (low)", table["L1"])
+        pinned = {}
+        for name in ("explorer", "implementer", "reviewer"):
+            header = (ROOT / ".claude" / "agents" / f"{name}.md").read_text(
+                encoding="utf-8"
+            )
+            pinned[name] = tuple(
+                re.findall(rf"^{key}: (\w+)$", header, re.MULTILINE)[0]
+                for key in ("model", "effort")
+            )
+        self.assertEqual(
+            pinned,
+            {
+                "explorer": ("haiku", "low"),
+                "implementer": ("sonnet", "high"),
+                "reviewer": ("sonnet", "medium"),
+            },
+        )
+        # No thread may be launched above `high`, whatever a lane's own rule says.
+        rule = json.loads(
+            (ROOT / "scripts/hooks/thread-model-rule.json").read_text(encoding="utf-8")
+        )
+        self.assertLessEqual(set(rule["allowed"].values()), {"low", "medium", "high"})
+        for path in (
+            ROOT / "docs" / "development.md",
+            ROOT / "AGENTS.md",
+            ROOT / ".claude" / "agents" / "implementer.md",
+        ):
+            text = path.read_text(encoding="utf-8")
+            with self.subTest(path.name):
+                self.assertNotRegex(
+                    text, r"(Sonnet|Opus|Haiku)[^\n]{0,20}\b(low|medium|high)\b"
+                )
+
     def test_skills_stay_repository_local(self) -> None:
         self.assertTrue(SKILL_ROOT.is_dir(), SKILL_ROOT)
         self.assertTrue(SKILL_ROOT.resolve().is_relative_to(ROOT))
