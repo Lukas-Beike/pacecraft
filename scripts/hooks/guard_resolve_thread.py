@@ -32,12 +32,19 @@ from pathlib import Path
 # `python scripts/<name>`, after the wrappers and environment assignments the rule may
 # strip, whatever follows it. Read-only commands that only mention the path do not start
 # the script. Line breaks of every shell separate commands.
-SEPARATORS = re.compile(r"[;&|(\n\r\x85  ]")
-WRAPPER = r"(?:[\w.-]+=\S*|time|nohup|nice|timeout|stdbuf|env|command|exec)\s+(?:-\S*\s+|\d+[smhd]?\s+)*"
+SEPARATORS = re.compile(r"[;&|(`\n\r\x85  ]")
+WRAPPER = (
+    r"(?:[\w.-]+=\S*|time|nohup|nice|timeout|stdbuf|env|command|exec|sudo"
+    r"|then|do|else|if|while|until|!|\{)\s+(?:-\S*\s+|\d+[smhd]?\s+)*"
+)
 INVOCATION = re.compile(
-    rf"(?:{WRAPPER}){{0,4}}(?:py|python[\d.]*)(?:\.exe)?\s+(?:\./)?scripts[/\\]"
+    rf"(?P<pre>(?:{WRAPPER}){{0,4}})(?:py|python[\d.]*)(?:\.exe)?\s+(?:\./)?scripts[/\\]"
     r"resolve_review_thread\.py(?![\w.-])",
     re.IGNORECASE,
+)
+# The only environment assignments that cannot change what the script imports or runs.
+HARMLESS_ENV = frozenset(
+    {"PYTHONDONTWRITEBYTECODE", "PYTHONUNBUFFERED", "PYTHONUTF8", "PYTHONIOENCODING"}
 )
 # Escapes of a name in a direct mutation: \xHH, \uHHHH, octal and PowerShell `u{H}.
 ESCAPE = re.compile(
@@ -162,9 +169,18 @@ def invocation(command: str) -> str | None:
     """ "first" when the command starts with the allow rule's spelling, "later" when
     another simple command of it does, else None."""
     first, *later = SEPARATORS.split(command)
-    if INVOCATION.match(first.lstrip()):
+    starts = INVOCATION.match(first.lstrip())
+    # Another variable (PYTHONPATH, PATH, ...) could load code from outside scripts/.
+    names = (
+        [word.split("=")[0] for word in starts["pre"].split() if "=" in word]
+        if starts
+        else []
+    )
+    if starts and all(name.upper() in HARMLESS_ENV for name in names):
         return "first"
-    return "later" if any(INVOCATION.match(part.lstrip()) for part in later) else None
+    return (
+        "later" if starts or any(INVOCATION.match(p.lstrip()) for p in later) else None
+    )
 
 
 def resolves_directly(command: str) -> bool:

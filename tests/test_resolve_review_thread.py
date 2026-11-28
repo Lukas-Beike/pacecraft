@@ -194,12 +194,27 @@ class GuardHookTests(unittest.TestCase):
             "PYTHON scripts\\RESOLVE_REVIEW_THREAD.PY 1 PRRT_x",
             "timeout 60 " + exact,
             "nohup " + exact,
+            "! " + exact,
             "PYTHONDONTWRITEBYTECODE=1 " + exact,
-            "A=1 B=2 time -p " + exact,
+            "PYTHONUTF8=1 PYTHONUNBUFFERED=1 time -p " + exact,
         ):
             with self.subTest(command):
                 self.assertEqual(self.decide(command), 0)
                 self.assertEqual(self.decide(command, unchanged=False), 2)
+        # A variable that changes what the script imports or runs blocks, as does
+        # any start the hook cannot place first.
+        for command in (
+            "PYTHONPATH=/tmp/x " + exact,
+            "PATH=/tmp/x:$PATH " + exact,
+            "PYTHONSTARTUP=x.py " + exact,
+            "A=1 PYTHONHOME=/tmp/x " + exact,
+            "if true; then " + exact + "; fi",
+            "echo $(" + exact + ")",
+            "echo `" + exact + "`",
+            "git commit -m 'fix\n" + exact + "'",
+        ):
+            with self.subTest(command):
+                self.assertEqual(self.decide(command), 2)
         # Anything before the script could change what the check saw (a copied or
         # added module, another directory, PYTHONPATH, PATH): a start after it
         # blocks, changed checkout or not (bypass review of #4289).
