@@ -256,5 +256,5 @@ test("@responsive the release walk finds a logged meal's pencil and names a day 
   await page.route("**/api/nutrition/day**", (route) => route.fulfill({ json: { ok: true, date: DAY, entry_count: 0, entries: [] } }));
   await page.reload();
   await expect(page.locator("#nutritionEmptyDay")).toBeVisible();
-  expect(await runStep(page, step, 3000)).toMatchObject({ status: "skip", why: "none of 1 has it (no meal logged today)" });
+  expect(await runStep(page, step, 3000)).toMatchObject({ status: "skip", why: "not found (no meal logged today)" });
 });

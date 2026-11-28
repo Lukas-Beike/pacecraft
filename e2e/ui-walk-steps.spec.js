@@ -159,11 +159,18 @@ test("an optional step's skip names what the page showed instead of its element"
   };
   for (const [label, html] of Object.entries(cases)) {
     await page.setContent(html);
-    expect(await runStep(page, step, 300), label).toMatchObject({ status: "skip", why: `none of 1 has it (${label})` });
+    expect(await runStep(page, step, 300), label).toMatchObject({ status: "skip", why: `not found (${label})` });
   }
-  // A step without `saw` keeps its plain reason, and a shown tile still passes.
+  // A step without `saw` keeps its plain reason, and a shown tile still passes. A step without `each` has the page
+  // as its one candidate, so it reads "not found", never "none of 1 has it" (#4348).
   await page.setContent(cases["card missing"]);
-  expect(await runStep(page, { ...step, saw: undefined }, 300)).toMatchObject({ status: "skip", why: "none of 1 has it" });
+  expect(await runStep(page, { ...step, saw: undefined }, 300)).toMatchObject({ status: "skip", why: "not found" });
   await page.setContent(week('<section class="week-review"><div class="week-review-tile">8 Einheiten</div></section>'));
   expect((await runStep(page, step, 300)).status).toBe("ok");
+});
+
+test("every optional step names what the page showed when it skips: a saw list that ends with a fallback label (#4348)", async () => {
+  const { STEPS } = await import(pathToFileURL(path.join(__dirname, "..", "scripts", "ui_walk.mjs")).href);
+  const without = STEPS.filter((step) => step.optional && !(Array.isArray(step.saw) && step.saw.length && step.saw.at(-1)[1] === null && step.saw.at(-1)[0]));
+  expect(without.map((step) => step.name), "optional steps without a saw list ending in a label without a selector").toEqual([]);
 });
