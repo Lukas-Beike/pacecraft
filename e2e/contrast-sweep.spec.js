@@ -194,14 +194,17 @@ async function expectStructure(page, view) {
 // timeout in an unrelated sweep, so the widest element reaching past the edge is named here instead.
 async function expectNoPageOverflow(page, view) {
   // The configured screen width, not innerWidth: a mobile browser widens its layout viewport to the content.
+  // Only a phone has one; any wider screen has no limit here.
+  const { width } = page.viewportSize();
   const wide = await page.evaluate((screenWidth) => {
     const scroll = document.documentElement.scrollWidth;
     if (scroll <= screenWidth) return null;
     const reaching = [...document.querySelectorAll(".panel.active *")].filter((element) => element.getBoundingClientRect().right > screenWidth + 0.5);
     const widest = reaching.reduce((best, element) => (element.getBoundingClientRect().width > (best?.getBoundingClientRect().width ?? 0) ? element : best), null);
     const first = typeof widest?.className === "string" ? widest.className.trim().split(/\s+/)[0] : "";
-    return `page ${scroll} > ${screenWidth} (${widest ? widest.tagName + (first ? "." + first : "") : "no element in the active view"})`;
-  }, page.viewportSize().width);
+    const name = widest ? widest.tagName + (first && "." + first) : "no element in the active view";
+    return `page ${scroll} > ${screenWidth} (${name})`;
+  }, width <= 480 ? width : Infinity);
   expect(wide, `${view}: horizontal overflow`).toBeNull();
 }
 
@@ -321,7 +324,7 @@ test.describe("colour contrast sweep", () => {
         for (const [view, route, calendarView] of views) {
           await showView(page, route, calendarView);
           await applyTheme(page, theme);
-          if (page.viewportSize().width <= 480) await expectNoPageOverflow(page, view);
+          await expectNoPageOverflow(page, view);
           await expectContrast(page, view, theme);
           if (route === "plan/overview" && !calendarView) await expectDetailsContrast(page, view, theme, "Synthetic completed");
           if (theme === "light") await expectTextFormats(page, view);
