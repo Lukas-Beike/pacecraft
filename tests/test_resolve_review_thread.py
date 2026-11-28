@@ -9,7 +9,6 @@ import re
 import subprocess
 import sys
 import tempfile
-import time
 import unittest
 from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
@@ -156,9 +155,11 @@ class ResolveReviewThreadTests(unittest.TestCase):
 
 
 class GuardHookTests(unittest.TestCase):
-    def decide(self, command, unchanged=True, raw=None, err=None):
+    def decide(self, command, unchanged=True, raw=None, err=None, cwd=None):
         stdin = mock.Mock()
-        payload = json.dumps({"tool_input": {"command": command}})
+        payload = json.dumps(
+            {"tool_input": {"command": command}, "cwd": str(cwd or ROOT)}
+        )
         stdin.buffer.read.return_value = (payload if raw is None else raw).encode()
         with (
             mock.patch.object(guard.sys, "stdin", stdin),
@@ -175,52 +176,140 @@ class GuardHookTests(unittest.TestCase):
         )  # fmt: skip
         self.assertNotIn("Warning", loaded.stderr)
 
-    def test_padded_brackets_are_read_in_linear_time(self):
-        # #3507 review: each bracket scan is bounded, so 20 KB of `[`, `[.` or
-        # `[:` reads at once (a quadratic scan took minutes); a padding that
-        # stays open blocks.
-        for padding in ("[" * 20000, "[." * 10000, "[:" * 10000):
-            with self.subTest(padding[:2]):
-                started = time.monotonic()
-                guard.bracket_wildcards(f"echo '{padding}'; ls")
-                with self.assertRaises(guard.OverlongBracket):
-                    guard.bracket_wildcards(padding)
-                self.assertLess(time.monotonic() - started, 5)
-
-    def test_the_block_names_the_word_that_matched(self):
-        # #3459: a variable path still blocks (fail closed) and the message says
-        # why; the plain name keeps the plain message.
-        err = io.StringIO()
-        command = 'for f in a b; do git show "FETCH_HEAD:$f" > "$S/$f"; done'
-        self.assertEqual(self.decide(command, err=err), 2)
-        self.assertIn("Matched word `*/*` (variables read as `*`)", err.getvalue())
-        self.assertIn("spell the path out", err.getvalue())
-        err = io.StringIO()
-        self.assertEqual(
-            self.decide("python scripts/resolve_review_thread.py", err=err), 2
-        )
-        self.assertNotIn("Matched word", err.getvalue())
-        # #3509 (Gitar): a ripgrep block says what is blocked, not "spell it out".
-        err = io.StringIO()
-        self.assertEqual(self.decide("rg --pre python x scripts", err=err), 2)
-        self.assertIn("ripgrep's --pre, --hostname-bin", err.getvalue())
-        self.assertNotIn("spell the path out", err.getvalue())
-
-    def test_only_the_exact_call_from_an_unchanged_checkout_runs(self):
+    def test_the_exact_call_runs_only_from_an_unchanged_checkout(self):
+        # #4289: the one call the allow rule lets run without a prompt; the script
+        # checks its own preconditions, which a changed script cannot vouch for.
         exact = "python scripts/resolve_review_thread.py 2671 PRRT_a1"
+        err = io.StringIO()
         self.assertEqual(self.decide(exact), 0)
-        self.assertEqual(self.decide("git status"), 0)
-        self.assertEqual(self.decide(exact, unchanged=False), 2)
+        self.assertEqual(self.decide(f"  {exact}\n"), 0)
+        self.assertEqual(self.decide(exact, unchanged=False, err=err), 2)
+        self.assertIn("matches origin/develop", err.getvalue())
+        # Another working directory has another `scripts/` than the one checked: a
+        # directory the shell changed into (the hook reads the call's `cwd`), none
+        # given, or a sub-folder of the checkout.
+        other = tempfile.gettempdir()
+        for where in (other, str(ROOT / "scripts"), str(ROOT.parent)):
+            with self.subTest(where):
+                self.assertEqual(self.decide(exact, cwd=where), 2)
+        self.assertEqual(
+            self.decide(exact, raw=json.dumps({"tool_input": {"command": exact}})), 2
+        )
+        # The same directory spelled differently is the checkout.
+        self.assertEqual(self.decide(exact, cwd=str(ROOT / "scripts" / "..")), 0)
+        # Commands that do not hold the start do not care where they run.
+        self.assertEqual(self.decide("git status", cwd=other), 0)
+        # The exact call in the other spellings the allow rule matches: another
+        # interpreter spelling, a leading folder mark, a stream copy, and the wrappers
+        # and harmless environment assignments the rule may strip.
         for command in (
-            exact + "; gh api graphql -f query=mutation",
-            exact + " && rm -rf x",
-            exact + " $(gh pr merge 1)",
-            "python scripts/resolve_review_thread.py 2671 PRRT_a1 extra",
-            "python other/resolve_review_thread.py 2671 PRRT_a1",
-            "python -c 'import resolve_review_thread'",
+            exact + " 2>&1",
+            "py scripts/resolve_review_thread.py 1 PRRT_x",
+            "python3.14.exe ./scripts/resolve_review_thread.py 1 PRRT_x",
+            "PYTHON scripts\\RESOLVE_REVIEW_THREAD.PY 1 PRRT_x",
+            "timeout 60 " + exact,
+            "nohup " + exact,
+            "! " + exact,
+            "PYTHONDONTWRITEBYTECODE=1 " + exact,
+            "PYTHONUTF8=1 PYTHONUNBUFFERED=1 time -p " + exact,
+        ):
+            with self.subTest(command):
+                self.assertEqual(self.decide(command), 0)
+                self.assertEqual(self.decide(command, unchanged=False), 2)
+        # Every other command that holds the start blocks, changed checkout or not:
+        # more words, anything after it, a variable that changes what the script
+        # imports or runs, and any start the hook cannot place first.
+        for command in (
+            exact + " extra",
+            exact + " && echo done",
+            exact + "; echo done",
+            # A second start after the first, and a separator hidden in a quote or
+            # a substitution before the start (second bypass review of #4289).
+            exact + " && cd /tmp/clone && " + exact,
+            exact + "; PYTHONPATH=/tmp/x " + exact,
+            exact + " ';' $(cp /tmp/evil.py scripts/resolve_review_thread.py)",
+            "X=$(cp /tmp/evil.py scripts/resolve_review_thread.py) " + exact,
+            "$(true) " + exact,
+            '"$(cmd)" ' + exact,
+            # Gitar on #4367: a harmless variable's value or a wrapper's option that
+            # runs code or moves the run, and wrappers that take such options.
+            "PYTHONUTF8=$(cp${IFS}evil.py${IFS}scripts/json.py) " + exact,
+            "PYTHONUTF8=`cp evil.py scripts/json.py` " + exact,
+            "PYTHONUTF8='a b' " + exact,
+            "nice -n$(cp evil.py scripts/json.py) " + exact,
+            "env --chdir=clone " + exact,
+            "env -C clone " + exact,
+            "env PYTHONPATH=/tmp/x " + exact,
+            "sudo " + exact,
+            "timeout -k$(cp evil.py scripts/json.py) 5 " + exact,
+            "timeout 5s -s KILL " + exact,
+            "PYTHONPATH=/tmp/x " + exact,
+            "PATH=/tmp/x:$PATH " + exact,
+            "PYTHONSTARTUP=x.py " + exact,
+            "A=1 PYTHONHOME=/tmp/x " + exact,
+            "if true; then " + exact + "; fi",
+            "echo $(" + exact + ")",
+            # Gitar on #4367: what runs before or beside the script in its own command.
+            exact + " $(cp evil.py scripts/resolve_review_thread.py)",
+            exact + " `cp evil.py scripts/argparse.py`",
+            exact + " <(cp evil.py scripts/json.py)",
+            exact + " >(cp evil.py scripts/json.py)",
+            exact + " & cp evil.py scripts/json.py",
+            exact + " | cp evil.py scripts/json.py",
+            exact + " |& cp evil.py scripts/json.py",
+            # Gitar on #4367: a heredoc body and a continued line join the script's command.
+            exact + " <<EOF\n$(cp evil.py scripts/json.py)\nEOF",
+            exact + " <<'EOF'\nbody\nEOF",
+            exact + " \\\n$(cp evil.py scripts/json.py)",
+            exact + " \\\nextra",
+            "echo `" + exact + "`",
+            "git commit -m 'fix\n" + exact + "'",
         ):
             with self.subTest(command):
                 self.assertEqual(self.decide(command), 2)
+        # Anything before the script could change what the check saw (a copied or
+        # added module, another directory, PYTHONPATH, PATH): a start after it
+        # blocks, changed checkout or not (bypass review of #4289).
+        for command in (
+            "git status; " + exact,
+            "echo x | " + exact,
+            "(" + exact + ")",
+            "cp /tmp/x.py scripts/resolve_review_thread.py && " + exact,
+            "echo 'import os' > scripts/argparse.py; " + exact,
+            "cd ../other-worktree && " + exact,
+            "export PYTHONPATH=/tmp/x; " + exact,
+            "export PATH=/tmp/x:$PATH; " + exact,
+            "git checkout feature -- scripts; " + exact,
+            "Set-Content scripts/json.py x; " + exact,
+            "Get-Date\r" + exact,
+            "Get-Date " + exact,
+            "& " + exact,
+        ):
+            with self.subTest(command):
+                self.assertEqual(self.decide(command), 2)
+
+    def test_other_commands_are_not_read_for_the_scripts_name(self):
+        # Three rounds of name recognition (#3759, #3982, #4155) kept blocking
+        # read-only commands; the script refuses by its own checks, so a command
+        # that does not start the script with the allow rule's spelling and is no
+        # direct mutation passes, however it spells or mentions the script (#4289).
+        for command in (
+            "git status",
+            "git diff origin/develop -- scripts/resolve_review_thread.py",
+            "wc -l scripts/resolve_review_thread.py tests/test_resolve_review_thread.py",
+            "rg -n 'resolveReviewThread' scripts/*.py",
+            "cat scripts/resolve_*.py",
+            "python -m mypy scripts/*.py",
+            "git add scripts/*.py && git commit -m 'fix: resolve review thread'",
+            'for f in a b; do git show "FETCH_HEAD:$f" > "$S/$f"; done',
+            "python scripts/resolve_*.py 2671 PRRT_a1",
+            "python scripts/resolve_review_threa?.py 2671 PRRT_a1",
+            "python other/resolve_review_thread.py 2671 PRRT_a1",
+            "python -c 'import resolve_review_thread'",
+            "rg --pre cat x scripts",
+        ):
+            with self.subTest(command):
+                self.assertEqual(self.decide(command, unchanged=False), 0)
 
     def test_input_of_an_unexpected_shape_blocks(self):
         # Fails closed (#3367): only an object with a command string is read.
@@ -249,364 +338,6 @@ class GuardHookTests(unittest.TestCase):
             ):
                 self.assertEqual(guard.main(), 2)
 
-    def test_spelling_variants_of_the_script_name_block(self):
-        # Case, quoting, escapes, globs and short names all reach the same file
-        # (#3367); only the documented exact form runs.
-        for command in (
-            "python scripts/Resolve_Review_Thread.py 2671 PRRT_a1",
-            "PYTHON SCRIPTS/RESOLVE_REVIEW_THREAD.PY 2671 PRRT_a1",
-            "python scripts/resolve_'review'_thread.py 2671 PRRT_a1",
-            'python scripts/resolve_"review"_thread.py 2671 PRRT_a1',
-            "python scripts/resolve\\_review_thread.py 2671 PRRT_a1",
-            "python scripts\\resolve_review_thread.py 2671 PRRT_a1",
-            "python scripts/resolve_review_threa[d].py 2671 PRRT_a1",
-            "python scripts/resolve_review_threa[!x].py 2671 PRRT_a1",
-            "python scripts/resolve_review_threa[^x].py 2671 PRRT_a1",
-            "python scripts/resolve_review_thr?ad.py 2671 PRRT_a1",
-            "python scripts/resolve_*.py 2671 PRRT_a1",
-            "python scripts/r*d.py 2671 PRRT_a1",
-            "python scripts/*thread.py 2671 PRRT_a1",
-            "python scripts/resolve_review_{thread,x}.py 2671 PRRT_a1",
-            "python scripts/resolve_review_@(thread).py 2671 PRRT_a1",
-            "python scripts/RESOLV~1.PY 2671 PRRT_a1",
-            "cd scripts && python r* 2671 PRRT_a1",
-            "python -m resolve_review_threa? 2671 PRRT_a1",
-            "find scripts -name 'resolve*' -exec python {} 2671 PRRT_a1 ;",
-            "python s*/r*.py 2671 PRRT_a1",
-            "python scripts/resolve_review_threa[[:alpha:]].py 2671 PRRT_a1",
-            # #3507: bash collating symbols and equivalence classes.
-            "python scripts/[[.r.]]esolve_review_thread.py",
-            "python scripts/[[=r=]]esolve_review_thread.py",
-            "python scripts/resolve_review_threa[[.d.][.x.]].py",
-            "python scripts/r[[=e=]]solve_review_thread.py 2671 PRRT_a1",
-            # Bypass review of #3507: a top-level class, negated classes, `=`
-            # and `:` inside a class, and a class pattern spanning words.
-            "python scripts/[.r.]esolve_review_thread.py 1 PRRT_x",
-            "python scripts/[![.x.]]esolve_review_thread.py",
-            "python scripts/[^[=x=]]esolve_review_thread.py",
-            "python scripts/[![:digit:]]esolve_review_thread.py",
-            "python scripts/[=r=]esolve_review_thread.py",
-            "python scripts/[:r:]esolve_review_thread.py",
-            "echo [. ; python scripts/r?solve_review_thread.py 1 x.]",
-            "echo [= ; python scripts/r?solve_review_thread.py 1 x=]",
-            # Second round: an escaped or quoted `]` or separator inside a class,
-            # and an unclosed `[.`, `[=` or `[:` as a plain member.
-            *(
-                # Third round: also after a stray `[` in an earlier word.
-                f"{prefix}python scripts/resolve_review_th{spelling}ead.py"
-                for prefix in ("", "echo [ ; ", "echo a[b ; ", "x=[ ")
-                for spelling in (
-                    "[\\]r]",
-                    '["]"r]',
-                    "[$'\\x5d'r]",
-                    "[r[.]",
-                    "[r[=]",
-                    "[r[:]",
-                    "[\\ r]",
-                    "[';'r]",
-                    "[\\;r]",
-                    "['|'r]",
-                    "['('r]",
-                    "['<'r]",
-                )
-            ),
-            # Fourth round: a quoted `[` earlier is a literal, not an opener;
-            # an ANSI-C quote keeps its escapes; a padded class blocks.
-            "echo '['; python scripts/r[[.e.]]solve_review_thread.py 'x]'",
-            'echo "["; python scripts/r[[.e.]]solve_review_thread.py "x]"',
-            "echo '[' && python scripts/r[[=e=]]solve_review_thread.py 'x]'",
-            "a='['; python scripts/r[[.e.]]solve_review_thread.py b=']'",
-            "echo $'\\''; python scripts/r[[.e.]]solve_review_thread.py 'x]'",
-            "python scripts/r[" + "a" * 300 + "[.e.]]solve_review_thread.py",
-            # Gitar on #3517: a quote in a comment or a substitution desyncs
-            # the quote reading; the readings from each `[` read no quotes.
-            "echo x # it's\npython scripts/r[[.e.]]solve_review_thread.py 1 x",
-            'echo "$(echo "\'")"; python scripts/r[[.e.]]solve_review_thread.py 1 x',
-            "echo x # it's\npython scripts/r[' 'e]solve_review_thread.py",
-            "echo x # it's\necho [ ; python scripts/resolve_review_th[' 'r]ead.py",
-            "echo x # it's\npython scripts/r["
-            + "a" * 300
-            + "' 'e]solve_review_thread.py",
-            # Brackets swallowed again and again past the readings' work cap
-            # block where the shell runs the word.
-            "python '" + "[" * 4000 + "]'",
-            "python {scripts/r,x}*.py 2671 PRRT_a1",
-            "python scripts/@(resolve|x)_review_thread.py 2671 PRRT_a1",
-            "python scripts/@(res@(olve))_review_thread.py 2671 PRRT_a1",
-            "python $(ls scripts/r*) 2671 PRRT_a1",
-            "gci scripts -Filter:r*.py | % { python $_ 2671 PRRT_a1 }",
-            "gci scripts\\x,scripts\\r* | % { python $_ }",
-            "python C:scripts\\RESOLV~1.PY 2671 PRRT_a1",
-            "python scripts.\\RESOLV~1.PY\\. 2671 PRRT_a1",
-            "python scripts/RE1A2B~1.PY 2671 PRRT_a1",
-            "python scripts/resolve$''_review_thread.py 2671 PRRT_a1",
-            "python scripts/$'\\x72'esolve_review_thread.py 2671 PRRT_a1",
-            "python scripts/resolve_\\\nreview_thread.py 2671 PRRT_a1",
-            "cmd /c python scripts\\res^olve_review_thread.py 2671 PRRT_a1",
-            "python scripts/resolve_‘review’_thread.py 2671 PRRT_a1",
-            'python "scripts/resolve`u{5f}review_thread.py" 2671 PRRT_a1',
-            "python -c \"exec(open('scripts/resolve_' 'review_thread.py').read())\"",
-            "python -c \"import runpy; runpy.run_path('scripts/\\x72esolve_review_thread.py')\"",
-            "python -c \"__import__('\\N{LATIN SMALL LETTER R}esolve_review_thread')\"",
-            "python -c 'import ｒesolve_review_thread'",
-            "printf '\\N{'; python scripts/resolve_review_thread.py 2671 PRRT_a1; echo }",
-            "python scripts/\\U00000072esolve_review_thread.py 2671 PRRT_a1",
-            "for %f in (scripts\\RESOLV~?.PY) do python %f 2671 PRRT_a1",
-            'cmd /c for %f in ("scripts\\r<.py") do python %f',
-            'for %f in ("scripts::$INDEX_ALLOCATION\\r*") do python %f',
-            "cd scripts/x && python ../r* 2671 PRRT_a1",
-            "python ./r* 2671 PRRT_a1",
-            "cd scripts && python $PWD/r* 2671 PRRT_a1",
-            "cd scripts && python ${PWD}/r* 2671 PRRT_a1",
-            "cd scripts && python ~+/r* 2671 PRRT_a1",
-            "cd scripts && python %CD%\\r* 2671 PRRT_a1",
-            # #3509: quoted words a blank apart stay apart in bash; ripgrep's
-            # --pre and --hostname-bin run a program on the files it searches.
-            "python '-u' 'scripts/'resolve_review_threa?.py 1 PRRT_x",
-            "python 'x' 'scripts/'r?solve_review_thread.py",
-            "rg --pre=python x scripts",
-            'rg "--pre" python x .',
-            "/usr/bin/rg -n --hostname-bin=python x",
-            "ls; rg -l x --pre python scripts",
-            # Bypass review: quoted, pathed, expanded or indirect ripgrep runs.
-            "rg '--pre' 'python' x scripts",
-            "rg '--hostname-bin' 'python' x",
-            "C:\\tools\\rg.exe --pre python x scripts",
-            "a=`rg --pre python x scripts`",
-            "&{rg --pre python x scripts}",
-            "rg --pr${x}e python x scripts",
-            "rg --pr$@e python x scripts",
-            "o=--pre; rg $o python x scripts",
-            "x=rg; $x --pre python x scripts",
-            "echo --pre python x scripts | xargs rg",
-            "/usr/bin/r[g] --pre python x scripts",
-            "printf -- '--pre=python' > c; RIPGREP_CONFIG_PATH=c rg x scripts",
-            # Second round: empty substitutions and brace lists inside the option.
-            "rg --p$()re python x scripts",
-            "rg --p$(:)re python x scripts",
-            "rg --hostname$()-bin python x",
-            "export RIPGREP_CONFIG$()_PATH=c; rg x scripts",
-            "rg --{pre,pre} python x scripts",
-            # Gitar on #3523: every item of a brace list, and combined lists.
-            "rg --pr{etty,e} python x scripts",
-            "rg --{pretty,pre} python x scripts",
-            "rg --hostname{x,-bin}=python x",
-            "rg --{x,p}r{y,e} python x scripts",
-            # Gitar: a quoted or escaped blank inside a brace list.
-            "rg -{' ',-}pre python x scripts",
-            "rg -{\\ ,-}pre python x scripts",
-            # Gitar: a line continuation or a quoted line break in the list.
-            "rg -{\\\n,-}pre python x scripts",
-            "rg -{'\n',-}pre python x scripts",
-            # A brace expansion too large to read blocks.
-            "rg x --" + "{a,b}" * 20,
-            # #3648: a folder glob that can still reach scripts/ or its short
-            # name keeps blocking: a start of `scripts`, a tilde (8.3 name), a
-            # dot start (`..`), a trailing dot Windows drops, a bare wildcard.
-            "python scr*/r*.py 2671 PRRT_a1",
-            "python sc?ipts/r*.py 2671 PRRT_a1",
-            "python s[c]ripts/r*.py 2671 PRRT_a1",
-            "python script~1/r*.py 2671 PRRT_a1",
-            "python SCRIPT~1/resolv~1.py 2671 PRRT_a1",
-            "python sc*~1/r*.py 2671 PRRT_a1",
-            "cd scripts/x && python .*/r*.py 2671 PRRT_a1",
-            "python scripts.*/r*.py 2671 PRRT_a1",
-            "python */r*.py 2671 PRRT_a1",
-            "python ../*/r*.py 2671 PRRT_a1",
-            # Bypass review of #3648: a verbatim word that a substitution,
-            # pipe, eval or chained link rewrites before the shell globs it.
-            "w=qs*/res*.py; python ${w#q}",
-            "w=qs*/res*.py; python ${w:1}",
-            "w=x*/res*.py; python ${w/x/s}",
-            "set -- qs*/res*.py; python ${1#q}",
-            "read w <<< qs*/res*.py; python ${w#q}",
-            "python $(echo qs*/res*.py | tr -d q)",
-            "python $(echo qs*/res*.py | cut -c2-)",
-            "w=qs*/res*.py; eval python ${w#q}",
-            'w=qs*/res*.py; bash -c "python ${w#q}"',
-            "w=qs*/res*.py\npython ${w#q} 1 x",
-            "python (rvpa (echo qs*/res*.py).substring(1))",
-            "python (gci (echo qs*/res*.py).trimstart('q'))",
-            "$w = echo qs*/res*.py; python (rvpa $w.substring(1))",
-            "ln -s scripts abc; python abc*/r*.py",
-            "cmd /c mklink /j abc scripts && python abc*/r*.py",
-            "ln -s scripts abc\npython abc*/r*.py",
-            # Bypass reviews of #3759: a glob still counts wherever a program
-            # other than a known inert one, or a construct, can run a word.
-            "cat scripts/r*.py | python - 2671 PRRT_a1",
-            "echo 'python scripts/r*.py 2671 PRRT_a1' | bash",
-            "cp scripts/r*.py x.py && python x.py 2671 PRRT_a1",
-            "env -u FOO python scripts/r*.py 2671 PRRT_a1",
-            "timeout -s KILL 60 python scripts/r*.py 2671 PRRT_a1",
-            "/usr/bin/env python scripts/r*.py 2671 PRRT_a1",
-            "sudo -u root python scripts/r*.py 2671 PRRT_a1",
-            "uv run --with pkg python scripts/r*.py 2671 PRRT_a1",
-            "pypy3 scripts/r*.py 2671 PRRT_a1",
-            "python3.14t scripts/r*.py 2671 PRRT_a1",
-            "coverage run scripts/r*.py 2671 PRRT_a1",
-            "poetry run python scripts/r*.py 2671 PRRT_a1",
-            "git bisect run python scripts/r*.py 2671 PRRT_a1",
-            "git rebase --exec 'python scripts/r*.py 1 x' HEAD~1",
-            "git -c alias.x='!python scripts/r*.py' x",
-            "GIT_SSH_COMMAND='python scripts/r*.py' git fetch",
-            "python scripts/r*.py 2671 PRRT_a1 -m mypy",
-            "if true; then python scripts/r*.py 2671 PRRT_a1; fi",
-            "! python scripts/r*.py 2671 PRRT_a1",
-            "<# x #> python scripts/r*.py 2671 PRRT_a1",
-            'echo "C:\\"; python scripts/r*.py 2671 PRRT_a1; echo "D:\\"',
-            "awk 'BEGIN{system(\"python scripts/r*.py 1 x\")}'",
-            "$g = 'python'; & $g scripts/r*.py 2671 PRRT_a1",
-            "$cat scripts/r*.py",
-            "python $'scripts/resolve_review_\\x54hread.py' 2671 PRRT_a1",
-            "ls \\x27 ; python scripts/r*.py 1 PRRT_x ; ls \\x27",
-            "ls #'\npython scripts/r*.py 1 PRRT_x\nls #'",
-            "echo $'\\'\\'' ; python scripts/r*.py 1 PRRT_x #'",
-            "ls <# ' #> ; python scripts\\RESOLV~1.PY 1 PRRT_x ; ls <# ' #>",
-            "ls 'a’; python scripts\\RESOLV~1.PY 1 PRRT_x; ls ‘b'",
-            "ls C:\\; python scripts\\RESOLV~1.PY 1 PRRT_x",
-            "ls .\\| python scripts\\RESOLV~1.PY 1 PRRT_x",
-            "git config core.fsmonitor 'python scripts/r*.py 1 PRRT_x'",
-            "./ls scripts/r*.py",
-            "git bis''ect run python scripts/r*.py 1 PRRT_x",
-            "git rebase -xpython scripts/r*.py HEAD~1",
-            "git rebase --exe 'python scripts/r*.py' HEAD~1",
-            "git grep -Opython x scripts/r*.py",
-            "echo '' ; eval ls ';' python 'scripts/resolve_review_t*' 1 PRRT_abc",
-            "''eval ls ';' python scripts/r*.py 1 PRRT_abc",
-            "python -m mypy --python-executable scripts/r*.py x.py",
-            "ls\rpython scripts/r*.py 1 PRRT_abc",
-            "ls'/../x' scripts/r*.py 1 PRRT_abc",
-            'cat"" scripts/r*.py',
-            "j'ython' scripts/r*.py 1 PRRT_abc",
-            "uni'x' scripts/r*.py",
-            # #3982 advisor: a heredoc named like an inert program, whose body's
-            # lone quote pairs across lines in this reading.
-            (
-                "cat <<true\necho '\ntrue\npython scripts/resolve_review_threa?.py 1 PRRT_x\n"
-                "cat <<true\necho '\ntrue"
-            ),
-            # #4155: a heredoc's body is skipped only when bash keeps it literal and
-            # the rest is inert; here the lines after `<<` run, or feed a runner.
-            "echo \"<<'EOF'\"\npython scripts/r*.py 1 PRRT_x\nEOF",
-            "echo \\<<'EOF'\npython scripts/r*.py 1 PRRT_x\nEOF",
-            "echo # <<'EOF'\npython scripts/r*.py 1 PRRT_x\nEOF",
-            "echo '\n<<'EOF'\npython scripts/r*.py 1 PRRT_x\nEOF",
-            "cat <<EOF\n$(python scripts/r*.py 1 PRRT_x)\nEOF",
-            "bash <<'EOF'\npython scripts/r*.py 1 PRRT_x\nEOF",
-            "cat <<'EOF' | bash\npython scripts/r*.py 1 PRRT_x\nEOF",
-            "python - <<'EOF'\nimport runpy; runpy.run_path(next(__import__('glob').iglob('scripts/r*.py')))\nEOF",
-            "cat > f <<'EOF'\nx\nEOF\npython scripts/r*.py 1 PRRT_x",
-            "cat > f <<'EOF'\nx\nEOF \npython scripts/r*.py 1 PRRT_x",
-            "cat <<'EOF' <<'END'\nx\nEOF\nEND\npython scripts/r*.py 1 PRRT_x",
-            "cat scripts/*; python scripts/*/r*.py 1 PRRT_x",
-            # git grep runs a program only through -O/--open-files-in-pager.
-            "git grep -O python x scripts/r*.py",
-            "git grep -Opython x scripts/r*.py",
-            "git grep --open-files-in-pager=python x scripts/r*.py",
-            "git grep --open python x scripts/r*.py",
-            "git grep -nOpython x -- 'scripts/r*'",
-            "git grep --op=python x -- 'scripts/r*'",
-            "git grep -[O]python x -- 'scripts/r*'",
-            "(( ls <<'EOF' ))\npython scripts/r*.py 1 PRRT_x\nEOF",
-            'cat <<\'echo\' "\n" ; python scripts/r*.py 1 PRRT_x ; echo "\necho\n"\necho',
-            "echo @'\nx'\n<<'EOF'\n'@ ; python scripts/r*.py 1 PRRT_x\nEOF",
-            # #4155: a double-quoted pattern keeps the old rule (1b declined).
-            'git grep -n "planning_store\\.\\(insert\\|update\\)[a-z_]*" -- backend',
-            # #3982: a single-quoted inside is read literally, nothing else is.
-            "grep 'x’ ; python scripts/r*.py 1 PRRT_x ; grep ‘y' f",
-            "grep $'\\x27' f; python scripts/r*.py 1 PRRT_x; grep $'\\x27' f",
-            'grep "\'" f; python scripts/r*.py 1 PRRT_x; grep "\'" f',
-            # A single-quoted run glued to a word keeps its inside read (fuzz).
-            "cat scripts/RESOLV~1.p'\\'y",
-            "echo 'a\\' ; python scripts/r*.py 1 PRRT_x ; echo '\\'",
-            'echo "x\\" \'y" ; python scripts/r*.py 1 PRRT_x ; echo "\' z"',
-            "grep '\r' f\rpython scripts/r*.py 1 PRRT_x",
-            # sed only as `sed -n 'N[,M]p'` with plain non-option words after it.
-            "sed -n '1p' -e 'e python scripts/r*.py 1 PRRT_x' f",
-            "sed -n '1p' --expression='e python scripts/r*.py' f",
-            "sed -ni '1p' f; python scripts/r*.py 1 PRRT_x",
-            "sed -n '1p;e python scripts/r*.py 1 PRRT_x' f",
-            "sed -n '1p' 'f' ; python scripts/r*.py 1 PRRT_x",
-            "sed -n '1p' f; python scripts/r*.py 1 PRRT_x",
-            "sed -n '1p' f\x00sed scripts/r*.py",
-            # #3982 bypass review: a glob in sed's files can expand to an option.
-            "sed -n '1p' scripts/r*.py",
-            # #4091 gate: a sed shape that is a redirection's target starts no command.
-            "> sed -n '5p' ls scripts/r*.py",
-            "ls x 2> sed -n '5p' scripts/r*.py",
-            "< sed -n '5p' ls scripts/r*.py",
-            "touch -- '--expression=1e python scripts/r*.py 1 PRRT_x' a; sed -n '1p' *",
-            # Quote marks the shells do not read as ours: fullwidth ones NFKC
-            # turns into quotes, and PowerShell's low-9 and reversed ones.
-            "echo ＇a ; python scripts/r*.py 1 PRRT_x ; echo b＇",
-            "echo ＂x ; python scripts/RESOLV~1.PY 1 PRRT_x ; echo y＂",
-            "echo 'a‚ ; python scripts/RESOLV~1.PY 1 PRRT_x ; echo ‚b'",
-            "echo 'a‛ ; python scripts/RESOLV~1.PY 1 PRRT_x ; echo „b'",
-            "echo a python scripts/RESOLV~1.PY 1 PRRT_x",
-        ):
-            with self.subTest(command):
-                self.assertEqual(self.decide(command), 2)
-        # Globs and names that cannot reach the script stay as they were.
-        for command in (
-            "node --test tests/*.cjs",
-            "git diff -- openspec/specs/*/spec.md",
-            "python scripts/release_dispatch.py follow",
-            "ls tests/test_?.py",
-            "for f in tests/*.py; do echo $f; done",
-            "gh pr list -q '.[] | {n: .number}'",
-            "awk '{print $1, $2}' notes.txt",
-            "find . -name '*.py'",
-            "ls *",
-            "git commit -m 'fix: resolve review thread hook'",
-            "grep -n resolveReviewThread docs/notes.md",
-            'echo "costs \\$5 or \\${x}" > notes.txt',
-            "git log -1 > notes.txt 2>&1",
-            # Gitar on #3517: many brackets or a long open one in ordinary
-            # commands neither block nor cost one reading per bracket.
-            "echo " + "[a]" * 300,
-            "python - <<'EOF'\n" + "x = [1, [2]]\n" * 300 + "EOF",
-            'git commit -m "fix: [' + "words " * 60 + '"',
-            "rg -n 'pre' docs",
-            "rg -n x --pretty docs",
-            "npm install --prefix tools",
-            # Brace lists without `-` or `_` cannot spell a ripgrep option and
-            # stay unexpanded; long commands stay within the budget (#3509).
-            "echo " + "{a,b}" * 20,
-            "cat <<'EOF'\n" + '{"key":1,"other":2}\n' * 4000 + "EOF",
-            "python - <<'EOF'\n# it's a test\n"
-            + "row = {'first_key': 1, 'second_key': 2}\n" * 4000
-            + "EOF",
-            "git log --pretty=oneline",
-            # #3648: a folder glob whose literal start is not a start of
-            # `scripts` can never be its folder.
-            "grep -n x backend/providers/garmin*/*.py",
-            "ls docs/perf*/m1*.md",
-            "gh pr view 1 --json state -q '.state+\" \"+.title'",
-            # #3759: globs and variables in words the shell does not run.
-            "git add scripts/*.py",
-            "ls scripts/*.py",
-            "ruff format --check scripts/*.py",
-            "python -m mypy scripts/*.py",
-            "git ls-files 'scripts/*'",
-            'echo "$a/$b"',
-            'cp "$src"/* "$dst"/',
-            "ls $d/*",
-            "ls */*.py",
-            'gh run list -q \'.[] | .name+" "+(.conclusion//"-")\'',
-            "echo '" + "[" * 4000 + "]'",
-            # #4155: git grep is inert; its single-quoted pattern is literal (1a).
-            "git grep -n 'planning_store\\.\\(insert\\|update\\)[a-z_]*' -- backend",
-            # #4155: a quoted-delimiter heredoc written to a file is literal text.
-            "cat > body.md <<'EOF'\nGlobs such as */* or scripts/r*.py are text here.\nEOF",
-            'cat > body.md <<"EOF"\nscripts/*/r*.py\nEOF\ngit status',
-            # #3982: quoted grep patterns and a printed line range are no paths.
-            "sed -n '10,40p' backend/performance/threshold_staleness.py | grep -n '\"[a-z_]*\":'",
-            "grep -n 'within the weeks ahead.\\s*$' docs/features.md",
-            "sed -n '1,80p' test.log | grep -v '^\\s*\\^*$\\|~~~'",
-        ):
-            with self.subTest(command):
-                self.assertEqual(self.decide(command), 0)
-
     def test_the_direct_resolve_mutation_blocks(self):
         # #3759: the resolve mutation runs only inside the script.
         err = io.StringIO()
@@ -622,6 +353,11 @@ class GuardHookTests(unittest.TestCase):
             't=Thread; gh api graphql -f query="mutation{resolveReview$t(input:{})}"',
             'curl https://api.github.com/graphql -d \'{"query":"resolveReviewThread"}\'',
             "gh api graphql -f query='mutation{resolveReview\\u0054hread(input:{})}'",
+            # Escapes of the name's letters, and pieces a shell or PowerShell joins.
+            "gh api graphql -f query=$'mutation{\\x72esolveReviewThread(input:{})}'",
+            "gh api graphql -f query=$'mutation{\\162esolveReviewThread(input:{})}'",
+            'gh api graphql -f query="mutation{`u{72}esolveReviewThread(input:{})}"',
+            "irm https://api.github.com/graphql -Body ('mutation{' + 'resolve' + 'ReviewThread(input:{})}')",
         ):
             with self.subTest(command):
                 self.assertEqual(self.decide(command), 2)

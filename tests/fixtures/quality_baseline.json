@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "base": "429e622726b504c88ce85cc210113747229bf8b0",
+  "base": "d7b6f9d265f0bab8b2f36ba2f1f80643308e2c52",
   "versions": {
     "ruff": "0.17.6",
     "mypy": "2.4.1"
@@ -1592,12 +1592,6 @@
     },
     {
       "tool": "eslint",
-      "path": "scripts/hooks/guard_resolve_thread.py",
-      "code": "sonarjs/regex-complexity",
-      "message_sha256": "2f6d5590bc3f6e6189dc1a7308e1df410a83c478ab92d722b36cc1e8a6917df2"
-    },
-    {
-      "tool": "eslint",
       "path": "tests/provider_coupling.py",
       "code": "sonarjs/regex-complexity",
       "message_sha256": "3bb8b51af075215f9c6bdb77cafd65a863428eb850401e88c31e65ae82dbe360"
@@ -1673,12 +1667,6 @@
       "path": "tests/coach_live_eval.py",
       "code": "sonarjs/regex-complexity",
       "message_sha256": "dc56e59e51be245ef9ad2fa3243e766655db163f11b0f1f682bd1f9da8f88783"
-    },
-    {
-      "tool": "eslint",
-      "path": "scripts/hooks/guard_resolve_thread.py",
-      "code": "sonarjs/regex-complexity",
-      "message_sha256": "e14566fc8b2667005a8064f231031b58eeca8b5912c6d62e0e670a4fa6279dfd"
     },
     {
       "tool": "eslint",
@@ -2197,7 +2185,7 @@
     ".agents/skills/pacecraft-release-contains/SKILL.md": 19,
     ".agents/skills/pacecraft-release-dispatch/SKILL.md": 48,
     ".agents/skills/pacecraft-release-unraid/SKILL.md": 76,
-    ".agents/skills/pacecraft-resolve-thread/SKILL.md": 35,
+    ".agents/skills/pacecraft-resolve-thread/SKILL.md": 27,
     ".agents/skills/pacecraft-retro/SKILL.md": 184,
     ".agents/skills/pacecraft-run-tests-changed/SKILL.md": 52,
     ".agents/skills/pacecraft-skill-evaluation/SKILL.md": 90,
