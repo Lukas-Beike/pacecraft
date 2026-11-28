@@ -2143,7 +2143,7 @@
     "public/AGENTS.md": 466,
     "tests/AGENTS.md": 542,
     ".agents/skills/code-review/SKILL.md": 893,
-    ".agents/skills/deliver-issue/SKILL.md": 2025,
+    ".agents/skills/deliver-issue/SKILL.md": 1549,
     ".agents/skills/next-issue/SKILL.md": 486,
     ".agents/skills/openspec-apply-change/SKILL.md": 1638,
     ".agents/skills/openspec-archive-change/SKILL.md": 2715,
@@ -2196,6 +2196,6 @@
     ".agents/skills/pacecraft-ui-walk/SKILL.md": 1153,
     ".agents/skills/pacecraft-validation/SKILL.md": 1119,
     ".agents/skills/pacecraft-worktree-prune/SKILL.md": 256,
-    ".agents/skills/pr/SKILL.md": 2428
+    ".agents/skills/pr/SKILL.md": 2016
   }
 }
