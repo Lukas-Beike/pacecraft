@@ -716,11 +716,14 @@ def coach_performance_projection(performance: Any) -> Any:
     """
     if not isinstance(performance, dict):
         return performance
-    performance = coach_single_thresholds(performance)
+    performance = coach_trimmed_blocks(coach_single_thresholds(performance))
     recovery = performance.get("personal_recovery")
     if not isinstance(recovery, dict):
         return performance
-    projected_recovery = dict(recovery)
+    # A code-constant table; every value already names its source (#4358).
+    projected_recovery = {
+        key: value for key, value in recovery.items() if key != "preferred_providers"
+    }
     baselines = recovery.get("baselines")
     if isinstance(baselines, list):
         projected_recovery["baselines"] = [
@@ -737,6 +740,90 @@ def coach_performance_projection(performance: Any) -> Any:
     if isinstance(regularity, dict):
         projected_recovery["regularity"] = coach_sleep_timing_projection(regularity)
     return {**performance, "personal_recovery": projected_recovery}
+
+
+# Derived from observed_at and as_of, or the sync time; the note names an old
+# reading (#4358).
+_COACH_AGE_KEYS = frozenset(
+    {"fetched_at", "measurement_status", "measurement_age_days"}
+)
+
+
+def _without_age(item: Any) -> Any:
+    if not isinstance(item, dict):
+        return item
+    return {
+        key: value
+        for key, value in item.items()
+        if key not in _COACH_AGE_KEYS
+        and not (key in {"note", "source_provider"} and value in ("", None))
+    }
+
+
+def _coach_training_focus(focus: dict[str, Any]) -> dict[str, Any]:
+    """Freshness without age fields; a zone method every row shares, named once."""
+    result = dict(focus)
+    freshness = focus.get("category_freshness")
+    if isinstance(freshness, dict):
+        result["category_freshness"] = {
+            key: _without_age(item) for key, item in freshness.items()
+        }
+    zones = focus.get("zones")
+    rows = zones if isinstance(zones, list) else []
+    methods = {row.get("method") if isinstance(row, dict) else row for row in rows}
+    if rows and len(methods) == 1 and all(isinstance(row, dict) for row in rows):
+        result["zones_method"] = methods.pop()
+        result["zones"] = [
+            {key: value for key, value in row.items() if key != "method"}
+            for row in rows
+        ]
+    return result
+
+
+def _coach_validation(validation: Any, comparisons: dict[str, Any]) -> Any:
+    """Each reference without the copy of comparisons[<metric>_30d] it repeats."""
+    references = (
+        validation.get("provider_references") if isinstance(validation, dict) else None
+    )
+    if not isinstance(references, list):
+        return validation
+    return {
+        **validation,
+        "provider_references": [
+            {key: value for key, value in row.items() if key != "historical_comparison"}
+            if isinstance(row, dict)
+            and row.get("historical_comparison")
+            == comparisons.get(f"{row.get('metric')}_30d")
+            else row
+            for row in references
+        ],
+    }
+
+
+def coach_trimmed_blocks(performance: dict[str, Any]) -> dict[str, Any]:
+    """Drop what the Coach never reads and what the turn already carries (#4358).
+
+    Each metric and training-focus freshness keeps value, source, observed_at,
+    freshness and note; repeated zone method text is named once; empty
+    comparisons and the validation's copy of comparisons[<metric>_30d] go.
+    """
+    result = dict(performance)
+    metrics = performance.get("metrics")
+    if isinstance(metrics, dict):
+        result["metrics"] = {key: _without_age(item) for key, item in metrics.items()}
+    focus = performance.get("training_focus")
+    if isinstance(focus, dict):
+        result["training_focus"] = _coach_training_focus(focus)
+    comparisons = performance.get("comparisons")
+    if isinstance(comparisons, dict):
+        result["comparisons"] = {
+            key: value for key, value in comparisons.items() if value is not None
+        }
+        if "activity_validation" in performance:
+            result["activity_validation"] = _coach_validation(
+                performance["activity_validation"], comparisons
+            )
+    return result
 
 
 def coach_sleep_timing_projection(
@@ -763,8 +850,22 @@ def coach_sleep_timing_projection(
     }
     series = regularity.get("series")
     if isinstance(series, list):
+        # The provider field names, a repeated observed_at and empty reasons are
+        # no coaching evidence (#4358); the method stays when it alone tells two
+        # series of one source apart.
+        sources = [item.get("source") for item in series if isinstance(item, dict)]
+        if len(sources) == len(set(sources)):
+            dropped = dropped | {"method"}
         projected["series"] = [
-            {key: value for key, value in item.items() if key not in dropped}
+            {
+                key: value
+                for key, value in item.items()
+                if key not in dropped
+                and not (key in {"reason", "unknown_reason"} and value is None)
+                and not (
+                    key == "source_observed_at" and value == item.get("observed_at")
+                )
+            }
             if isinstance(item, dict)
             else item
             for item in series
