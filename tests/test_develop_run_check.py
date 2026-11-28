@@ -201,7 +201,7 @@ class DevelopRunCheckTests(unittest.TestCase):
         runs = [run_record(1, *CI, conclusion="failure"), newer]
         code, out, _, fake = check("--sha", SHA, runs=runs, jobs=FAILED_JOBS)
         self.assertEqual(code, 1)
-        self.assertIn("superseded: newer run 3", out)
+        self.assertIn("superseded: newer push run 3", out)
         self.assertIn("do not rerun", out)
         self.assertNotIn("possible flake", out)
         self.assertFalse([c for c in fake.calls if c[1:3] == ["run", "view"]])
@@ -267,11 +267,33 @@ class DevelopRunCheckTests(unittest.TestCase):
                 cancelled,
                 run_record(6, "CI", SHA, "2026-11-11T09:00:00Z", event="workflow_run"),
             ],
+            # A manual run of the same commit says nothing about a cancelled push run.
+            [
+                cancelled,
+                run_record(
+                    7, "CI", SHA, "2026-11-11T10:01:03Z", event="workflow_dispatch"
+                ),
+            ],
         ):
             with self.subTest(history=[r["databaseId"] for r in history]):
                 code, out, _, _ = check("--sha", SHA, runs=history, jobs=FAILED_JOBS)
                 self.assertEqual(code, 1, out)
                 self.assertIn("CI: failed (cancelled)", out)
+        # A failed push run is not "superseded" by a later run of another event: the
+        # hint stays the failed job names and the previous push run.
+        failed = run_record(1, *CI, conclusion="failure")
+        later = run_record(
+            2,
+            "CI",
+            SHA,
+            "2026-11-11T10:01:03Z",
+            event="workflow_run",
+            conclusion="failure",
+        )
+        code, out, _, _ = check("--sha", SHA, runs=[failed, later], jobs=FAILED_JOBS)
+        self.assertEqual(code, 1, out)
+        self.assertNotIn("superseded", out)
+        self.assertIn("failed jobs: tests (3.14)", out)
 
     def test_an_abbreviated_sha_is_resolved_to_the_full_commit(self):
         # #3796: the short form never matched a run before.

@@ -9,8 +9,9 @@ none has started yet. `--wait` polls every 30 s while the answer would be 3
 (or a gh call failed), up to that many minutes, prints the last poll's lines
 and, when time ran out, a "still pending" line (#3721). A run cancelled by a
 newer develop push follows the newest run of its workflow, which contains
-the commit, and reports that run's state instead (#2956); a newer run of the same
-commit also counts when it has another event, such as `workflow_run` (#4368). Failed runs get hints: a newer push run of the same
+the commit, and reports that run's state instead (#2956); the commit's
+`workflow_run` instance of that workflow counts too, since it cancels the push
+run (#4368). Failed runs get hints: a newer push run of the same
 workflow supersedes it (never rerun a superseded run), and otherwise the
 previous push run's conclusion and the failed job names are listed so the
 caller can judge a flake.
@@ -23,6 +24,7 @@ import contextlib
 import io
 import re
 import sys
+from collections.abc import Sequence
 from time import monotonic, sleep
 
 from gh_cli import CliError, gh, gh_json, positive_int
@@ -75,11 +77,12 @@ def same_workflow(run: dict, history: list[dict]) -> tuple[list[dict], list[dict
     return older, [r for r in same if r["createdAt"] > run["createdAt"]]
 
 
-def follow(run: dict, history: list[dict]) -> dict:
+def follow(run: dict, history: list[dict], instances: Sequence[dict] = ()) -> dict:
     """A run cancelled by a newer develop push resolves to the newest push run
     of its workflow (#2956): develop only moves forward, so that run's head
-    contains this commit. Without a newer run the cancelled run stands."""
-    newer = same_workflow(run, history)[1]
+    contains this commit. A `workflow_run` instance of the same commit counts as
+    well (#4368). Without a newer run the cancelled run stands."""
+    newer = same_workflow(run, [*history, *instances])[1]
     return newer[-1] if run["conclusion"] == "cancelled" and newer else run
 
 
@@ -88,7 +91,7 @@ def hints(run: dict, history: list[dict]) -> list[str]:
     if newer:
         last = newer[-1]
         return [
-            "hint superseded: newer run "
+            "hint superseded: newer push run "
             + f"{last['databaseId']} ({last['conclusion'] or last['status']}); "
             + "do not rerun this one"
         ]
@@ -107,11 +110,13 @@ def hints(run: dict, history: list[dict]) -> list[str]:
     return [f"hint {flake}{before}; failed jobs: {failed or 'none listed'}"]
 
 
-def report(runs: dict[str, dict], history: list[dict]) -> list[str]:
+def report(
+    runs: dict[str, dict], history: list[dict], instances: Sequence[dict] = ()
+) -> list[str]:
     """Print one line per workflow, a cancelled run followed; return the states."""
     states = []
     for name, original in sorted(runs.items()):
-        run = follow(original, history)
+        run = follow(original, history, instances)
         states.append(state(run))
         result = run["conclusion"] or run["status"]
         via, head = original["databaseId"], run["headSha"][:8]
@@ -172,15 +177,11 @@ def main(argv: list[str] | None = None) -> int:
         sleep(POLL_SECONDS)
 
 
-def history_of(sha: str) -> list[dict]:
-    """The develop push runs, and the commit's runs of any event: a workflow that
-    also runs on `workflow_run` cancels its push run with that instance, and the
-    newer run of the same commit, not a push, is the answer (#4368)."""
-    runs = {run["databaseId"]: run for run in list_runs()}
-    runs.update(
-        {run["databaseId"]: run for run in list_runs("--commit", sha, event=None)}
-    )
-    return list(runs.values())
+def instances_of(sha: str) -> list[dict]:
+    """The commit's `workflow_run` runs: a workflow that also runs on
+    `workflow_run` cancels its push run with that instance, and the newer run of
+    the same commit, not a push, is the answer for the cancelled one (#4368)."""
+    return list_runs("--commit", sha, event="workflow_run")
 
 
 def check(sha: str) -> int:
@@ -190,10 +191,10 @@ def check(sha: str) -> int:
         if not runs:
             print(f"pending: no develop push runs for {sha[:8]} yet")
             return 3
-        history = (
-            history_of(sha) if any(state(r) == "failed" for r in runs.values()) else []
-        )
-        states = report(runs, history)
+        failed = any(state(r) == "failed" for r in runs.values())
+        history = list_runs() if failed else []
+        instances = instances_of(sha) if failed else []
+        states = report(runs, history, instances)
         if "failed" in states:
             return 1
         return 3 if "pending" in states else 0
