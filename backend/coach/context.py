@@ -1130,7 +1130,7 @@ class CoachStructuredContextService:
             if "nutrition_products" in included
             else None,
             "source_policy": {
-                "weather": "Open-Meteo forecast for the profile location; daily values up to 14 days, time-window recommendations only for the next 5 days and outdoor run/ride sessions; air_quality is the Open-Meteo/CAMS European AQI forecast for about 5 days; pollen uses the official DWD pollen-flight hazard index (0-3) for German regions for up to 3 days, otherwise Open-Meteo/CAMS concentrations",
+                "weather": "Open-Meteo forecast for the profile location: daily values for 14 days, time windows only for the next 5 days and outdoor run/ride sessions; air_quality: Open-Meteo/CAMS European AQI, about 5 days; pollen: official DWD pollen-flight hazard index (0-3) for German regions, up to 3 days, else Open-Meteo/CAMS concentrations",
                 "local_feedback": "Athlete-entered subjective signals and availability; not copied from Garmin or Wahoo",
                 "activity_feedback": "Athlete-entered notes about completed activities; not copied from Garmin or Wahoo",
                 "planning": "Local source of truth; completed Garmin and Wahoo activities remain authoritative",
