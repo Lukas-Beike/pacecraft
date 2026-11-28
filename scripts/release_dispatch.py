@@ -20,8 +20,10 @@ failed gh call, 3 still in progress. A transient GitHub error (HTTP 5xx, a
 timeout) is retried, then reported as pending (#3345). When the promotion PR
 merged but no release exists and the Daily release run for its commit failed,
 the release link is `failed` and names the run, its failed step and the
-`gh run rerun <id> --failed` command (#4264). It never merges, approves or
-reruns.
+`gh run rerun <id> --failed` command (#4264). A `dispatch --version` whose version
+has a release, a tag or a version PR (open or merged) exits 1 at once, before and
+after the waits, naming the next free version and dispatching nothing (#4369).
+It never merges, approves or reruns.
 """
 
 from __future__ import annotations
@@ -79,6 +81,62 @@ def version_arg(text: str) -> str:
     if not VERSION.match(text):
         raise argparse.ArgumentTypeError("version must be MAJOR.MINOR.PATCH")
     return text
+
+
+def taken(version: str) -> str | None:
+    """Why ``version`` cannot be released: a GitHub release or a tag of that name
+    exists, or its version PR is open or merged (#4369); None when it is free."""
+    try:
+        gh_json("release", "view", version, "--json", "tagName")
+        return "a release exists"
+    except CliError as exc:
+        if "not found" not in str(exc).lower():
+            raise
+    refs = gh_json("api", f"repos/{{owner}}/{{repo}}/git/matching-refs/tags/{version}")
+    if any(ref.get("ref") == f"refs/tags/{version}" for ref in refs):
+        return "a tag exists"
+    title = f"chore(release): set application version to {version}"
+    found = gh_json(
+        "pr", "list", "--base", "develop", "--state", "all", "--search", f'"{title}" in:title',
+        "--limit", "10", "--json", "number,title,state",
+    )  # fmt: skip
+    # Any exact match that is not closed: an abandoned PR may be listed before a live one.
+    live = [p for p in found if p["title"] == title and p["state"] != "CLOSED"]
+    return (
+        f"version PR #{live[0]['number']} is {live[0]['state'].lower()}"
+        if live
+        else None
+    )
+
+
+def refuse_taken(version: str | None, after_wait: bool = False) -> int:
+    """0 when ``version`` is free (or none was named), else 1 after naming why
+    and the next free version: the Daily release may have cut it, and a dispatch
+    would wait, start and fail at prepare-version (#4369). After a wait a lasting
+    GitHub error is no reason to drop the release: the workflow refuses a taken
+    version by itself, so the look is skipped."""
+    try:
+        reason = taken(version) if version else None
+    except CliError as exc:
+        if after_wait and TRANSIENT.search(str(exc)):
+            return 0
+        raise
+    if not version or not reason:
+        return 0
+    major, minor, patch = map(int, version.split("."))
+    # The refusal stands whatever the hint costs: a GitHub error in the search names no version.
+    try:
+        free = next(
+            (f"{major}.{minor}.{n}" for n in range(patch + 1, patch + 11) if not taken(f"{major}.{minor}.{n}")),
+            "not found within 10 patch versions",
+        )  # fmt: skip
+    except CliError:
+        free = "unknown (GitHub error)"
+    print(
+        f"{version} already released or in progress ({reason}); next free version is "
+        f"{free}; nothing was dispatched"
+    )
+    return 1
 
 
 def dispatch(version: str | None) -> int:
@@ -406,6 +464,19 @@ def follow(version: str | None, since: str | None) -> int:
     return 3 if "pending" in states else 0
 
 
+def run_dispatch(args: argparse.Namespace) -> int:
+    """The version must be free before the waits and again after them (the Daily
+    release may cut it meanwhile); the first step that is not 0 ends the dispatch."""
+    waits = args.when_quiet or args.when_green
+    code = (
+        refuse_taken(args.version)
+        or (args.when_quiet and when_quiet(args.timeout, args.quiet))
+        or (args.when_green and when_green(args.timeout))
+        or (waits and refuse_taken(args.version, after_wait=True))
+    )
+    return int(code) or dispatch(args.version)
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     sub = parser.add_subparsers(dest="command", required=True)
@@ -425,11 +496,7 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     try:
         if args.command == "dispatch":
-            if args.when_quiet and (busy := when_quiet(args.timeout, args.quiet)):
-                return busy
-            if args.when_green and (green := when_green(args.timeout)):
-                return green
-            return dispatch(args.version)
+            return run_dispatch(args)
         if args.wait:
             return follow_wait(args.version, args.since, args.timeout)
         return follow(args.version, args.since)
