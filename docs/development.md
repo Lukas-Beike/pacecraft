@@ -43,7 +43,8 @@ and `guard_resolve_thread.py` in turn in a single Python process, so a loaded
 machine does not time out five interpreter starts per command (#2982); a guard
 that fails blocks the command, and each guard still runs on its own.
 `.claude/agents/` defines the `explorer`, `implementer` and `reviewer` subagents
-with the model and effort of the orchestration skill's tiers. `scripts/hooks/thread_model_rule.py` blocks a T3 thread launch whose
+with the model and effort of the orchestration skill's tiers.
+`scripts/hooks/thread_model_rule.py` blocks a T3 thread launch whose
 model, effort or explicit runtime mode the rule in
 `scripts/hooks/thread-model-rule.json` does not allow; an effort above `high` is
 refused whatever the file says. After each `t3_thread_read`,

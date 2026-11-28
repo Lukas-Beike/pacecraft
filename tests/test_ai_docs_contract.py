@@ -241,15 +241,22 @@ class AiDocsContractTests(unittest.TestCase):
             (ROOT / "scripts/hooks/thread-model-rule.json").read_text(encoding="utf-8")
         )
         self.assertLessEqual(set(rule["allowed"].values()), {"low", "medium", "high"})
+        # An Opus delegate keeps the pinned `implementer` effort unless it is passed.
+        self.assertIn(
+            '`effort: "medium"`', skill.split("| L3 |", 1)[1].split("\n", 1)[0]
+        )
+        own = SKILL_ROOT / "orchestrated-plan-implementation" / "SKILL.md"
         for path in (
             ROOT / "docs" / "development.md",
-            ROOT / "AGENTS.md",
-            ROOT / ".claude" / "agents" / "implementer.md",
+            SKILL_ROOT / "pacecraft-orchestrator" / "lane-brief.md",
+            *ROOT.glob("*AGENTS.md"),
+            *ROOT.glob("*/AGENTS.md"),
+            *(p for p in SKILL_ROOT.glob("*/SKILL.md") if p != own),
         ):
             text = path.read_text(encoding="utf-8")
-            with self.subTest(path.name):
+            with self.subTest(path.relative_to(ROOT).as_posix()):
                 self.assertNotRegex(
-                    text, r"(Sonnet|Opus|Haiku)[^\n]{0,20}\b(low|medium|high)\b"
+                    text, r"(Sonnet|Opus|Haiku)[\s\S]{0,20}\b(low|medium|high)\b"
                 )
 
     def test_skills_stay_repository_local(self) -> None:
