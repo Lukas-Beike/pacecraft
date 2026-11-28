@@ -42,9 +42,9 @@ text (#2954). One hook, `scripts/hooks/guard_shell.py`, runs these shell guards
 and `guard_resolve_thread.py` in turn in a single Python process, so a loaded
 machine does not time out five interpreter starts per command (#2982); a guard
 that fails blocks the command, and each guard still runs on its own.
-`.claude/agents/` defines the `explorer` (Haiku, low effort, read-only),
-`implementer` (Sonnet, medium), and `reviewer` (Sonnet, medium, read-only)
-subagents. `scripts/hooks/thread_model_rule.py` blocks a T3 thread launch whose
+`.claude/agents/` defines the `explorer`, `implementer` and `reviewer` subagents
+with the model and effort of the orchestration skill's tiers.
+`scripts/hooks/thread_model_rule.py` blocks a T3 thread launch whose
 model, effort or explicit runtime mode the rule in
 `scripts/hooks/thread-model-rule.json` does not allow; an effort above `high` is
 refused whatever the file says. After each `t3_thread_read`,
@@ -68,11 +68,9 @@ directly; the `pr` workflow requires no host-specific slash command.
 
 The [orchestration skill](../.agents/skills/orchestrated-plan-implementation/SKILL.md)
 decides per task whether delegating to subagents pays off; by default the main
-model does the work. Delegated tasks use fixed tiers without a model question:
-Claude Haiku alternating with Gemini Flash for easy tasks, Claude Sonnet for
-standard work, and Claude Opus only for genuinely hard or risky tasks, each at
-its newest available version. Writers use isolated worktrees; the main model
-reviews and integrates their branches.
+model does the work. Delegated tasks use the skill's fixed tiers (models, effort
+and thread rules) without a model question. Writers use isolated worktrees; the
+main model reviews and integrates their branches.
 
 The [retro skill](../.agents/skills/pacecraft-retro/SKILL.md) runs on request and
 briefly after a `deliver-issue` run. It prefers removing or shortening

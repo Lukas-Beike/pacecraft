@@ -2151,7 +2151,7 @@
     ".agents/skills/openspec-propose/SKILL.md": 2510,
     ".agents/skills/openspec-sync-specs/SKILL.md": 2350,
     ".agents/skills/openspec-update-change/SKILL.md": 1731,
-    ".agents/skills/orchestrated-plan-implementation/SKILL.md": 536,
+    ".agents/skills/orchestrated-plan-implementation/SKILL.md": 532,
     ".agents/skills/pacecraft-branch-sync/SKILL.md": 686,
     ".agents/skills/pacecraft-browser-tests/SKILL.md": 1090,
     ".agents/skills/pacecraft-ci-run-stats/SKILL.md": 185,
