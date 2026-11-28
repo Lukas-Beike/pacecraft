@@ -41,7 +41,7 @@ class GuardShellTests(unittest.TestCase):
             ("git reset --hard", "guard_destructive_git"),
             ("python - <<'EOF'\nprint('a\\\\b')\nEOF", "guard_shell_backslashes"),
             (
-                "python scripts/resolve_review_thread.py 1 PRRT_x && echo",
+                "gh api graphql -f query='mutation{resolveReviewThread(input:{})}'",
                 "guard_resolve_thread",
             ),
             ('gh pr edit 1 --body ""', "guard_empty_body"),
