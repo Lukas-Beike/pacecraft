@@ -141,7 +141,7 @@ The system SHALL build ordinary Coach context from saved Garmin, Wahoo and local
 
 #### Scenario: Each value once
 - **WHEN** a Coach turn's context is projected (#4325)
-- **THEN** each threshold plans use (FTP, max HR, bike and run LTHR) appears once, in `current_performance.thresholds` with its source and any note, not again in `metrics`; `current_performance.recovery` is left out when the turn carries the recovery section and every value in it is Garmin's.
+- **THEN** each threshold plans use (FTP, max HR, bike and run LTHR) appears once, in `current_performance.thresholds` with its source and any note, not again in `metrics`; `current_performance.recovery` is left out when the turn carries the recovery section and every value in it is Garmin's. The Coach's copy also leaves out (#4358): `fetched_at`, `measurement_status` and `measurement_age_days` and empty `note` or `source_provider` in each metric and training-focus freshness, which keep value, source, `observed_at`, `freshness` and note; `personal_recovery.preferred_providers`; each sleep timing series' `method` when every series has a distinct source, a `source_observed_at` equal to `observed_at` and null reasons; null comparisons; and a validation reference's `historical_comparison` equal to `comparisons[<metric>_30d]`. A zone method shared by every training-focus zone row is named once as `zones_method`. The UI and API payloads keep every field.
 
 #### Scenario: Local calendar planning
 - **WHEN** context combines planned units, competitions and external calendar entries
@@ -157,6 +157,7 @@ Evidence:
 - `backend/coach/context.py:CoachPlanningContextReader.external_calendar`
 - `backend/coach/context.py:CoachPerformanceContextReader.current_performance`
 - `backend/coach/context.py:CoachIntervalsContextService.project`
+- `backend/coach/context.py:coach_trimmed_blocks`, `tests/test_coach_context_budget.py:test_the_coach_blocks_carry_no_unread_or_repeated_fields`
 - `tests/test_coach_structured_context.py:test_build_uses_snapshot_fallback_and_projects_safe_provider_context`. Per-metric provenance is owned by performance/provider capabilities; this requirement does not assert that every legacy section label identifies every canonical provider correctly. The activity sync time is the activity sync time (the oldest current activity fetch of Garmin and Wahoo in the canonical provider coverage; a provider fetched more than 14 days before the newest one is left out, Intervals.icu copies never count; `backend/activities/sync_time.py:activities_synced_at`)
 - `source.providers` lists the providers of the sessions' primary and per-value sources (`tests/test_coach_domain_sections.py:test_activities_source_block_comes_first_and_names_the_session_sources`, `tests/test_activity_sync_time.py`).
 

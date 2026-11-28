@@ -179,7 +179,9 @@ class ProviderIdPayloadTests(unittest.TestCase):
 
         self.assertEqual(projected["baselines"][0]["source"], "Garmin Connect")
         self.assertEqual(projected["baselines"][0]["source_provider"], "garmin")
-        self.assertIn("preferred_providers", projected)
+        # The code-constant preference table stays UI-only; each value names
+        # its source and source_provider (#4358).
+        self.assertNotIn("preferred_providers", projected)
         self.assertNotIn("history", projected["baselines"][0])
 
 
