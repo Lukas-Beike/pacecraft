@@ -279,6 +279,8 @@ const LATER = { seek: NEXT, unseek: BACK };
 const EARLIER_MONTH = { seek: 'button[aria-label="Vorheriger Monat"]', unseek: 'button[aria-label="Nächster Monat"]' };
 const tab = (area, segment) => `a[data-${area}-segment="${segment}"]`;
 const detail = (name, covers, ready, kind, extra) => ({ view: "plan", name, covers, each: DONE, ...EARLIER, opens: [DETAILS_OPEN], ready, kind, absent: NO_DETAILS, ...extra });
+// What an optional step's skip names when the page still loads its data (#4348); its own fallback label follows.
+const STILL_LOADING = ["still loading", ".panel.active .loading-state, .panel.active [aria-busy='true']"];
 export const STEPS = [
   { view: "coach", name: "Coach: Verlauf", covers: "Coach history", ready: "#messages [data-message-id]", kind: "text" },
   // The week review left Analyse for a card under the selected week (#3298). It is the first calendar
@@ -289,28 +291,28 @@ export const STEPS = [
     saw: [["still loading", ".week-review .loading-state"], ["nicht verfügbar", ".week-review[data-failed]"], ["plan line instead", ".planned-week > .planned-week-totals"], ["card missing", null]] },
   // Shown only on a morning whose night values are clearly unusual (M14), so the step is optional. The values
   // come with the two answers, "Mir geht's gut" (neutral) and "Ich bin krank" (filled); they are never pressed.
-  { view: "plan", name: "Kalender: Infekt-Hinweis", covers: "#3762 infection hint, #3821 answers", pre: ['.planned-view-switch button[data-view="week"]'], ready: ".planned-day.is-today [data-infection-hint]:has(.infection-hint-actions > button.secondary-button + button:not(.secondary-button))", kind: "numbers", optional: true },
+  { view: "plan", name: "Kalender: Infekt-Hinweis", covers: "#3762 infection hint, #3821 answers", pre: ['.planned-view-switch button[data-view="week"]'], ready: ".planned-day.is-today [data-infection-hint]:has(.infection-hint-actions > button.secondary-button + button:not(.secondary-button))", kind: "numbers", optional: true, saw: [STILL_LOADING, ["no unusual night values", null]] },
   // Read-only: the walk checks that today's day offers the check-in form, it opens none and saves nothing (#3953).
   { view: "plan", name: "Kalender: Check-in", covers: "#3953 daily check-in", pre: ['.planned-view-switch button[data-view="week"]'], ready: ".planned-day.is-today [data-checkin] > button", kind: "labelled" },
   // A planned unit with equipment, with "Löschen" or with fuelling advice may lie in a later week (2.1.26).
-  { view: "plan", name: "Kalender: Schuh/Rad geplant", covers: "#3011 planned equipment chip", each: PLANNED, ...LATER, ready: '.planned-entry[open] .planned-equipment-chip[aria-label*=": "]', kind: "text", optional: true },
-  { view: "plan", name: "Kalender: geplante Einheit", covers: "#2189 planned session", pre: ['button[aria-label="Nächste Woche"]'], each: PLANNED, ready: ".planned-entry[open] .planned-entry-details", kind: "text", optional: true, post: ['button[aria-label="Vorherige Woche"]'] },
+  { view: "plan", name: "Kalender: Schuh/Rad geplant", covers: "#3011 planned equipment chip", each: PLANNED, ...LATER, ready: '.planned-entry[open] .planned-equipment-chip[aria-label*=": "]', kind: "text", optional: true, saw: [STILL_LOADING, ["no planned unit with a shoe or bike", null]] },
+  { view: "plan", name: "Kalender: geplante Einheit", covers: "#2189 planned session", pre: ['button[aria-label="Nächste Woche"]'], each: PLANNED, ready: ".planned-entry[open] .planned-entry-details", kind: "text", optional: true, saw: [STILL_LOADING, ["no planned unit next week", null]], post: ['button[aria-label="Vorherige Woche"]'] },
   // Read-only: the walk checks that "Löschen" is there, it never presses it (#3027).
-  { view: "plan", name: "Kalender: Löschen", covers: "#3027 calendar delete", each: PLANNED, ...LATER, ready: '.planned-entry[open] .planned-activity-actions .message-action[aria-label^="Einheit löschen"]', kind: "labelled", optional: true },
-  { view: "plan", name: "Kalender: Verpflegung", covers: "#2921 fuelling", each: PLANNED, ...LATER, ready: ".planned-entry[open] .planned-fuelling", kind: "numbers", optional: true },
+  { view: "plan", name: "Kalender: Löschen", covers: "#3027 calendar delete", each: PLANNED, ...LATER, ready: '.planned-entry[open] .planned-activity-actions .message-action[aria-label^="Einheit löschen"]', kind: "labelled", optional: true, saw: [STILL_LOADING, ["no planned unit to delete", null]] },
+  { view: "plan", name: "Kalender: Verpflegung", covers: "#2921 fuelling", each: PLANNED, ...LATER, ready: ".planned-entry[open] .planned-fuelling", kind: "numbers", optional: true, saw: [STILL_LOADING, ["no planned unit with fuelling", null]] },
   // Only a planned running step test carries its precondition note, so the step is optional (#3833).
-  { view: "plan", name: "Kalender: Stufentest geplant", covers: "#3833 running step test", each: ".planned-entry:is(.is-planned, .is-today)[data-sport='Laufen'] > summary", ...LATER, ready: ".planned-entry[open] [data-step-test-note]", kind: "text", optional: true },
+  { view: "plan", name: "Kalender: Stufentest geplant", covers: "#3833 running step test", each: ".planned-entry:is(.is-planned, .is-today)[data-sport='Laufen'] > summary", ...LATER, ready: ".planned-entry[open] [data-step-test-note]", kind: "text", optional: true, saw: [STILL_LOADING, ["no planned step test", null]] },
   // Choosing a past day narrows the month's range, so the planned day comes first.
-  { view: "plan", name: "Monat: geplante Einheit", covers: "#2189 month", pre: [MONTH], each: ".planned-month-day:not([disabled]):has(.planned-month-mark.is-planned)", opens: [PLANNED], ready: ".planned-entry[open] .planned-entry-details", kind: "text", optional: true },
+  { view: "plan", name: "Monat: geplante Einheit", covers: "#2189 month", pre: [MONTH], each: ".planned-month-day:not([disabled]):has(.planned-month-mark.is-planned)", opens: [PLANNED], ready: ".planned-entry[open] .planned-entry-details", kind: "text", optional: true, saw: [STILL_LOADING, ["no planned day in the month", null]] },
   { view: "plan", name: "Monat: absolvierte Einheit", covers: "#2189 month", pre: [MONTH], each: ".planned-month-day:not([disabled]):has(.planned-month-mark.is-completed)", ...EARLIER_MONTH, opens: [DONE], ready: ".planned-entry[open] .planned-entry-details", kind: "text" },
   { view: "plan", name: "Kalender: Wochenansicht", covers: "#2189 week and month switch", pre: ['.planned-view-switch button[data-view="week"]'], ready: ".planned-week .planned-day", kind: "text" },
   // Read-only as well: the library card offers "Einplanen" and "Archivieren"; the walk presses neither (#3028).
-  { view: "plan", name: "Bibliothek: Einplanen, Archivieren", covers: "#3028 library actions, #4307 Archivieren", pre: [tab("plan", "library")], opens: ["#library details.library-sport > summary"], ready: "#library .library-card .planned-activity-actions > .secondary-button:last-child", kind: "text", optional: true, post: [tab("plan", "overview")] },
+  { view: "plan", name: "Bibliothek: Einplanen, Archivieren", covers: "#3028 library actions, #4307 Archivieren", pre: [tab("plan", "library")], opens: ["#library details.library-sport > summary"], ready: "#library .library-card .planned-activity-actions > .secondary-button:last-child", kind: "text", optional: true, saw: [STILL_LOADING, ["no library entry to archive", null]], post: [tab("plan", "overview")] },
   // Read-only: the walk checks that "+ Einheit" and "Bearbeiten" are there, it opens no editor and saves nothing (#3951).
   { view: "plan", name: "Bibliothek: Einheit anlegen, bearbeiten", covers: "#3951 library editor", pre: [tab("plan", "library")], opens: ["#library details.library-sport > summary"], ready: "#library .library-toolbar .secondary-button", kind: "text", post: [tab("plan", "overview")] },
-  { view: "plan", name: "Bibliothek: Bearbeiten", covers: "#4081 library card edit", pre: [tab("plan", "library")], opens: ["#library details.library-sport > summary"], ready: '#library .library-card .planned-activity-actions > .message-action[aria-label^="Bibliothekseintrag bearbeiten"]', kind: "labelled", optional: true, post: [tab("plan", "overview")] },
+  { view: "plan", name: "Bibliothek: Bearbeiten", covers: "#4081 library card edit", pre: [tab("plan", "library")], opens: ["#library details.library-sport > summary"], ready: '#library .library-card .planned-activity-actions > .message-action[aria-label^="Bibliothekseintrag bearbeiten"]', kind: "labelled", optional: true, saw: [STILL_LOADING, ["no library entry to edit", null]], post: [tab("plan", "overview")] },
   // A unit is planned from the Bibliothek (#4053): "Einplanen" only opens its day strip, no day is pressed (#4081).
-  { view: "plan", name: "Bibliothek: Einplanen, Tagesauswahl", covers: "#4081 library Einplanen strip", pre: [tab("plan", "library")], opens: ["#library details.library-sport > summary", '#library .library-card .planned-activity-actions .secondary-button[aria-expanded="false"]'], ready: "#library .library-card .planned-move-days:not([hidden])", kind: "text", optional: true, post: ['#library .library-card .planned-activity-actions .secondary-button[aria-expanded="true"]', tab("plan", "overview")] },
+  { view: "plan", name: "Bibliothek: Einplanen, Tagesauswahl", covers: "#4081 library Einplanen strip", pre: [tab("plan", "library")], opens: ["#library details.library-sport > summary", '#library .library-card .planned-activity-actions .secondary-button[aria-expanded="false"]'], ready: "#library .library-card .planned-move-days:not([hidden])", kind: "text", optional: true, saw: [STILL_LOADING, ["no library entry to schedule", null]], post: ['#library .library-card .planned-activity-actions .secondary-button[aria-expanded="true"]', tab("plan", "overview")] },
   // The plan choice shows only with an active training plan (#4054).
   { view: "plan", name: "Bibliothek: Einplanen, Trainingsplan", covers: "#4054 Einplanen plan choice", pre: [tab("plan", "library")], opens: ["#library details.library-sport > summary", '#library .library-card .planned-activity-actions .secondary-button[aria-expanded="false"]'], ready: "#library .library-card .library-plan-field:not([hidden]) select", kind: "text", optional: true, saw: [["no active plan", null]], post: [tab("plan", "overview")] },
   // The plan select of "Einplanen" needs an active plan: a plan card that is not archived, completed or cancelled tells a skip
@@ -319,13 +321,13 @@ export const STEPS = [
   // Read-only: the walk checks that the Pläne tab shows "+ Plan" and its list, it opens no form (#3950, #4133).
   { view: "plan", name: "Pläne: Plan anlegen", covers: "#4133 Pläne tab", since: "2.2.24", pre: [tab("plan", "plans")], ready: "#plans .library-toolbar .secondary-button", kind: "text", post: [tab("plan", "overview")] },
   // Only a unit with a Garmin copy offers "Aus Garmin entfernen" and the fixture sends nothing to Garmin, so the step is optional; it is never pressed (#4022).
-  { view: "plan", name: "Kalender: Aus Garmin entfernen", covers: "#4022 Garmin removal", each: PLANNED, ...LATER, ready: ".planned-entry[open] .planned-garmin-remove", kind: "text", optional: true },
+  { view: "plan", name: "Kalender: Aus Garmin entfernen", covers: "#4022 Garmin removal", each: PLANNED, ...LATER, ready: ".planned-entry[open] .planned-garmin-remove", kind: "text", optional: true, saw: [STILL_LOADING, ["no unit linked to Garmin", null]] },
   // Only a competition with a sync conflict shows its choices and the fixture holds none, so the step is optional; neither is pressed (#4021).
-  { view: "plan", name: "Wettkämpfe: Konflikt", covers: "#4021 competition conflict", pre: [tab("plan", "season")], ready: ".competition-conflict .planned-activity-actions button", kind: "text", optional: true, post: [tab("plan", "overview")] },
+  { view: "plan", name: "Wettkämpfe: Konflikt", covers: "#4021 competition conflict", pre: [tab("plan", "season")], ready: ".competition-conflict .planned-activity-actions button", kind: "text", optional: true, saw: [STILL_LOADING, ["no competition conflict", null]], post: [tab("plan", "overview")] },
   // Only a plan card offers "Zeitraum ersetzen" and the fixture holds no plan, so the step is optional; the dialog is never opened (#4024).
-  { view: "plan", name: "Bibliothek: Zeitraum ersetzen", covers: "#4024 period replacement", pre: [tab("plan", "library")], ready: "#library .library-card .planned-activity-actions button:nth-child(2)", kind: "text", optional: true, post: [tab("plan", "overview")] },
+  { view: "plan", name: "Bibliothek: Zeitraum ersetzen", covers: "#4024 period replacement", pre: [tab("plan", "library")], ready: "#library .library-card .planned-activity-actions button:nth-child(2)", kind: "text", optional: true, saw: [STILL_LOADING, ["no period to replace", null]], post: [tab("plan", "overview")] },
   // Only a stored adaptive preview with changes shows the card, so the step is optional; "Übernehmen" is never pressed (#4020).
-  { view: "plan", name: "Kalender: Plananpassung", covers: "#4020 replan card", pre: ['.planned-view-switch button[data-view="week"]'], ready: ".planned-replan .planned-activity-actions .push-button", kind: "text", optional: true },
+  { view: "plan", name: "Kalender: Plananpassung", covers: "#4020 replan card", pre: ['.planned-view-switch button[data-view="week"]'], ready: ".planned-replan .planned-activity-actions .push-button", kind: "text", optional: true, saw: [STILL_LOADING, ["no replan card", null]] },
   // Read-only: the walk checks that "Hinzufügen" is there, it opens no dialog and saves nothing (#3837).
   { view: "plan", name: "Wettkämpfe: Hinzufügen", covers: "#3837 competition entry", pre: [tab("plan", "season")], ready: "#competitionAdd", kind: "text", post: [tab("plan", "overview")] },
   // Completed units: on a Monday the current week has none yet, so each step looks back for a unit that
@@ -334,15 +336,15 @@ export const STEPS = [
   detail("Kalender: Details", "#2258 session details", `${DETAILS_DIALOG} .activity-analysis-stats`, "numbers"),
   // The watch's temperature sensor reads body-warmed values, so no session charts it (#3036).
   detail("Kalender: Diagramm", "#2258 session charts", `${DETAILS_DIALOG} .activity-analysis-panel svg[role="img"]`, "chart", { never: `${DETAILS_DIALOG} .activity-analysis-panel svg[aria-label^="Temperatur"]` }),
-  detail("Kalender: Zonenbalken", "#2258 time in zones", `${DETAILS_DIALOG} .activity-analysis-zones`, "numbers", { optional: true }),
+  detail("Kalender: Zonenbalken", "#2258 time in zones", `${DETAILS_DIALOG} .activity-analysis-zones`, "numbers", { optional: true, saw: [STILL_LOADING, ["no zone bars in the session", null]] }),
   // The chip shows "…" until its read; once loaded its label names the choice ("Rad: …").
-  { view: "plan", name: "Kalender: Schuh/Rad", covers: "#3011 equipment chip", each: DONE, ...EARLIER, ready: '.planned-entry[open] .planned-equipment-chip[aria-label*=": "]', kind: "text", optional: true },
+  { view: "plan", name: "Kalender: Schuh/Rad", covers: "#3011 equipment chip", each: DONE, ...EARLIER, ready: '.planned-entry[open] .planned-equipment-chip[aria-label*=": "]', kind: "text", optional: true, saw: [STILL_LOADING, ["no finished unit with a shoe or bike", null]] },
   // The result block of a completed running step test: LT1 and LT2 with heart rate and pace (#3833).
-  { view: "plan", name: "Kalender: Stufentest-Ergebnis", covers: "#3833 step test result", each: ".planned-entry.is-completed[data-sport='Laufen'] > summary", ...EARLIER, ready: ".planned-entry[open] .planned-step-test tbody td:nth-child(2)", kind: "numbers", optional: true },
+  { view: "plan", name: "Kalender: Stufentest-Ergebnis", covers: "#3833 step test result", each: ".planned-entry.is-completed[data-sport='Laufen'] > summary", ...EARLIER, ready: ".planned-entry[open] .planned-step-test tbody td:nth-child(2)", kind: "numbers", optional: true, saw: [STILL_LOADING, ["no finished step test", null]] },
   // A week with a run that shows running dynamics may lie further back.
   // A recognised route needs a repeated outdoor track, so the walk may find none (#3763).
-  detail("Kalender: Streckenhistorie", "#3763 route history", `${DETAILS_DIALOG} .activity-route .route-visits tbody tr`, "text", { optional: true, each: ".planned-entry.is-completed[data-sport='Laufen'] > summary" }),
-  detail("Kalender: Laufdynamik", "#2910 running dynamics", `${DETAILS_DIALOG} .activity-dynamics-value`, "numbers", { optional: true, each: ".planned-entry.is-completed[data-sport='Laufen'] > summary" }),
+  detail("Kalender: Streckenhistorie", "#3763 route history", `${DETAILS_DIALOG} .activity-route .route-visits tbody tr`, "text", { optional: true, saw: [STILL_LOADING, ["no route history", null]], each: ".planned-entry.is-completed[data-sport='Laufen'] > summary" }),
+  detail("Kalender: Laufdynamik", "#2910 running dynamics", `${DETAILS_DIALOG} .activity-dynamics-value`, "numbers", { optional: true, saw: [STILL_LOADING, ["no running dynamics", null]], each: ".planned-entry.is-completed[data-sport='Laufen'] > summary" }),
   // The sport cards are tables: a measured value is a cell with a digit; a missing one is marked and has none.
   ...[["running", "Laufen", "#currentPerformance table[data-analysis-sport='run'] td", "numbers"], ["cycling", "Radfahren", "#currentPerformance table[data-analysis-sport='ride'] td", "numbers"], ["load", "Belastung", "#analysisLoadCharts svg", "chart"], ["recovery", "Erholung", "#personalRecovery svg", "chart"]]
     .map(([segment, label, ready, kind]) => ({ view: "analysis", name: `Analyse: ${label}`, covers: "Analyse tabs", pre: [tab("analysis", segment)], ready, kind })),
@@ -350,7 +352,7 @@ export const STEPS = [
   ...[["running", "Laufen", "#runRecordsCard td:not(.value-missing)"], ["cycling", "Radfahren", "#rideRecordsCard td:not(.value-missing)"]]
     .map(([segment, label, ready]) => ({ view: "analysis", name: `Analyse: ${label}-Rekorde`, covers: "#3826 records", pre: [tab("analysis", segment)], ready, kind: "numbers" })),
   // Kraft needs stored strength sets, so the step is optional (#3764).
-  { view: "analysis", name: "Analyse: Kraft", covers: "#3929 strength sessions per week", pre: [tab("analysis", "strength")], ready: "#strengthAnalysis .analysis-chart-card svg", kind: "chart", optional: true },
+  { view: "analysis", name: "Analyse: Kraft", covers: "#3929 strength sessions per week", pre: [tab("analysis", "strength")], ready: "#strengthAnalysis .analysis-chart-card svg", kind: "chart", optional: true, saw: [STILL_LOADING, ["no strength sessions", null]] },
   { view: "nutrition", name: "Ernährung: Verlauf", covers: "Nutrition week", pre: [tab("nutrition", "week")], ready: "#nutritionWeek", kind: "numbers" },
   // The body values' edit icons are svgs too, so the chart step waits for a body chart.
   { view: "nutrition", name: "Ernährung: Produktzähler", covers: "#3435 product use counts", pre: [tab("nutrition", "products")], opens: ['#nutritionProducts details[data-section="all"] > summary'], ready: "#nutritionProducts details[data-section='all'] .nutrition-usage", kind: "text" },
@@ -369,7 +371,7 @@ export const STEPS = [
   { view: "more", name: "Mehr: Ausrüstung Standard", covers: "#3014 default equipment", pre: [tab("more", "equipment")], ready: "#equipmentItems .equipment-rules select", kind: "options" },
   // The current release's entry: a listed change, or only its collapsed "Technik (n)" (2.1.20).
   // Read-only: the walk checks that "Wettkämpfe senden" is there and never presses it (#3838).
-  { view: "more", name: "Mehr: Wettkämpfe senden", covers: "#3838 competition send button", since: "2.2.12", pre: [tab("more", "connections")], opens: ["#connection-intervals > summary"], ready: "#competitionSendButton", kind: "text", optional: true },
+  { view: "more", name: "Mehr: Wettkämpfe senden", covers: "#3838 competition send button", since: "2.2.12", pre: [tab("more", "connections")], opens: ["#connection-intervals > summary"], ready: "#competitionSendButton", kind: "text", optional: true, saw: [STILL_LOADING, ["no competition send button", null]] },
   // The App tab: colour scheme and the push row (#3914); the walk never presses "Benachrichtigungen aktivieren".
   { view: "more", name: "Mehr: App", covers: "#3914 App tab and push notifications", since: "2.2.15", pre: [tab("more", "app")], ready: "#notificationSettings #notificationStatus", kind: "text" },
   // Read-only: the walk checks that the switch is there, it never toggles it (#4274).
@@ -377,7 +379,7 @@ export const STEPS = [
   { view: "more", name: "Mehr: Einheiten automatisch analysieren", covers: "#4275 automatic session analysis", since: "2.2.39", pre: [tab("more", "app")], ready: '#coachAutomaticTurns input[data-automatic-turn="sessions"] + span', kind: "text" },
   // Read-only: the walk checks that the history section is there, it opens none and undoes nothing (#3954).
   { view: "more", name: "Mehr: Verlauf der Änderungen", covers: "#3954 change history", pre: [tab("more", "operations")], ready: "#changeHistorySection > summary", kind: "text" },
-  { view: "more", name: "Mehr: Betrieb, Änderungen", covers: "#2908 changelog", pre: [tab("more", "operations")], ready: ".release-changelog > ul > li, .release-changelog > .release-technical > summary", kind: "text", optional: true },
+  { view: "more", name: "Mehr: Betrieb, Änderungen", covers: "#2908 changelog", pre: [tab("more", "operations")], ready: ".release-changelog > ul > li, .release-changelog > .release-technical > summary", kind: "text", optional: true, saw: [STILL_LOADING, ["no changelog entry", null]] },
 ];
 
 // Runs in the page; "ready", "shown" (a `never` element), "absent" or "" (not yet).
@@ -539,7 +541,8 @@ export async function runStep(page, { pre = [], post = [], unseek, ...step }, ca
     }
     // Nothing loaded and nothing empty: the data this step needs does not exist (info, not a failure).
     if (!empty) return { status: "skip", ms: 0, why: count ? "no stored data" : NO_SESSION };
-    return step.optional ? { status: "skip", ms: 0, why: `none of ${count} has it${await sawLabel(page, step.saw)}` } : { status: "fail", ms: Date.now() - began, why: "missing or empty" };
+    // A step without `each` has the page as its one candidate: "none of 1" would read like a count of cards (#4348).
+    return step.optional ? { status: "skip", ms: 0, why: `${step.each ? `none of ${count} has it` : "not found"}${await sawLabel(page, step.saw)}` } : { status: "fail", ms: Date.now() - began, why: "missing or empty" };
   } catch (error) {
     return { status: "fail", ms: Date.now() - began, why: error.name === "TimeoutError" ? "control missing" : error.message.split("\n")[0] };
   } finally {
