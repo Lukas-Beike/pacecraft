@@ -8,8 +8,9 @@ the PR is not merged; 2: bad input or a failed gh call; 3: a run is pending or
 none has started yet. `--wait` polls every 30 s while the answer would be 3
 (or a gh call failed), up to that many minutes, prints the last poll's lines
 and, when time ran out, a "still pending" line (#3721). A run cancelled by a
-newer develop push follows the newest push run of its workflow, which contains
-the commit, and reports that run's state instead (#2956). Failed runs get hints: a newer push run of the same
+newer develop push follows the newest run of its workflow, which contains
+the commit, and reports that run's state instead (#2956); a newer run of the same
+commit also counts when it has another event, such as `workflow_run` (#4368). Failed runs get hints: a newer push run of the same
 workflow supersedes it (never rerun a superseded run), and otherwise the
 previous push run's conclusion and the failed job names are listed so the
 caller can judge a flake.
@@ -43,9 +44,10 @@ def merge_sha(pr: int) -> str:
     return oid
 
 
-def list_runs(*extra: str) -> list[dict]:
+def list_runs(*extra: str, event: str | None = "push") -> list[dict]:
+    """The develop runs of one event (push by default), or of every event."""
     return gh_json(
-        "run", "list", "--branch", "develop", "--event", "push",
+        "run", "list", "--branch", "develop", *(["--event", event] if event else []),
         "--limit", "100", "--json", FIELDS, *extra,
     )  # fmt: skip
 
@@ -86,7 +88,7 @@ def hints(run: dict, history: list[dict]) -> list[str]:
     if newer:
         last = newer[-1]
         return [
-            "hint superseded: newer push run "
+            "hint superseded: newer run "
             + f"{last['databaseId']} ({last['conclusion'] or last['status']}); "
             + "do not rerun this one"
         ]
@@ -115,7 +117,7 @@ def report(runs: dict[str, dict], history: list[dict]) -> list[str]:
         via, head = original["databaseId"], run["headSha"][:8]
         newer = run["databaseId"] != via
         # The newer run also carries later commits: a red may be theirs.
-        note = f" (newer push run at {head}; {via} was cancelled)" if newer else ""
+        note = f" (newer run at {head}; {via} was cancelled)" if newer else ""
         print(f"{name}: {states[-1]} ({result}) {run['url']}{note}")
         if states[-1] == "failed":
             for line in hints(run, history):
@@ -170,6 +172,17 @@ def main(argv: list[str] | None = None) -> int:
         sleep(POLL_SECONDS)
 
 
+def history_of(sha: str) -> list[dict]:
+    """The develop push runs, and the commit's runs of any event: a workflow that
+    also runs on `workflow_run` cancels its push run with that instance, and the
+    newer run of the same commit, not a push, is the answer (#4368)."""
+    runs = {run["databaseId"]: run for run in list_runs()}
+    runs.update(
+        {run["databaseId"]: run for run in list_runs("--commit", sha, event=None)}
+    )
+    return list(runs.values())
+
+
 def check(sha: str) -> int:
     """One look at the commit's push runs; the exit code of main."""
     try:
@@ -178,7 +191,7 @@ def check(sha: str) -> int:
             print(f"pending: no develop push runs for {sha[:8]} yet")
             return 3
         history = (
-            list_runs() if any(state(r) == "failed" for r in runs.values()) else []
+            history_of(sha) if any(state(r) == "failed" for r in runs.values()) else []
         )
         states = report(runs, history)
         if "failed" in states:
