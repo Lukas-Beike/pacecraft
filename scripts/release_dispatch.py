@@ -124,13 +124,17 @@ def refuse_taken(version: str | None, after_wait: bool = False) -> int:
     if not version or not reason:
         return 0
     major, minor, patch = map(int, version.split("."))
-    free = next(
-        (f"{major}.{minor}.{n}" for n in range(patch + 1, patch + 11) if not taken(f"{major}.{minor}.{n}")),
-        None,
-    )  # fmt: skip
+    # The refusal stands whatever the hint costs: a GitHub error in the search names no version.
+    try:
+        free = next(
+            (f"{major}.{minor}.{n}" for n in range(patch + 1, patch + 11) if not taken(f"{major}.{minor}.{n}")),
+            "not found within 10 patch versions",
+        )  # fmt: skip
+    except CliError:
+        free = "unknown (GitHub error)"
     print(
         f"{version} already released or in progress ({reason}); next free version is "
-        f"{free or 'not found within 10 patch versions'}; nothing was dispatched"
+        f"{free}; nothing was dispatched"
     )
     return 1
 

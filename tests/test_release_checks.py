@@ -325,6 +325,33 @@ class ReleaseDispatchTests(unittest.TestCase):
         self.assertEqual((code, len(views)), (1, 2), out.getvalue())
         self.assertFalse(any(call[1:3] == ["workflow", "run"] for call in calls))
 
+    def test_the_refusal_stands_when_the_next_free_search_hits_a_github_error(self):
+        # Gitar on #4372: the hint costs more gh calls; an outage in them is no exit 2.
+        run, _ = fake_gh(prs=[], released={V})
+
+        def outage_for_other_versions(argv, **kwargs):
+            if argv[1:3] == ["release", "view"] and argv[3] != V:
+                return subprocess.CompletedProcess(
+                    argv, 1, "", "HTTP 503: No server is currently available"
+                )
+            return run(argv, **kwargs)
+
+        clock = iter(range(0, 10**6, 30))
+        out = io.StringIO()
+        with (
+            mock.patch.object(gh_cli.subprocess, "run", outage_for_other_versions),
+            mock.patch.object(release_dispatch.time, "sleep"),
+            mock.patch.object(release_dispatch.time, "monotonic", lambda: next(clock)),
+            redirect_stdout(out),
+            mock.patch("sys.stderr", io.StringIO()),
+        ):
+            code = release_dispatch.main(["dispatch", "--version", V])
+        self.assertEqual(code, 1, out.getvalue())
+        self.assertIn(
+            f"{V} already released or in progress (a release exists)", out.getvalue()
+        )
+        self.assertIn("next free version is unknown (GitHub error)", out.getvalue())
+
     def test_a_lasting_github_error_after_the_waits_does_not_drop_the_release(self):
         # The workflow itself refuses a taken version, so only the look is skipped.
         green = [{"databaseId": 5, "status": "completed", "conclusion": "success", "headSha": "a1"}]  # fmt: skip
