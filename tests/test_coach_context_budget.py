@@ -166,7 +166,7 @@ def _calendar_events() -> list[dict[str, Any]]:
 
 def _garmin_payload() -> dict[str, Any]:
     """A synced Garmin athlete (#4325): 84 days of sleep, HRV and resting heart
-    rate, thresholds, weight, training load and 28 days of sessions with zone
+    rate, thresholds, weight, training load and 60 days of sessions with zone
     times and training effect, every section fresh."""
     day = TODAY.isoformat()
 
