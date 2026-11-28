@@ -851,9 +851,12 @@ def collect(root: Path, notes: dict[str, str]) -> tuple[dict[str, str], list[dic
 
 def instruction_words(root: Path) -> dict[str, int]:
     """Word count per instruction file (AGENTS.md and skill files): lines can be
-    made long, so a 21-line skill held 1,027 words (#4290)."""
+    made long, so a 21-line skill held 1,027 words (#4290). A word is a run of word
+    characters, so `a/b/c` is three: unspaced text does not count less."""
     return {
-        path.relative_to(root).as_posix(): len(path.read_text(encoding="utf-8").split())
+        path.relative_to(root).as_posix(): len(
+            re.findall(r"\w+", path.read_text(encoding="utf-8"))
+        )
         for pattern in INSTRUCTION_GLOBS
         for path in sorted(root.glob(pattern))
     }
@@ -987,8 +990,9 @@ def pruned_baseline(
 
 def prune_command() -> int:
     """Write the pruned baseline; exit 1 and write nothing when it cannot be."""
-    _, diagnostics = collect(ROOT, {})
+    versions, diagnostics = collect(ROOT, {})
     baseline = json.loads(BASELINE.read_text(encoding="utf-8"))
+    require_versions(baseline, versions)
     skipped = () if eslint_script() else ("eslint",)
     pruned = pruned_baseline(baseline, diagnostics, instruction_words(ROOT), skipped)
     if pruned is None:
@@ -997,6 +1001,9 @@ def prune_command() -> int:
             "Fix it, or record a reviewed exception with --snapshot."
         )
         return 1
+    if pruned == baseline:
+        print("Quality ratchet: nothing to prune")
+        return 0
     BASELINE.write_text(
         json.dumps(pruned, indent=2) + "\n", encoding="utf-8", newline="\n"
     )
@@ -1015,6 +1022,17 @@ def note_key(item: dict) -> str:
     return f"{finding(item)} {item['message_sha256']}"
 
 
+def require_versions(baseline: dict, versions: dict[str, str]) -> None:
+    """The recorded findings are the pinned tools' findings: another version's
+    would call valid entries obsolete."""
+    if baseline["versions"] != versions:
+        raise RuntimeError(
+            f"Quality baseline tool versions {baseline['versions']} do not match "
+            f"installed {versions}. Run `python tools/quality_baseline.py "
+            "--align-versions` and commit tests/fixtures/quality_baseline.json."
+        )
+
+
 def check(
     baseline: dict,
     versions: dict[str, str],
@@ -1025,12 +1043,7 @@ def check(
 ) -> int:
     if baseline["schema"] != 1:
         raise RuntimeError("Quality baseline schema does not match")
-    if baseline["versions"] != versions:
-        raise RuntimeError(
-            f"Quality baseline tool versions {baseline['versions']} do not match "
-            f"installed {versions}. Run `python tools/quality_baseline.py "
-            "--align-versions` and commit tests/fixtures/quality_baseline.json."
-        )
+    require_versions(baseline, versions)
     if any(
         item.get("tool") not in {*TOOLS, COGNITIVE, FORMAT, CSS_DUPLICATE, "eslint"}
         for item in [*baseline["diagnostics"], *diagnostics]
@@ -1064,9 +1077,9 @@ def check(
     )
     if obsolete or shrunk:
         print(
-            "Obsolete baseline entries must be removed: "
-            "`python tools/quality_baseline.py --prune` removes them and lowers "
-            "shrunk sizes, and records nothing new."
+            "Obsolete baseline entries must be removed: after the NEW findings above "
+            "are fixed, `python tools/quality_baseline.py --prune` removes them and "
+            "lowers shrunk sizes, and records nothing new."
         )
     return 1 if added_count or obsolete_count else 0
 
@@ -1089,7 +1102,7 @@ def baseline_edit(args: argparse.Namespace) -> int | None:
             REQUIREMENTS.read_text(encoding="utf-8"),
         )
         if aligned is not None:
-            BASELINE.write_text(aligned, encoding="utf-8")
+            BASELINE.write_text(aligned, encoding="utf-8", newline="\n")
         print("aligned" if aligned is not None else "unchanged")
         return 0
     return None
@@ -1097,19 +1110,21 @@ def baseline_edit(args: argparse.Namespace) -> int | None:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--snapshot", action="store_true")
     parser.add_argument("--base")
-    parser.add_argument(
+    # One mode at a time: a second flag would be dropped without a word.
+    mode = parser.add_mutually_exclusive_group()
+    mode.add_argument("--snapshot", action="store_true")
+    mode.add_argument(
         "--align-versions",
         action="store_true",
         help="record the requirements-dev.txt tool pins without running the tools",
     )
-    parser.add_argument(
+    mode.add_argument(
         "--align-openspec-sizes",
         action="store_true",
         help="record the generated openspec-* skills' word counts, nothing else",
     )
-    parser.add_argument(
+    mode.add_argument(
         "--prune",
         action="store_true",
         help="remove obsolete baseline entries and lower shrunk sizes; refuses, and "

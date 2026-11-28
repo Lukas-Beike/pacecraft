@@ -246,6 +246,12 @@ class QualityBaselineTests(unittest.TestCase):
                 quality_baseline.instruction_words(root),
                 {"AGENTS.md": 6, ".agents/skills/x/SKILL.md": 500},
             )
+            # Unspaced text does not count less: `a/b/c,d` is four words.
+            (root / "AGENTS.md").write_text("a/b/c,d\n", encoding="utf-8")
+            self.assertEqual(quality_baseline.instruction_words(root)["AGENTS.md"], 4)
+            (root / "AGENTS.md").write_text(
+                "one two\nthree\n\nfour five six\n", encoding="utf-8"
+            )
             # One long line is as much growth as many short ones.
             self.baseline["instruction_words"] = {
                 "AGENTS.md": 6,
@@ -297,6 +303,7 @@ class QualityBaselineTests(unittest.TestCase):
             for diagnostics, words, code, text in (
                 ([self.existing], {"AGENTS.md": 7}, 0, "pruned"),
                 ([self.existing], {"AGENTS.md": 12}, 1, "Nothing was pruned"),
+                ([self.existing], {"AGENTS.md": 7}, 0, "nothing to prune"),
             ):
                 output = io.StringIO()
                 with (
@@ -322,6 +329,27 @@ class QualityBaselineTests(unittest.TestCase):
                         ],
                         {"AGENTS.md": 7},
                     )
+            # Another tool version would call valid entries obsolete: nothing is read
+            # as obsolete, nothing is written. One mode flag at a time.
+            before = target.read_text(encoding="utf-8")
+            for argv, problem in (
+                (["--prune"], RuntimeError),
+                (["--prune", "--snapshot", "--base", "a" * 40], SystemExit),
+            ):
+                with (
+                    self.subTest(argv=argv),
+                    patch("tools.quality_baseline.BASELINE", target),
+                    patch("tools.quality_baseline.ROOT", Path(folder)),
+                    patch(
+                        "tools.quality_baseline.collect",
+                        return_value=({"ruff": "9.9.9", "mypy": "9.9.9"}, []),
+                    ),
+                    patch.object(sys, "argv", ["quality_baseline.py", *argv]),
+                    contextlib.redirect_stderr(io.StringIO()),
+                    self.assertRaises(problem),
+                ):
+                    quality_baseline.main()
+            self.assertEqual(target.read_text(encoding="utf-8"), before)
 
     def check_sizes(self, sizes):
         output = io.StringIO()
