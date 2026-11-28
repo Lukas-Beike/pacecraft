@@ -338,6 +338,20 @@ class WorkflowSourceTests(unittest.TestCase):
         self.assertIn("image: pacecraft:ci", sbom)
         self.assertIn("name: pacecraft-sbom", sbom)
         self.assertIn("- name: Retry SPDX SBOM generation\n", sbom)
+        # #4359: Syft comes from a cache keyed by its one version, so a release outage
+        # does not fail the SBOM; both SBOM steps use that version and stay blocking.
+        self.assertLess(
+            image.index("- name: Restore the Syft binary\n"),
+            image.index("- name: Generate SPDX SBOM\n"),
+        )
+        self.assertIn("path: ${{ runner.tool_cache }}/syft", image)
+        self.assertIn("-${{ env.SYFT_VERSION }}", image)
+        self.assertEqual(2, sbom.count("syft-version: ${{ env.SYFT_VERSION }}"))
+        self.assertRegex(image, r"SYFT_VERSION: v\d+\.\d+\.\d+\n")
+        retry = sbom.split("- name: Retry SPDX SBOM generation\n", 1)[1]
+        self.assertNotIn(
+            "continue-on-error", retry.split("- name: Upload image SBOM")[0]
+        )
         self.assertNotIn("  image_sbom:\n", workflow)
         self.assertIn("--workdir /app pacecraft:ci", consumers["container_tests"][0])
 

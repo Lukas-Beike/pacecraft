@@ -134,6 +134,10 @@ The test workflow SHALL run on pushes and pull requests to `develop` and `main`,
 - **WHEN** SBOM generation fails once
 - **THEN** it is retried once after 30 seconds, and a second failure fails the image job, so its consumers and the required aggregates fail
 
+#### Scenario: SBOM tool cache
+- **WHEN** the image job runs
+- **THEN** the Syft binary of the one pinned version is restored from a cache keyed by runner, architecture and that version before the SBOM step, so a warm cache needs no release download and a GitHub release outage does not fail the SBOM; a cache miss downloads it as before, and the SBOM step stays blocking
+
 #### Scenario: Run cancellation
 - **WHEN** a pull request or `develop` push run is in progress and a newer push to the same pull request or to `develop` arrives
 - **THEN** the newer run cancels it, except the run of a `develop` commit whose message starts with `chore(release): set application version to `

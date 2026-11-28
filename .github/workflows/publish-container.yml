@@ -103,6 +103,9 @@ jobs:
     permissions:
       # Keep the security steps read-only; the SBOM is stored as a workflow artifact.
       contents: read
+    env:
+      # The one Syft release the SBOM uses, for the cache key and both SBOM steps (#4359).
+      SYFT_VERSION: v1.57.2
     steps:
       - name: Check out repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -141,13 +144,22 @@ jobs:
           if-no-files-found: error
           retention-days: 1
           compression-level: 0
-      # The action downloads syft; a transient download error gets one retry.
+      # The action finds Syft in the runner's tool cache before it downloads it, so the cache below
+      # keeps a GitHub release outage from failing the SBOM (#4359). A miss downloads as before and
+      # fills the cache for the next run; the SBOM stays a blocking step.
+      - name: Restore the Syft binary
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ runner.tool_cache }}/syft
+          key: syft-${{ runner.os }}-${{ runner.arch }}-${{ env.SYFT_VERSION }}
+      # A download error that is not an outage still gets one retry.
       - name: Generate SPDX SBOM
         id: sbom
         continue-on-error: true
         uses: anchore/sbom-action@dfcb83b97731532d72be422cbc51ee64adb6fd56 # v0.24.4
         with:
           image: pacecraft:ci
+          syft-version: ${{ env.SYFT_VERSION }}
           format: spdx-json
           output-file: pacecraft-sbom.spdx.json
           upload-release-assets: false
@@ -159,6 +171,7 @@ jobs:
         uses: anchore/sbom-action@dfcb83b97731532d72be422cbc51ee64adb6fd56 # v0.24.4
         with:
           image: pacecraft:ci
+          syft-version: ${{ env.SYFT_VERSION }}
           format: spdx-json
           output-file: pacecraft-sbom.spdx.json
           upload-release-assets: false
