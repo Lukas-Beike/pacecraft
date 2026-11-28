@@ -44,7 +44,7 @@ WRAPPER = (
 )
 START = (
     r"(?:py|python[\d.]*)(?:\.exe)?[ \t]+(?:\./)?scripts[/\\]"
-    r"resolve_review_thread\.py(?![\w.-])"
+    r"resolve_review_thread\.py"
 )
 INVOCATION = re.compile(START, re.IGNORECASE)
 EXACT = re.compile(
@@ -56,6 +56,8 @@ ESCAPE = re.compile(
     r"\\x([0-9a-f]{2})|\\u([0-9a-f]{4})|[\\`]u\{([0-9a-f]{1,6})\}|\\([0-7]{3})"
 )
 SCRIPTS = Path("scripts")
+# The checkout this hook belongs to: the call runs from it, or `scripts/` names another.
+ROOT = Path(__file__).resolve().parents[2]
 RUN = "resolve_review_thread"
 # Python imports these at start from the script's directory as well.
 STARTUP = frozenset({"sitecustomize", "usercustomize"})
@@ -221,12 +223,15 @@ def decide() -> int:
         )
         return 2
     call = exact_call(command)
-    # Anything around the script in the same command could change what the check saw.
-    if call is False or (call and not unchanged()):
+    # Anything around the script in the same command could change what the check saw,
+    # and so could another working directory: its `scripts/` is not the one checked.
+    cwd = payload.get("cwd")
+    at_root = isinstance(cwd, str) and Path(cwd).resolve() == ROOT
+    if call is False or (call and not (at_root and unchanged())):
         print(
             "Blocked: the review-thread resolve script runs only as "
-            "`python scripts/resolve_review_thread.py <pr> <PRRT_id>`, alone, from a "
-            "checkout whose scripts/ matches origin/develop (#2629).",
+            "`python scripts/resolve_review_thread.py <pr> <PRRT_id>`, alone, from the "
+            "repository root of a checkout whose scripts/ matches origin/develop (#2629).",
             file=sys.stderr,
         )
         return 2

@@ -155,9 +155,11 @@ class ResolveReviewThreadTests(unittest.TestCase):
 
 
 class GuardHookTests(unittest.TestCase):
-    def decide(self, command, unchanged=True, raw=None, err=None):
+    def decide(self, command, unchanged=True, raw=None, err=None, cwd=None):
         stdin = mock.Mock()
-        payload = json.dumps({"tool_input": {"command": command}})
+        payload = json.dumps(
+            {"tool_input": {"command": command}, "cwd": str(cwd or ROOT)}
+        )
         stdin.buffer.read.return_value = (payload if raw is None else raw).encode()
         with (
             mock.patch.object(guard.sys, "stdin", stdin),
@@ -183,6 +185,20 @@ class GuardHookTests(unittest.TestCase):
         self.assertEqual(self.decide(f"  {exact}\n"), 0)
         self.assertEqual(self.decide(exact, unchanged=False, err=err), 2)
         self.assertIn("matches origin/develop", err.getvalue())
+        # Another working directory has another `scripts/` than the one checked: a
+        # directory the shell changed into (the hook reads the call's `cwd`), none
+        # given, or a sub-folder of the checkout.
+        other = tempfile.gettempdir()
+        for where in (other, str(ROOT / "scripts"), str(ROOT.parent)):
+            with self.subTest(where):
+                self.assertEqual(self.decide(exact, cwd=where), 2)
+        self.assertEqual(
+            self.decide(exact, raw=json.dumps({"tool_input": {"command": exact}})), 2
+        )
+        # The same directory spelled differently is the checkout.
+        self.assertEqual(self.decide(exact, cwd=str(ROOT / "scripts" / "..")), 0)
+        # Commands that do not hold the start do not care where they run.
+        self.assertEqual(self.decide("git status", cwd=other), 0)
         # The exact call in the other spellings the allow rule matches: another
         # interpreter spelling, a leading folder mark, a stream copy, and the wrappers
         # and harmless environment assignments the rule may strip.
