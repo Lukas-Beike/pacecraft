@@ -189,6 +189,8 @@ class GuardHookTests(unittest.TestCase):
         for command in (
             exact + " extra",
             exact + " && echo done",
+            exact + " 2>&1",
+            exact + "; echo done",
             "py scripts/resolve_review_thread.py 1 PRRT_x",
             "python3.14.exe ./scripts/resolve_review_thread.py 1 PRRT_x",
             "PYTHON scripts\\RESOLVE_REVIEW_THREAD.PY 1 PRRT_x",
@@ -210,6 +212,14 @@ class GuardHookTests(unittest.TestCase):
             "A=1 PYTHONHOME=/tmp/x " + exact,
             "if true; then " + exact + "; fi",
             "echo $(" + exact + ")",
+            # Gitar on #4367: what runs before or beside the script in its own command.
+            exact + " $(cp evil.py scripts/resolve_review_thread.py)",
+            exact + " `cp evil.py scripts/argparse.py`",
+            exact + " <(cp evil.py scripts/json.py)",
+            exact + " >(cp evil.py scripts/json.py)",
+            exact + " & cp evil.py scripts/json.py",
+            exact + " | cp evil.py scripts/json.py",
+            exact + " |& cp evil.py scripts/json.py",
             "echo `" + exact + "`",
             "git commit -m 'fix\n" + exact + "'",
         ):

@@ -46,6 +46,9 @@ INVOCATION = re.compile(
 HARMLESS_ENV = frozenset(
     {"PYTHONDONTWRITEBYTECODE", "PYTHONUNBUFFERED", "PYTHONUTF8", "PYTHONIOENCODING"}
 )
+# `2>&1` copies a stream; its `&` starts no job. What may follow the script in order.
+STREAM_COPY = re.compile(r"(?<=[\s\d])>&(?=[0-9-])")
+SEQUENCE = ("&&", "||", ";", "\n", "\r", "\x85", " ", " ")
 # Escapes of a name in a direct mutation: \xHH, \uHHHH, octal and PowerShell `u{H}.
 ESCAPE = re.compile(
     r"\\x([0-9a-f]{2})|\\u([0-9a-f]{4})|[\\`]u\{([0-9a-f]{1,6})\}|\\([0-7]{3})"
@@ -168,7 +171,8 @@ def unchanged() -> bool:
 def invocation(command: str) -> str | None:
     """ "first" when the command starts with the allow rule's spelling, "later" when
     another simple command of it does, else None."""
-    first, *later = SEPARATORS.split(command)
+    text = STREAM_COPY.sub(">", command)
+    first, *later = SEPARATORS.split(text)
     starts = INVOCATION.match(first.lstrip())
     # Another variable (PYTHONPATH, PATH, ...) could load code from outside scripts/.
     names = (
@@ -176,7 +180,11 @@ def invocation(command: str) -> str | None:
         if starts
         else []
     )
-    if starts and all(name.upper() in HARMLESS_ENV for name in names):
+    # What follows the script's words must run after it: a substitution, a pipe or a
+    # background job in the same command runs before or beside it.
+    rest = text[len(first) :]
+    after = not rest or rest.startswith(SEQUENCE)
+    if starts and after and all(name.upper() in HARMLESS_ENV for name in names):
         return "first"
     return (
         "later" if starts or any(INVOCATION.match(p.lstrip()) for p in later) else None
