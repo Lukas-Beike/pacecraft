@@ -81,6 +81,43 @@ def version_arg(text: str) -> str:
     return text
 
 
+def taken(version: str) -> str | None:
+    """Why ``version`` cannot be released: a GitHub release or a tag of that name
+    exists, or its version PR is open or merged (#4369); None when it is free."""
+    try:
+        gh_json("release", "view", version, "--json", "tagName")
+        return "a release exists"
+    except CliError as exc:
+        if "not found" not in str(exc).lower():
+            raise
+    refs = gh_json("api", f"repos/{{owner}}/{{repo}}/git/matching-refs/tags/{version}")
+    if any(ref.get("ref") == f"refs/tags/{version}" for ref in refs):
+        return "a tag exists"
+    pr = pull(f"chore(release): set application version to {version}", "develop")
+    if pr and pr["state"] != "CLOSED":
+        return f"version PR #{pr['number']} is {pr['state'].lower()}"
+    return None
+
+
+def refuse_taken(version: str | None) -> int:
+    """0 when ``version`` is free (or none was named), else 1 after naming why
+    and the next free version: the Daily release may have cut it, and a dispatch
+    would wait, start and fail at prepare-version (#4369)."""
+    reason = taken(version) if version else None
+    if not version or not reason:
+        return 0
+    major, minor, patch = map(int, version.split("."))
+    free = next(
+        (f"{major}.{minor}.{n}" for n in range(patch + 1, patch + 11) if not taken(f"{major}.{minor}.{n}")),
+        None,
+    )  # fmt: skip
+    print(
+        f"{version} already released or in progress ({reason}); next free version is "
+        f"{free or 'not found within 10 patch versions'}; nothing was dispatched"
+    )
+    return 1
+
+
 def dispatch(version: str | None) -> int:
     started = datetime.now(UTC).isoformat(timespec="seconds")
     extra = ["-f", f"release_version={version}"] if version else []
@@ -406,6 +443,22 @@ def follow(version: str | None, since: str | None) -> int:
     return 3 if "pending" in states else 0
 
 
+def run_dispatch(args: argparse.Namespace) -> int:
+    """The version must be free before the waits and again after them (the Daily
+    release may cut it meanwhile); the first step that is not 0 ends the dispatch."""
+    steps = [lambda: refuse_taken(args.version)]
+    if args.when_quiet:
+        steps.append(lambda: when_quiet(args.timeout, args.quiet))
+    if args.when_green:
+        steps.append(lambda: when_green(args.timeout))
+    if args.when_quiet or args.when_green:
+        steps.append(lambda: refuse_taken(args.version))
+    for step in steps:
+        if code := step():
+            return code
+    return dispatch(args.version)
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     sub = parser.add_subparsers(dest="command", required=True)
@@ -425,11 +478,7 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     try:
         if args.command == "dispatch":
-            if args.when_quiet and (busy := when_quiet(args.timeout, args.quiet)):
-                return busy
-            if args.when_green and (green := when_green(args.timeout)):
-                return green
-            return dispatch(args.version)
+            return run_dispatch(args)
         if args.wait:
             return follow_wait(args.version, args.since, args.timeout)
         return follow(args.version, args.since)

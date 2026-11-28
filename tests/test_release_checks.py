@@ -43,7 +43,7 @@ def with_develop(run, calls, heads, develop_runs):
         args = argv[1:]
         if run.errors:
             return run(argv, **kwargs)
-        if args[:1] == ["api"]:
+        if args[:1] == ["api"] and "/commits/" in args[1]:
             data = {"sha": next_answer(heads)}
         elif "--commit" in args:
             data = next_answer(runs.get(args[args.index("--commit") + 1], [[]]))
@@ -72,6 +72,8 @@ def fake_gh(
     develop_runs=None,
     create_runs=(),
     jobs=(),
+    released=(),
+    tags=(),
 ):
     calls = []
     errors = list(errors)
@@ -85,9 +87,11 @@ def fake_gh(
             base = args[args.index("--base") + 1]
             data = [p for p in prs if ("promote" in p["title"]) == (base == "main")]
         elif args[:2] == ["release", "view"]:
-            if release is None:
+            data = {v: {"tagName": v} for v in released}.get(args[2], release)
+            if data is None:
                 return subprocess.CompletedProcess(argv, 1, "", "release not found")
-            data = release
+        elif args[:1] == ["api"] and "matching-refs" in args[1]:
+            data = list(tags)
         elif args[:1] == ["run"]:
             data = run_answer(args, publish, create_runs, jobs)
         elif args[:2] == ["workflow", "run"]:
@@ -225,8 +229,9 @@ class ReleaseDispatchTests(unittest.TestCase):
             mock.patch.object(release_dispatch.time, "sleep"),
         ):
             release_dispatch.main(["dispatch", "--version", V])
+        started = [call for call in calls if call[1:3] == ["workflow", "run"]]
         self.assertEqual(
-            calls[0][1:],
+            started[0][1:],
             [
                 "workflow",
                 "run",
@@ -239,6 +244,77 @@ class ReleaseDispatchTests(unittest.TestCase):
         )
         with self.assertRaises(SystemExit), mock.patch("sys.stderr", io.StringIO()):
             release_dispatch.main(["dispatch", "--version", "v2.1"])
+
+    def test_dispatch_refuses_a_version_that_is_taken_before_it_waits(self):
+        # #4369: the Daily release had already cut the version; the dispatch used to
+        # wait, start and fail at prepare-version. Now it names the next free one.
+        open_pr = dict(VERSION_PR, state="OPEN", mergedAt=None)
+        for label, fakes in (
+            ("a release", {"released": {V}}),
+            ("a tag", {"tags": [{"ref": f"refs/tags/{V}"}]}),
+            ("an open version PR", {"prs": [open_pr]}),
+            ("a merged version PR", {"prs": [VERSION_PR]}),
+        ):
+            with self.subTest(label):
+                fakes = {"prs": [], "heads": ["a1"], **fakes}
+                code, out, calls, dispatched = self.run_main(
+                    ["dispatch", "--version", V, "--when-quiet", "--when-green"],
+                    **fakes,
+                )
+                self.assertEqual((code, dispatched), (1, []), out)
+                self.assertIn(f"{V} already released or in progress", out)
+                self.assertIn("next free version is 2.1.3", out)
+                self.assertIn("nothing was dispatched", out)
+                # No wait started: the develop head was never read.
+                self.assertFalse(
+                    any(
+                        call[1:2] == ["api"] and "/commits/" in call[2]
+                        for call in calls
+                    )
+                )
+        # The next free version skips every taken one; a tag of another version is no match.
+        code, out, _, _ = self.run_main(
+            ["dispatch", "--version", V],
+            prs=[], released={V, "2.1.3"}, tags=[{"ref": "refs/tags/2.1.20"}],
+        )  # fmt: skip
+        self.assertEqual(code, 1)
+        self.assertIn("next free version is 2.1.4", out)
+        # A free version still dispatches, and a version-less dispatch asks nothing.
+        started = [{"databaseId": 7, "status": "queued", "createdAt": "2999-01-01T00:00:00Z", "url": "u"}]  # fmt: skip
+        for argv in (["dispatch", "--version", V], ["dispatch"]):
+            code, out, calls, dispatched = self.run_main(
+                argv, prs=[], publish=started, tags=[{"ref": "refs/tags/2.1.20"}]
+            )
+            self.assertEqual((code, len(dispatched)), (0, 1), out)
+        self.assertFalse(any(call[1:3] == ["release", "view"] for call in calls))
+
+    def test_dispatch_checks_the_version_again_after_the_waits(self):
+        # The Daily release may cut the version while --when-green waits.
+        green = [{"databaseId": 5, "status": "completed", "conclusion": "success", "headSha": "a1"}]  # fmt: skip
+        views = []
+        run, calls = fake_gh(prs=[], heads=["a1"], develop_runs={"a1": [green]})
+
+        def cut_meanwhile(argv, **kwargs):
+            if argv[1:4] == ["release", "view", V]:
+                views.append(argv)
+                if len(views) > 1:  # the second look, after the wait
+                    return subprocess.CompletedProcess(
+                        argv, 0, json.dumps({"tagName": V}), ""
+                    )
+            return run(argv, **kwargs)
+
+        clock = iter(range(0, 10**6, 30))
+        out = io.StringIO()
+        with (
+            mock.patch.object(gh_cli.subprocess, "run", cut_meanwhile),
+            mock.patch.object(release_dispatch.time, "sleep"),
+            mock.patch.object(release_dispatch.time, "monotonic", lambda: next(clock)),
+            redirect_stdout(out),
+            mock.patch("sys.stderr", io.StringIO()),
+        ):
+            code = release_dispatch.main(["dispatch", "--version", V, "--when-green"])
+        self.assertEqual((code, len(views)), (1, 2), out.getvalue())
+        self.assertFalse(any(call[1:3] == ["workflow", "run"] for call in calls))
 
     def run_main(self, argv, **fakes):
         run, calls = fake_gh(**fakes)
