@@ -281,12 +281,21 @@ class ReleaseDispatchTests(unittest.TestCase):
         self.assertIn("next free version is 2.1.4", out)
         # A free version still dispatches, and a version-less dispatch asks nothing.
         started = [{"databaseId": 7, "status": "queued", "createdAt": "2999-01-01T00:00:00Z", "url": "u"}]  # fmt: skip
-        for argv in (["dispatch", "--version", V], ["dispatch"]):
+        for argv, asks in ((["dispatch", "--version", V], True), (["dispatch"], False)):
             code, out, calls, dispatched = self.run_main(
                 argv, prs=[], publish=started, tags=[{"ref": "refs/tags/2.1.20"}]
             )
             self.assertEqual((code, len(dispatched)), (0, 1), out)
-        self.assertFalse(any(call[1:3] == ["release", "view"] for call in calls))
+            self.assertEqual(
+                asks, any(call[1:3] == ["release", "view"] for call in calls)
+            )
+        # An abandoned version PR listed before the merged one does not hide it.
+        closed = dict(VERSION_PR, state="CLOSED", mergedAt=None)
+        code, out, _, dispatched = self.run_main(
+            ["dispatch", "--version", V], prs=[closed, VERSION_PR]
+        )
+        self.assertEqual((code, dispatched), (1, []), out)
+        self.assertIn("version PR #1 is merged", out)
 
     def test_dispatch_checks_the_version_again_after_the_waits(self):
         # The Daily release may cut the version while --when-green waits.
@@ -315,6 +324,37 @@ class ReleaseDispatchTests(unittest.TestCase):
             code = release_dispatch.main(["dispatch", "--version", V, "--when-green"])
         self.assertEqual((code, len(views)), (1, 2), out.getvalue())
         self.assertFalse(any(call[1:3] == ["workflow", "run"] for call in calls))
+
+    def test_a_lasting_github_error_after_the_waits_does_not_drop_the_release(self):
+        # The workflow itself refuses a taken version, so only the look is skipped.
+        green = [{"databaseId": 5, "status": "completed", "conclusion": "success", "headSha": "a1"}]  # fmt: skip
+        started = [{"databaseId": 7, "status": "queued", "createdAt": "2999-01-01T00:00:00Z", "url": "u"}]  # fmt: skip
+        run, calls = fake_gh(
+            prs=[], heads=["a1"], develop_runs={"a1": [green]}, publish=started
+        )
+        looks = []
+
+        def outage_after_the_wait(argv, **kwargs):
+            if argv[1:4] == ["release", "view", V]:
+                looks.append(argv)
+                if len(looks) > 2:  # the first look has passed (gh_cli tries twice)
+                    return subprocess.CompletedProcess(
+                        argv, 1, "", "HTTP 503: No server is currently available"
+                    )
+            return run(argv, **kwargs)
+
+        clock = iter(range(0, 10**6, 30))
+        out = io.StringIO()
+        with (
+            mock.patch.object(gh_cli.subprocess, "run", outage_after_the_wait),
+            mock.patch.object(release_dispatch.time, "sleep"),
+            mock.patch.object(release_dispatch.time, "monotonic", lambda: next(clock)),
+            redirect_stdout(out),
+            mock.patch("sys.stderr", io.StringIO()),
+        ):
+            code = release_dispatch.main(["dispatch", "--version", V, "--when-green"])
+        self.assertEqual(code, 0, out.getvalue())
+        self.assertTrue(any(call[1:3] == ["workflow", "run"] for call in calls))
 
     def run_main(self, argv, **fakes):
         run, calls = fake_gh(**fakes)

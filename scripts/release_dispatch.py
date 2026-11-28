@@ -20,8 +20,10 @@ failed gh call, 3 still in progress. A transient GitHub error (HTTP 5xx, a
 timeout) is retried, then reported as pending (#3345). When the promotion PR
 merged but no release exists and the Daily release run for its commit failed,
 the release link is `failed` and names the run, its failed step and the
-`gh run rerun <id> --failed` command (#4264). It never merges, approves or
-reruns.
+`gh run rerun <id> --failed` command (#4264). A `dispatch --version` whose version
+has a release, a tag or a version PR (open or merged) exits 1 at once, before and
+after the waits, naming the next free version and dispatching nothing (#4369).
+It never merges, approves or reruns.
 """
 
 from __future__ import annotations
@@ -93,17 +95,32 @@ def taken(version: str) -> str | None:
     refs = gh_json("api", f"repos/{{owner}}/{{repo}}/git/matching-refs/tags/{version}")
     if any(ref.get("ref") == f"refs/tags/{version}" for ref in refs):
         return "a tag exists"
-    pr = pull(f"chore(release): set application version to {version}", "develop")
-    if pr and pr["state"] != "CLOSED":
-        return f"version PR #{pr['number']} is {pr['state'].lower()}"
-    return None
+    title = f"chore(release): set application version to {version}"
+    found = gh_json(
+        "pr", "list", "--base", "develop", "--state", "all", "--search", f'"{title}" in:title',
+        "--limit", "10", "--json", "number,title,state",
+    )  # fmt: skip
+    # Any exact match that is not closed: an abandoned PR may be listed before a live one.
+    live = [p for p in found if p["title"] == title and p["state"] != "CLOSED"]
+    return (
+        f"version PR #{live[0]['number']} is {live[0]['state'].lower()}"
+        if live
+        else None
+    )
 
 
-def refuse_taken(version: str | None) -> int:
+def refuse_taken(version: str | None, after_wait: bool = False) -> int:
     """0 when ``version`` is free (or none was named), else 1 after naming why
     and the next free version: the Daily release may have cut it, and a dispatch
-    would wait, start and fail at prepare-version (#4369)."""
-    reason = taken(version) if version else None
+    would wait, start and fail at prepare-version (#4369). After a wait a lasting
+    GitHub error is no reason to drop the release: the workflow refuses a taken
+    version by itself, so the look is skipped."""
+    try:
+        reason = taken(version) if version else None
+    except CliError as exc:
+        if after_wait and TRANSIENT.search(str(exc)):
+            return 0
+        raise
     if not version or not reason:
         return 0
     major, minor, patch = map(int, version.split("."))
@@ -446,17 +463,14 @@ def follow(version: str | None, since: str | None) -> int:
 def run_dispatch(args: argparse.Namespace) -> int:
     """The version must be free before the waits and again after them (the Daily
     release may cut it meanwhile); the first step that is not 0 ends the dispatch."""
-    steps = [lambda: refuse_taken(args.version)]
-    if args.when_quiet:
-        steps.append(lambda: when_quiet(args.timeout, args.quiet))
-    if args.when_green:
-        steps.append(lambda: when_green(args.timeout))
-    if args.when_quiet or args.when_green:
-        steps.append(lambda: refuse_taken(args.version))
-    for step in steps:
-        if code := step():
-            return code
-    return dispatch(args.version)
+    waits = args.when_quiet or args.when_green
+    code = (
+        refuse_taken(args.version)
+        or (args.when_quiet and when_quiet(args.timeout, args.quiet))
+        or (args.when_green and when_green(args.timeout))
+        or (waits and refuse_taken(args.version, after_wait=True))
+    )
+    return int(code) or dispatch(args.version)
 
 
 def main(argv: list[str] | None = None) -> int:
