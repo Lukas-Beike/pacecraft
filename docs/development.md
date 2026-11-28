@@ -125,8 +125,10 @@ executable file without a shebang) need a file mode Windows lacks, so there
 the ratchet reports them itself from the git modes: the index in a working
 tree, the clone's HEAD (`PACECRAFT_GIT_ROOT`) in the pre-push export (#3091).
 Make a script executable with `git update-index --chmod=+x <file>`. It records
-the line count of every `AGENTS.md` and skill `SKILL.md`: a file that grows is a
-new finding, one that shrank must be recorded (#3925). The same ratchet reports a function above Sonar's cognitive complexity 15 (rule
+the word count of every `AGENTS.md` and skill `SKILL.md` (words, not lines: a
+21-line skill held 1,027 words; #4290): a file that grows is a new finding, one that
+shrank is removed from the baseline by `python tools/quality_baseline.py --prune`,
+which removes obsolete entries and lowers sizes and records nothing new (#3925). The same ratchet reports a function above Sonar's cognitive complexity 15 (rule
 `python:S3776`) as a `cognitive` finding named by function, not score, and a
 conditional expression nested in another (`python:S3358`, #3271), and a
 string literal used three times in one file (`python:S1192`, with
