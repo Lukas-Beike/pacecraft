@@ -9,16 +9,13 @@ description: Base skill. Resolve one review thread on your own PR after replying
 python scripts/resolve_review_thread.py <pr> <thread-id>
 ```
 
-- The thread id (`PRRT_...`) comes from
-  [pr-state](../pacecraft-pr-state/SKILL.md).
-- Run it through the Bash tool as written. The `guard_resolve_thread.py` hook
-  blocks a command that starts it while this script, the `scripts/` modules it
-  imports, or a `scripts/` module named like one the run imports differs from
-  origin/develop (#3072), and any direct GraphQL resolve mutation. It reads no
-  other command for the script's name, so `grep`, `git diff`, its test module
-  and reply texts pass (#4289); the script itself refuses what it may not do. It
-  runs first in its command: anything before it, or a text with the call at the
-  start of a line, blocks. Pass such a text through `--body-file`.
+- The thread id (`PRRT_...`) comes from [pr-state](../pacecraft-pr-state/SKILL.md).
+- Run it as written, first in its command. The `guard_resolve_thread.py` hook blocks
+  the run while this script, the `scripts/` modules it imports, or a `scripts/` module
+  named like one of them differs from origin/develop (#3072), a start after other
+  commands or at the start of a text line (pass such a text through `--body-file`),
+  and a direct GraphQL resolve mutation. It reads no other command for the script's
+  name (`grep`, `git diff`, its test module pass, #4289); the script refuses the rest.
 - It sends only the `resolveReviewThread` mutation, and only when you authored
   the PR, the thread is open, and its last comment is your reply naming a
   commit of the PR made after the finding.
